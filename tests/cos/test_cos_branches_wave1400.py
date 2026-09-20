@@ -154,18 +154,18 @@ def test_cos_stream_set_skip_encryption_false_does_not_drop_handler() -> None:
     Closes branch (307 → 299)."""
     stream = COSStream()
     sentinel = object()
-    stream._security_handler = sentinel  # noqa: SLF001
+    stream._security_handler = sentinel
     stream.set_skip_encryption(False)
     # Handler survives because the if-True branch was not entered.
-    assert stream._security_handler is sentinel  # noqa: SLF001
+    assert stream._security_handler is sentinel
 
 
 def test_cos_stream_set_skip_encryption_true_drops_handler() -> None:
     """Positive control: set_skip_encryption(True) clears the handler."""
     stream = COSStream()
-    stream._security_handler = object()  # noqa: SLF001
+    stream._security_handler = object()
     stream.set_skip_encryption(True)
-    assert stream._security_handler is None  # noqa: SLF001
+    assert stream._security_handler is None
 
 
 # ----------------------------------------------------------------------

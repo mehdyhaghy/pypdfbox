@@ -82,7 +82,7 @@ def test_resolve_font_program_returns_standard14_wrapper_for_helvetica() -> None
     renderer = PDFRenderer(doc)
     font = _build_unembedded_helvetica()
 
-    program = renderer._resolve_font_program(font)  # noqa: SLF001
+    program = renderer._resolve_font_program(font)
     assert program is not None
     # The default mapper exposes Standard14FontWrapper for Standard 14 names.
     assert program.get_name() == "Helvetica"
@@ -96,7 +96,7 @@ def test_resolve_font_program_falls_back_to_helvetica_for_unknown_name() -> None
     renderer = PDFRenderer(doc)
     font = _build_unembedded_unknown_font()
 
-    program = renderer._resolve_font_program(font)  # noqa: SLF001
+    program = renderer._resolve_font_program(font)
     assert program is not None
     # Style-only fallback chooses Helvetica for proportional / non-serif.
     assert program.get_name() == "Helvetica"
@@ -110,8 +110,8 @@ def test_resolve_font_program_caches_per_font_instance() -> None:
     renderer = PDFRenderer(doc)
     font = _build_unembedded_helvetica()
 
-    first = renderer._resolve_font_program(font)  # noqa: SLF001
-    second = renderer._resolve_font_program(font)  # noqa: SLF001
+    first = renderer._resolve_font_program(font)
+    second = renderer._resolve_font_program(font)
     assert first is second
 
 
@@ -184,6 +184,6 @@ def test_unknown_font_with_fixed_pitch_flag_picks_courier_fallback() -> None:
     )
     font = PDType1Font(font_dict)
 
-    program = renderer._resolve_font_program(font)  # noqa: SLF001
+    program = renderer._resolve_font_program(font)
     assert program is not None
     assert program.get_name() == "Courier"

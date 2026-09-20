@@ -26,10 +26,10 @@ def test_seek_into_gap_falls_through_reader_scan() -> None:
     # Contiguous by construction: starts [0,4], ends [3,7], total 8.
     # Punch a gap: make reader 0 cover [0,2] and reader 1 cover [5,7], so
     # offsets 3 and 4 are covered by nobody.
-    seq._end_positions[0] = 2  # noqa: SLF001
-    seq._start_positions[1] = 5  # noqa: SLF001
-    seq._current_index = 0  # noqa: SLF001
-    seq._current_position = 0  # noqa: SLF001
+    seq._end_positions[0] = 2
+    seq._start_positions[1] = 5
+    seq._current_index = 0
+    seq._current_position = 0
 
     # Seek to 4 (in the gap, and < total_length 8). The scan walks i upward
     # past reader 1 without matching, exiting the while via its bounds check.

@@ -57,7 +57,7 @@ def test_duplicate_identifier_is_skipped() -> None:
     src = _catalog_with_intents(_intent("FOGRA39"))
     dst = _catalog_with_intents(_intent("FOGRA39"))
 
-    util._merge_output_intents(_IdentityCloner(), src, dst)  # noqa: SLF001
+    util._merge_output_intents(_IdentityCloner(), src, dst)
 
     assert _dest_intents(dst).size() == 1
 
@@ -67,7 +67,7 @@ def test_distinct_identifier_is_appended() -> None:
     src = _catalog_with_intents(_intent("FOGRA51"))
     dst = _catalog_with_intents(_intent("FOGRA39"))
 
-    util._merge_output_intents(_IdentityCloner(), src, dst)  # noqa: SLF001
+    util._merge_output_intents(_IdentityCloner(), src, dst)
 
     arr = _dest_intents(dst)
     assert arr.size() == 2
@@ -85,7 +85,7 @@ def test_destination_intent_without_identifier_does_not_crash() -> None:
     src = _catalog_with_intents(_intent("FOGRA39"))
     dst = _catalog_with_intents(_intent(None))
 
-    util._merge_output_intents(_IdentityCloner(), src, dst)  # noqa: SLF001
+    util._merge_output_intents(_IdentityCloner(), src, dst)
 
     assert _dest_intents(dst).size() == 2
 
@@ -96,7 +96,7 @@ def test_custom_identifier_is_always_copied() -> None:
     src = _catalog_with_intents(_intent("Custom"))
     dst = _catalog_with_intents(_intent("Custom"))
 
-    util._merge_output_intents(_IdentityCloner(), src, dst)  # noqa: SLF001
+    util._merge_output_intents(_IdentityCloner(), src, dst)
 
     assert _dest_intents(dst).size() == 2
 
@@ -106,7 +106,7 @@ def test_source_intent_without_identifier_is_always_copied() -> None:
     src = _catalog_with_intents(_intent(None))
     dst = _catalog_with_intents(_intent(None))
 
-    util._merge_output_intents(_IdentityCloner(), src, dst)  # noqa: SLF001
+    util._merge_output_intents(_IdentityCloner(), src, dst)
 
     assert _dest_intents(dst).size() == 2
 
@@ -119,6 +119,6 @@ def test_duplicate_within_source_is_deduped_and_dest_array_created() -> None:
     src = _catalog_with_intents(_intent("FOGRA39"), _intent("FOGRA39"))
     dst = _Catalog()
 
-    util._merge_output_intents(_IdentityCloner(), src, dst)  # noqa: SLF001
+    util._merge_output_intents(_IdentityCloner(), src, dst)
 
     assert _dest_intents(dst).size() == 1

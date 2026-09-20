@@ -89,7 +89,7 @@ def test_decode_parameter_returns_none_when_range_pairs_are_unavailable(
 ) -> None:
     fn = PDFunctionType0(COSDictionary())
     monkeypatch.setattr(fn, "get_number_of_output_parameters", lambda: 1)
-    monkeypatch.setattr(fn, "get_ranges_for_outputs", lambda: [])
+    monkeypatch.setattr(fn, "get_ranges_for_outputs", list)
 
     assert fn.get_decode_for_parameter(0) is None
 

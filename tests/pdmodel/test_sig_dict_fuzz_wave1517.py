@@ -256,13 +256,13 @@ def _python_line(case_dir: Path, name: str) -> str:
 
         try:
             signed = str(len(sig.get_signed_content(file_bytes)))
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             signed = f"ERR:{_java_exc(e)}"
         out += f" signed={signed}"
 
         try:
             window = _hex(sig.get_contents_from_bytes(file_bytes))
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             window = f"ERR:{_java_exc(e)}"
         out += f" window={window}"
         return out

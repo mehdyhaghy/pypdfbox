@@ -170,19 +170,19 @@ class SigUtils:
         return None
 
     @staticmethod
-    def extract_time_stamp_token_from_signer_information(signer_information) -> bytes | None:  # noqa: ANN001
+    def extract_time_stamp_token_from_signer_information(signer_information) -> bytes | None:
         """Pull a TST attribute out of a CMS ``SignerInfo`` (upstream 298)."""
         return None
 
     @staticmethod
-    def validate_timestamp_token(time_stamp_token) -> None:  # noqa: ANN001
+    def validate_timestamp_token(time_stamp_token) -> None:
         """Verify a TimeStampToken signature (upstream 318). Offline stub."""
 
     @staticmethod
     def verify_certificate_chain(
-        certificates_store,  # noqa: ANN001
-        cert_from_signed_data,  # noqa: ANN001
-        sign_date,  # noqa: ANN001
+        certificates_store,
+        cert_from_signed_data,
+        sign_date,
     ) -> None:
         """Verify a CMS-extracted cert chain (upstream 343)."""
         from pypdfbox.examples.signature.cert.certificate_verifier import (
@@ -202,7 +202,7 @@ class SigUtils:
         return None
 
     @staticmethod
-    def get_certificate_from_time_stamp_token(time_stamp_token) -> object | None:  # noqa: ANN001
+    def get_certificate_from_time_stamp_token(time_stamp_token) -> object | None:
         """Extract an X.509 cert from a TimeStampToken (upstream 391). Offline stub."""
         return None
 

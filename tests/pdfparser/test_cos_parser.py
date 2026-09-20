@@ -762,7 +762,7 @@ def test_parse_start_xref_returns_negative_when_keyword_missing() -> None:
 def test_parse_trailer_basic() -> None:
     p = parser(b"trailer\n<< /Size 5 /Root 1 0 R >>\n")
     assert p.parse_trailer() is True
-    last = p._last_parsed_trailer  # noqa: SLF001 — surface latched by parse
+    last = p._last_parsed_trailer
     assert last.get_dictionary_object(COSName.get_pdf_name("Size")).int_value() == 5
 
 

@@ -52,7 +52,7 @@ def test_normalize_language_handles_missing_language_module(
         def find_module(
             self,
             fullname: str,
-            path: Any | None = None,  # noqa: ARG002
+            path: Any | None = None,
         ) -> Any | None:
             if fullname == "pypdfbox.fontbox.ttf.model.language":
                 return self
@@ -66,8 +66,8 @@ def test_normalize_language_handles_missing_language_module(
         def find_spec(
             self,
             fullname: str,
-            path: Any | None = None,  # noqa: ARG002
-            target: Any | None = None,  # noqa: ARG002
+            path: Any | None = None,
+            target: Any | None = None,
         ) -> Any | None:
             if fullname == "pypdfbox.fontbox.ttf.model.language":
                 import importlib.machinery
@@ -75,10 +75,10 @@ def test_normalize_language_handles_missing_language_module(
                 msg = f"forced missing module: {fullname}"
 
                 class _RaisingLoader:
-                    def create_module(self, spec):  # noqa: ARG002, ANN001
+                    def create_module(self, spec):
                         return None
 
-                    def exec_module(self, module):  # noqa: ARG002, ANN001
+                    def exec_module(self, module):
                         raise ImportError(msg)
 
                 return importlib.machinery.ModuleSpec(fullname, _RaisingLoader())

@@ -80,7 +80,7 @@ def test_ensure_font_skips_insert_when_resources_have_no_put(
     resources = _ResourcesWithoutPut()
     font_dict = _FontDictMissing()
 
-    proc._ensure_font(  # noqa: SLF001
+    proc._ensure_font(
         resources,
         font_dict,
         COSName.get_pdf_name("Helv"),

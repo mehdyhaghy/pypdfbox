@@ -14,9 +14,9 @@ from pypdfbox.xmpbox.type.text_type import TextType
 def test_get_manager_variant_property_after_set_returns_typed() -> None:
     schema = XMPMediaManagementSchema(XMPMetadata.create_xmp_metadata())
     typed = TextType(
-        schema._metadata,  # noqa: SLF001
-        schema._namespace,  # noqa: SLF001
-        schema._prefix,  # noqa: SLF001
+        schema._metadata,
+        schema._namespace,
+        schema._prefix,
         "ManagerVariant",
         "enterprise",
     )

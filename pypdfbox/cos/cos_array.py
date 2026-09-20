@@ -397,7 +397,7 @@ class COSArray(COSBase):
         # ``getKey() != null`` therefore reduces to the per-entry walk.
         # Local import to avoid a hard cos_array <-> cos_dictionary cycle at
         # module load.
-        from .cos_dictionary import COSDictionary  # noqa: PLC0415
+        from .cos_dictionary import COSDictionary
 
         for value in self._items:
             child: COSBase | None = value
@@ -427,7 +427,7 @@ class COSArray(COSBase):
         """
         if indirect_objects is None:
             return None
-        from .cos_dictionary import COSDictionary  # noqa: PLC0415
+        from .cos_dictionary import COSDictionary
 
         self_key = self.get_key()
         if self_key is not None:
@@ -492,7 +492,7 @@ class COSArray(COSBase):
         scanner counts it) so callers writing PDF-aware code can reuse the
         same wrapping rule when synthesising arrays manually.
         """
-        from .cos_dictionary import COSDictionary  # noqa: PLC0415 - avoid cycle
+        from .cos_dictionary import COSDictionary
 
         if isinstance(item, (COSDictionary, COSArray)) and not item.is_direct():
             key = item.get_key()

@@ -70,7 +70,7 @@ def test_create_cloudy_polygon_n_negative_with_output_already_started() -> None:
     cb = CloudyBorder(_stream(), 2.0, 1.0, rect)
     # Pre-mark output as started so the False arrow is taken when the
     # short-segment fallback fires.
-    cb._output_started = True  # noqa: SLF001
+    cb._output_started = True
 
     # Polygon with a deliberately-tiny first segment so the cloud radius
     # math returns n < 0 on it; remaining segments are normal-sized so the
@@ -113,7 +113,7 @@ def test_cloudy_rect_intensity_zero_with_none_output_skips_add_rect() -> None:
 
     rect = PDRectangle(0.0, 0.0, 100.0, 100.0)
     cb = CloudyBorder(_stream(), 0.0, 1.0, rect)  # intensity = 0
-    cb._output = None  # noqa: SLF001 — force output-less path
+    cb._output = None
     # Drive cloudy_rectangle_impl which contains the line 282-290 block.
     cb.cloudy_rectangle_impl(0.0, 0.0, 100.0, 100.0, False)
 
@@ -130,7 +130,7 @@ def test_cloudy_polygon_first_segment_too_short_with_output_started() -> None:
     cb = CloudyBorder(_stream(), 2.0, 1.0, rect)
     # Pre-mark output as started so the False arrow is taken when the
     # tiny-segment fallback fires.
-    cb._output_started = True  # noqa: SLF001
+    cb._output_started = True
     # Call cloudy_polygon_impl directly with a deliberately-tiny first
     # segment so the cloud radius math returns n < 0 on it.
     poly: list[tuple[float, float]] = [

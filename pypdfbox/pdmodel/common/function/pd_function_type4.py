@@ -72,7 +72,7 @@ class PDFunctionType4(PDFunction):
 
     # ---------- evaluation ----------
 
-    def eval(self, input: list[float]) -> list[float]:  # noqa: A002 - upstream parameter name
+    def eval(self, input: list[float]) -> list[float]:
         """Evaluate the PostScript-calculator program on ``input`` per
         PDF 32000-1 §7.10.5.
 

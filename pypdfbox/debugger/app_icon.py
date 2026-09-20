@@ -24,9 +24,16 @@ _LOG = logging.getLogger(__name__)
 # the icon silently blanks — the classic Tk footgun.
 _ICON_REFS: list[tk.PhotoImage] = []
 
-# Sizes handed to ``iconphoto``. Tk picks the best match for each context
-# (title bar, task switcher), so offering a spread beats offering one.
-_PHOTO_SIZES = (16, 32, 48, 64, 128, 256)
+# Sizes handed to ``iconphoto``, LARGEST FIRST -- the order matters.
+#
+# Tk treats the *first* image as the primary one and lets the window manager
+# pick among the rest. Passing these ascending made 16x16 the primary, so the
+# macOS dock upscaled a 16px bitmap to dock size (up to 512px on a retina
+# display) and the icon looked blurred. Largest-first gives the dock a
+# 512px source to downscale from, which is what it wants; the small sizes
+# are still offered for the title bar and task switcher, which downscale
+# from the nearest match.
+_PHOTO_SIZES = (512, 256, 128, 64, 48, 32, 16)
 
 
 def icon_dir() -> Path:
@@ -61,7 +68,7 @@ def apply_window_icon(window: Any) -> bool:
             try:
                 window.iconbitmap(default=str(ico))
                 applied = True
-            except Exception as ex:  # noqa: BLE001  # pragma: no cover
+            except Exception as ex:  # pragma: no cover
                 _LOG.debug("iconbitmap failed: %s", ex)
 
     images: list[tk.PhotoImage] = []
@@ -75,7 +82,7 @@ def apply_window_icon(window: Any) -> bool:
             # so catch broadly — this path is cosmetic and must never
             # propagate.
             images.append(tk.PhotoImage(master=window, file=str(png)))
-        except Exception as ex:  # noqa: BLE001
+        except Exception as ex:
             _LOG.debug("could not load %s: %s", png.name, ex)
 
     if images:
@@ -83,7 +90,7 @@ def apply_window_icon(window: Any) -> bool:
             window.iconphoto(True, *images)
             _ICON_REFS.extend(images)
             applied = True
-        except Exception as ex:  # noqa: BLE001  # pragma: no cover
+        except Exception as ex:  # pragma: no cover
             _LOG.debug("iconphoto failed: %s", ex)
 
     return applied

@@ -26,6 +26,6 @@ def test_pdf_stream_parser_tokens_write_to_write_bytes_sink() -> None:
     ).parse()
     sink = _WriteBytesOnlySink()
 
-    ContentStreamWriter(cast(Any, sink)).write_tokens(tokens)
+    ContentStreamWriter(cast("Any", sink)).write_tokens(tokens)
 
     assert bytes(sink.buf) == b"q\n1 0 0 1 72 72 cm\n(Hi) Tj\nQ\n"

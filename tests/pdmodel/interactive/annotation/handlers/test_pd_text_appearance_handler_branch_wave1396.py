@@ -11,7 +11,7 @@ Closes False-branch arrows:
 from __future__ import annotations
 
 from pypdfbox.cos import COSName, COSStream
-from pypdfbox.pdmodel.interactive.annotation.handlers.pd_text_appearance_handler import (  # noqa: E501
+from pypdfbox.pdmodel.interactive.annotation.handlers.pd_text_appearance_handler import (
     PDTextAppearanceHandler,
 )
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_text import (
@@ -58,7 +58,7 @@ def test_adjust_rect_and_bbox_when_rect_is_none_skips_resize() -> None:
     # Remove /Rect entirely so get_rectangle() returns None.
     annot.get_cos_object().remove_item(COSName.get_pdf_name("Rect"))
     handler = PDTextAppearanceHandler(annot)
-    bbox = handler._adjust_rect_and_bbox(annot, 24.0, 24.0)  # noqa: SLF001
+    bbox = handler._adjust_rect_and_bbox(annot, 24.0, 24.0)
     assert bbox is not None
     # Width/height carried through to the bbox even though rect was unchanged.
     assert bbox.get_width() == 24.0
@@ -74,7 +74,7 @@ def test_adjust_rect_and_bbox_when_flags_present_skips_setting_no_rotate() -> No
     # Pre-set /F so the branch sees it present.
     annot.get_cos_object().set_int(COSName.get_pdf_name("F"), 0)
     handler = PDTextAppearanceHandler(annot)
-    handler._adjust_rect_and_bbox(annot, 24.0, 24.0)  # noqa: SLF001
+    handler._adjust_rect_and_bbox(annot, 24.0, 24.0)
     # NoRotate / NoZoom are not set since we skipped the branch.
     assert annot.is_no_rotate() is False
     assert annot.is_no_zoom() is False

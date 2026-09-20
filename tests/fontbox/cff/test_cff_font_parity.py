@@ -32,7 +32,7 @@ def _load_cff_bytes() -> bytes | None:
     """Return raw CFF bytes extracted from the first available OTF, or
     ``None`` when nothing usable is on the host."""
     try:
-        from fontTools.ttLib import TTFont  # type: ignore[import-untyped]  # noqa: PLC0415
+        from fontTools.ttLib import TTFont  # type: ignore[import-untyped]
     except ImportError:
         return None
     for candidate in _OTF_CANDIDATES:
@@ -46,7 +46,7 @@ def _load_cff_bytes() -> bytes | None:
             buf = io.BytesIO()
             ttf["CFF "].cff.compile(buf, ttf, isCFF2=False)
             return buf.getvalue()
-        except Exception:  # noqa: BLE001
+        except Exception:
             continue
     return None
 

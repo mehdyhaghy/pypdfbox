@@ -46,7 +46,7 @@ class ExtractMetadata:
                     ExtractMetadata.show_dublin_core_schema(metadata)
                     ExtractMetadata.show_adobe_pdf_schema(metadata)
                     ExtractMetadata.show_xmp_basic_schema(metadata)
-                except XmpParsingException as exc:  # noqa: BLE001
+                except XmpParsingException as exc:
                     sys.stderr.write(
                         "An error occurred when parsing the metadata: "
                         f"{exc}\n",

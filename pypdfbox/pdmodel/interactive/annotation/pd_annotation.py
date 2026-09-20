@@ -318,7 +318,7 @@ class PDAnnotation:
             # COSDictionary.setDate -> DateConverter.toString, which renders the
             # zone as (+|-)HH'mm' — UTC becomes +00'00', never Z (see
             # DateConverter.java line 234). Reuse the shared formatter.
-            from pypdfbox.pdmodel.pd_document_information import _format_pdf_date  # noqa: PLC0415
+            from pypdfbox.pdmodel.pd_document_information import _format_pdf_date
 
             self._dict.set_item(_M, COSString(_format_pdf_date(value)))
             return
@@ -739,7 +739,7 @@ class PDAnnotation:
         ``constructAppearances(PDDocument)``. The base implementation is a
         no-op; subclasses with concrete appearance handlers override it.
         """
-        return None
+        return
 
     # ---------- equality / repr ----------
 

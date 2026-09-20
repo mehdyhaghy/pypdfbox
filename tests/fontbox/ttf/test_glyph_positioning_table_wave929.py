@@ -20,9 +20,9 @@ def test_wave929_liberation_fixture_skip_branch(monkeypatch: pytest.MonkeyPatch)
 def test_wave929_get_gpos_absent_test_exercises_contains_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def get_gpos_probe_non_gpos_key(self):  # noqa: ANN001
+    def get_gpos_probe_non_gpos_key(self):
         assert "head" in self._tt
-        return None
+        return
 
     monkeypatch.setattr(gpos_tests.TrueTypeFont, "get_gpos", get_gpos_probe_non_gpos_key)
 

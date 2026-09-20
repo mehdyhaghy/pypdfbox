@@ -190,8 +190,8 @@ def test_pd_type1_symbol_glyph_path_uses_dejavu() -> None:
     routes ``get_glyph_path(code)`` through the Standard 14 substitution
     chain and returns a non-empty path for the Greek-letter codepoints.
     """
-    from pypdfbox.cos import COSDictionary, COSName  # noqa: PLC0415
-    from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font  # noqa: PLC0415
+    from pypdfbox.cos import COSDictionary, COSName
+    from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
 
     font_dict = COSDictionary()
     font_dict.set_item(COSName.TYPE, COSName.get_pdf_name("Font"))
@@ -210,8 +210,8 @@ def test_pd_type1_symbol_glyph_path_uses_dejavu() -> None:
 def test_pd_type1_zapf_dingbats_glyph_path_uses_dejavu() -> None:
     """A ZapfDingbats :class:`PDType1Font` with no embedded program also
     routes through DejaVu Sans for the full dingbat range."""
-    from pypdfbox.cos import COSDictionary, COSName  # noqa: PLC0415
-    from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font  # noqa: PLC0415
+    from pypdfbox.cos import COSDictionary, COSName
+    from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
 
     font_dict = COSDictionary()
     font_dict.set_item(COSName.TYPE, COSName.get_pdf_name("Font"))

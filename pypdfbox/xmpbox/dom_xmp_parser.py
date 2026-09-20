@@ -533,7 +533,7 @@ class DomXmpParser:
         prefixes: dict[str, str] = {}
         try:
             for _event, ns in ET.iterparse(BytesIO(body), events=("start-ns",)):
-                prefix, uri = cast(tuple[str, str], ns)
+                prefix, uri = cast("tuple[str, str]", ns)
                 prefixes.setdefault(uri, prefix)
         except ET.ParseError:
             # Preserve the main parse path's existing FORMAT exception message.
@@ -604,7 +604,7 @@ class DomXmpParser:
                 # matching the way typed setters (e.g.
                 # ``PhotoshopSchema.set_text_layers_property``) install an
                 # array under the upstream local name.
-                schema._properties[local] = typed_array  # noqa: SLF001
+                schema._properties[local] = typed_array
                 continue
             # Single structured-type path: a ``Cardinality.Simple`` property
             # whose declared type is structured (e.g. ``xmpMM:DerivedFrom``)
@@ -614,7 +614,7 @@ class DomXmpParser:
             typed_struct = self._try_parse_typed_struct(child, ns, local, schema)
             if typed_struct is not None:
                 typed_struct.set_property_name(local)
-                schema._properties[local] = typed_struct  # noqa: SLF001
+                schema._properties[local] = typed_struct
                 continue
             parsed_value = self._parse_property_value(child)
             self._validate_element_form_cardinality(child, ns, local, parsed_value)
@@ -720,7 +720,7 @@ class DomXmpParser:
 
     def _validate_element_form_cardinality(
         self,
-        element: ET.Element,  # noqa: ARG002 - reserved for future shape detail
+        element: ET.Element,
         ns: str,
         local: str,
         parsed_value: object,
@@ -830,7 +830,7 @@ class DomXmpParser:
     @staticmethod
     def _schema_for(
         ns: str,
-        local_name_for_prefix_hint: str,  # noqa: ARG004 - reserved for future heuristics
+        local_name_for_prefix_hint: str,
         desc: ET.Element,
         metadata: XMPMetadata,
         per_ns: dict[str, XMPSchema],
@@ -1052,7 +1052,7 @@ class DomXmpParser:
             # the schema setters). Deposit the lang map directly to mirror that;
             # routing through set_unqualified_language_property_value would
             # reorganize x-default first and diverge from xmpbox.
-            schema._properties[local_name] = dict(value)  # noqa: SLF001
+            schema._properties[local_name] = dict(value)
         elif isinstance(value, list):
             for item in value:
                 schema.add_qualified_bag_value(local_name, item)
@@ -1085,7 +1085,7 @@ class DomXmpParser:
         self,
         element: ET.Element,
         ns: str | None,
-        prefix: str | None,  # noqa: ARG002 - prefix info dropped by ElementTree
+        prefix: str | None,
         local_name: str | None,
     ) -> None:
         """Mirror of upstream ``expectNaming`` (line 996).
@@ -1229,7 +1229,7 @@ class DomXmpParser:
 
     def maybe_add_non_standard_namespace(
         self,
-        metadata: XMPMetadata,  # noqa: ARG002 - placeholder for TypeMapping integration
+        metadata: XMPMetadata,
         prefix: str,
         namespace: str,
     ) -> None:
@@ -1314,9 +1314,9 @@ class DomXmpParser:
 
     def manage_structured_type(
         self,
-        schema: XMPSchema,  # noqa: ARG002 - rich-type system not yet ported
-        local: str,  # noqa: ARG002
-        element: ET.Element,  # noqa: ARG002
+        schema: XMPSchema,
+        local: str,
+        element: ET.Element,
     ) -> None:
         """Mirror of upstream ``manageStructuredType`` (line 520).
 
@@ -1324,13 +1324,13 @@ class DomXmpParser:
         etc.) are not yet ported; this is a placeholder so callers can hook
         the same surface name when the type system lands.
         """
-        return None
+        return
 
     def manage_defined_type(
         self,
-        schema: XMPSchema,  # noqa: ARG002
-        local: str,  # noqa: ARG002
-        element: ET.Element,  # noqa: ARG002
+        schema: XMPSchema,
+        local: str,
+        element: ET.Element,
     ) -> None:
         """Mirror of upstream ``manageDefinedType`` (line 487).
 
@@ -1338,7 +1338,7 @@ class DomXmpParser:
         require the ``TypeMapping`` infrastructure that has not yet been
         ported.
         """
-        return None
+        return
 
     def parse_description_root(
         self,
@@ -1410,7 +1410,7 @@ class DomXmpParser:
 
     def parse_schema_extensions(
         self,
-        metadata: XMPMetadata,  # noqa: ARG002 - PDF/A extension type system not ported
+        metadata: XMPMetadata,
         description: ET.Element,
     ) -> list[ET.Element]:
         """Mirror of upstream ``parseSchemaExtensions`` (line 266).
@@ -1427,8 +1427,8 @@ class DomXmpParser:
 
     def parse_description_inner(
         self,
-        metadata: XMPMetadata,  # noqa: ARG002
-        description: ET.Element,  # noqa: ARG002
+        metadata: XMPMetadata,
+        description: ET.Element,
     ) -> None:
         """Mirror of upstream ``parseDescriptionInner`` (line 634).
 
@@ -1436,12 +1436,12 @@ class DomXmpParser:
         ``PropertiesDescription`` which are part of the rich type system
         that hasn't been ported yet.
         """
-        return None
+        return
 
     def parse_li_element(
         self,
-        metadata: XMPMetadata,  # noqa: ARG002
-        descriptor: tuple[str, str],  # noqa: ARG002 - (ns, local)
+        metadata: XMPMetadata,
+        descriptor: tuple[str, str],
         li_element: ET.Element,
     ) -> object:
         """Mirror of upstream ``parseLiElement`` (line 657).
@@ -1457,9 +1457,9 @@ class DomXmpParser:
 
     def parse_li_description(
         self,
-        metadata: XMPMetadata,  # noqa: ARG002
-        parent_descriptor: tuple[str, str],  # noqa: ARG002
-        li_description_element: ET.Element,  # noqa: ARG002
+        metadata: XMPMetadata,
+        parent_descriptor: tuple[str, str],
+        li_description_element: ET.Element,
     ) -> None:
         """Mirror of upstream ``parseLiDescription`` (line 751).
 
@@ -1467,13 +1467,13 @@ class DomXmpParser:
         ``rdf:Description`` pair. Depends on the typed-property system not
         yet ported in this cluster.
         """
-        return None
+        return
 
     def instanciate_structured(
         self,
-        type_name: str,  # noqa: ARG002
-        name: str,  # noqa: ARG002
-        structured_namespace: str | None = None,  # noqa: ARG002
+        type_name: str,
+        name: str,
+        structured_namespace: str | None = None,
     ) -> None:
         """Mirror of upstream ``instanciateStructured`` (line 1060).
 
@@ -1481,7 +1481,7 @@ class DomXmpParser:
         ``instantiate``) is preserved for parity. Returns ``None`` until
         the structured type infrastructure is ported.
         """
-        return None
+        return
 
     def try_parse_attributes_as_properties(
         self,

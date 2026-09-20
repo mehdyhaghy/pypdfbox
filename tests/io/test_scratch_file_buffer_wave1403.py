@@ -19,11 +19,11 @@ def test_clear_with_no_owned_pages_skips_free() -> None:
     with ScratchFile() as sf:
         buf = sf.create_buffer()
         # Drain the owned-page list to force the empty-list path.
-        buf._page_indices.clear()  # noqa: SLF001
+        buf._page_indices.clear()
 
         buf.clear()
 
-        assert buf._position == 0  # noqa: SLF001
-        assert buf._length == 0  # noqa: SLF001
+        assert buf._position == 0
+        assert buf._length == 0
         # clear() re-allocates the first page (upstream parity).
-        assert len(buf._page_indices) == 1  # noqa: SLF001
+        assert len(buf._page_indices) == 1

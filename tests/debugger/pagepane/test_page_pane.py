@@ -42,12 +42,12 @@ def _reset_menus() -> Iterator[None]:
     from pypdfbox.debugger.ui.zoom_menu import ZoomMenu
 
     def _wipe() -> None:
-        ZoomMenu._reset_instance()  # noqa: SLF001
-        RotationMenu._reset_instance()  # noqa: SLF001
-        RenderDestinationMenu._reset_instance()  # noqa: SLF001
-        ViewMenu._reset_instance()  # noqa: SLF001
-        ImageTypeMenu._reset_for_testing()  # noqa: SLF001
-        TextStripperMenu._reset_for_testing()  # noqa: SLF001
+        ZoomMenu._reset_instance()
+        RotationMenu._reset_instance()
+        RenderDestinationMenu._reset_instance()
+        ViewMenu._reset_instance()
+        ImageTypeMenu._reset_for_testing()
+        TextStripperMenu._reset_for_testing()
 
     _wipe()
     try:
@@ -76,10 +76,10 @@ def test_page_pane_constructs_and_returns_frame(tk_root: tk.Tk) -> None:
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
         assert pane.get_panel() is not None
-        assert pane._initialized is True  # noqa: SLF001 — internal flag
+        assert pane._initialized is True
         # Page label widget mentions the 1-based page number.
-        assert pane._page_label_widget is not None  # noqa: SLF001
-        assert "Page 1" in pane._page_label_widget.cget("text")  # noqa: SLF001
+        assert pane._page_label_widget is not None
+        assert "Page 1" in pane._page_label_widget.cget("text")
     finally:
         doc.close()
 
@@ -91,7 +91,7 @@ def test_page_pane_orphan_page_label(tk_root: tk.Tk) -> None:
         orphan = PDPage(PDRectangle(0.0, 0.0, 50.0, 50.0))
         pane = PagePane(tk_root, doc, orphan.get_cos_object(), statuslabel=None)
         pane.init()
-        label = pane._page_label_widget  # noqa: SLF001
+        label = pane._page_label_widget
         assert label is not None
         assert "orphan" in label.cget("text")
     finally:
@@ -106,7 +106,7 @@ def test_page_pane_render_places_image_on_canvas(tk_root: tk.Tk) -> None:
         pane.init()
         # After init() ran, the canvas should have one image item with
         # tag "rendered_page".
-        canvas = pane._canvas  # noqa: SLF001
+        canvas = pane._canvas
         assert canvas is not None
         items = canvas.find_withtag("rendered_page")
         assert items, "expected at least one rendered page image on the canvas"
@@ -152,7 +152,7 @@ def test_page_pane_status_label_updates_on_mouse_motion(tk_root: tk.Tk) -> None:
         event = tk.Event()
         event.x = 10
         event.y = 10
-        pane._on_mouse_moved(event)  # noqa: SLF001
+        pane._on_mouse_moved(event)
         assert status.cget("text").startswith("x: ")
     finally:
         doc.close()
@@ -259,9 +259,9 @@ def test_resolve_allow_subsampling_reflects_view_menu_state(
     instance = ViewMenu.get_instance(master=tk_root)
     # Toggle via the underlying BooleanVar; matches how the checkbutton
     # would update it in a live UI.
-    instance._allow_subsampling_var.set(True)  # noqa: SLF001
+    instance._allow_subsampling_var.set(True)
     assert _resolve_allow_subsampling() is True
-    instance._allow_subsampling_var.set(False)  # noqa: SLF001
+    instance._allow_subsampling_var.set(False)
     assert _resolve_allow_subsampling() is False
 
 
@@ -365,7 +365,7 @@ def test_page_pane_propagates_allow_subsampling_to_renderer(
     """
     from pypdfbox.debugger.ui.view_menu import ViewMenu
 
-    ViewMenu.get_instance(master=tk_root)._allow_subsampling_var.set(True)  # noqa: SLF001
+    ViewMenu.get_instance(master=tk_root)._allow_subsampling_var.set(True)
 
     seen: dict[str, object] = {}
 
@@ -407,12 +407,12 @@ def test_page_pane_currrent_uri_after_motion_over_rect(
             def contains(self, _x: float, _y: float) -> bool:
                 return True
 
-        pane._rect_map[_AlwaysContains()] = label  # noqa: SLF001
+        pane._rect_map[_AlwaysContains()] = label
         event = tk.Event()
         event.x = 5
         event.y = 5
-        pane._on_mouse_moved(event)  # noqa: SLF001
-        assert pane._current_uri == expected_uri  # noqa: SLF001
+        pane._on_mouse_moved(event)
+        assert pane._current_uri == expected_uri
     finally:
         doc.close()
 
@@ -458,7 +458,7 @@ def test_on_mouse_moved_rotation_branches(
         pane.init()
         event = tk.Event()
         event.x, event.y = event_xy
-        pane._on_mouse_moved(event)  # noqa: SLF001
+        pane._on_mouse_moved(event)
         assert expected_substring in status.cget("text")
     finally:
         doc.close()
@@ -481,7 +481,7 @@ def test_on_mouse_moved_treats_zero_zoom_scale_as_one(
         event = tk.Event()
         event.x = 5
         event.y = 5
-        pane._on_mouse_moved(event)  # noqa: SLF001
+        pane._on_mouse_moved(event)
         # No exception is sufficient — division-by-zero would have raised.
     finally:
         doc.close()
@@ -500,12 +500,12 @@ def test_on_mouse_moved_skips_rect_with_bad_contains(tk_root: tk.Tk) -> None:
             def contains(self, _x: float, _y: float) -> bool:
                 raise AttributeError("not a rect")
 
-        pane._rect_map[_BoomRect()] = "URI: https://oops"  # noqa: SLF001
+        pane._rect_map[_BoomRect()] = "URI: https://oops"
         event = tk.Event()
         event.x = 1
         event.y = 1
-        pane._on_mouse_moved(event)  # noqa: SLF001
-        assert pane._current_uri == ""  # noqa: SLF001
+        pane._on_mouse_moved(event)
+        assert pane._current_uri == ""
     finally:
         doc.close()
 
@@ -529,8 +529,8 @@ def test_on_mouse_clicked_opens_uri(
         page_dict = doc.get_page(0).get_cos_object()
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
-        pane._current_uri = "https://example.com/foo"  # noqa: SLF001
-        pane._on_mouse_clicked(tk.Event())  # noqa: SLF001
+        pane._current_uri = "https://example.com/foo"
+        pane._on_mouse_clicked(tk.Event())
         assert seen.get("url") == "https://example.com/foo"
     finally:
         doc.close()
@@ -543,9 +543,9 @@ def test_on_mouse_clicked_noop_when_no_uri(tk_root: tk.Tk) -> None:
         page_dict = doc.get_page(0).get_cos_object()
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
-        pane._current_uri = ""  # noqa: SLF001
+        pane._current_uri = ""
         # Smoke: doesn't raise.
-        pane._on_mouse_clicked(tk.Event())  # noqa: SLF001
+        pane._on_mouse_clicked(tk.Event())
     finally:
         doc.close()
 
@@ -560,8 +560,8 @@ def test_on_mouse_exited_resets_status_label(tk_root: tk.Tk) -> None:
         page_dict = doc.get_page(0).get_cos_object()
         pane = PagePane(tk_root, doc, page_dict, statuslabel=status)
         pane.init()
-        pane._label_text = "Page 1"  # noqa: SLF001
-        pane._on_mouse_exited(tk.Event())  # noqa: SLF001
+        pane._label_text = "Page 1"
+        pane._on_mouse_exited(tk.Event())
         assert status.cget("text") == "Page 1"
     finally:
         doc.close()
@@ -592,7 +592,7 @@ def test_collect_link_locations_records_uri_rect(tk_root: tk.Tk) -> None:
         page_dict = page.get_cos_object()
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
-        labels = list(pane._rect_map.values())  # noqa: SLF001
+        labels = list(pane._rect_map.values())
         assert any("URI: https://link.example.com" in lbl for lbl in labels)
     finally:
         doc.close()
@@ -615,7 +615,7 @@ def test_collect_link_locations_swallows_annotation_attribute_error(
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
         # rect_map stays empty (no link / field discovery succeeded).
-        assert pane._rect_map == {}  # noqa: SLF001
+        assert pane._rect_map == {}
     finally:
         doc.close()
 
@@ -655,7 +655,7 @@ def test_collect_field_locations_records_field_label(tk_root: tk.Tk) -> None:
 
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
-        labels = list(pane._rect_map.values())  # noqa: SLF001
+        labels = list(pane._rect_map.values())
         assert any("Field name: my_field" in lbl for lbl in labels)
     finally:
         doc.close()
@@ -670,7 +670,7 @@ def test_collect_field_locations_skips_when_no_acroform(tk_root: tk.Tk) -> None:
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
         # No field labels in the rect map.
-        labels = list(pane._rect_map.values())  # noqa: SLF001
+        labels = list(pane._rect_map.values())
         assert all("Field name" not in lbl for lbl in labels)
     finally:
         doc.close()
@@ -699,7 +699,7 @@ def test_collect_field_locations_swallows_catalog_attribute_error(
         # it after the UI is up and re-run ``init_rect_map`` directly.
         monkeypatch.setattr(_PDDoc, "get_document_catalog", _boom)
         pane.init_rect_map()
-        assert pane._rect_map == {}  # noqa: SLF001
+        assert pane._rect_map == {}
     finally:
         doc.close()
 
@@ -736,7 +736,7 @@ def test_set_page_handles_unknown_page(tk_root: tk.Tk) -> None:
         pane.init()
         orphan = PDPage(PDRectangle(0.0, 0.0, 30.0, 30.0))
         pane.set_page(orphan)
-        assert pane._page_index == -1  # noqa: SLF001
+        assert pane._page_index == -1
     finally:
         doc.close()
 
@@ -1099,8 +1099,8 @@ def test_page_pane_ctor_orphan_when_index_of_raises(
         page_dict = doc.get_page(0).get_cos_object()
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
-        assert pane._page_index == -1  # noqa: SLF001
-        assert "orphan" in pane._page_label_widget.cget("text")  # noqa: SLF001
+        assert pane._page_index == -1
+        assert "orphan" in pane._page_label_widget.cget("text")
     finally:
         doc.close()
 
@@ -1125,7 +1125,7 @@ def test_set_page_swallows_index_of_attribute_error(
 
         monkeypatch.setattr(PDPageTree, "index_of", _boom)
         pane.set_page(PDPage(PDRectangle(0.0, 0.0, 10.0, 10.0)))
-        assert pane._page_index == -1  # noqa: SLF001
+        assert pane._page_index == -1
     finally:
         doc.close()
 
@@ -1153,7 +1153,7 @@ def test_collect_link_locations_skips_link_without_rectangle(
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
         # No URI label was recorded for this rectangle-less annotation.
-        labels = list(pane._rect_map.values())  # noqa: SLF001
+        labels = list(pane._rect_map.values())
         assert all("https://no-rect.example.com" not in lbl for lbl in labels)
     finally:
         doc.close()
@@ -1178,7 +1178,7 @@ def test_collect_link_locations_returns_when_action_import_fails(
         pane.init()
         # rect_map untouched by the link collector (still possibly
         # populated by the field collector).
-        assert all(not lbl.startswith("URI:") for lbl in pane._rect_map.values())  # noqa: SLF001
+        assert all(not lbl.startswith("URI:") for lbl in pane._rect_map.values())
     finally:
         doc.close()
 
@@ -1210,7 +1210,7 @@ def test_collect_field_locations_field_with_no_widgets(
         page_dict = page.get_cos_object()
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
-        labels = list(pane._rect_map.values())  # noqa: SLF001
+        labels = list(pane._rect_map.values())
         assert all("Field name" not in lbl for lbl in labels)
     finally:
         doc.close()
@@ -1243,7 +1243,7 @@ def test_collect_field_locations_widget_with_no_cos_object(
         page_dict = doc.get_page(0).get_cos_object()
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
-        labels = list(pane._rect_map.values())  # noqa: SLF001
+        labels = list(pane._rect_map.values())
         assert all("Field name" not in lbl for lbl in labels)
     finally:
         doc.close()
@@ -1283,7 +1283,7 @@ def test_collect_field_locations_widget_not_in_annotations(
         page_dict = doc.get_page(0).get_cos_object()
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
-        labels = list(pane._rect_map.values())  # noqa: SLF001
+        labels = list(pane._rect_map.values())
         assert labels == [] or all("Field name" not in lbl for lbl in labels)
     finally:
         doc.close()
@@ -1332,7 +1332,7 @@ def test_collect_field_locations_widget_without_rectangle(
         page_dict = page.get_cos_object()
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
-        labels = list(pane._rect_map.values())  # noqa: SLF001
+        labels = list(pane._rect_map.values())
         assert all("Field name" not in lbl for lbl in labels)
     finally:
         doc.close()
@@ -1386,7 +1386,7 @@ def test_collect_field_locations_field_name_accessor_raises(
         page_dict = page.get_cos_object()
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
-        labels = list(pane._rect_map.values())  # noqa: SLF001
+        labels = list(pane._rect_map.values())
         # ``<field>`` is the placeholder fallback name baked into the
         # page pane when the accessors raise.
         assert any("Field name: <field>" in lbl for lbl in labels)
@@ -1454,7 +1454,7 @@ def test_collect_field_locations_page_get_annotations_raises(
         # Widget dict isn't in the empty annotations set, so no Field
         # label is recorded; the test exists to drive the
         # ``annotations = []`` fallback arm.
-        labels = list(pane._rect_map.values())  # noqa: SLF001
+        labels = list(pane._rect_map.values())
         assert all("Field name" not in lbl for lbl in labels)
     finally:
         doc.close()
@@ -1478,7 +1478,7 @@ def test_collect_field_locations_acroform_without_field_tree(
         page_dict = doc.get_page(0).get_cos_object()
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
-        labels = list(pane._rect_map.values())  # noqa: SLF001
+        labels = list(pane._rect_map.values())
         assert all("Field name" not in lbl for lbl in labels)
     finally:
         doc.close()
@@ -1522,11 +1522,11 @@ def test_present_image_returns_when_canvas_is_none(tk_root: tk.Tk) -> None:
         page_dict = doc.get_page(0).get_cos_object()
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
-        pane._canvas = None  # noqa: SLF001
+        pane._canvas = None
         # ``_present_image`` returns early; ``_image`` stays as whatever
         # was set before (None in this case) but no exception is raised.
         before = pane.get_image()
-        pane._present_image(Image.new("RGB", (5, 5), "white"))  # noqa: SLF001
+        pane._present_image(Image.new("RGB", (5, 5), "white"))
         assert pane.get_image() is before
     finally:
         doc.close()
@@ -1548,15 +1548,15 @@ def test_render_worker_execute_renders_to_canvas(tk_root: tk.Tk) -> None:
         pane.init()
         # Clear whatever the implicit ``init()`` render painted so we can
         # assert the worker rewires the canvas.
-        pane._photo_image = None  # noqa: SLF001
-        pane._image = None  # noqa: SLF001
+        pane._photo_image = None
+        pane._image = None
         worker = RenderWorker(pane)
         image = worker.execute()
         assert image is not None
         # The worker should have called ``done`` which calls
         # ``_present_image``; the pane now holds a PhotoImage.
         assert pane.get_image() is image
-        assert pane._photo_image is not None  # noqa: SLF001
+        assert pane._photo_image is not None
     finally:
         doc.close()
 

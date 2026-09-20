@@ -679,8 +679,8 @@ def _option_pair_to_cos_array(option: Sequence[object]) -> COSArray:
             "FDFField option pairs must contain exactly two strings "
             "(option, default appearance string)"
         )
-    first = cast(str, option[0])
-    second = cast(str, option[1])
+    first = cast("str", option[0])
+    second = cast("str", option[1])
     arr = COSArray()
     arr.add(COSString(first))
     arr.add(COSString(second))

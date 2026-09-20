@@ -47,7 +47,7 @@ from pypdfbox.pdmodel.missing_resource_exception import MissingResourceException
 # Fake XObject types — the engine dispatches on ``type(obj).__name__`` so the
 # class names must match the upstream PDXObject subclasses exactly.
 # --------------------------------------------------------------------------
-class PDImageXObject:  # noqa: N801 — mirrors upstream class name for dispatch
+class PDImageXObject:
     def __init__(self, stencil: bool = False) -> None:
         self._stencil = stencil
 
@@ -55,11 +55,11 @@ class PDImageXObject:  # noqa: N801 — mirrors upstream class name for dispatch
         return self._stencil
 
 
-class PDFormXObject:  # noqa: N801 — mirrors upstream class name for dispatch
+class PDFormXObject:
     is_form_xobject = True
 
 
-class PDTransparencyGroup:  # noqa: N801 — mirrors upstream class name
+class PDTransparencyGroup:
     is_form_xobject = True
 
 

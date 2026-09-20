@@ -55,7 +55,7 @@ def make_base_pen_bridge(delegate: Any, glyph_set: Any | None = None) -> Any:
     rasterise glyphs do not pay the import cost (fontTools pulls in a
     fairly large module graph).
     """
-    from fontTools.pens.basePen import BasePen  # type: ignore[import-untyped]  # noqa: PLC0415
+    from fontTools.pens.basePen import BasePen  # type: ignore[import-untyped]
 
     class _BasePenBridge(BasePen):  # type: ignore[misc]
         """Bridge between fontTools' BasePen camelCase API and a

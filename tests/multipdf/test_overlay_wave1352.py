@@ -123,7 +123,7 @@ def test_create_overlay_form_x_object_returns_pdform_xobject() -> None:
     overlay, base = _configured_overlay()
     layout = overlay.get_layout_page(1, base.get_number_of_pages())
     assert layout is not None
-    cloner = Overlay._make_cloner(base)  # noqa: SLF001
+    cloner = Overlay._make_cloner(base)
     form = overlay.create_overlay_form_x_object(layout, cloner)
     assert isinstance(form, PDFormXObject)
     # /Type /XObject + /Subtype /Form must be set.
@@ -161,7 +161,7 @@ def test_overlay_page_appends_form_do_to_content_array() -> None:
     overlay, base = _configured_overlay()
     layout = overlay.get_layout_page(1, base.get_number_of_pages())
     assert layout is not None
-    cloner = Overlay._make_cloner(base)  # noqa: SLF001
+    cloner = Overlay._make_cloner(base)
     array = COSArray()
     page = base.get_page(0)
     overlay.overlay_page(page, layout, array, cloner)

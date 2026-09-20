@@ -38,10 +38,10 @@ def test_parse_with_resolver_returning_none_trailer_skips_set_trailer() -> None:
     parser = PDFParser(io.BytesIO(pdf_bytes))
     # Patch the resolver's get_trailer so the test path's check on line
     # 206 sees None — closes the 207->209 False arm.
-    original = parser._resolver.get_trailer  # noqa: SLF001
+    original = parser._resolver.get_trailer
     parser._resolver.get_trailer = lambda: None  # type: ignore[assignment,method-assign]
     try:
         with contextlib.suppress(Exception):
             parser.parse()
     finally:
-        parser._resolver.get_trailer = original  # type: ignore[method-assign]  # noqa: SLF001
+        parser._resolver.get_trailer = original  # type: ignore[method-assign]

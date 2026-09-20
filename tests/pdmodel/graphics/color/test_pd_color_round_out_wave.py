@@ -76,7 +76,7 @@ def _make_indexed(hival: int, lookup: COSString) -> PDIndexed:
 def test_pd_indexed_str_includes_base_hival_and_lookup_count() -> None:
     """``str(indexed)`` mirrors upstream ``PDIndexed.toString``:
     ``Indexed{base:DeviceRGB hival:3 lookup:(4 entries)}``."""
-    cs = _make_indexed(3, COSString(bytes(range(0, 12))))
+    cs = _make_indexed(3, COSString(bytes(range(12))))
     assert str(cs) == "Indexed{base:DeviceRGB hival:3 lookup:(4 entries)}"
 
 
@@ -94,7 +94,7 @@ def test_pd_indexed_str_reports_palette_entry_count_for_grayscale_base() -> None
     via DeviceRGB but smaller — verify the count formula divides by
     base components."""
     # 7 entries * 3 RGB components = 21 bytes, hival=6
-    cs = _make_indexed(6, COSString(bytes(range(0, 21))))
+    cs = _make_indexed(6, COSString(bytes(range(21))))
     assert "lookup:(7 entries)" in str(cs)
 
 
@@ -231,7 +231,7 @@ def test_pd_device_n_attributes_set_colorants_writes_dict_entry() -> None:
     cos = attrs.get_cos_dictionary()
     colorants = cos.get_dictionary_object(COSName.get_pdf_name("Colorants"))
     assert isinstance(colorants, COSDictionary)
-    assert set(k.get_name() for k in colorants.key_set()) == {"Cyan", "Magenta"}
+    assert {k.get_name() for k in colorants.key_set()} == {"Cyan", "Magenta"}
 
 
 def test_pd_device_n_attributes_set_colorants_round_trips_via_get() -> None:

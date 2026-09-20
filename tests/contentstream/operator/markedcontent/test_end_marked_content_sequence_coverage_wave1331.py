@@ -10,7 +10,7 @@ Targets the defensive branches not exercised by the existing
 from __future__ import annotations
 
 from pypdfbox.contentstream import Operator, PDFStreamEngine
-from pypdfbox.contentstream.operator.markedcontent.end_marked_content_sequence import (  # noqa: E501
+from pypdfbox.contentstream.operator.markedcontent.end_marked_content_sequence import (
     EndMarkedContentSequence,
 )
 from pypdfbox.cos import COSInteger, COSName
@@ -37,7 +37,7 @@ def test_process_with_no_context_returns_silently() -> None:
     processor = EndMarkedContentSequence()
     # Direct attribute check — get_context() raises on None per the
     # strict base ``OperatorProcessor`` contract.
-    assert processor._context is None  # noqa: SLF001 - intentional probe
+    assert processor._context is None
     processor.process(Operator.get_operator("EMC"), [])
 
 

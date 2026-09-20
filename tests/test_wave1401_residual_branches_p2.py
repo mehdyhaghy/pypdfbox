@@ -377,7 +377,7 @@ def test_pdfdebugger_format_token_with_unknown_cos_type_returns_repr() -> None:
     # COSObject (indirect reference) — not handled by _fmt_simple, not
     # COSArray, not COSDictionary → falls through to `repr(tok)`.
     obj = COSObject(1, 0, resolved=COSInteger.get(7))
-    out = pdfdebugger._format_token(obj)  # noqa: SLF001
+    out = pdfdebugger._format_token(obj)
     assert isinstance(out, str)
 
 
@@ -409,7 +409,7 @@ def test_pd_cid_font_type0_coerce_bbox_handles_4_element_floats() -> None:
     """Positive path: 4 numeric elements coerce to a PDRectangle."""
     from pypdfbox.pdmodel.font.pd_cid_font_type0 import PDCIDFontType0
 
-    rect = PDCIDFontType0._coerce_bbox([0, 0, 100, 200])  # noqa: SLF001
+    rect = PDCIDFontType0._coerce_bbox([0, 0, 100, 200])
     assert rect is not None
     assert rect.get_width() == 100
     assert rect.get_height() == 200

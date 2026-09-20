@@ -47,7 +47,7 @@ def test_wave1233_wave1211_local_capture_records_stop_and_target(
                     "target": target,
                 }
 
-            assert tracer(cast(FrameType, Wave1201Frame()), "line", None) is tracer
+            assert tracer(cast("FrameType", Wave1201Frame()), "line", None) is tracer
             captured_local_tracers.append(tracer)
             return
 

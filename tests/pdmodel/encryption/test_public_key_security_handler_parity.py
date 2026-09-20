@@ -93,7 +93,7 @@ def test_derive_file_key_matches_sha1_truncation_for_v4() -> None:
     handler = PublicKeySecurityHandler()
     seed = b"\x01" * 20
     blobs = [b"recipient-blob-a", b"recipient-blob-b"]
-    expected = hashlib.sha1(  # noqa: S324 — non-security; mirrors PDF spec
+    expected = hashlib.sha1(
         seed + blobs[0] + blobs[1], usedforsecurity=False
     ).digest()[:16]
     assert (

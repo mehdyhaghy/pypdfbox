@@ -29,20 +29,20 @@ def _make_path_pen(glyph_set: Any | None = None) -> Any:
     resolves the base/accent outlines. Pure simple charstrings carry no
     component references, so the default ``None`` is still safe there.
     """
-    from fontTools.pens.basePen import BasePen  # type: ignore[import-untyped] # noqa: PLC0415
+    from fontTools.pens.basePen import BasePen  # type: ignore[import-untyped]
 
     class _PathPen(BasePen):  # type: ignore[misc]
         def __init__(self) -> None:
             super().__init__(glyphSet=glyph_set)
             self.commands: list[tuple[Any, ...]] = []
 
-        def _moveTo(self, pt: tuple[float, float]) -> None:
+        def _moveTo(self, pt: tuple[float, float]) -> None:  # noqa: N802 (fontTools BasePen hook)
             self.commands.append(("moveto", float(pt[0]), float(pt[1])))
 
-        def _lineTo(self, pt: tuple[float, float]) -> None:
+        def _lineTo(self, pt: tuple[float, float]) -> None:  # noqa: N802 (fontTools BasePen hook)
             self.commands.append(("lineto", float(pt[0]), float(pt[1])))
 
-        def _curveToOne(
+        def _curveToOne(  # noqa: N802 (fontTools BasePen hook)
             self,
             pt1: tuple[float, float],
             pt2: tuple[float, float],
@@ -60,7 +60,7 @@ def _make_path_pen(glyph_set: Any | None = None) -> Any:
                 )
             )
 
-        def _closePath(self) -> None:
+        def _closePath(self) -> None:  # noqa: N802 (fontTools BasePen hook)
             self.commands.append(("closepath",))
 
     return _PathPen()
@@ -174,8 +174,8 @@ class Type1Font:
         bytes are NOT supported here; call :meth:`from_pfb_bytes` for
         those (PDF /FontFile streams are never PFB-wrapped).
         """
-        from fontTools.misc.py23 import bytesjoin  # type: ignore[import-untyped] # noqa: PLC0415
-        from fontTools.t1Lib import (  # type: ignore[import-untyped] # noqa: PLC0415
+        from fontTools.misc.py23 import bytesjoin  # type: ignore[import-untyped]
+        from fontTools.t1Lib import (  # type: ignore[import-untyped]
             T1Font,
             assertType1,
             deHexString,
@@ -319,7 +319,7 @@ class Type1Font:
         glyph outlines should still use :meth:`from_bytes` which routes
         through fontTools' full PostScript-subset interpreter.
         """
-        from .type1_parser import Type1Parser  # noqa: PLC0415
+        from .type1_parser import Type1Parser
 
         parser = Type1Parser()
         font_dict = parser.parse(segment1, segment2)
@@ -698,11 +698,11 @@ class Type1Font:
             # to the equivalent Adobe table so callers don't have to
             # special-case the string form.
             if raw == "StandardEncoding":
-                from ..encoding.standard_encoding import StandardEncoding  # noqa: PLC0415
+                from ..encoding.standard_encoding import StandardEncoding
 
                 result = StandardEncoding.INSTANCE.get_codes()
             elif raw == "ISOLatin1Encoding":
-                from ..encoding.glyph_list import GlyphList  # noqa: PLC0415
+                from ..encoding.glyph_list import GlyphList
 
                 for code in range(256):
                     name = GlyphList.DEFAULT.code_point_to_name(code)
@@ -725,7 +725,7 @@ class Type1Font:
         # .notdef the upstream behaviour is to fall back to the
         # StandardEncoding — Adobe Type 1 spec 5.6 §2.3.
         if not result and raw is not None and not isinstance(raw, str):
-            from ..encoding.standard_encoding import StandardEncoding  # noqa: PLC0415
+            from ..encoding.standard_encoding import StandardEncoding
 
             result = StandardEncoding.INSTANCE.get_codes()
 
@@ -755,7 +755,7 @@ class Type1Font:
         The list is sorted by code so callers can iterate in encoding
         order (matching upstream which builds the list inside a loop
         from 0 to 255)."""
-        from .type1_mapping import Type1Mapping  # noqa: PLC0415
+        from .type1_mapping import Type1Mapping
 
         encoding = self.get_encoding()
         rows: list[Type1Mapping] = []
@@ -1003,7 +1003,7 @@ class Type1Font:
 
     def _charstrings_dict(self) -> dict[str, Any]:
         if self._charstrings is None:
-            assert self._t1 is not None  # noqa: S101
+            assert self._t1 is not None
             # Upstream initialises ``charstrings`` to an empty LinkedHashMap, so
             # a font whose eexec/Private section never yielded a /CharStrings
             # table (e.g. a missing or truncated segment 2) still exposes an
@@ -1044,11 +1044,11 @@ class Type1Font:
             return width
         # Force draw to populate .width. We use a no-op pen so we don't
         # build the path twice.
-        from fontTools.pens.basePen import NullPen  # noqa: PLC0415
+        from fontTools.pens.basePen import NullPen
 
         try:
             cs.draw(NullPen())
-        except Exception:  # noqa: BLE001
+        except Exception:
             return 0.0
         width = float(getattr(cs, "width", 0.0) or 0.0)
         self._widths[name] = width
@@ -1088,7 +1088,7 @@ class Type1Font:
         pen = _make_path_pen(_T1GlyphSet(cs_map))
         try:
             cs.draw(pen)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return []
         # Side-effect: the draw populates cs.width — cache it while we're here.
         self._widths.setdefault(name, float(getattr(cs, "width", 0.0) or 0.0))
@@ -1105,7 +1105,7 @@ class Type1Font:
         wraps the eexec → PostScript-subset interpreter in our setup.
         """
         if self._char_string_parser is None:
-            from .type1_parser import Type1Parser  # noqa: PLC0415
+            from .type1_parser import Type1Parser
 
             self._char_string_parser = Type1Parser()
             # Track the font name so the cache miss is keyed off the
@@ -1135,7 +1135,7 @@ class Type1Font:
         ergonomics and instead return an empty wrapper whose
         ``get_path() == []``.
         """
-        from ..cff.type1_char_string import Type1CharString  # noqa: PLC0415
+        from ..cff.type1_char_string import Type1CharString
 
         cs_map: dict[str, Any]
         try:
@@ -1161,7 +1161,7 @@ class Type1Font:
         messages and stack traces."""
         try:
             charstrings = self.get_char_strings_subroutines_charset()
-        except Exception:  # noqa: BLE001 — defensive, never raise from __str__
+        except Exception:
             charstrings = {}
         return (
             f"{self.__class__.__module__}.{self.__class__.__qualname__}"

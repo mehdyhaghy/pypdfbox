@@ -151,7 +151,7 @@ def test_text_component_adapter_accepts_get_method() -> None:
         def __init__(self, content: str) -> None:
             self._content = content
 
-        def get(self, start: str, end: str) -> str:  # noqa: ARG002
+        def get(self, start: str, end: str) -> str:
             return self._content
 
     controller = ToolTipController(None)

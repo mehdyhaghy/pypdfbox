@@ -90,8 +90,8 @@ class _CmapSub:
     """Minimal stand-in for a fontTools cmap subtable."""
 
     def __init__(self, plat: int, enc: int, mapping: dict[int, str]) -> None:
-        self.platformID = plat  # noqa: N815  # mirrors fontTools naming
-        self.platEncID = enc  # noqa: N815
+        self.platformID = plat  # mirrors fontTools naming
+        self.platEncID = enc
         self.cmap = mapping
 
 
@@ -117,7 +117,7 @@ class _FakeTt:
             return self._cmap
         raise KeyError(key)
 
-    def getGlyphOrder(self) -> list[str]:  # noqa: N802  # fontTools name
+    def getGlyphOrder(self) -> list[str]:  # fontTools name
         return list(self._glyph_order)
 
 
@@ -154,8 +154,8 @@ def test_get_glyph_path_falls_through_when_by_name_yields_empty_path(
     from pypdfbox.pdmodel.font import pd_true_type_font as ttf_mod
 
     font = _embedded_font(liberation_bytes)
-    font._encoding_typed = WinAnsiEncoding.INSTANCE  # noqa: SLF001
-    font._encoding_resolved = True  # noqa: SLF001
+    font._encoding_typed = WinAnsiEncoding.INSTANCE
+    font._encoding_resolved = True
     # Force the by-name path to fail so the GID path runs.
     monkeypatch.setattr(ttf_mod, "_draw_glyph_by_name", lambda _ttf, _name: [])
     # 0x41 has a name (``"A"``) and a non-zero GID. by-name returns [],
@@ -178,15 +178,15 @@ def test_symbolic_code_to_gid_skips_win_unicode_when_absent(
     assert ttf is not None
     win_symbol = _CmapSub(3, 0, {0xF041: "A"})
     monkeypatch.setattr(ttf, "_tt", _FakeTt([win_symbol], [".notdef", "A"]))
-    font._cmap_initialized = False  # noqa: SLF001
-    font._cmap_win_unicode = None  # noqa: SLF001
-    font._cmap_win_symbol = None  # noqa: SLF001
-    font._cmap_mac_roman = None  # noqa: SLF001
+    font._cmap_initialized = False
+    font._cmap_win_unicode = None
+    font._cmap_win_symbol = None
+    font._cmap_mac_roman = None
     font.extract_cmap_table()
-    assert font._cmap_win_unicode is None  # noqa: SLF001
-    assert font._cmap_win_symbol is not None  # noqa: SLF001
+    assert font._cmap_win_unicode is None
+    assert font._cmap_win_symbol is not None
     # code 0x41 + START_RANGE_F000 == 0xF041, so the F000 retry hits.
-    gid = font._code_to_gid(0x41, ttf)  # noqa: SLF001
+    gid = font._code_to_gid(0x41, ttf)
     assert gid == 1
 
 
@@ -202,17 +202,17 @@ def test_non_symbolic_code_to_gid_skips_win_unicode_when_absent(
     # Provide a Mac-Roman subtable only — no Win-Unicode.
     mac_roman = _CmapSub(1, 0, {0x41: "A"})
     monkeypatch.setattr(ttf, "_tt", _FakeTt([mac_roman], [".notdef", "A"]))
-    font._cmap_initialized = False  # noqa: SLF001
-    font._cmap_win_unicode = None  # noqa: SLF001
-    font._cmap_win_symbol = None  # noqa: SLF001
-    font._cmap_mac_roman = None  # noqa: SLF001
+    font._cmap_initialized = False
+    font._cmap_win_unicode = None
+    font._cmap_win_symbol = None
+    font._cmap_mac_roman = None
     # Force a real encoding so the 632/634 arms steer into 643.
-    font._encoding_typed = WinAnsiEncoding.INSTANCE  # noqa: SLF001
-    font._encoding_resolved = True  # noqa: SLF001
+    font._encoding_typed = WinAnsiEncoding.INSTANCE
+    font._encoding_resolved = True
     font.extract_cmap_table()
-    assert font._cmap_win_unicode is None  # noqa: SLF001
-    assert font._cmap_mac_roman is not None  # noqa: SLF001
-    gid = font._code_to_gid(0x41, ttf)  # noqa: SLF001
+    assert font._cmap_win_unicode is None
+    assert font._cmap_mac_roman is not None
+    gid = font._code_to_gid(0x41, ttf)
     # MacOSRomanEncoding maps "A" -> 0x41 which hits the Mac-Roman cmap.
     assert gid == 1
 
@@ -228,10 +228,10 @@ def test_via_unicode_subtable_no_encoding_falls_through_to_direct_cmap(
     the direct-cmap lookup (the 730 arm)."""
     font = _embedded_font(liberation_bytes, symbolic=True)
     # Force the fallback path by stripping all platform views.
-    font._cmap_initialized = True  # noqa: SLF001
-    font._cmap_win_unicode = None  # noqa: SLF001
-    font._cmap_win_symbol = None  # noqa: SLF001
-    font._cmap_mac_roman = None  # noqa: SLF001
+    font._cmap_initialized = True
+    font._cmap_win_unicode = None
+    font._cmap_win_symbol = None
+    font._cmap_mac_roman = None
     # Pretend the unicode cmap subtable returned an entry for 0x41.
 
     class _Cmap:
@@ -241,11 +241,11 @@ def test_via_unicode_subtable_no_encoding_falls_through_to_direct_cmap(
     monkeypatch.setattr(font, "_get_unicode_cmap", lambda _ttf: _Cmap())
     # Also force get_encoding_typed to return None (covers encoding=None arm).
     monkeypatch.setattr(font, "get_encoding_typed", lambda: None)
-    font._encoding_resolved = True  # noqa: SLF001
-    font._encoding_typed = None  # noqa: SLF001
+    font._encoding_resolved = True
+    font._encoding_typed = None
     ttf = font.get_true_type_font()
     assert ttf is not None
-    assert font._code_to_gid_via_unicode_subtable(0x41, ttf) == 7  # noqa: SLF001
+    assert font._code_to_gid_via_unicode_subtable(0x41, ttf) == 7
 
 
 def test_via_unicode_subtable_name_notdef_falls_through(
@@ -254,10 +254,10 @@ def test_via_unicode_subtable_name_notdef_falls_through(
     """encoding present, ``name == ".notdef"`` skips the by-name lookup
     (covers 724->730: name truthy + non-".notdef" branch is the False side)."""
     font = _embedded_font(liberation_bytes)
-    font._cmap_initialized = True  # noqa: SLF001
-    font._cmap_win_unicode = None  # noqa: SLF001
-    font._cmap_win_symbol = None  # noqa: SLF001
-    font._cmap_mac_roman = None  # noqa: SLF001
+    font._cmap_initialized = True
+    font._cmap_win_unicode = None
+    font._cmap_win_symbol = None
+    font._cmap_mac_roman = None
 
     class _NotdefEncoding:
         def get_name(self, _code: int) -> str:
@@ -272,7 +272,7 @@ def test_via_unicode_subtable_name_notdef_falls_through(
     ttf = font.get_true_type_font()
     assert ttf is not None
     # name == ".notdef" -> 724->730 false arm -> direct cmap returns 11.
-    assert font._code_to_gid_via_unicode_subtable(0x10, ttf) == 11  # noqa: SLF001
+    assert font._code_to_gid_via_unicode_subtable(0x10, ttf) == 11
 
 
 def test_via_unicode_subtable_glyph_name_no_unicode_mapping_falls_through(
@@ -281,10 +281,10 @@ def test_via_unicode_subtable_glyph_name_no_unicode_mapping_falls_through(
     """encoding returns a name with no unicode mapping (e.g.
     ``"customGlyph"``) so 726->730 false arm runs."""
     font = _embedded_font(liberation_bytes)
-    font._cmap_initialized = True  # noqa: SLF001
-    font._cmap_win_unicode = None  # noqa: SLF001
-    font._cmap_win_symbol = None  # noqa: SLF001
-    font._cmap_mac_roman = None  # noqa: SLF001
+    font._cmap_initialized = True
+    font._cmap_win_unicode = None
+    font._cmap_win_symbol = None
+    font._cmap_mac_roman = None
 
     class _CustomEncoding:
         def get_name(self, _code: int) -> str:
@@ -299,7 +299,7 @@ def test_via_unicode_subtable_glyph_name_no_unicode_mapping_falls_through(
     monkeypatch.setattr(font, "get_encoding_typed", lambda: _CustomEncoding())
     ttf = font.get_true_type_font()
     assert ttf is not None
-    assert font._code_to_gid_via_unicode_subtable(0x20, ttf) == 22  # noqa: SLF001
+    assert font._code_to_gid_via_unicode_subtable(0x20, ttf) == 22
 
 
 def test_via_unicode_subtable_unicode_resolves_to_zero_gid(
@@ -308,10 +308,10 @@ def test_via_unicode_subtable_unicode_resolves_to_zero_gid(
     """glyph-name → unicode succeeds, but the cmap returns 0; 728->730 false
     arm (gid == 0) routes to the direct-cmap line."""
     font = _embedded_font(liberation_bytes)
-    font._cmap_initialized = True  # noqa: SLF001
-    font._cmap_win_unicode = None  # noqa: SLF001
-    font._cmap_win_symbol = None  # noqa: SLF001
-    font._cmap_mac_roman = None  # noqa: SLF001
+    font._cmap_initialized = True
+    font._cmap_win_unicode = None
+    font._cmap_win_symbol = None
+    font._cmap_mac_roman = None
 
     class _Cmap:
         def __init__(self) -> None:
@@ -328,7 +328,7 @@ def test_via_unicode_subtable_unicode_resolves_to_zero_gid(
     monkeypatch.setattr(font, "get_encoding_typed", lambda: WinAnsiEncoding.INSTANCE)
     ttf = font.get_true_type_font()
     assert ttf is not None
-    assert font._code_to_gid_via_unicode_subtable(0x41, ttf) == 33  # noqa: SLF001
+    assert font._code_to_gid_via_unicode_subtable(0x41, ttf) == 33
 
 
 def test_via_unicode_subtable_non_symbolic_returns_zero(
@@ -337,10 +337,10 @@ def test_via_unicode_subtable_non_symbolic_returns_zero(
     """Direct-cmap returns 0 and ``is_symbolic()`` is False: 730->743 arm
     (skips the F000/F100/F200 retries) returns 0."""
     font = _embedded_font(liberation_bytes)  # non-symbolic
-    font._cmap_initialized = True  # noqa: SLF001
-    font._cmap_win_unicode = None  # noqa: SLF001
-    font._cmap_win_symbol = None  # noqa: SLF001
-    font._cmap_mac_roman = None  # noqa: SLF001
+    font._cmap_initialized = True
+    font._cmap_win_unicode = None
+    font._cmap_win_symbol = None
+    font._cmap_mac_roman = None
 
     class _AllZeroCmap:
         def get_glyph_id(self, _code: int) -> int:
@@ -350,7 +350,7 @@ def test_via_unicode_subtable_non_symbolic_returns_zero(
     monkeypatch.setattr(font, "get_encoding_typed", lambda: WinAnsiEncoding.INSTANCE)
     ttf = font.get_true_type_font()
     assert ttf is not None
-    assert font._code_to_gid_via_unicode_subtable(0x99, ttf) == 0  # noqa: SLF001
+    assert font._code_to_gid_via_unicode_subtable(0x99, ttf) == 0
 
 
 def test_via_unicode_subtable_no_cmap_returns_zero(
@@ -365,19 +365,19 @@ def test_via_unicode_subtable_no_cmap_returns_zero(
     return-zero exit we map code 0x01 -> ``.notdef`` (no glyph anywhere).
     """
     font = _embedded_font(liberation_bytes)
-    font._cmap_initialized = True  # noqa: SLF001
-    font._cmap_win_unicode = None  # noqa: SLF001
-    font._cmap_win_symbol = None  # noqa: SLF001
-    font._cmap_mac_roman = None  # noqa: SLF001
+    font._cmap_initialized = True
+    font._cmap_win_unicode = None
+    font._cmap_win_symbol = None
+    font._cmap_mac_roman = None
 
     monkeypatch.setattr(font, "_get_unicode_cmap", lambda _ttf: None)
     monkeypatch.setattr(font, "get_encoding_typed", lambda: WinAnsiEncoding.INSTANCE)
     ttf = font.get_true_type_font()
     assert ttf is not None
     # 0x01 -> WinAnsi name is ".notdef"/None -> no post-table glyph -> 0.
-    assert font._code_to_gid_via_unicode_subtable(0x01, ttf) == 0  # noqa: SLF001
+    assert font._code_to_gid_via_unicode_subtable(0x01, ttf) == 0
     # 0x41 -> "A" -> post-table name_to_gid resolves (upstream last resort).
-    assert font._code_to_gid_via_unicode_subtable(0x41, ttf) > 0  # noqa: SLF001
+    assert font._code_to_gid_via_unicode_subtable(0x41, ttf) > 0
 
 
 def test_via_unicode_subtable_symbolic_all_retries_miss(
@@ -386,10 +386,10 @@ def test_via_unicode_subtable_symbolic_all_retries_miss(
     """``is_symbolic()`` True, every F000/F100/F200 retry misses — 735->743
     arm (the loop's normal exit) returns 0."""
     font = _embedded_font(liberation_bytes, symbolic=True)
-    font._cmap_initialized = True  # noqa: SLF001
-    font._cmap_win_unicode = None  # noqa: SLF001
-    font._cmap_win_symbol = None  # noqa: SLF001
-    font._cmap_mac_roman = None  # noqa: SLF001
+    font._cmap_initialized = True
+    font._cmap_win_unicode = None
+    font._cmap_win_symbol = None
+    font._cmap_mac_roman = None
 
     class _ZeroCmap:
         def get_glyph_id(self, _code: int) -> int:
@@ -399,7 +399,7 @@ def test_via_unicode_subtable_symbolic_all_retries_miss(
     monkeypatch.setattr(font, "get_encoding_typed", lambda: None)
     ttf = font.get_true_type_font()
     assert ttf is not None
-    assert font._code_to_gid_via_unicode_subtable(0x99, ttf) == 0  # noqa: SLF001
+    assert font._code_to_gid_via_unicode_subtable(0x99, ttf) == 0
 
 
 # ---------- pd_true_type_font: extract_cmap_table skip arms ----------------
@@ -421,15 +421,15 @@ def test_extract_cmap_table_skips_unsupported_windows_subtable(
     monkeypatch.setattr(
         ttf, "_tt", _FakeTt([shift_jis, win_unicode], [".notdef", "A", "B"])
     )
-    font._cmap_initialized = False  # noqa: SLF001
-    font._cmap_win_unicode = None  # noqa: SLF001
-    font._cmap_win_symbol = None  # noqa: SLF001
-    font._cmap_mac_roman = None  # noqa: SLF001
+    font._cmap_initialized = False
+    font._cmap_win_unicode = None
+    font._cmap_win_symbol = None
+    font._cmap_mac_roman = None
     font.extract_cmap_table()
     # Shift-JIS slot didn't capture anywhere; Win-Unicode did.
-    assert font._cmap_win_unicode is not None  # noqa: SLF001
-    assert font._cmap_win_symbol is None  # noqa: SLF001
-    assert font._cmap_mac_roman is None  # noqa: SLF001
+    assert font._cmap_win_unicode is not None
+    assert font._cmap_win_symbol is None
+    assert font._cmap_mac_roman is None
 
 
 def test_extract_cmap_table_skips_mac_non_roman_subtable(
@@ -442,15 +442,15 @@ def test_extract_cmap_table_skips_mac_non_roman_subtable(
     assert ttf is not None
     mac_arabic = _CmapSub(1, 4, {0x41: "A"})  # PLATFORM_MACINTOSH but not Roman
     monkeypatch.setattr(ttf, "_tt", _FakeTt([mac_arabic], [".notdef", "A"]))
-    font._cmap_initialized = False  # noqa: SLF001
-    font._cmap_win_unicode = None  # noqa: SLF001
-    font._cmap_win_symbol = None  # noqa: SLF001
-    font._cmap_mac_roman = None  # noqa: SLF001
+    font._cmap_initialized = False
+    font._cmap_win_unicode = None
+    font._cmap_win_symbol = None
+    font._cmap_mac_roman = None
     font.extract_cmap_table()
     # The Mac-Arabic subtable does not land in any slot.
-    assert font._cmap_win_unicode is None  # noqa: SLF001
-    assert font._cmap_win_symbol is None  # noqa: SLF001
-    assert font._cmap_mac_roman is None  # noqa: SLF001
+    assert font._cmap_win_unicode is None
+    assert font._cmap_win_symbol is None
+    assert font._cmap_mac_roman is None
 
 
 # ---------- pd_true_type_font: _CmapPlatformView 1118->1116 ----------------
@@ -758,7 +758,7 @@ def test_try_fetch_noto_cjk_stem_match_returns_font(
         _StubFontInfo("NotoSansJP-Regular", FontFormat.TTF, sentinel)
     )
     impl.set_provider(provider)
-    out = impl._try_fetch_noto_cjk("Japan1")  # noqa: SLF001
+    out = impl._try_fetch_noto_cjk("Japan1")
     assert out is sentinel
     assert provider.scanned == [fake_path]
 
@@ -786,7 +786,7 @@ def test_try_fetch_noto_cjk_stem_match_falls_through_when_font_none(
         _StubFontInfo("NotoSansCJK-Regular", FontFormat.TTF, sentinel)
     )
     impl.set_provider(provider)
-    out = impl._try_fetch_noto_cjk("Japan1")  # noqa: SLF001
+    out = impl._try_fetch_noto_cjk("Japan1")
     assert out is sentinel
 
 
@@ -813,7 +813,7 @@ def test_try_fetch_noto_cjk_fallback_skips_when_font_none(
         _StubFontInfo("NotoSansCJK-Regular", FontFormat.TTF, None)
     )
     impl.set_provider(provider)
-    assert impl._try_fetch_noto_cjk("Japan1") is None  # noqa: SLF001
+    assert impl._try_fetch_noto_cjk("Japan1") is None
 
 
 def test_try_fetch_noto_cjk_fallback_skips_non_matching_entries(
@@ -842,7 +842,7 @@ def test_try_fetch_noto_cjk_fallback_skips_non_matching_entries(
         _StubFontInfo("NotoSansCJK-Regular", FontFormat.TTF, sentinel_noto)
     )
     impl.set_provider(provider)
-    out = impl._try_fetch_noto_cjk("Japan1")  # noqa: SLF001
+    out = impl._try_fetch_noto_cjk("Japan1")
     assert out is sentinel_noto
 
 
@@ -859,7 +859,7 @@ def test_find_font_uses_short_post_script_name_when_comma_present() -> None:
     impl.set_provider(provider)
     # post_script_name "ArialMT,Bold" -> after replace(",","-") => not in
     # index, then short = "ArialMT" matches.
-    out = impl._find_font(FontFormat.TTF, "ArialMT,Bold")  # noqa: SLF001
+    out = impl._find_font(FontFormat.TTF, "ArialMT,Bold")
     assert out is sentinel
 
 
@@ -876,7 +876,7 @@ def test_find_font_falls_through_short_form_to_regular_suffix() -> None:
         _StubFontInfo("UnknownShort,Bold-Regular", FontFormat.TTF, sentinel)
     )
     impl.set_provider(provider)
-    out = impl._find_font(FontFormat.TTF, "UnknownShort,Bold")  # noqa: SLF001
+    out = impl._find_font(FontFormat.TTF, "UnknownShort,Bold")
     assert out is sentinel
 
 
@@ -900,7 +900,7 @@ def test_load_bundled_path_returns_none_when_indexed_font_none(
     )
     impl.set_provider(provider)
     monkeypatch.setattr(impl, "set_provider", lambda _p: None)
-    out = impl._load_bundled_path(fake_path)  # noqa: SLF001
+    out = impl._load_bundled_path(fake_path)
     assert out is None
 
 
@@ -921,7 +921,7 @@ def test_load_bundled_path_short_form_hit_returns_font(
     provider._infos.append(_StubFontInfo("LiberationSans", FontFormat.TTF, sentinel))
     impl.set_provider(provider)
     monkeypatch.setattr(impl, "set_provider", lambda _p: None)
-    out = impl._load_bundled_path(fake_path)  # noqa: SLF001
+    out = impl._load_bundled_path(fake_path)
     assert out is sentinel
 
 
@@ -946,7 +946,7 @@ def test_load_bundled_path_short_form_returns_none_falls_through(
     )
     impl.set_provider(provider)
     monkeypatch.setattr(impl, "set_provider", lambda _p: None)
-    out = impl._load_bundled_path(fake_path)  # noqa: SLF001
+    out = impl._load_bundled_path(fake_path)
     assert out is sentinel
 
 
@@ -965,7 +965,7 @@ def test_load_bundled_path_file_scan_skips_none_font(
     )
     impl.set_provider(provider)
     monkeypatch.setattr(impl, "set_provider", lambda _p: None)
-    out = impl._load_bundled_path(fake_path)  # noqa: SLF001
+    out = impl._load_bundled_path(fake_path)
     assert out is None
 
 
@@ -1012,7 +1012,7 @@ def test_unicode_from_embedded_cmap_returns_none_when_descendant_not_type2(
         pass
 
     monkeypatch.setattr(font, "get_descendant_font", lambda: _NotType2())
-    assert font._unicode_from_embedded_cmap(0x41) is None  # noqa: SLF001
+    assert font._unicode_from_embedded_cmap(0x41) is None
 
 
 def test_unicode_from_embedded_cmap_returns_none_when_no_ttf(
@@ -1032,7 +1032,7 @@ def test_unicode_from_embedded_cmap_returns_none_when_no_ttf(
             return None
 
     monkeypatch.setattr(font, "get_descendant_font", lambda: _NoTtf())
-    assert font._unicode_from_embedded_cmap(0x41) is None  # noqa: SLF001
+    assert font._unicode_from_embedded_cmap(0x41) is None
 
 
 def test_to_unicode_falls_through_when_ucs2_returns_none(
@@ -1082,7 +1082,7 @@ def test_unicode_from_embedded_cmap_returns_none_when_gid_zero(
 
     monkeypatch.setattr(font, "get_descendant_font", lambda: _Zero())
     monkeypatch.setattr(font, "code_to_cid", lambda code: code)
-    assert font._unicode_from_embedded_cmap(0x41) is None  # noqa: SLF001
+    assert font._unicode_from_embedded_cmap(0x41) is None
 
 
 def test_unicode_from_embedded_cmap_uses_non_embedded_descendant_cid(
@@ -1114,7 +1114,7 @@ def test_unicode_from_embedded_cmap_uses_non_embedded_descendant_cid(
     monkeypatch.setattr(font, "code_to_cid", lambda code: code)
     # Returns None (no embedded TTF unicode mapping for synthesised GID 0),
     # but the call shape exercises 734-737.
-    font._unicode_from_embedded_cmap(0x41)  # noqa: SLF001
+    font._unicode_from_embedded_cmap(0x41)
     assert "cid(65)" in stub.calls
 
 
@@ -1259,7 +1259,7 @@ def test_apply_ligature_run_skips_out_of_range_gid() -> None:
 
     glyph_order = [".notdef", "a"]
     name_to_gid = {".notdef": 0, "a": 1}
-    out = PDType0Font._apply_ligature_run(  # noqa: SLF001
+    out = PDType0Font._apply_ligature_run(
         _Lookup(), [99, 1], glyph_order, name_to_gid
     )
     # gid 99 is out of range; lookup is skipped; replacement == 99.
@@ -1273,8 +1273,8 @@ def test_apply_ligature_run_continues_when_lig_glyph_unmapped() -> None:
 
     class _Lig:
         def __init__(self, comps: list[str], lig: str) -> None:
-            self.Component = comps  # noqa: N815  # mirrors fontTools
-            self.LigGlyph = lig  # noqa: N815
+            self.Component = comps  # mirrors fontTools
+            self.LigGlyph = lig
 
     class _ResolvableSub:
         # First subtable lacks the lig output in name_to_gid (forces 592 False).
@@ -1289,7 +1289,7 @@ def test_apply_ligature_run_continues_when_lig_glyph_unmapped() -> None:
 
     glyph_order = [".notdef", "a", "b", "ab"]
     name_to_gid = {".notdef": 0, "a": 1, "b": 2, "ab": 3}
-    out = PDType0Font._apply_ligature_run(  # noqa: SLF001
+    out = PDType0Font._apply_ligature_run(
         _Lookup(), [1, 2], glyph_order, name_to_gid
     )
     # First subtable: best_lig_name="ghost", not in name_to_gid -> continue.

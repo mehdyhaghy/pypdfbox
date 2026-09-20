@@ -73,13 +73,13 @@ def _reset_menu_singletons() -> None:
     from pypdfbox.debugger.ui.text_stripper_menu import TextStripperMenu
     from pypdfbox.debugger.ui.zoom_menu import ZoomMenu
 
-    ViewMenu._reset_instance()  # noqa: SLF001
-    ZoomMenu._reset_instance()  # noqa: SLF001
-    RotationMenu._reset_instance()  # noqa: SLF001
-    RenderDestinationMenu._reset_instance()  # noqa: SLF001
-    TreeViewMenu._reset_for_testing()  # noqa: SLF001
-    ImageTypeMenu._reset_for_testing()  # noqa: SLF001
-    TextStripperMenu._reset_for_testing()  # noqa: SLF001
+    ViewMenu._reset_instance()
+    ZoomMenu._reset_instance()
+    RotationMenu._reset_instance()
+    RenderDestinationMenu._reset_instance()
+    TreeViewMenu._reset_for_testing()
+    ImageTypeMenu._reset_for_testing()
+    TextStripperMenu._reset_for_testing()
 
 
 @pytest.fixture(autouse=True)
@@ -113,7 +113,7 @@ def debugger(tk_root: tk.Tk) -> Iterator[PDFDebugger]:
         yield instance
     finally:
         with contextlib.suppress(tk.TclError):
-            instance._main_frame.destroy()  # noqa: SLF001
+            instance._main_frame.destroy()
 
 
 # ---------------------------------------------------------------------
@@ -126,7 +126,7 @@ def test_add_recent_file_items_short_circuits_when_no_recent_files(
 ) -> None:
     """``add_recent_file_items`` is a no-op when the recent-files store is empty."""
     # Wipe whatever is on the recent_files store.
-    debugger._recent_files.remove_all()  # noqa: SLF001
+    debugger._recent_files.remove_all()
     debugger.add_recent_file_items()  # must not raise
 
 
@@ -136,11 +136,11 @@ def test_add_recent_file_items_populates_for_known_files(
     """A populated recent-files list yields one menu entry per file."""
     fake = tmp_path / "x.pdf"
     fake.write_bytes(b"%PDF-1.4\n")
-    debugger._recent_files.add_file(str(fake))  # noqa: SLF001
+    debugger._recent_files.add_file(str(fake))
     debugger.add_recent_file_items()
     # Recent submenu should have at least one entry.
-    assert debugger._recent_files_menu is not None  # noqa: SLF001
-    assert debugger._recent_files_menu.index("end") is not None  # noqa: SLF001
+    assert debugger._recent_files_menu is not None
+    assert debugger._recent_files_menu.index("end") is not None
 
 
 def test_add_recent_file_items_opener_callback_handles_oserror(
@@ -149,7 +149,7 @@ def test_add_recent_file_items_opener_callback_handles_oserror(
     """The closure attached to each recent entry swallows ``OSError``."""
     fake = tmp_path / "vanished.pdf"
     fake.write_bytes(b"%PDF-1.4\n")
-    debugger._recent_files.add_file(str(fake))  # noqa: SLF001
+    debugger._recent_files.add_file(str(fake))
 
     def _raise(self: Any, path: str, password: str = "") -> None:
         raise OSError("vanished")
@@ -157,7 +157,7 @@ def test_add_recent_file_items_opener_callback_handles_oserror(
     monkeypatch.setattr(PDFDebugger, "_read_pdf_file", _raise)
     debugger.add_recent_file_items()
     # Invoke the first command directly — must not raise.
-    debugger._recent_files_menu.invoke(0)  # type: ignore[union-attr]  # noqa: SLF001
+    debugger._recent_files_menu.invoke(0)  # type: ignore[union-attr]
 
 
 # ---------------------------------------------------------------------
@@ -254,62 +254,62 @@ def test_is_font_returns_false_for_cid_font() -> None:
     d = COSDictionary()
     d.set_item(COSName.TYPE, COSName.get_pdf_name("Font"))
     d.set_item(COSName.SUBTYPE, COSName.get_pdf_name("CIDFontType0"))
-    assert PDFDebugger._is_font(d) is False  # noqa: SLF001
+    assert PDFDebugger._is_font(d) is False
 
 
 def test_is_font_returns_true_for_regular_font() -> None:
     d = COSDictionary()
     d.set_item(COSName.TYPE, COSName.get_pdf_name("Font"))
     d.set_item(COSName.SUBTYPE, COSName.get_pdf_name("Type1"))
-    assert PDFDebugger._is_font(d) is True  # noqa: SLF001
+    assert PDFDebugger._is_font(d) is True
 
 
 def test_is_special_colorspace_detects_separation() -> None:
     arr = COSArray()
     arr.add(COSName.get_pdf_name("Separation"))
-    assert PDFDebugger._is_special_colorspace(arr) is True  # noqa: SLF001
+    assert PDFDebugger._is_special_colorspace(arr) is True
 
 
 def test_is_other_colorspace_detects_calrgb() -> None:
     arr = COSArray()
     arr.add(COSName.get_pdf_name("CalRGB"))
-    assert PDFDebugger._is_other_colorspace(arr) is True  # noqa: SLF001
+    assert PDFDebugger._is_other_colorspace(arr) is True
 
 
 def test_first_array_name_returns_none_for_empty() -> None:
-    assert PDFDebugger._first_array_name(COSArray()) is None  # noqa: SLF001
+    assert PDFDebugger._first_array_name(COSArray()) is None
 
 
 def test_first_array_name_returns_none_for_non_array() -> None:
-    assert PDFDebugger._first_array_name(COSDictionary()) is None  # noqa: SLF001
+    assert PDFDebugger._first_array_name(COSDictionary()) is None
 
 
 def test_first_array_name_returns_none_when_first_entry_not_a_name() -> None:
     arr = COSArray()
     arr.add(COSString("Hello"))
-    assert PDFDebugger._first_array_name(arr) is None  # noqa: SLF001
+    assert PDFDebugger._first_array_name(arr) is None
 
 
 def test_is_annot_returns_true_for_annot_dict() -> None:
     d = COSDictionary()
     d.set_item(COSName.TYPE, COSName.get_pdf_name("Annot"))
-    assert PDFDebugger._is_annot(d) is True  # noqa: SLF001
+    assert PDFDebugger._is_annot(d) is True
 
 
 def test_is_annot_returns_false_for_non_annot_dict() -> None:
     d = COSDictionary()
     d.set_item(COSName.TYPE, COSName.get_pdf_name("Page"))
-    assert PDFDebugger._is_annot(d) is False  # noqa: SLF001
+    assert PDFDebugger._is_annot(d) is False
 
 
 def test_is_font_descriptor_returns_true_for_font_descriptor_dict() -> None:
     d = COSDictionary()
     d.set_item(COSName.TYPE, COSName.get_pdf_name("FontDescriptor"))
-    assert PDFDebugger._is_font_descriptor(d) is True  # noqa: SLF001
+    assert PDFDebugger._is_font_descriptor(d) is True
 
 
 def test_is_encrypt_returns_false_for_non_map_entry() -> None:
-    assert PDFDebugger._is_encrypt(COSDictionary()) is False  # noqa: SLF001
+    assert PDFDebugger._is_encrypt(COSDictionary()) is False
 
 
 # ---------------------------------------------------------------------
@@ -329,21 +329,21 @@ def test_find_menu_item_action_shows_messagebox(
         called.append((args, kwargs))
 
     monkeypatch.setattr(messagebox, "showinfo", _showinfo)
-    debugger._find_menu_item_action_performed()  # noqa: SLF001
+    debugger._find_menu_item_action_performed()
     assert called
 
 
 def test_find_next_and_previous_are_noops(debugger: PDFDebugger) -> None:
     # Both are docstring-only no-ops; must not raise.
-    debugger._find_next_menu_item_action_performed()  # noqa: SLF001
-    debugger._find_previous_menu_item_action_performed()  # noqa: SLF001
+    debugger._find_next_menu_item_action_performed()
+    debugger._find_previous_menu_item_action_performed()
 
 
 def test_print_menu_item_action_with_no_document_returns(
     debugger: PDFDebugger,
 ) -> None:
     """No-op when no document is loaded."""
-    debugger._print_menu_item_action_performed()  # noqa: SLF001
+    debugger._print_menu_item_action_performed()
 
 
 def test_print_menu_item_action_dispatches_to_spooler_when_doc_present(
@@ -353,7 +353,7 @@ def test_print_menu_item_action_dispatches_to_spooler_when_doc_present(
     doc = PDDocument()
     try:
         doc.add_page(PDPage())
-        debugger._document = doc  # noqa: SLF001
+        debugger._document = doc
         send_calls: list[int] = []
 
         def _send(n_pages: int) -> None:
@@ -362,11 +362,11 @@ def test_print_menu_item_action_dispatches_to_spooler_when_doc_present(
         monkeypatch.setattr(
             debugger, "_send_document_to_printer", _send,
         )
-        debugger._print_menu_item_action_performed()  # noqa: SLF001
+        debugger._print_menu_item_action_performed()
         assert send_calls == [1]
     finally:
         doc.close()
-        debugger._document = None  # noqa: SLF001
+        debugger._document = None
 
 
 def test_show_about_dialog_invokes_messagebox(
@@ -380,7 +380,7 @@ def test_show_about_dialog_invokes_messagebox(
         called.append((args, kwargs))
 
     monkeypatch.setattr(messagebox, "showinfo", _showinfo)
-    debugger._show_about_dialog()  # noqa: SLF001
+    debugger._show_about_dialog()
     assert called
 
 
@@ -441,9 +441,9 @@ def test_call_with_no_current_file_succeeds(debugger: PDFDebugger) -> None:
 def test_call_loads_existing_current_file(
     debugger: PDFDebugger, synthetic_pdf: Path,
 ) -> None:
-    debugger._current_file_path = str(synthetic_pdf)  # noqa: SLF001
+    debugger._current_file_path = str(synthetic_pdf)
     assert debugger.call() == 0
-    assert debugger._document is not None  # noqa: SLF001
+    assert debugger._document is not None
 
 
 def test_call_returns_4_on_uncaught_exception(
@@ -531,7 +531,7 @@ def test_read_pdf_file_loads_document(
     debugger: PDFDebugger, synthetic_pdf: Path,
 ) -> None:
     debugger.read_pdf_file(synthetic_pdf)
-    assert debugger._document is not None  # noqa: SLF001
+    assert debugger._document is not None
 
 
 def test_read_pdf_url_rejects_invalid_url(debugger: PDFDebugger) -> None:
@@ -573,17 +573,17 @@ def test_process_tree_selection_ignores_unknown_iid(debugger: PDFDebugger) -> No
 def test_update_title_default_uses_constant(debugger: PDFDebugger) -> None:
     """When no path is loaded and no title supplied, the default title is used."""
     debugger.update_title(None)
-    title = debugger._toplevel.title()  # noqa: SLF001
+    title = debugger._toplevel.title()
     assert title  # not empty
 
 
 def test_update_title_explicit(debugger: PDFDebugger) -> None:
     debugger.update_title("MyExplicitTitle")
-    assert debugger._toplevel.title() == "MyExplicitTitle"  # noqa: SLF001
+    assert debugger._toplevel.title() == "MyExplicitTitle"
 
 
 def test_update_title_for_http_path(debugger: PDFDebugger) -> None:
-    debugger._current_file_path = "https://example.com/x.pdf"  # noqa: SLF001
+    debugger._current_file_path = "https://example.com/x.pdf"
     debugger.update_title(None)
     # Title set without raising.
 
@@ -591,19 +591,19 @@ def test_update_title_for_http_path(debugger: PDFDebugger) -> None:
 def test_update_title_for_local_path(
     debugger: PDFDebugger, synthetic_pdf: Path,
 ) -> None:
-    debugger._current_file_path = str(synthetic_pdf)  # noqa: SLF001
+    debugger._current_file_path = str(synthetic_pdf)
     debugger.update_title(None)
     # No raise.
 
 
 def test_update_status_empty_when_no_label(debugger: PDFDebugger) -> None:
     # Force the status_bar's label getter to return None.
-    real_getter = debugger._status_bar.get_status_label  # noqa: SLF001
+    real_getter = debugger._status_bar.get_status_label
     try:
-        debugger._status_bar.get_status_label = lambda: None  # type: ignore[method-assign]  # noqa: SLF001
+        debugger._status_bar.get_status_label = lambda: None  # type: ignore[method-assign]
         debugger.update_status("hello")  # must not raise
     finally:
-        debugger._status_bar.get_status_label = real_getter  # type: ignore[method-assign]  # noqa: SLF001
+        debugger._status_bar.get_status_label = real_getter  # type: ignore[method-assign]
 
 
 def test_update_status_writes_to_label(debugger: PDFDebugger) -> None:
@@ -632,14 +632,14 @@ def test_get_current_file_path_initially_none(debugger: PDFDebugger) -> None:
 
 
 def test_get_pdf_file_returns_none_for_url(debugger: PDFDebugger) -> None:
-    debugger._current_file_path = "http://example.com/x.pdf"  # noqa: SLF001
+    debugger._current_file_path = "http://example.com/x.pdf"
     assert debugger.get_pdf_file() is None
 
 
 def test_get_pdf_file_returns_path_for_local(
     debugger: PDFDebugger, synthetic_pdf: Path,
 ) -> None:
-    debugger._current_file_path = str(synthetic_pdf)  # noqa: SLF001
+    debugger._current_file_path = str(synthetic_pdf)
     assert debugger.get_pdf_file() == synthetic_pdf
 
 
@@ -682,13 +682,13 @@ def test_open_returns_existing_document(
     debugger: PDFDebugger, synthetic_pdf: Path,
 ) -> None:
     debugger.read_pdf_file(synthetic_pdf)
-    assert debugger.open() is debugger._document  # noqa: SLF001
+    assert debugger.open() is debugger._document
 
 
 def test_open_loads_when_path_set_without_document(
     debugger: PDFDebugger, synthetic_pdf: Path,
 ) -> None:
-    debugger._current_file_path = str(synthetic_pdf)  # noqa: SLF001
+    debugger._current_file_path = str(synthetic_pdf)
     result = debugger.open()
     assert result is not None
 
@@ -741,7 +741,7 @@ def test_document_opener_prompt_password_via_getpass(
 
     monkeypatch.setattr(getpass, "getpass", lambda _prompt="": "secret")
     opener = DocumentOpener(password="")
-    assert opener._prompt_password() == "secret"  # noqa: SLF001
+    assert opener._prompt_password() == "secret"
 
 
 def test_document_opener_prompt_password_handles_eof(
@@ -754,7 +754,7 @@ def test_document_opener_prompt_password_handles_eof(
 
     monkeypatch.setattr(getpass, "getpass", _raise)
     opener = DocumentOpener(password="")
-    assert opener._prompt_password() is None  # noqa: SLF001
+    assert opener._prompt_password() is None
 
 
 # ---------------------------------------------------------------------
@@ -805,13 +805,13 @@ def test_node_label_for_array_entry() -> None:
 
 def test_show_color_pane_returns_early_for_non_array(debugger: PDFDebugger) -> None:
     """A non-COSArray underneath short-circuits without raising."""
-    debugger._show_color_pane(COSDictionary())  # noqa: SLF001
+    debugger._show_color_pane(COSDictionary())
 
 
 def test_show_color_pane_returns_early_for_empty_array(
     debugger: PDFDebugger,
 ) -> None:
-    debugger._show_color_pane(COSArray())  # noqa: SLF001
+    debugger._show_color_pane(COSArray())
 
 
 def test_show_color_pane_returns_early_for_non_name_first(
@@ -819,7 +819,7 @@ def test_show_color_pane_returns_early_for_non_name_first(
 ) -> None:
     arr = COSArray()
     arr.add(COSString("not-a-name"))
-    debugger._show_color_pane(arr)  # noqa: SLF001
+    debugger._show_color_pane(arr)
 
 
 def test_show_color_pane_separation(debugger: PDFDebugger) -> None:
@@ -830,7 +830,7 @@ def test_show_color_pane_separation(debugger: PDFDebugger) -> None:
     arr.add(COSName.get_pdf_name("DeviceCMYK"))
     # The function may or may not produce a widget; calling it must not raise.
     with contextlib.suppress(Exception):
-        debugger._show_color_pane(arr)  # noqa: SLF001
+        debugger._show_color_pane(arr)
 
 
 def test_show_color_pane_devicen(debugger: PDFDebugger) -> None:
@@ -839,50 +839,50 @@ def test_show_color_pane_devicen(debugger: PDFDebugger) -> None:
     arr.add(COSArray())
     arr.add(COSName.get_pdf_name("DeviceCMYK"))
     with contextlib.suppress(Exception):
-        debugger._show_color_pane(arr)  # noqa: SLF001
+        debugger._show_color_pane(arr)
 
 
 def test_show_color_pane_unknown_name_widget_none(debugger: PDFDebugger) -> None:
     """An unknown colorspace name produces a None widget (else branch)."""
     arr = COSArray()
     arr.add(COSName.get_pdf_name("UnknownCS"))
-    debugger._show_color_pane(arr)  # noqa: SLF001
+    debugger._show_color_pane(arr)
 
 
 def test_show_flag_pane_returns_early_for_non_dict_parent(
     debugger: PDFDebugger,
 ) -> None:
-    debugger._show_flag_pane(COSString("x"), COSDictionary())  # noqa: SLF001
+    debugger._show_flag_pane(COSString("x"), COSDictionary())
 
 
 def test_show_string_with_non_string_is_noop(debugger: PDFDebugger) -> None:
     """A non-string node skips mounting the StringPane."""
-    debugger._show_string(COSDictionary())  # noqa: SLF001
+    debugger._show_string(COSDictionary())
 
 
 def test_show_signature_pane_with_non_string_is_noop(debugger: PDFDebugger) -> None:
-    debugger._show_signature_pane(COSDictionary())  # noqa: SLF001
+    debugger._show_signature_pane(COSDictionary())
 
 
 def test_show_text_details_uses_text_widget(debugger: PDFDebugger) -> None:
     """A plain node is rendered into a ``tk.Text`` widget."""
-    debugger._show_text_details(COSString("hello"))  # noqa: SLF001
+    debugger._show_text_details(COSString("hello"))
     # No raise; the right_frame should have at least one child.
-    assert len(debugger._right_frame.winfo_children()) > 0  # noqa: SLF001
+    assert len(debugger._right_frame.winfo_children()) > 0
 
 
 def test_show_text_details_unknown_node_renders_empty(
     debugger: PDFDebugger,
 ) -> None:
     """``_convert_to_string`` returning ``None`` falls back to ``""``."""
-    debugger._show_text_details(object())  # noqa: SLF001
+    debugger._show_text_details(object())
 
 
 def test_show_font_falls_back_to_text_when_font_name_missing(
     debugger: PDFDebugger,
 ) -> None:
     """A node without a ``MapEntry`` key falls back to ``_show_text_details``."""
-    debugger._show_font(COSDictionary(), iid="ignored")  # noqa: SLF001
+    debugger._show_font(COSDictionary(), iid="ignored")
 
 
 # ---------------------------------------------------------------------
@@ -892,7 +892,7 @@ def test_show_font_falls_back_to_text_when_font_name_missing(
 
 def test_read_pdf_url_invalid_url_propagates(debugger: PDFDebugger) -> None:
     with pytest.raises(ValueError, match="invalid URL"):
-        debugger._read_pdf_url("plainstring")  # noqa: SLF001
+        debugger._read_pdf_url("plainstring")
 
 
 # ---------------------------------------------------------------------
@@ -902,7 +902,7 @@ def test_read_pdf_url_invalid_url_propagates(debugger: PDFDebugger) -> None:
 
 def test_replace_right_component_with_none_clears(debugger: PDFDebugger) -> None:
     """Passing ``None`` clears the current right component without raising."""
-    debugger._replace_right_component(None)  # noqa: SLF001
+    debugger._replace_right_component(None)
 
 
 def test_get_node_key_for_non_map_entry_returns_none() -> None:
@@ -925,7 +925,7 @@ def test_get_underneath_object_unwraps_cos_object_chain(
 
 
 def test_is_signature_returns_false_for_non_map_entry() -> None:
-    assert PDFDebugger._is_signature(object(), object()) is False  # noqa: SLF001
+    assert PDFDebugger._is_signature(object(), object()) is False
 
 
 def test_is_signature_returns_false_when_key_missing() -> None:
@@ -934,7 +934,7 @@ def test_is_signature_returns_false_when_key_missing() -> None:
     entry = MapEntry()  # no key
     parent = MapEntry()
     parent.set_key(COSName.get_pdf_name("X"))
-    assert PDFDebugger._is_signature(entry, parent) is False  # noqa: SLF001
+    assert PDFDebugger._is_signature(entry, parent) is False
 
 
 def test_is_signature_returns_false_for_non_contents_key() -> None:
@@ -944,18 +944,18 @@ def test_is_signature_returns_false_for_non_contents_key() -> None:
     entry.set_key(COSName.get_pdf_name("OtherKey"))
     parent = MapEntry()
     parent.set_key(COSName.get_pdf_name("X"))
-    assert PDFDebugger._is_signature(entry, parent) is False  # noqa: SLF001
+    assert PDFDebugger._is_signature(entry, parent) is False
 
 
 def test_is_flag_node_returns_false_when_no_key() -> None:
     from pypdfbox.debugger.ui.map_entry import MapEntry
 
     entry = MapEntry()
-    assert PDFDebugger._is_flag_node(entry, object()) is False  # noqa: SLF001
+    assert PDFDebugger._is_flag_node(entry, object()) is False
 
 
 def test_is_flag_node_returns_false_for_non_map_entry() -> None:
-    assert PDFDebugger._is_flag_node(object(), object()) is False  # noqa: SLF001
+    assert PDFDebugger._is_flag_node(object(), object()) is False
 
 
 def test_is_flag_node_detects_panose() -> None:
@@ -963,7 +963,7 @@ def test_is_flag_node_detects_panose() -> None:
 
     entry = MapEntry()
     entry.set_key(COSName.get_pdf_name("Panose"))
-    assert PDFDebugger._is_flag_node(entry, object()) is True  # noqa: SLF001
+    assert PDFDebugger._is_flag_node(entry, object()) is True
 
 
 # ---------------------------------------------------------------------
@@ -979,7 +979,7 @@ def test_document_opener_prompt_password_with_master(
 
     monkeypatch.setattr(simpledialog, "askstring", lambda *a, **kw: "tkpass")
     opener = DocumentOpener(password="", master=tk_root)
-    assert opener._prompt_password() == "tkpass"  # noqa: SLF001
+    assert opener._prompt_password() == "tkpass"
 
 
 def test_document_opener_parse_retries_on_invalid_password(
@@ -998,7 +998,7 @@ def test_document_opener_parse_retries_on_invalid_password(
         return "ok"
 
     opener.open = _open  # type: ignore[assignment,method-assign]
-    monkeypatch.setattr(opener, "_prompt_password", lambda: "retry")  # noqa: SLF001
+    monkeypatch.setattr(opener, "_prompt_password", lambda: "retry")
     result = opener.parse()
     assert result == "ok"
     assert opener.password == "retry"
@@ -1015,7 +1015,7 @@ def test_document_opener_parse_propagates_when_user_cancels(
         raise InvalidPasswordException("nope")
 
     opener.open = _open  # type: ignore[assignment,method-assign]
-    monkeypatch.setattr(opener, "_prompt_password", lambda: None)  # noqa: SLF001
+    monkeypatch.setattr(opener, "_prompt_password", lambda: None)
     with pytest.raises(InvalidPasswordException):
         opener.parse()
 
@@ -1053,7 +1053,7 @@ def test_read_pdf_file_handles_replace_after_existing_document(
     debugger.read_pdf_file(synthetic_pdf)
     debugger.read_pdf_file(synthetic_pdf)
     # No raise; document re-loaded.
-    assert debugger._document is not None  # noqa: SLF001
+    assert debugger._document is not None
 
 
 # ---------------------------------------------------------------------
@@ -1066,10 +1066,10 @@ def test_update_title_strips_existing_path_label(
 ) -> None:
     """When a path is loaded, ``update_title`` composes the longer label
     (mac → basename, else ``PDF Debugger - <path>``)."""
-    debugger._current_file_path = str(synthetic_pdf)  # noqa: SLF001
+    debugger._current_file_path = str(synthetic_pdf)
     debugger.update_title(None)
     # Either label form contains the basename.
-    assert synthetic_pdf.name in debugger._toplevel.title()  # noqa: SLF001
+    assert synthetic_pdf.name in debugger._toplevel.title()
 
 
 # ---------------------------------------------------------------------
@@ -1115,9 +1115,9 @@ def test_main_runs_without_input_file(
     def _fake_init(self: PDFDebugger, master: Any, **kwargs: Any) -> None:
         captured["called"] = True
         # Skip the full init; we just need a returnable object.
-        self._toplevel = master  # noqa: SLF001
-        self._document = None  # noqa: SLF001
-        self._current_file_path = None  # noqa: SLF001
+        self._toplevel = master
+        self._document = None
+        self._current_file_path = None
 
     monkeypatch.setattr(PDFDebugger, "__init__", _fake_init)
     try:
@@ -1156,9 +1156,9 @@ def test_main_with_viewstructure_flag(
 
     def _fake_init(self: PDFDebugger, master: Any, **kwargs: Any) -> None:
         captured["view_mode"] = kwargs.get("initial_view_mode")
-        self._toplevel = master  # noqa: SLF001
-        self._document = None  # noqa: SLF001
-        self._current_file_path = None  # noqa: SLF001
+        self._toplevel = master
+        self._document = None
+        self._current_file_path = None
 
     monkeypatch.setattr(PDFDebugger, "__init__", _fake_init)
     try:
@@ -1195,9 +1195,9 @@ def test_main_with_existing_input_file_loads(
     real_init = PDFDebugger.__init__
 
     def _fake_init(self: PDFDebugger, master: Any, **kwargs: Any) -> None:
-        self._toplevel = master  # noqa: SLF001
-        self._document = None  # noqa: SLF001
-        self._current_file_path = None  # noqa: SLF001
+        self._toplevel = master
+        self._document = None
+        self._current_file_path = None
 
         def _open(path: str, pw: str = "") -> None:
             captured["opened"] = True
@@ -1220,7 +1220,7 @@ def test_main_with_existing_input_file_loads(
 
 def test_show_stream_via_non_stream_node_is_noop(debugger: PDFDebugger) -> None:
     """A node whose underneath is not a ``COSStream`` short-circuits."""
-    debugger._show_stream(COSDictionary(), iid="x", parent_iid="")  # noqa: SLF001
+    debugger._show_stream(COSDictionary(), iid="x", parent_iid="")
 
 
 # ---------------------------------------------------------------------
@@ -1251,7 +1251,7 @@ def test_action_performed_dispatches_to_read_pdf_file(
     debugger: PDFDebugger, synthetic_pdf: Path,
 ) -> None:
     debugger.action_performed(str(synthetic_pdf))
-    assert debugger._document is not None  # noqa: SLF001
+    assert debugger._document is not None
 
 
 def test_action_performed_swallows_oserror(
@@ -1367,7 +1367,7 @@ def test_open_with_file_url_dispatches_to_read_pdf_url(
     def _read_url(self: Any, url: str, password: str = "") -> None:
         called.append(url)
 
-    debugger._current_file_path = "file:///tmp/x.pdf"  # noqa: SLF001
+    debugger._current_file_path = "file:///tmp/x.pdf"
     monkeypatch.setattr(PDFDebugger, "_read_pdf_url", _read_url)
     debugger.open()
     assert called == ["file:///tmp/x.pdf"]
@@ -1440,7 +1440,7 @@ def test_document_opener_prompt_password_handles_tclerror(
 
     monkeypatch.setattr(getpass, "getpass", lambda _p="": "fallback-pass")
     opener = DocumentOpener(password="", master=tk_root)
-    assert opener._prompt_password() == "fallback-pass"  # noqa: SLF001
+    assert opener._prompt_password() == "fallback-pass"
 
 
 # ---------------------------------------------------------------------
@@ -1477,11 +1477,11 @@ def test_ensure_default_root_creates_when_none_exists(
 
 def test_save_decoded_stream_no_selection_returns(debugger: PDFDebugger) -> None:
     """When no stream is selected, ``_save_decoded_stream`` is a no-op."""
-    debugger._save_decoded_stream()  # noqa: SLF001
+    debugger._save_decoded_stream()
 
 
 def test_save_raw_stream_no_selection_returns(debugger: PDFDebugger) -> None:
-    debugger._save_raw_stream()  # noqa: SLF001
+    debugger._save_raw_stream()
 
 
 # ---------------------------------------------------------------------
@@ -1490,11 +1490,11 @@ def test_save_raw_stream_no_selection_returns(debugger: PDFDebugger) -> None:
 
 
 def test_is_special_colorspace_handles_non_array() -> None:
-    assert PDFDebugger._is_special_colorspace(COSDictionary()) is False  # noqa: SLF001
+    assert PDFDebugger._is_special_colorspace(COSDictionary()) is False
 
 
 def test_is_other_colorspace_handles_non_array() -> None:
-    assert PDFDebugger._is_other_colorspace(COSDictionary()) is False  # noqa: SLF001
+    assert PDFDebugger._is_other_colorspace(COSDictionary()) is False
 
 
 # ---------------------------------------------------------------------
@@ -1548,7 +1548,7 @@ def test_read_pdf_url_swaps_existing_document(
 ) -> None:
     """Loading a URL while a document is open closes it + records the path."""
     debugger.read_pdf_file(synthetic_pdf)
-    assert debugger._document is not None  # noqa: SLF001
+    assert debugger._document is not None
 
     raw = synthetic_pdf.read_bytes()
 
@@ -1566,4 +1566,4 @@ def test_read_pdf_url_swaps_existing_document(
 
     monkeypatch.setattr(_req, "urlopen", lambda url: _Resp())
     debugger.read_pdf_url("http://example.com/x.pdf")
-    assert debugger._document is not None  # noqa: SLF001
+    assert debugger._document is not None

@@ -31,13 +31,13 @@ from pypdfbox.debugger.ui.zoom_menu import ZoomMenu
 
 
 def _reset_menu_singletons() -> None:
-    ViewMenu._reset_instance()  # noqa: SLF001
-    ZoomMenu._reset_instance()  # noqa: SLF001
-    RotationMenu._reset_instance()  # noqa: SLF001
-    RenderDestinationMenu._reset_instance()  # noqa: SLF001
-    TreeViewMenu._reset_for_testing()  # noqa: SLF001
-    ImageTypeMenu._reset_for_testing()  # noqa: SLF001
-    TextStripperMenu._reset_for_testing()  # noqa: SLF001
+    ViewMenu._reset_instance()
+    ZoomMenu._reset_instance()
+    RotationMenu._reset_instance()
+    RenderDestinationMenu._reset_instance()
+    TreeViewMenu._reset_for_testing()
+    ImageTypeMenu._reset_for_testing()
+    TextStripperMenu._reset_for_testing()
 
 
 @pytest.fixture()
@@ -65,7 +65,7 @@ def debugger(tk_root: tk.Tk) -> Iterator[PDFDebugger]:
         yield instance
     finally:
         with contextlib.suppress(tk.TclError):
-            instance._main_frame.destroy()  # noqa: SLF001
+            instance._main_frame.destroy()
 
 
 # ---------- delegate forwards (instance-level) ----------
@@ -202,18 +202,18 @@ def test_show_string_delegates(
 def test_is_encrypt_classmethod_delegates_to_private() -> None:
     """``PDFDebugger.is_encrypt`` matches ``_is_encrypt`` for the same arg."""
     sentinel = object()
-    assert PDFDebugger.is_encrypt(sentinel) == PDFDebugger._is_encrypt(sentinel)  # noqa: SLF001
+    assert PDFDebugger.is_encrypt(sentinel) == PDFDebugger._is_encrypt(sentinel)
 
 
 def test_is_signature_classmethod_delegates_to_private() -> None:
     node, parent = object(), object()
-    assert PDFDebugger.is_signature(node, parent) == PDFDebugger._is_signature(  # noqa: SLF001
+    assert PDFDebugger.is_signature(node, parent) == PDFDebugger._is_signature(
         node, parent
     )
 
 
 def test_is_flag_node_classmethod_delegates_to_private() -> None:
     node, parent = object(), object()
-    assert PDFDebugger.is_flag_node(node, parent) == PDFDebugger._is_flag_node(  # noqa: SLF001
+    assert PDFDebugger.is_flag_node(node, parent) == PDFDebugger._is_flag_node(
         node, parent
     )

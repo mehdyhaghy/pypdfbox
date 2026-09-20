@@ -86,39 +86,39 @@ def _bare_truetype_font(fake_tt: Any) -> TrueTypeFont:
     resolve guards see a fresh, unresolved state.
     """
     font = object.__new__(TrueTypeFont)
-    font._tt = fake_tt  # noqa: SLF001
-    font._raw_bytes = b""  # noqa: SLF001
-    font._table_map = {}  # noqa: SLF001
-    font._head = None  # noqa: SLF001
-    font._hhea = None  # noqa: SLF001
-    font._maxp = None  # noqa: SLF001
-    font._hmtx = None  # noqa: SLF001
-    font._vhea = None  # noqa: SLF001
-    font._vmtx = None  # noqa: SLF001
-    font._cmap_subtable = None  # noqa: SLF001
-    font._cmap_resolved = False  # noqa: SLF001
-    font._advance_widths = None  # noqa: SLF001
-    font._glyph_table = None  # noqa: SLF001
-    font._dsig = None  # noqa: SLF001
-    font._dsig_resolved = False  # noqa: SLF001
-    font._kern = None  # noqa: SLF001
-    font._kern_resolved = False  # noqa: SLF001
-    font._gsub = None  # noqa: SLF001
-    font._gsub_resolved = False  # noqa: SLF001
-    font._gpos = None  # noqa: SLF001
-    font._gpos_resolved = False  # noqa: SLF001
-    font._naming = None  # noqa: SLF001
-    font._naming_resolved = False  # noqa: SLF001
-    font._post = None  # noqa: SLF001
-    font._post_resolved = False  # noqa: SLF001
-    font._os2 = None  # noqa: SLF001
-    font._os2_resolved = False  # noqa: SLF001
-    font._loca = None  # noqa: SLF001
-    font._loca_resolved = False  # noqa: SLF001
-    font._closed = False  # noqa: SLF001
-    font._enable_gsub = True  # noqa: SLF001
-    font._enabled_gsub_features = []  # noqa: SLF001
-    font._post_script_names = None  # noqa: SLF001
+    font._tt = fake_tt
+    font._raw_bytes = b""
+    font._table_map = {}
+    font._head = None
+    font._hhea = None
+    font._maxp = None
+    font._hmtx = None
+    font._vhea = None
+    font._vmtx = None
+    font._cmap_subtable = None
+    font._cmap_resolved = False
+    font._advance_widths = None
+    font._glyph_table = None
+    font._dsig = None
+    font._dsig_resolved = False
+    font._kern = None
+    font._kern_resolved = False
+    font._gsub = None
+    font._gsub_resolved = False
+    font._gpos = None
+    font._gpos_resolved = False
+    font._naming = None
+    font._naming_resolved = False
+    font._post = None
+    font._post_resolved = False
+    font._os2 = None
+    font._os2_resolved = False
+    font._loca = None
+    font._loca_resolved = False
+    font._closed = False
+    font._enable_gsub = True
+    font._enabled_gsub_features = []
+    font._post_script_names = None
     return font
 
 
@@ -169,7 +169,7 @@ def test_subsetter_no_unicode_cmap_arms(
     # 651->656: add_compound_references with cmap None.
     sub.add_compound_references()
     # Should not raise; .notdef still there.
-    assert 0 in sub._glyph_ids  # noqa: SLF001
+    assert 0 in sub._glyph_ids
 
 
 def test_subsetter_unmapped_codepoint_skips_loop_body(
@@ -195,7 +195,7 @@ def test_subsetter_apply_invisible_with_no_glyf_returns_early() -> None:
         def __contains__(self, key: str) -> bool:
             return False
 
-        def getBestCmap(self) -> dict:  # noqa: N802
+        def getBestCmap(self) -> dict:
             return {ord("A"): "A"}
 
     # No exception means the early-return arm executed.
@@ -214,9 +214,9 @@ def test_subsetter_apply_invisible_skips_hmtx_when_gname_missing(
 
     # We replace the per-glyph hmtx.metrics dict with an empty one so
     # the ``gname in hmtx.metrics`` guard is False for every codepoint.
-    import fontTools.ttLib as ttLib  # noqa: PLC0415
+    from fontTools import ttLib
 
-    raw = liberation_sans._read_all_bytes(liberation_sans._data)  # noqa: SLF001
+    raw = liberation_sans._read_all_bytes(liberation_sans._data)
     tt = ttLib.TTFont(io.BytesIO(raw))
     tt["hmtx"].metrics = {}  # force the 'gname not in hmtx.metrics' branch
     # Should not raise — invisible code path simply skips hmtx update.
@@ -271,7 +271,7 @@ def test_subsetter_add_compound_references_no_cmap_arm(
     sub.add_glyph_ids({2, 3})
     sub.add_compound_references()
     # Nothing to expand for non-composite glyphs — set is unchanged.
-    assert {2, 3} <= sub._glyph_ids  # noqa: SLF001
+    assert {2, 3} <= sub._glyph_ids
 
 
 def test_subsetter_add_compound_references_unmapped_codepoint(
@@ -284,7 +284,7 @@ def test_subsetter_add_compound_references_unmapped_codepoint(
     sub.add(0xE000)
     sub.add_compound_references()
     # PUA was not mapped → no new GIDs joined; only .notdef remains.
-    assert sub._glyph_ids == {0}  # noqa: SLF001
+    assert sub._glyph_ids == {0}
 
 
 def test_subsetter_build_subset_font_no_no_subset_tables_policy(
@@ -388,8 +388,8 @@ def test_get_unicode_cmap_impl_non_strict_fallback_skips_unknown_glyph_name() ->
     """
 
     class _Sub:
-        platformID = 1  # Mac, not a preferred Unicode platform  # noqa: N815
-        platEncID = 0  # noqa: N815
+        platformID = 1  # Mac, not a preferred Unicode platform
+        platEncID = 0
 
         def __init__(self) -> None:
             self.cmap = {ord("A"): "A", ord("B"): "MISSING_GLYPH_NAME"}
@@ -398,7 +398,7 @@ def test_get_unicode_cmap_impl_non_strict_fallback_skips_unknown_glyph_name() ->
         def __init__(self) -> None:
             self.tables = [_Sub()]
 
-        def getcmap(self, plat: int, enc: int) -> Any:  # noqa: N802
+        def getcmap(self, plat: int, enc: int) -> Any:
             return None  # force the "no preferred" fallback
 
     class _FakeTt:
@@ -411,13 +411,13 @@ def test_get_unicode_cmap_impl_non_strict_fallback_skips_unknown_glyph_name() ->
         def __getitem__(self, key: str) -> Any:
             return self._cmap
 
-        def getGlyphOrder(self) -> list[str]:  # noqa: N802
+        def getGlyphOrder(self) -> list[str]:
             return [".notdef", "A"]  # "MISSING_GLYPH_NAME" absent
 
     font = _bare_truetype_font(_FakeTt())
     # ``get_unicode_cmap_subtable`` must miss (no preferred Unicode
     # subtable) so the fallback to "first cmap subtable" runs.
-    view = font._get_unicode_cmap_impl(is_strict=False)  # noqa: SLF001
+    view = font._get_unicode_cmap_impl(is_strict=False)
     assert view is not None
     # 'A' was mapped, 'B' was skipped (unknown name).
     assert view.get_glyph_id(ord("A")) == 1
@@ -431,8 +431,8 @@ def test_get_unicode_cmap_impl_non_strict_empty_cmap_no_glyphs() -> None:
     """
 
     class _Sub:
-        platformID = 1  # noqa: N815
-        platEncID = 0  # noqa: N815
+        platformID = 1
+        platEncID = 0
 
         def __init__(self) -> None:
             self.cmap = {ord("Z"): "UNKNOWN"}
@@ -441,7 +441,7 @@ def test_get_unicode_cmap_impl_non_strict_empty_cmap_no_glyphs() -> None:
         def __init__(self) -> None:
             self.tables = [_Sub()]
 
-        def getcmap(self, plat: int, enc: int) -> Any:  # noqa: N802
+        def getcmap(self, plat: int, enc: int) -> Any:
             return None
 
     class _FakeTt:
@@ -454,12 +454,12 @@ def test_get_unicode_cmap_impl_non_strict_empty_cmap_no_glyphs() -> None:
         def __getitem__(self, key: str) -> Any:
             return self._cmap
 
-        def getGlyphOrder(self) -> list[str]:  # noqa: N802
+        def getGlyphOrder(self) -> list[str]:
             return [".notdef"]
 
     font = _bare_truetype_font(_FakeTt())
 
-    view = font._get_unicode_cmap_impl(is_strict=False)  # noqa: SLF001
+    view = font._get_unicode_cmap_impl(is_strict=False)
     assert view is not None
     # Empty mapping — every lookup yields 0 (.notdef).
     assert view.get_glyph_id(ord("Z")) == 0
@@ -476,7 +476,7 @@ def test_name_to_gid_post_lookup_out_of_range_falls_through(
     """
     # Pre-populate the cache with an entry whose value exceeds num_glyphs.
     num_glyphs = liberation_sans.get_number_of_glyphs()
-    liberation_sans._post_script_names = {"PHONY_NAME": num_glyphs + 5}  # noqa: SLF001
+    liberation_sans._post_script_names = {"PHONY_NAME": num_glyphs + 5}
     # 'PHONY_NAME' is not in glyph_order either, so we drop through to
     # the cmap path (uni-parsing fails), then to the final glyph-order
     # lookup which raises ValueError → returns 0.
@@ -515,7 +515,7 @@ def test_get_post_no_glyph_order_branch() -> None:
                 return _Post()
             raise KeyError(key)
 
-        def getGlyphOrder(self) -> list[str]:  # noqa: N802
+        def getGlyphOrder(self) -> list[str]:
             raise AttributeError("no glyph order available")
 
     font = _bare_truetype_font(_FakeTt())
@@ -524,7 +524,7 @@ def test_get_post_no_glyph_order_branch() -> None:
     assert post is not None
     # _glyph_names should have been left at whatever its default is
     # (None for a fresh PostScriptTable).
-    assert post._glyph_names is None or post._glyph_names == []  # noqa: SLF001
+    assert post._glyph_names is None or post._glyph_names == []
 
 
 def test_get_index_to_location_no_offsets_attribute() -> None:
@@ -583,7 +583,7 @@ def test_post_script_table_unknown_format_falls_through_chain() -> None:
             return "stub"
 
     pst.read(_StubFont(), stream)
-    assert pst._format_type == 5.0  # noqa: SLF001
+    assert pst._format_type == 5.0
     assert pst.initialized is True
 
 
@@ -616,7 +616,7 @@ def test_post_script_table_format_4_0_reads_cid_names() -> None:
             return 2
 
     pst.read(_StubFont(), stream)
-    assert pst._glyph_names == ["a100", "a200"]  # noqa: SLF001
+    assert pst._glyph_names == ["a100", "a200"]
     assert pst.initialized is True
 
 
@@ -629,16 +629,16 @@ def test_glyf_simple_descript_glyph_with_no_program() -> None:
     """
 
     class _Glyph:
-        numberOfContours = 1  # noqa: N815
+        numberOfContours = 1
 
-        def getCoordinates(self, glyf_table: Any) -> tuple:  # noqa: N802
+        def getCoordinates(self, glyf_table: Any) -> tuple:
             return ([(0, 0), (1, 0), (0, 1)], [2], [0x01, 0x01, 0x01])
 
         # No `program` attribute → getattr returns None.
 
     descript = GlyfSimpleDescript.from_glyph(_Glyph(), None)
     # Instructions left at default (None) — body of the if-block skipped.
-    assert descript._instructions in (None, [])  # noqa: SLF001
+    assert descript._instructions in (None, [])
 
 
 def test_glyf_simple_descript_glyph_program_no_bytecode() -> None:
@@ -651,15 +651,15 @@ def test_glyf_simple_descript_glyph_program_no_bytecode() -> None:
         pass
 
     class _Glyph:
-        numberOfContours = 1  # noqa: N815
+        numberOfContours = 1
         program = _Program()
 
-        def getCoordinates(self, glyf_table: Any) -> tuple:  # noqa: N802
+        def getCoordinates(self, glyf_table: Any) -> tuple:
             return ([(0, 0), (1, 0)], [1], [0x01, 0x01])
 
     descript = GlyfSimpleDescript.from_glyph(_Glyph(), None)
     # bytecode is None → if-body skipped; _instructions stays at default.
-    assert descript._instructions in (None, [])  # noqa: SLF001
+    assert descript._instructions in (None, [])
 
 
 # ---------- TTFDataStream (2 partials) -------------------------------------
@@ -684,7 +684,7 @@ def test_ttf_data_stream_check_read_bounds_raises_on_overflow() -> None:
     buf = bytearray(b"AAAA")
     # offset 0, length 100 → capacity is 4, request 100 → raise
     with pytest.raises(IndexError, match="out of bounds"):
-        TTFDataStream._check_read_bounds(buf, 0, 100)  # noqa: SLF001
+        TTFDataStream._check_read_bounds(buf, 0, 100)
 
 
 def test_ttf_data_stream_check_read_bounds_ok_path() -> None:
@@ -695,7 +695,7 @@ def test_ttf_data_stream_check_read_bounds_ok_path() -> None:
 
     buf = bytearray(b"AAAA")
     # offset 0, length 4 → capacity is 4 → no raise
-    result = TTFDataStream._check_read_bounds(buf, 0, 4)  # noqa: SLF001
+    result = TTFDataStream._check_read_bounds(buf, 0, 4)
     assert result is None  # method returns None implicitly
 
 
@@ -892,7 +892,7 @@ def test_check_for_cid_gid_identity_loop_completes_on_match() -> None:
     )
 
     class _MaxP:
-        numGlyphs = 3  # noqa: N815
+        numGlyphs = 3
 
     class _Charset:
         def __getitem__(self, idx: int) -> int:
@@ -913,7 +913,7 @@ def test_check_for_cid_gid_identity_loop_completes_on_match() -> None:
             raise KeyError(key)
 
     embedder = object.__new__(PDCIDFontType2Embedder)
-    embedder._ttf = _TTF()  # noqa: SLF001
+    embedder._ttf = _TTF()
     # check_for_cid_gid_identity — completes without raising.
     embedder.check_for_cid_gid_identity()
 
@@ -934,10 +934,10 @@ def test_build_to_unicode_cmap_pdf_version_already_at_least_1_5() -> None:
     doc.set_version(1.7)
 
     class _MaxP:
-        numGlyphs = 2  # noqa: N815
+        numGlyphs = 2
 
     class _CmapTable:
-        def getBestCmap(self) -> dict:  # noqa: N802
+        def getBestCmap(self) -> dict:
             # Surrogate-pair codepoint
             return {0x1F600: "smile"}
 
@@ -953,14 +953,14 @@ def test_build_to_unicode_cmap_pdf_version_already_at_least_1_5() -> None:
             return 1
 
     embedder = object.__new__(PDCIDFontType2Embedder)
-    embedder._ttf = _TTF()  # noqa: SLF001
-    embedder._document_ref = doc  # noqa: SLF001
-    embedder._dict = COSDictionary()  # noqa: SLF001
+    embedder._ttf = _TTF()
+    embedder._document_ref = doc
+    embedder._dict = COSDictionary()
     # PDFBOX-6210: the builder now consults the insertion-ordered subset
     # code points (used-code-point preference); seed the empty store the
     # real __init__ would have created.
-    embedder._subset_code_points = {}  # noqa: SLF001
-    embedder._build_to_unicode_cmap(None)  # noqa: SLF001
+    embedder._subset_code_points = {}
+    embedder._build_to_unicode_cmap(None)
     # Version must still be ≥ 1.5 (not bumped down, not modified up).
     assert float(doc.get_version()) >= 1.5
 
@@ -978,7 +978,7 @@ def test_cff_font_get_sid_with_no_strings_index() -> None:
         strings = None  # the explicit None branch under test
 
     font = object.__new__(CFFFont)
-    font._fontset = _FontSet()  # noqa: SLF001
+    font._fontset = _FontSet()
     # 'unknown_name' is not a standard string → falls to strings-index
     # check → strings is None → returns 0.
     sid = font.get_sid("not_a_real_standard_glyph_name_zzzzz")
@@ -1020,18 +1020,18 @@ def test_cff_font_get_glyph_widths_skip_already_cached() -> None:
             return ["A", "B"]
 
     font = object.__new__(CFFFont)
-    font._top = _Top()  # noqa: SLF001
+    font._top = _Top()
     # Pre-populate cache so the for-loop body is skipped for "A".
-    font._widths = {"A": 500.0}  # noqa: SLF001
+    font._widths = {"A": 500.0}
 
     def fake_charstrings_dict() -> Any:
         return _CS()
 
     def fake_get_width(name: str) -> float:
-        font._widths[name] = 700.0  # noqa: SLF001
+        font._widths[name] = 700.0
         return 700.0
 
-    font._charstrings_dict = fake_charstrings_dict  # noqa: SLF001
+    font._charstrings_dict = fake_charstrings_dict
     font.get_width = fake_get_width
     widths = font.get_glyph_widths()
     # A's pre-existing 500 is preserved (loop body skipped); B is
@@ -1068,8 +1068,8 @@ def test_pd_type1_font_get_glyph_path_dict_encoding_no_base() -> None:
     assert not encoding.has_base_encoding()
     # Force-replace the cached typed encoding and short-circuit
     # auto-resolution.
-    font._encoding_typed = encoding  # noqa: SLF001
-    font._encoding_resolved = True  # noqa: SLF001
+    font._encoding_typed = encoding
+    font._encoding_resolved = True
     # get_glyph_path with a printable code: encoding returns .notdef
     # (empty differences) → 411 fallback to default StandardEncoding
     # runs → fetches the Standard 14 glyph path for "A".
@@ -1262,8 +1262,8 @@ def test_pd_simple_font_is_standard_14_empty_differences_returns_true() -> None:
     )
     enc_dict.set_item(COSName.get_pdf_name("Differences"), COSArray())
     encoding = DictionaryEncoding(font_encoding=enc_dict, is_non_symbolic=True)
-    font._encoding_typed = encoding  # noqa: SLF001
-    font._encoding_resolved = True  # noqa: SLF001
+    font._encoding_typed = encoding
+    font._encoding_resolved = True
     assert font.is_standard_14() is True
 
 
@@ -1350,4 +1350,4 @@ def test_post_script_table_format_2_5_with_unknown_index_yields_empty_name() -> 
 
     pst.read(_StubFont(), stream)
     # First name should have been left as "" (the body skipped).
-    assert pst._glyph_names is not None  # noqa: SLF001
+    assert pst._glyph_names is not None

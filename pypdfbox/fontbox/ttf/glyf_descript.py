@@ -111,7 +111,7 @@ class GlyfDescript:
         """
         return 0
 
-    def get_end_pt_of_contours(self, i: int) -> int:  # noqa: ARG002
+    def get_end_pt_of_contours(self, i: int) -> int:
         """Return the end-point index of the *i*-th contour.
 
         Mirrors upstream's abstract ``getEndPtOfContours(int)``
@@ -121,7 +121,7 @@ class GlyfDescript:
         """
         return -1
 
-    def get_flags(self, i: int) -> int:  # noqa: ARG002
+    def get_flags(self, i: int) -> int:
         """Return the outline flag byte for the *i*-th point.
 
         Mirrors upstream's abstract ``getFlags(int)``
@@ -131,7 +131,7 @@ class GlyfDescript:
         """
         return 0
 
-    def get_x_coordinate(self, i: int) -> int:  # noqa: ARG002
+    def get_x_coordinate(self, i: int) -> int:
         """Return the x coordinate of the *i*-th point.
 
         Mirrors upstream's abstract ``getXCoordinate(int)``
@@ -141,7 +141,7 @@ class GlyfDescript:
         """
         return 0
 
-    def get_y_coordinate(self, i: int) -> int:  # noqa: ARG002
+    def get_y_coordinate(self, i: int) -> int:
         """Return the y coordinate of the *i*-th point.
 
         Mirrors upstream's abstract ``getYCoordinate(int)``

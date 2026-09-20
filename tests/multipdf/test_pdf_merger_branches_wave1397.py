@@ -69,7 +69,7 @@ class _IdentityCloner:
     def clone_for_new_document(self, value: object) -> object:
         return value
 
-    def _clone_merge_cos_base(  # noqa: N801
+    def _clone_merge_cos_base(
         self, src: object, dst: object, seen: set
     ) -> None:
         del src, dst, seen
@@ -78,7 +78,7 @@ class _IdentityCloner:
 class _NoneCloner:
     def clone_for_new_document(self, value: object) -> None:
         del value
-        return None
+        return
 
     def _clone_merge_cos_base(self, src: object, dst: object, seen: set) -> None:
         del src, dst, seen
@@ -221,7 +221,7 @@ def test_merge_threads_short_circuits_when_source_missing() -> None:
     util = PDFMergerUtility()
     src = _SimpleCatalog()  # no /Threads
     dst = _SimpleCatalog()
-    util._merge_threads(_IdentityCloner(), src, dst)  # noqa: SLF001
+    util._merge_threads(_IdentityCloner(), src, dst)
     assert dst.get_cos_object().get_dictionary_object(_THREADS) is None
 
 
@@ -234,7 +234,7 @@ def test_merge_threads_installs_when_dest_missing() -> None:
     src = _SimpleCatalog()
     src.get_cos_object().set_item(_THREADS, src_threads)
     dst = _SimpleCatalog()
-    util._merge_threads(_NoneCloner(), src, dst)  # noqa: SLF001
+    util._merge_threads(_NoneCloner(), src, dst)
     # Cloner returned None → no install
     assert dst.get_cos_object().get_dictionary_object(_THREADS) is None
 
@@ -251,7 +251,7 @@ def test_merge_threads_appends_to_existing_dest_array() -> None:
     dst_threads.add(COSString("from_dst"))
     dst.get_cos_object().set_item(_THREADS, dst_threads)
 
-    util._merge_threads(_IdentityCloner(), src, dst)  # noqa: SLF001
+    util._merge_threads(_IdentityCloner(), src, dst)
     # IdentityCloner returns the array verbatim → dst gets src entries.
     assert dst_threads.size() == 2
 
@@ -265,7 +265,7 @@ def test_merge_threads_install_when_dest_array_missing() -> None:
     src = _SimpleCatalog()
     src.get_cos_object().set_item(_THREADS, src_threads)
     dst = _SimpleCatalog()
-    util._merge_threads(_IdentityCloner(), src, dst)  # noqa: SLF001
+    util._merge_threads(_IdentityCloner(), src, dst)
     assert isinstance(
         dst.get_cos_object().get_dictionary_object(_THREADS), COSArray
     )
@@ -283,7 +283,7 @@ def test_merge_names_install_skipped_when_cloner_returns_none() -> None:
     src = _SimpleCatalog()
     src.get_cos_object().set_item(_NAMES, src_names)
     dst = _SimpleCatalog()
-    util._merge_names(_NoneCloner(), src, dst)  # noqa: SLF001
+    util._merge_names(_NoneCloner(), src, dst)
     assert dst.get_cos_object().get_dictionary_object(_NAMES) is None
 
 
@@ -296,7 +296,7 @@ def test_merge_names_dests_install_skipped_when_cloner_returns_none() -> None:
     src = _SimpleCatalog()
     src.get_cos_object().set_item(_DESTS, src_dests)
     dst = _SimpleCatalog()
-    util._merge_names(_NoneCloner(), src, dst)  # noqa: SLF001
+    util._merge_names(_NoneCloner(), src, dst)
     assert dst.get_cos_object().get_dictionary_object(_DESTS) is None
 
 
@@ -309,7 +309,7 @@ def test_merge_names_strips_id_tree_when_present() -> None:
     src = _SimpleCatalog()
     src.get_cos_object().set_item(_NAMES, src_names)
     dst = _SimpleCatalog()
-    util._merge_names(_IdentityCloner(), src, dst)  # noqa: SLF001
+    util._merge_names(_IdentityCloner(), src, dst)
     dst_names = dst.get_cos_object().get_dictionary_object(_NAMES)
     assert isinstance(dst_names, COSDictionary)
     assert dst_names.get_dictionary_object(COSName.get_pdf_name("IDTree")) is None
@@ -330,7 +330,7 @@ def test_merge_metadata_cloner_none_skips_install() -> None:
         def get_metadata(self) -> None:
             return None
 
-    util._merge_metadata(_NoneCloner(), src, dst, _Document())  # noqa: SLF001
+    util._merge_metadata(_NoneCloner(), src, dst, _Document())
     assert dst.get_cos_object().get_dictionary_object(_METADATA) is None
 
 
@@ -341,7 +341,7 @@ def test_merge_oc_properties_cloner_none_skips_install() -> None:
     src = _SimpleCatalog()
     src.get_cos_object().set_item(_OC_PROPERTIES, COSDictionary())
     dst = _SimpleCatalog()
-    util._merge_oc_properties(_NoneCloner(), src, dst)  # noqa: SLF001
+    util._merge_oc_properties(_NoneCloner(), src, dst)
     assert dst.get_cos_object().get_dictionary_object(_OC_PROPERTIES) is None
 
 
@@ -355,7 +355,7 @@ def test_merge_output_intents_cloner_none_skips_install() -> None:
     arr.add(COSDictionary())
     src.get_cos_object().set_item(_OUTPUT_INTENTS, arr)
     dst = _SimpleCatalog()
-    util._merge_output_intents(_NoneCloner(), src, dst)  # noqa: SLF001
+    util._merge_output_intents(_NoneCloner(), src, dst)
     assert dst.get_cos_object().get_dictionary_object(_OUTPUT_INTENTS) is None
 
 
@@ -374,7 +374,7 @@ def test_merge_output_intents_appends_when_dest_array_present() -> None:
     dst_arr.add(COSDictionary())
     dst.get_cos_object().set_item(_OUTPUT_INTENTS, dst_arr)
 
-    util._merge_output_intents(_IdentityCloner(), src, dst)  # noqa: SLF001
+    util._merge_output_intents(_IdentityCloner(), src, dst)
     assert dst_arr.size() == 2
 
 
@@ -388,7 +388,7 @@ def test_merge_open_action_cloner_none_skips_install() -> None:
     src = _SimpleCatalog()
     src.get_cos_object().set_item(_OPEN_ACTION, COSArray())
     dst = _SimpleCatalog()
-    util._merge_open_action(_NoneCloner(), src, dst)  # noqa: SLF001
+    util._merge_open_action(_NoneCloner(), src, dst)
     assert dst.get_cos_object().get_dictionary_object(_OPEN_ACTION) is None
 
 
@@ -415,7 +415,7 @@ def test_merge_acro_form_install_skipped_when_clone_returns_none() -> None:
             return []
 
     util = PDFMergerUtility()
-    util._merge_acro_form(  # noqa: SLF001
+    util._merge_acro_form(
         _NoneCloner(),
         _CatalogWithForm(None),
         _CatalogWithForm(_Form()),
@@ -467,11 +467,11 @@ def test_acro_form_join_fields_mode_delegates_to_legacy() -> None:
     dst = _Form([])
     # None clone trips legacy mode's COSDictionary assertion (no silent skip).
     with pytest.raises(AssertionError):
-        util._acro_form_join_fields_mode(_NoneCloner(), dst, src)  # noqa: SLF001
+        util._acro_form_join_fields_mode(_NoneCloner(), dst, src)
 
     # With a real cloner and no collision, both fields land verbatim.
     dst2 = _Form([])
-    util._acro_form_join_fields_mode(_IdentityCloner(), dst2, _Form([_Field("g1")]))  # noqa: SLF001
+    util._acro_form_join_fields_mode(_IdentityCloner(), dst2, _Form([_Field("g1")]))
     fields = dst2.get_cos_object().get_dictionary_object(_FIELDS)
     assert isinstance(fields, COSArray)
     assert fields.size() == 1
@@ -490,7 +490,7 @@ def test_merge_role_map_install_skipped_when_clone_returns_none() -> None:
     src_root = _StructRoot()
     src_root.get_cos_object().set_item(_ROLE_MAP, src_rm)
     dst_root = _StructRoot()
-    util._merge_role_map(_NoneCloner(), src_root, dst_root)  # noqa: SLF001
+    util._merge_role_map(_NoneCloner(), src_root, dst_root)
     assert (
         dst_root.get_cos_object().get_dictionary_object(_ROLE_MAP) is None
     )
@@ -515,7 +515,7 @@ def test_merge_role_map_duplicate_key_logs_warning(
     with caplog.at_level(
         logging.WARNING, logger="pypdfbox.multipdf.pdf_merger_utility"
     ):
-        util._merge_role_map(_IdentityCloner(), src_root, dst_root)  # noqa: SLF001
+        util._merge_role_map(_IdentityCloner(), src_root, dst_root)
     assert "already exists in destination RoleMap" in caplog.text
 
 
@@ -534,7 +534,7 @@ def test_merge_role_map_dest_wins_on_identical_value() -> None:
     dst_root = _StructRoot()
     dst_root.get_cos_object().set_item(_ROLE_MAP, dst_rm)
 
-    util._merge_role_map(_IdentityCloner(), src_root, dst_root)  # noqa: SLF001
+    util._merge_role_map(_IdentityCloner(), src_root, dst_root)
     # Still exactly one entry.
     assert sum(1 for _ in dst_rm.entry_set()) == 1
 
@@ -550,7 +550,7 @@ def test_merge_id_tree_skips_none_value_clones() -> None:
     src_id_tree = _NameTreeOnly({"k1": COSDictionary()})
     src_root = _StructRoot(id_tree=src_id_tree)
     dst_root = _StructRoot(id_tree=None)
-    util._merge_id_tree(_NoneCloner(), src_root, dst_root)  # noqa: SLF001
+    util._merge_id_tree(_NoneCloner(), src_root, dst_root)
     # set_id_tree always called; the dict it carries should have no
     # wrapped values (clones returned None → wrap loop drops them).
     assert dst_root.set_id_tree_called_with is not None
@@ -569,7 +569,7 @@ def test_merge_id_tree_duplicate_key_logs_warning(
     with caplog.at_level(
         logging.WARNING, logger="pypdfbox.multipdf.pdf_merger_utility"
     ):
-        util._merge_id_tree(_IdentityCloner(), src_root, dst_root)  # noqa: SLF001
+        util._merge_id_tree(_IdentityCloner(), src_root, dst_root)
     assert "already exists in destination IDTree" in caplog.text
 
 
@@ -580,7 +580,7 @@ def test_merge_id_tree_non_dict_values_filtered_during_wrap() -> None:
     src_id_tree = _NameTreeOnly({"intval": COSInteger.get(7)})
     src_root = _StructRoot(id_tree=src_id_tree)
     dst_root = _StructRoot(id_tree=None)
-    util._merge_id_tree(_IdentityCloner(), src_root, dst_root)  # noqa: SLF001
+    util._merge_id_tree(_IdentityCloner(), src_root, dst_root)
     # No crash, set_id_tree still invoked.
     assert dst_root.set_id_tree_called_with is not None
 
@@ -660,7 +660,7 @@ def test_update_struct_parent_entries_skips_non_dict_annot_entries() -> None:
     annots.add(annot_dict)
     page.set_item(_ANNOTS, annots)
 
-    PDFMergerUtility._update_struct_parent_entries(page, 100)  # noqa: SLF001
+    PDFMergerUtility._update_struct_parent_entries(page, 100)
 
     assert page.get_dictionary_object(_STRUCT_PARENTS).int_value() == 102  # type: ignore[union-attr]
     assert annot_dict.get_dictionary_object(_STRUCT_PARENT).int_value() == 101  # type: ignore[union-attr]
@@ -673,7 +673,7 @@ def test_update_struct_parent_entries_skips_annot_without_struct_parent() -> Non
     annots = COSArray()
     annots.add(COSDictionary())  # no /StructParent
     page.set_item(_ANNOTS, annots)
-    PDFMergerUtility._update_struct_parent_entries(page, 5)  # noqa: SLF001
+    PDFMergerUtility._update_struct_parent_entries(page, 5)
     # Annot still bare.
     assert annots.get_object(0).get_dictionary_object(_STRUCT_PARENT) is None  # type: ignore[union-attr]
 
@@ -683,7 +683,7 @@ def test_update_struct_parent_entries_skips_negative_struct_parents() -> None:
     stays unchanged (branch 1650 false path)."""
     page = COSDictionary()
     page.set_item(_STRUCT_PARENTS, COSInteger.get(-1))
-    PDFMergerUtility._update_struct_parent_entries(page, 100)  # noqa: SLF001
+    PDFMergerUtility._update_struct_parent_entries(page, 100)
     assert page.get_dictionary_object(_STRUCT_PARENTS).int_value() == -1  # type: ignore[union-attr]
 
 
@@ -698,7 +698,7 @@ def test_update_page_references_map_skips_none_values() -> None:
     # array/dict dispatch arms.
     arr = COSArray()
     arr.add(COSDictionary())
-    util._update_page_references_map(  # noqa: SLF001
+    util._update_page_references_map(
         _IdentityCloner(), {0: None, 1: arr, 2: COSDictionary()}, {}
     )
 
@@ -707,7 +707,7 @@ def test_update_page_references_map_skips_unknown_shapes() -> None:
     """A COSString value is neither array nor dict → skipped (branch
     1584->1579 fallthrough)."""
     util = PDFMergerUtility()
-    util._update_page_references_map(  # noqa: SLF001
+    util._update_page_references_map(
         _IdentityCloner(), {0: COSString("garbage")}, {}
     )
 
@@ -720,7 +720,7 @@ def test_update_page_references_dict_clones_orphan_obj() -> None:
     orphan = COSDictionary()
     orphan.set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("OBJR"))
     entry.set_item(_OBJ, orphan)
-    util._update_page_references_dict(_IdentityCloner(), entry, {})  # noqa: SLF001
+    util._update_page_references_dict(_IdentityCloner(), entry, {})
     # Orphan was set via clone → IdentityCloner returns same reference.
     assert entry.get_dictionary_object(_OBJ) is orphan
 
@@ -732,7 +732,7 @@ def test_update_page_references_dict_orphan_clone_none_skips() -> None:
     entry = COSDictionary()
     orphan = COSDictionary()
     entry.set_item(_OBJ, orphan)
-    util._update_page_references_dict(_NoneCloner(), entry, {})  # noqa: SLF001
+    util._update_page_references_dict(_NoneCloner(), entry, {})
     # set_item was never called with a clone; original orphan still
     # there (get_dictionary_object on the original) — but the test only
     # cares that the helper completed.
@@ -769,7 +769,7 @@ def test_prepare_struct_tree_no_src_no_dest_returns_no_merge_state() -> None:
         pass
 
     (merge, key, src_map, dest_map, src_tree, dest_tree) = (
-        util._prepare_struct_tree_merge(  # noqa: SLF001
+        util._prepare_struct_tree_merge(
             src, dst, _Doc()
         )
     )
@@ -878,7 +878,7 @@ def test_merge_page_labels_skips_when_source_missing() -> None:
         def get_number_of_pages(self) -> int:
             return 0
 
-    util._merge_page_labels(  # noqa: SLF001
+    util._merge_page_labels(
         _IdentityCloner(), _Doc(src), _Doc(dst)
     )
     assert dst.get_cos_object().get_dictionary_object(_PAGE_LABELS) is None
@@ -908,7 +908,7 @@ def test_merge_page_labels_skips_clone_returning_none() -> None:
         def get_number_of_pages(self) -> int:
             return 0
 
-    util._merge_page_labels(  # noqa: SLF001
+    util._merge_page_labels(
         _NoneCloner(), _Doc(src), _Doc(dst)
     )
     dst_labels = dst.get_cos_object().get_dictionary_object(_PAGE_LABELS)
@@ -948,7 +948,7 @@ def test_merge_page_labels_bails_when_base_index_not_a_number(
     with caplog.at_level(
         logging.ERROR, logger="pypdfbox.multipdf.pdf_merger_utility"
     ):
-        util._merge_page_labels(  # noqa: SLF001
+        util._merge_page_labels(
             _IdentityCloner(), _Doc(src), _Doc(dst)
         )
     assert "page labels ignored" in caplog.text
@@ -969,7 +969,7 @@ def test_merge_oc_properties_merges_into_existing_dest_dict() -> None:
         def clone_for_new_document(self, value: object) -> object:
             return value
 
-        def _clone_merge_cos_base(  # noqa: N801
+        def _clone_merge_cos_base(
             self, src: object, dst: object, seen: set
         ) -> None:
             self.called = True
@@ -981,7 +981,7 @@ def test_merge_oc_properties_merges_into_existing_dest_dict() -> None:
     dst.get_cos_object().set_item(_OC_PROPERTIES, COSDictionary())
 
     cloner = _CapturingCloner()
-    util._merge_oc_properties(cloner, src, dst)  # noqa: SLF001
+    util._merge_oc_properties(cloner, src, dst)
     assert cloner.called is True
 
 
@@ -999,7 +999,7 @@ def test_merge_acro_form_returns_when_both_none() -> None:
         def get_acro_form(self) -> None:
             return None
 
-    util._merge_acro_form(  # noqa: SLF001
+    util._merge_acro_form(
         _IdentityCloner(), _CatNoForm(), _CatNoForm()
     )
 
@@ -1019,7 +1019,7 @@ def test_merge_acro_form_legacy_short_circuits_on_empty_fields() -> None:
             return []
 
     util = PDFMergerUtility()
-    util._acro_form_legacy_mode(  # noqa: SLF001
+    util._acro_form_legacy_mode(
         _IdentityCloner(), _Form(), _Form()
     )
 
@@ -1065,7 +1065,7 @@ def test_acro_form_legacy_dest_field_partial_name_none_is_skipped() -> None:
     util = PDFMergerUtility()
     dst = _Form([_Field(None), _Field("dummyFieldNamenotnumeric")], set())
     src = _Form([_Field("f1")], set())
-    util._acro_form_legacy_mode(_IdentityCloner(), dst, src)  # noqa: SLF001
+    util._acro_form_legacy_mode(_IdentityCloner(), dst, src)
 
 
 # ---------- merge_viewer_preferences (public wrapper) ----------
@@ -1294,7 +1294,7 @@ def test_merge_role_map_duplicate_value_with_existing_match_via_clone_returning_
     class _CapturingNoneCloner:
         def clone_for_new_document(self, value: object) -> None:
             del value
-            return None
+            return
 
         def _clone_merge_cos_base(self, src: object, dst: object, seen: set) -> None:
             del src, dst, seen
@@ -1309,7 +1309,7 @@ def test_merge_role_map_duplicate_value_with_existing_match_via_clone_returning_
     dst_rm = COSDictionary()
     dst_root = _StructRoot()
     dst_root.get_cos_object().set_item(_ROLE_MAP, dst_rm)
-    util._merge_role_map(_CapturingNoneCloner(), src_root, dst_root)  # noqa: SLF001
+    util._merge_role_map(_CapturingNoneCloner(), src_root, dst_root)
     # New key was not installed because the cloner returned None.
     assert dst_rm.get_dictionary_object(COSName.get_pdf_name("New")) is None
 
@@ -1335,7 +1335,7 @@ def test_merge_threads_when_cloned_src_not_array() -> None:
     dst_threads = COSArray()
     dst_threads.add(COSString("existing"))
     dst.get_cos_object().set_item(_THREADS, dst_threads)
-    util._merge_threads(_ScalarCloner(), src, dst)  # noqa: SLF001
+    util._merge_threads(_ScalarCloner(), src, dst)
     assert dst_threads.size() == 1  # No append happened.
 
 
@@ -1358,7 +1358,7 @@ def test_merge_output_intents_when_cloned_not_array() -> None:
     dst_arr = COSArray()
     dst_arr.add(COSDictionary())
     dst.get_cos_object().set_item(_OUTPUT_INTENTS, dst_arr)
-    util._merge_output_intents(_DictCloner(), src, dst)  # noqa: SLF001
+    util._merge_output_intents(_DictCloner(), src, dst)
     # No append happened.
     assert dst_arr.size() == 1
 
@@ -1431,7 +1431,7 @@ def test_finish_struct_tree_merge_skips_none_values_and_clones() -> None:
     class _NoneCloner2:
         def clone_for_new_document(self, value: object) -> None:
             del value
-            return None
+            return
 
         def _clone_merge_cos_base(self, src: object, dst: object, seen: set) -> None:
             del src, dst, seen
@@ -1461,7 +1461,7 @@ def test_finish_struct_tree_merge_skips_none_values_and_clones() -> None:
     dst_tree = _Tree()
     src_map: dict[int, COSBase] = {0: None, 1: COSDictionary()}  # type: ignore[dict-item]
     dst_map: dict[int, COSBase] = {}
-    util._finish_struct_tree_merge(  # noqa: SLF001
+    util._finish_struct_tree_merge(
         _NoneCloner2(),  # type: ignore[arg-type]
         src_tree,
         dst_tree,
@@ -1530,7 +1530,7 @@ def test_prepare_struct_tree_when_dest_pt_is_none() -> None:
         pass
 
     (merge, key, src_map, dest_map, src_tree, dest_tree) = (
-        util._prepare_struct_tree_merge(  # noqa: SLF001
+        util._prepare_struct_tree_merge(
             src, dst, _Doc()
         )
     )

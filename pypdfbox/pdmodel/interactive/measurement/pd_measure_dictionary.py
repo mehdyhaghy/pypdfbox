@@ -66,7 +66,7 @@ class PDMeasureDictionary:
         its string value, not the default.
         """
         # Local import to avoid an import cycle with the subclass.
-        from .pd_rectlinear_measure_dictionary import (  # noqa: PLC0415
+        from .pd_rectlinear_measure_dictionary import (
             PDRectlinearMeasureDictionary,
         )
 

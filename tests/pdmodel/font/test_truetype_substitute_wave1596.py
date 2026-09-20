@@ -113,8 +113,8 @@ def test_non_embedded_height_is_non_zero():
 
 def test_substitute_is_cached_single_instance():
     font = _non_embedded_truetype()
-    first = font._get_substitute_font()  # noqa: SLF001
-    second = font._get_substitute_font()  # noqa: SLF001
+    first = font._get_substitute_font()
+    second = font._get_substitute_font()
     assert first is not None
     assert first is second
 
@@ -124,7 +124,7 @@ def test_substitute_is_pypdfbox_true_type_font():
     substitute must be a pypdfbox :class:`TrueTypeFont`, not a raw
     fontTools ``TTFont``."""
     font = _non_embedded_truetype()
-    assert isinstance(font._get_substitute_font(), TrueTypeFont)  # noqa: SLF001
+    assert isinstance(font._get_substitute_font(), TrueTypeFont)
 
 
 # ---------- (b) is_embedded() stays False for a substitute ----------
@@ -196,7 +196,7 @@ def test_embedded_font_does_not_load_a_substitute():
     assert embedded is not None
     # ``_get_substitute_font`` returns the embedded program for an
     # embedded font (no separate substitute is mapped).
-    assert font._get_substitute_font() is embedded  # noqa: SLF001
+    assert font._get_substitute_font() is embedded
 
 
 def test_embedded_font_glyph_resolution_uses_embedded_program():
@@ -213,7 +213,7 @@ def test_embedded_font_glyph_resolution_uses_embedded_program():
 def test_set_true_type_font_clears_substitute_cache():
     """Injecting a program must drop any previously-resolved substitute."""
     font = _non_embedded_truetype()
-    assert font._get_substitute_font() is not None  # noqa: SLF001
+    assert font._get_substitute_font() is not None
     ttf = TrueTypeFont.from_bytes(_BUNDLED_TTF.read_bytes())
     font.set_true_type_font(ttf)
     assert font.is_embedded() is True

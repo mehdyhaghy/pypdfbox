@@ -125,7 +125,7 @@ class BruteForceParser(COSParser):
         return []
 
     @staticmethod
-    def compare_cos_objects(a, b) -> int:  # noqa: ANN001 — match upstream signature
+    def compare_cos_objects(a, b) -> int:
         """Compare two ``COSObject`` candidates by object number.
 
         Mirrors upstream ``compareCOSObjects`` (Java line ~810,
@@ -158,7 +158,7 @@ class BruteForceParser(COSParser):
         return {}
 
     @staticmethod
-    def is_catalog(dictionary) -> bool:  # noqa: ANN001 — match upstream signature
+    def is_catalog(dictionary) -> bool:
         """``True`` if ``dictionary`` is a PDF or FDF catalog.
 
         Mirrors upstream ``isCatalog`` (Java line 763-767, private):
@@ -166,8 +166,8 @@ class BruteForceParser(COSParser):
         FDF root dictionaries omit ``/Type /Catalog`` but carry ``/FDF`` and
         are equally valid root dictionaries (PDFBOX-3639).
         """
-        from pypdfbox.cos.cos_dictionary import COSDictionary  # noqa: PLC0415
-        from pypdfbox.cos.cos_name import COSName  # noqa: PLC0415
+        from pypdfbox.cos.cos_dictionary import COSDictionary
+        from pypdfbox.cos.cos_name import COSName
 
         if not isinstance(dictionary, COSDictionary):
             return False
@@ -176,7 +176,7 @@ class BruteForceParser(COSParser):
         )
 
     @staticmethod
-    def is_info(dictionary) -> bool:  # noqa: ANN001 — match upstream signature
+    def is_info(dictionary) -> bool:
         """``True`` if ``dictionary`` looks like a document info dictionary.
 
         Mirrors upstream ``isInfo`` (Java line ~509, private static).
@@ -184,8 +184,8 @@ class BruteForceParser(COSParser):
         ``/Title``, ``/Subject``, ``/Keywords``, ``/CreationDate``,
         ``/ModDate``.
         """
-        from pypdfbox.cos.cos_dictionary import COSDictionary  # noqa: PLC0415
-        from pypdfbox.cos.cos_name import COSName  # noqa: PLC0415
+        from pypdfbox.cos.cos_dictionary import COSDictionary
+        from pypdfbox.cos.cos_name import COSName
 
         if not isinstance(dictionary, COSDictionary):
             return False

@@ -34,7 +34,7 @@ def _extracttext_args(**overrides: object) -> argparse.Namespace:
 def test_wave732_extracttext_rotation_magic_returns_for_empty_range() -> None:
     output = io.StringIO()
 
-    extracttext._extract_text_rotation_magic(  # noqa: SLF001
+    extracttext._extract_text_rotation_magic(
         object(),
         output,
         first=4,
@@ -93,7 +93,7 @@ def test_wave732_extracttext_rotation_magic_uses_zero_angle_when_none_found(
     output = io.StringIO()
     document = object()
 
-    extracttext._extract_text_rotation_magic(  # noqa: SLF001
+    extracttext._extract_text_rotation_magic(
         document,
         output,
         first=1,
@@ -163,7 +163,7 @@ def test_wave732_version_project_version_falls_back_when_distribution_missing(
 
     monkeypatch.setattr(version.metadata, "version", _missing_version)
 
-    assert version._project_version() == "0.0.0+unknown"  # noqa: SLF001
+    assert version._project_version() == "0.0.0+unknown"
 
 
 def test_wave732_version_dependency_versions_returns_empty_when_distribution_missing(
@@ -174,7 +174,7 @@ def test_wave732_version_dependency_versions_returns_empty_when_distribution_mis
 
     monkeypatch.setattr(version.metadata, "distribution", _missing_distribution)
 
-    assert version._dependency_versions() == []  # noqa: SLF001
+    assert version._dependency_versions() == []
 
 
 def test_wave732_version_dependency_versions_normalizes_requirements(
@@ -199,7 +199,7 @@ def test_wave732_version_dependency_versions_normalizes_requirements(
     monkeypatch.setattr(version.metadata, "distribution", _distribution)
     monkeypatch.setattr(version.metadata, "version", _dependency_version)
 
-    assert version._dependency_versions() == [  # noqa: SLF001
+    assert version._dependency_versions() == [
         ("installed", "9.9"),
         ("missing", "<not installed>"),
     ]

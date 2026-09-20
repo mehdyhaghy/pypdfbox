@@ -17,7 +17,7 @@ def test_wave585_wraps_type0_descendant_and_missing_info_branches() -> None:
     descendant_dict = COSDictionary()
     descendant_dict.set_name(COSName.SUBTYPE, PDCIDFontType0.SUB_TYPE)  # type: ignore[attr-defined]
     parent = PDType0Font()
-    wrapped = PDType0Font._wrap_descendant(descendant_dict, parent)  # noqa: SLF001
+    wrapped = PDType0Font._wrap_descendant(descendant_dict, parent)
 
     assert isinstance(wrapped, PDCIDFontType0)
     assert PDType0Font().get_cid_system_info() is None
@@ -62,14 +62,14 @@ def test_wave585_string_encode_and_none_cmap_codepoint_path(
     )
 
     assert font.encode("AZ") == b"AZ"
-    assert PDType0Font._encode_codepoint(0x1234, None) == b"\x12\x34"  # noqa: SLF001
+    assert PDType0Font._encode_codepoint(0x1234, None) == b"\x12\x34"
 
 
 def test_wave585_read_font_bytes_accepts_binary_stream_and_rejects_object() -> None:
-    assert type0_module._read_font_bytes(io.BytesIO(b"font-data")) == b"font-data"  # noqa: SLF001
+    assert type0_module._read_font_bytes(io.BytesIO(b"font-data")) == b"font-data"
 
     with pytest.raises(TypeError, match="cannot read font bytes"):
-        type0_module._read_font_bytes(object())  # noqa: SLF001
+        type0_module._read_font_bytes(object())
 
 
 def test_wave585_ps_name_uses_non_empty_record_text() -> None:
@@ -77,7 +77,7 @@ def test_wave585_ps_name_uses_non_empty_record_text() -> None:
     name_table = SimpleNamespace(getName=lambda *_args: record)
     ttf = SimpleNamespace(_tt={"name": name_table})
 
-    assert type0_module._ps_name_from_ttf(ttf, "Fallback") == "PostScriptName"  # noqa: SLF001
+    assert type0_module._ps_name_from_ttf(ttf, "Fallback") == "PostScriptName"
 
 
 def test_wave585_build_type0_from_ttf_wires_parent_and_descendant(
@@ -102,7 +102,7 @@ def test_wave585_build_type0_from_ttf_wires_parent_and_descendant(
     )
     monkeypatch.setattr(type0_module, "_build_w_array", lambda _ttf: fake_widths)
 
-    font = type0_module._build_type0_from_ttf(b"ttf", fallback_name="Fallback")  # noqa: SLF001
+    font = type0_module._build_type0_from_ttf(b"ttf", fallback_name="Fallback")
 
     assert font.get_base_font() == "BuiltPS"
     assert font.get_encoding().name == "Identity-H"

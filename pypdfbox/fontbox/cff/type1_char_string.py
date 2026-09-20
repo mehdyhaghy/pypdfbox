@@ -44,7 +44,7 @@ def _font_subrs_as_charstrings(font: Any, ps_char_strings: Any) -> list[Any]:
         return []
     try:
         raw_subrs = get()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return []
     wrapped: list[Any] = []
     for entry in raw_subrs:
@@ -121,7 +121,7 @@ def _make_extended_extractor(pen: Any, subrs: Any) -> Any:
     charstrings rarely use these on the operand stack — they appear in
     Other-Subroutine machinery — but PDFBox handles them, so we do too.
     """
-    from fontTools.misc import psCharStrings  # type: ignore[import-untyped]  # noqa: PLC0415
+    from fontTools.misc import psCharStrings  # type: ignore[import-untyped]
 
     class _Type1ExtendedExtractor(psCharStrings.T1OutlineExtractor):  # type: ignore[misc]
         def op_dup(self, index: int) -> None:
@@ -219,20 +219,20 @@ def _make_path_pen(font: Any = None) -> Any:
     path and rendered **blank** — the Type 1 analogue of the wave-1438
     TrueType composite-component drop.
     """
-    from fontTools.pens.basePen import BasePen  # type: ignore[import-untyped]  # noqa: PLC0415
+    from fontTools.pens.basePen import BasePen  # type: ignore[import-untyped]
 
     class _PathPen(BasePen):  # type: ignore[misc]
         def __init__(self) -> None:
             super().__init__(glyphSet=None)
             self.commands: list[tuple[Any, ...]] = []
 
-        def _moveTo(self, pt: tuple[float, float]) -> None:
+        def _moveTo(self, pt: tuple[float, float]) -> None:  # noqa: N802 (fontTools BasePen hook)
             self.commands.append(("moveto", float(pt[0]), float(pt[1])))
 
-        def _lineTo(self, pt: tuple[float, float]) -> None:
+        def _lineTo(self, pt: tuple[float, float]) -> None:  # noqa: N802 (fontTools BasePen hook)
             self.commands.append(("lineto", float(pt[0]), float(pt[1])))
 
-        def _curveToOne(
+        def _curveToOne(  # noqa: N802 (fontTools BasePen hook)
             self,
             pt1: tuple[float, float],
             pt2: tuple[float, float],
@@ -250,7 +250,7 @@ def _make_path_pen(font: Any = None) -> Any:
                 )
             )
 
-        def _closePath(self) -> None:
+        def _closePath(self) -> None:  # noqa: N802 (fontTools BasePen hook)
             self.commands.append(("closepath",))
 
         def addComponent(  # noqa: N802 (fontTools BasePen hook name)
@@ -278,7 +278,7 @@ def _make_path_pen(font: Any = None) -> Any:
             try:
                 component = get(glyph_name)
                 outline = component.get_path() or []
-            except Exception:  # noqa: BLE001
+            except Exception:
                 # Missing component / decode failure / runaway recursion
                 # (a seac whose component resolves back to itself,
                 # PDFBOX-5339) — skip, matching upstream warn-and-skip.
@@ -352,7 +352,7 @@ class Type1CharString:
         # the caller passes one, for ``__str__``-style introspection.
         self._type1_sequence: list[Any] = []
 
-        from fontTools.misc import psCharStrings  # noqa: PLC0415
+        from fontTools.misc import psCharStrings
 
         if isinstance(sequence, psCharStrings.T1CharString):
             self._t1 = sequence
@@ -436,13 +436,13 @@ class Type1CharString:
             self._cached_width = float(getattr(self._t1, "width", 0.0) or 0.0)
             return self._cached_width
 
-        from fontTools.pens.basePen import NullPen  # noqa: PLC0415
+        from fontTools.pens.basePen import NullPen
 
         try:
             self._cached_width = _draw_with_extended_extractor(
                 self._t1, NullPen()
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             self._cached_width = 0.0
         return self._cached_width
 
@@ -466,7 +466,7 @@ class Type1CharString:
         pen = _make_path_pen(self._font)
         try:
             width = _draw_with_extended_extractor(self._t1, pen)
-        except Exception:  # noqa: BLE001
+        except Exception:
             self._cached_path = []
             return []
         # Side-effect: extractor populates the advance width — cache it
@@ -570,7 +570,7 @@ class Type1CharString:
         pen = _make_path_pen(self._font)
         try:
             width = _draw_with_extended_extractor(self._t1, pen)
-        except Exception:  # noqa: BLE001
+        except Exception:
             self._cached_path = []
             self._cached_width = self._cached_width or 0.0
             return []
@@ -783,11 +783,11 @@ class Type1CharString:
         failures degrade to no-ops (matching upstream's warn-and-skip).
         """
         try:
-            from pypdfbox.fontbox.encoding.standard_encoding import (  # noqa: PLC0415
+            from pypdfbox.fontbox.encoding.standard_encoding import (
                 StandardEncoding,
             )
             std = StandardEncoding.INSTANCE
-        except Exception:  # noqa: BLE001
+        except Exception:
             std = None
 
         def _name(idx: Any) -> str | None:
@@ -798,7 +798,7 @@ class Type1CharString:
             if std is not None:
                 try:
                     return std.get_name(code)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     return None
             return None
 
@@ -813,7 +813,7 @@ class Type1CharString:
             try:
                 base_cs = get(base_name)
                 ctx.path.extend(base_cs.get_path() or [])
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
         # Accent character — translated by (lsb.x + adx - asb, lsb.y + ady).
         if accent_name is not None:
@@ -826,7 +826,7 @@ class Type1CharString:
                 ty = ctx.left_side_bearing[1] + float(ady)
                 for cmd in accent_path:
                     ctx.path.append(_translate_path_cmd(cmd, tx, ty))
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
     def to_string(self) -> str:

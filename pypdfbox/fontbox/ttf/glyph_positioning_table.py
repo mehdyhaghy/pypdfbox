@@ -188,7 +188,7 @@ class GlyphPositioningTable(TTFTable):
         self._feature_tags = list(seen_features.keys())
         self.initialized = True
 
-    def read(self, ttf: TrueTypeFont, data: TTFDataStream) -> None:  # noqa: ARG002
+    def read(self, ttf: TrueTypeFont, data: TTFDataStream) -> None:
         """Stand-in for the upstream ``read`` slot.
 
         We don't decode GPOS from the raw byte stream — fontTools owns

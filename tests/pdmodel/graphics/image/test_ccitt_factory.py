@@ -205,7 +205,7 @@ def test_create_from_byte_array_extracts_group3_tiff_as_k_zero() -> None:
     assert decode_parms.get_int("K", -99) == 0
 
 
-def test_create_from_file_delegates_to_byte_array(tmp_path) -> None:  # noqa: ANN001
+def test_create_from_file_delegates_to_byte_array(tmp_path) -> None:
     document = PDDocument()
     src = _pattern_image()
     tiff = _tiff_bytes(src, "group4")
@@ -293,7 +293,7 @@ def test_create_from_byte_array_returns_none_past_end_of_multi_page_tiff() -> No
     assert CCITTFactory.create_from_byte_array(document, tiff, 99) is None
 
 
-def test_create_from_file_supports_number_argument(tmp_path) -> None:  # noqa: ANN001
+def test_create_from_file_supports_number_argument(tmp_path) -> None:
     """``CCITTFactory.createFromFile(document, file, number)`` reaches a
     later page in the TIFF (line 190 upstream)."""
     document = PDDocument()
@@ -307,7 +307,7 @@ def test_create_from_file_supports_number_argument(tmp_path) -> None:  # noqa: A
     assert page1.get_height() == 7
 
 
-def test_create_from_file_does_not_lock_source_file(tmp_path) -> None:  # noqa: ANN001
+def test_create_from_file_does_not_lock_source_file(tmp_path) -> None:
     """Mirrors upstream ``testCreateFromFileLock`` — file must be released
     after the call so the caller can immediately delete it."""
     document = PDDocument()

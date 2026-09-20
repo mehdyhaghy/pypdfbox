@@ -291,7 +291,7 @@ class PDAnnotationLine(PDAnnotationMarkup):
         Mirrors the typed accessor exposed on
         :class:`PDAnnotationPolygon`/:class:`PDAnnotationPolyline`.
         """
-        from pypdfbox.pdmodel.interactive.measurement.pd_measure_dictionary import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.interactive.measurement.pd_measure_dictionary import (
             PDMeasureDictionary,
         )
 
@@ -362,13 +362,13 @@ class PDAnnotationLine(PDAnnotationMarkup):
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
-            return None
+            return
         from .handlers.pd_line_appearance_handler import (
             PDLineAppearanceHandler,
         )
 
         PDLineAppearanceHandler(self, document).generate_appearance_streams()
-        return None
+        return
 
 
 __all__ = ["PDAnnotationLine"]

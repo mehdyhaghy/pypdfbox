@@ -7,7 +7,7 @@ from tests.contentstream import test_pdf_graphics_stream_engine as graphics_mod
 
 
 def test_wave876_recording_graphics_engine_draw_image_records_payload() -> None:
-    engine = graphics_mod._RecordingGraphicsEngine()  # noqa: SLF001
+    engine = graphics_mod._RecordingGraphicsEngine()
     image = object()
 
     engine.draw_image(image)
@@ -16,7 +16,7 @@ def test_wave876_recording_graphics_engine_draw_image_records_payload() -> None:
 
 
 def test_wave876_bytes_content_stream_exposes_content_and_metadata() -> None:
-    stream = graphics_mod._BytesContentStream(b"10 20 m")  # noqa: SLF001
+    stream = graphics_mod._BytesContentStream(b"10 20 m")
 
     contents = stream.get_contents()
     assert isinstance(contents, io.BytesIO)

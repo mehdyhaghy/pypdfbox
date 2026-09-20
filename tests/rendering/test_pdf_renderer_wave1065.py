@@ -13,7 +13,7 @@ def test_wave522_make_doc_removes_existing_page(
     doc.add_page(PDPage(PDRectangle(0.0, 0.0, 1.0, 1.0)))
     monkeypatch.setattr(wave522, "PDDocument", lambda: doc)
     try:
-        made_doc, page = wave522._make_doc(7.0, 9.0)  # noqa: SLF001
+        made_doc, page = wave522._make_doc(7.0, 9.0)
 
         assert made_doc is doc
         assert doc.get_number_of_pages() == 1

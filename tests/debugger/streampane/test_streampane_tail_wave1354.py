@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import tkinter as tk
 
-import PIL.Image as PIL
+from PIL import Image
 
 from pypdfbox.contentstream.operator import Operator
 from pypdfbox.contentstream.operator_name import OperatorName
@@ -22,7 +22,7 @@ from pypdfbox.debugger.streampane.stream_pane import _ContentStreamEmitter
 
 
 def test_zoom_image_rotation_only_assigns_stored_rotation(tk_root: tk.Tk) -> None:
-    image = PIL.new("RGB", (10, 10), color="green")
+    image = Image.new("RGB", (10, 10), color="green")
     view = StreamImageView(tk_root, image, zoom_scale=1.0, rotation_degrees=0)
     # Pass rotation but leave scale=None — hits the rotation-only branch.
     rendered = view.zoom_image(scale=None, rotation=90)

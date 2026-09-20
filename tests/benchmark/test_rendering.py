@@ -102,7 +102,7 @@ class _FakeImage:
         self.saved_to: Path | None = None
         self.saved_format: str | None = None
 
-    def save(self, path, *, format: str | None = None) -> None:  # noqa: A002
+    def save(self, path, *, format: str | None = None) -> None:
         self.saved_to = Path(path)
         self.saved_format = format
         # Write a tiny placeholder so callers can read the file back.

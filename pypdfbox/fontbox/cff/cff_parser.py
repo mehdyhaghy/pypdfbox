@@ -113,7 +113,7 @@ class CFFParser:
         # 168-180). We forward only the inner ``CFF `` table to
         # fontTools so the ``decompile`` call stays pure-CFF.
         cff_payload = _strip_otf_wrapper(data)
-        from fontTools.cffLib import CFFFontSet  # type: ignore[import-untyped]  # noqa: PLC0415
+        from fontTools.cffLib import CFFFontSet  # type: ignore[import-untyped]
 
         fontset = CFFFontSet()
         # fontTools validates the CFF binary with bare ``assert`` statements
@@ -182,7 +182,7 @@ class CFFParser:
                 fonts.append(font)
         except OSError:
             raise
-        except Exception as exc:  # noqa: BLE001 - adapt fontTools failure modes
+        except Exception as exc:
             raise OSError(f"Invalid CFF font data: {exc}") from exc
 
         return fonts
@@ -425,7 +425,7 @@ class CFFParser:
         """PDFBox: ``CFFParser.readOperator``
         (``CFFParser.java`` lines 400-409). Resolves the (possibly
         two-byte ``12 xx``) operator code through CFFOperator."""
-        from .cff_operator import CFFOperator  # noqa: PLC0415
+        from .cff_operator import CFFOperator
 
         if b0 == 12:
             b1 = input_.read_unsigned_byte()
@@ -510,7 +510,7 @@ class CFFParser:
         (``CFFParser.java`` lines 909-925). Resolves an SID against
         the CFF standard strings, falling back to the parsed string
         INDEX, or returns ``SID<n>`` for out-of-range indices."""
-        from .cff_standard_string import CFFStandardString  # noqa: PLC0415
+        from .cff_standard_string import CFFStandardString
 
         if index < 0:
             msg = "Invalid negative index when reading a string"
@@ -612,7 +612,7 @@ class CFFParser:
         """PDFBox: ``CFFParser.readFormat0Encoding``
         (``CFFParser.java`` lines 949-966). Single-byte-per-glyph
         encoding."""
-        from .format0_encoding import Format0Encoding  # noqa: PLC0415
+        from .format0_encoding import Format0Encoding
 
         encoding = Format0Encoding(data_input.read_unsigned_byte())
         encoding.add(0, 0, ".notdef")
@@ -632,7 +632,7 @@ class CFFParser:
     ) -> Any:
         """PDFBox: ``CFFParser.readFormat1Encoding``
         (``CFFParser.java`` lines 968-990). Range-based encoding."""
-        from .format1_encoding import Format1Encoding  # noqa: PLC0415
+        from .format1_encoding import Format1Encoding
 
         encoding = Format1Encoding(data_input.read_unsigned_byte())
         encoding.add(0, 0, ".notdef")
@@ -652,7 +652,7 @@ class CFFParser:
         """PDFBox: ``CFFParser.readSupplement``
         (``CFFParser.java`` lines 992-1005). Reads the optional
         supplemental encoding table appended after Format0/Format1."""
-        from .cff_built_in_encoding import Supplement  # noqa: PLC0415
+        from .cff_built_in_encoding import Supplement
 
         n_sups = data_input.read_unsigned_byte()
         supplements = []
@@ -684,7 +684,7 @@ class CFFParser:
     def read_format0_fd_select(data_input: DataInput, n_glyphs: int) -> Any:
         """PDFBox: ``CFFParser.readFormat0FDSelect``
         (``CFFParser.java`` lines 1035-1044). One FD index per glyph."""
-        from .fd_select import Format0FDSelect  # noqa: PLC0415
+        from .fd_select import Format0FDSelect
 
         fds = [data_input.read_unsigned_byte() for _ in range(n_glyphs)]
         return Format0FDSelect(fds)
@@ -697,7 +697,7 @@ class CFFParser:
         Stored as ``(first, fd)`` tuples plus a sentinel — the
         Pythonic ``Format3FDSelect`` constructor takes the same shape
         upstream's package-private ``Range3[]`` array carries."""
-        from .fd_select import Format3FDSelect  # noqa: PLC0415
+        from .fd_select import Format3FDSelect
 
         nb_ranges = data_input.read_unsigned_short()
         ranges = [
@@ -738,7 +738,7 @@ class CFFParser:
     ) -> Any:
         """PDFBox: ``CFFParser.readFormat0Charset``
         (``CFFParser.java`` lines 1185-1207). Single-SID-per-glyph."""
-        from .embedded_charset import EmbeddedCharset  # noqa: PLC0415
+        from .embedded_charset import EmbeddedCharset
 
         charset = EmbeddedCharset(is_cid_font)
         if is_cid_font:
@@ -761,8 +761,8 @@ class CFFParser:
         """PDFBox: ``CFFParser.readFormat1Charset``
         (``CFFParser.java`` lines 1209-1242). Range-based charset
         (1-byte ``nLeft``)."""
-        from .format1_charset import Format1Charset  # noqa: PLC0415
-        from .range_mapping import RangeMapping  # noqa: PLC0415
+        from .format1_charset import Format1Charset
+        from .range_mapping import RangeMapping
 
         charset = Format1Charset(is_cid_font)
         if is_cid_font:
@@ -794,8 +794,8 @@ class CFFParser:
         """PDFBox: ``CFFParser.readFormat2Charset``
         (``CFFParser.java`` lines 1244-1277). Range-based charset
         (2-byte ``nLeft``)."""
-        from .format2_charset import Format2Charset  # noqa: PLC0415
-        from .range_mapping import RangeMapping  # noqa: PLC0415
+        from .format2_charset import Format2Charset
+        from .range_mapping import RangeMapping
 
         charset = Format2Charset(is_cid_font)
         if is_cid_font:
@@ -903,8 +903,8 @@ class CFFParser:
         """PDFBox: ``CFFParser.parseType1Dicts``
         (``CFFParser.java`` lines 862-907). Builds the encoding +
         private dict for a Type 1-equivalent font."""
-        from .cff_expert_encoding import CFFExpertEncoding  # noqa: PLC0415
-        from .cff_standard_encoding import CFFStandardEncoding  # noqa: PLC0415
+        from .cff_expert_encoding import CFFExpertEncoding
+        from .cff_standard_encoding import CFFStandardEncoding
 
         encoding_entry = top_dict.get_entry("Encoding")
         if encoding_entry is not None and encoding_entry.has_operands():
@@ -955,7 +955,7 @@ class CFFParser:
         priv["StdVW"] = private_dict.get_number("StdVW", None)
         priv["StemSnapH"] = private_dict.get_delta("StemSnapH", None)
         priv["StemSnapV"] = private_dict.get_delta("StemSnapV", None)
-        priv["ForceBold"] = private_dict.get_boolean("ForceBold", False)  # noqa: FBT003
+        priv["ForceBold"] = private_dict.get_boolean("ForceBold", False)
         priv["LanguageGroup"] = private_dict.get_number("LanguageGroup", 0)
         priv["ExpansionFactor"] = private_dict.get_number("ExpansionFactor", 0.06)
         priv["initialRandomSeed"] = private_dict.get_number("initialRandomSeed", 0)
@@ -1096,11 +1096,11 @@ def _resolve_top_dict_encoding(
         return None
     if isinstance(encoding, str):
         if encoding == "StandardEncoding":
-            from .cff_standard_encoding import CFFStandardEncoding  # noqa: PLC0415
+            from .cff_standard_encoding import CFFStandardEncoding
 
             return CFFStandardEncoding.get_instance()
         if encoding == "ExpertEncoding":
-            from .cff_expert_encoding import CFFExpertEncoding  # noqa: PLC0415
+            from .cff_expert_encoding import CFFExpertEncoding
 
             return CFFExpertEncoding.get_instance()
         return None
@@ -1112,8 +1112,8 @@ def _resolve_top_dict_encoding(
         # byte) so callers see the upstream class identity and surface
         # the code-to-name mapping via the ordinary
         # ``CFFEncoding.get_name`` API.
-        from .format0_encoding import Format0Encoding  # noqa: PLC0415
-        from .format1_encoding import Format1Encoding  # noqa: PLC0415
+        from .format0_encoding import Format0Encoding
+        from .format1_encoding import Format1Encoding
 
         encoded_count = sum(
             1 for name in encoding if name and name != ".notdef"

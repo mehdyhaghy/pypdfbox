@@ -56,7 +56,7 @@ def test_compute_version_number_prefer_aes_typeerror_fallback() -> None:
     handler.set_key_length(128)
 
     class _Policy:
-        def is_prefer_aes(self_inner, extra):  # noqa: ARG002 — wrong arity raises TypeError
+        def is_prefer_aes(self, extra):
             return True
 
     handler.set_protection_policy(_Policy())
@@ -69,7 +69,7 @@ def test_compute_version_number_alias_is_preferred_aes() -> None:
     handler.set_key_length(128)
 
     class _Policy:
-        def is_preferred_aes(self_inner) -> bool:
+        def is_preferred_aes(self) -> bool:
             return True
 
     handler.set_protection_policy(_Policy())
@@ -99,7 +99,7 @@ def test_set_custom_secure_random_used_by_iv_generation() -> None:
     handler = _make_handler()
 
     class _Rng:
-        def read(self_inner, n):
+        def read(self, n):
             return b"R" * n
 
     handler.set_custom_secure_random(_Rng())
@@ -115,7 +115,7 @@ def test_prepare_aes_initialization_vector_custom_callable_rng() -> None:
     handler = _make_handler()
 
     class _Rng:
-        def __call__(self_inner, n):
+        def __call__(self, n):
             return b"C" * n
 
     handler.set_custom_secure_random(_Rng())
@@ -278,7 +278,7 @@ def test_decrypt_data_and_encrypt_data_round_trip_file_like() -> None:
 
 def test_coerce_to_bytes_rejects_unknown_input() -> None:
     with pytest.raises(TypeError, match="bytes-like"):
-        SecurityHandler._coerce_to_bytes(42)  # noqa: SLF001
+        SecurityHandler._coerce_to_bytes(42)
 
 
 # ------------------------------------------------ COSBase dispatch routing
@@ -323,8 +323,8 @@ def test_decrypt_string_if_absent_returns_input_when_no_value_api() -> None:
     bad = _Bad()
     # Force the dispatch into the string branch by spoofing isinstance via the
     # private helper directly.
-    handler._objects_seen().clear()  # noqa: SLF001
-    assert handler._decrypt_string_if_absent(bad, 1, 0) is bad  # noqa: SLF001
+    handler._objects_seen().clear()
+    assert handler._decrypt_string_if_absent(bad, 1, 0) is bad
 
 
 def test_decrypt_array_replaces_string_entries_in_place() -> None:
@@ -424,23 +424,23 @@ def _make_fake_stream(raw: bytes, type_name: str | None = None) -> object:
     """Build a minimal duck-typed stream with the methods the handler uses."""
 
     class _FakeStream:
-        def __init__(self_inner):
-            self_inner._raw = bytes(raw)
-            self_inner._type = type_name
+        def __init__(self):
+            self._raw = bytes(raw)
+            self._type = type_name
 
-        def get_cos_name(self_inner, key):
-            if self_inner._type is None:
+        def get_cos_name(self, key):
+            if self._type is None:
                 return None
-            return COSName.get_pdf_name(self_inner._type)
+            return COSName.get_pdf_name(self._type)
 
-        def get_item(self_inner, key):
+        def get_item(self, key):
             return None
 
-        def get_raw_bytes(self_inner):
-            return self_inner._raw
+        def get_raw_bytes(self):
+            return self._raw
 
-        def set_raw_bytes(self_inner, data):
-            self_inner._raw = bytes(data)
+        def set_raw_bytes(self, data):
+            self._raw = bytes(data)
 
     return _FakeStream()
 
@@ -481,13 +481,13 @@ def test_decrypt_stream_in_place_tolerates_decrypt_failure() -> None:
     handler = _make_handler()
 
     class _ExplosiveStream:
-        def get_cos_name(self_inner, key):
+        def get_cos_name(self, key):
             return None
 
-        def get_item(self_inner, key):
+        def get_item(self, key):
             return None
 
-        def get_raw_bytes(self_inner):
+        def get_raw_bytes(self):
             raise RuntimeError("boom")
 
     handler.decrypt_stream_in_place(_ExplosiveStream(), 12, 0)  # must not raise
@@ -497,8 +497,8 @@ def test_decrypt_stream_if_absent_caches_seen_stream() -> None:
     handler = _make_handler()
     stream = _make_fake_stream(b"ignored")
     # First call adds to seen set; second call short-circuits.
-    handler._decrypt_stream_if_absent(stream, 1, 0)  # noqa: SLF001
-    returned = handler._decrypt_stream_if_absent(stream, 1, 0)  # noqa: SLF001
+    handler._decrypt_stream_if_absent(stream, 1, 0)
+    returned = handler._decrypt_stream_if_absent(stream, 1, 0)
     assert returned is stream
 
 
@@ -557,7 +557,7 @@ def test_prepare_document_for_encryption_delegates_to_prepare_document() -> None
     calls: list[object] = []
 
     class _Recorder(_ConcreteHandler):
-        def prepare_document(self_inner, document):
+        def prepare_document(self, document):
             calls.append(document)
 
     handler = _Recorder()
@@ -584,7 +584,7 @@ def test_is_identity_accepts_cos_name() -> None:
 
 def test_is_identity_swallows_get_name_failure() -> None:
     class _Bad:
-        def get_name(self_inner):
+        def get_name(self):
             raise RuntimeError("no")
 
     # No exception even though get_name throws.
@@ -624,14 +624,14 @@ def test_decrypt_dictionary_get_item_raises_treated_as_no_cf() -> None:
     handler = _make_handler()
 
     class _RaisingDict:
-        def get_item(self_inner, key):
+        def get_item(self, key):
             raise RuntimeError("boom")
 
-        def entry_set(self_inner):
+        def entry_set(self):
             return []
 
     # Should not raise — the CF lookup swallows the exception per upstream.
-    result = handler._decrypt_dictionary(_RaisingDict(), 1, 0)  # noqa: SLF001
+    result = handler._decrypt_dictionary(_RaisingDict(), 1, 0)
     assert isinstance(result, _RaisingDict)
 
 
@@ -642,18 +642,18 @@ def test_decrypt_dictionary_swallows_signature_probe_failure() -> None:
     keys: list[str] = []
 
     class _ProbeRaisingDict:
-        def get_item(self_inner, key):
+        def get_item(self, key):
             keys.append(key)
             if key == "CF":
-                return None
+                return
             if key == "Type":
                 raise RuntimeError("probe-explosion")
-            return None
+            return
 
-        def entry_set(self_inner):
+        def entry_set(self):
             return []
 
-    handler._decrypt_dictionary(_ProbeRaisingDict(), 1, 0)  # noqa: SLF001
+    handler._decrypt_dictionary(_ProbeRaisingDict(), 1, 0)
     # The CF probe ran, then the Type probe ran (and raised — was swallowed),
     # then iteration over an empty entry set completed.
     assert "CF" in keys
@@ -667,17 +667,17 @@ def test_decrypt_array_uses_subscript_when_setter_absent() -> None:
     encrypted_str = COSString(cipher)
 
     class _SubscriptArray:
-        def __init__(self_inner, items):
-            self_inner._items = list(items)
+        def __init__(self, items):
+            self._items = list(items)
 
-        def __len__(self_inner):
-            return len(self_inner._items)
+        def __len__(self):
+            return len(self._items)
 
-        def __getitem__(self_inner, i):
-            return self_inner._items[i]
+        def __getitem__(self, i):
+            return self._items[i]
 
-        def __setitem__(self_inner, i, v):
-            self_inner._items[i] = v
+        def __setitem__(self, i, v):
+            self._items[i] = v
 
     arr = _SubscriptArray([encrypted_str])
     # We need decrypt() to return a NEW instance so the `replaced is not elem`
@@ -692,7 +692,7 @@ def test_decrypt_array_uses_subscript_when_setter_absent() -> None:
         return out
 
     handler.decrypt = _swapping_decrypt  # type: ignore[method-assign]
-    handler._decrypt_array(arr, 13, 0)  # noqa: SLF001
+    handler._decrypt_array(arr, 13, 0)
     assert isinstance(arr[0], COSString)
     assert arr[0].get_bytes() == b"sub"
 
@@ -703,17 +703,17 @@ def test_decrypt_dictionary_replaces_via_set_item_when_value_swapped() -> None:
     cipher = handler.encrypt_string(b"swap", 14, 0)
 
     class _Dict:
-        def __init__(self_inner):
-            self_inner._items = {"Foo": COSString(cipher)}
+        def __init__(self):
+            self._items = {"Foo": COSString(cipher)}
 
-        def get_item(self_inner, key):
-            return self_inner._items.get(key)
+        def get_item(self, key):
+            return self._items.get(key)
 
-        def entry_set(self_inner):
-            return list(self_inner._items.items())
+        def entry_set(self):
+            return list(self._items.items())
 
-        def set_item(self_inner, key, val):
-            self_inner._items[key] = val
+        def set_item(self, key, val):
+            self._items[key] = val
 
     # Swap-out helper produces a distinct COSString to force the set_item path.
     real_decrypt = handler.decrypt
@@ -726,7 +726,7 @@ def test_decrypt_dictionary_replaces_via_set_item_when_value_swapped() -> None:
 
     handler.decrypt = _swap  # type: ignore[method-assign]
     d = _Dict()
-    handler._decrypt_dictionary(d, 14, 0)  # noqa: SLF001
+    handler._decrypt_dictionary(d, 14, 0)
     assert d.get_item("Foo").get_bytes() == b"swap"
 
 
@@ -736,20 +736,20 @@ def test_decrypt_stream_in_place_handles_get_cos_name_raising() -> None:
     cipher = handler.encrypt_stream(b"abc", 15, 0)
 
     class _Stream:
-        def __init__(self_inner):
-            self_inner._raw = cipher
+        def __init__(self):
+            self._raw = cipher
 
-        def get_cos_name(self_inner, key):
+        def get_cos_name(self, key):
             raise RuntimeError("probe")
 
-        def get_item(self_inner, key):
+        def get_item(self, key):
             return None
 
-        def get_raw_bytes(self_inner):
-            return self_inner._raw
+        def get_raw_bytes(self):
+            return self._raw
 
-        def set_raw_bytes(self_inner, data):
-            self_inner._raw = bytes(data)
+        def set_raw_bytes(self, data):
+            self._raw = bytes(data)
 
     stream = _Stream()
     handler.decrypt_stream_in_place(stream, 15, 0)
@@ -761,10 +761,10 @@ def test_decrypt_stream_in_place_skips_when_raw_accessors_missing() -> None:
     handler = _make_handler()
 
     class _Stream:
-        def get_cos_name(self_inner, key):
+        def get_cos_name(self, key):
             return None
 
-        def get_item(self_inner, key):
+        def get_item(self, key):
             return None
 
     # No raw accessors — must be a no-op (no AttributeError).
@@ -777,20 +777,20 @@ def test_decrypt_stream_in_place_falls_back_to_unfiltered_stream() -> None:
     cipher = handler.encrypt_stream(b"legacy", 17, 0)
 
     class _Stream:
-        def __init__(self_inner):
-            self_inner._raw = cipher
+        def __init__(self):
+            self._raw = cipher
 
-        def get_cos_name(self_inner, key):
+        def get_cos_name(self, key):
             return None
 
-        def get_item(self_inner, key):
+        def get_item(self, key):
             return None
 
-        def get_unfiltered_stream(self_inner):
-            return self_inner._raw
+        def get_unfiltered_stream(self):
+            return self._raw
 
-        def set_unfiltered_stream(self_inner, data):
-            self_inner._raw = bytes(data)
+        def set_unfiltered_stream(self, data):
+            self._raw = bytes(data)
 
     stream = _Stream()
     handler.decrypt_stream_in_place(stream, 17, 0)

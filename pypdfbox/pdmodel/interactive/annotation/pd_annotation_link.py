@@ -381,9 +381,9 @@ class PDAnnotationLink(PDAnnotation):
 
             appearance_handler = PDLinkAppearanceHandler(self, document)
             appearance_handler.generate_appearance_streams()
-            return None
+            return
         self._custom_appearance_handler.generate_appearance_streams()
-        return None
+        return
 
 
 __all__ = ["PDAnnotationLink"]

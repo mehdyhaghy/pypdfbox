@@ -27,10 +27,8 @@ from pypdfbox.jbig2.decoder.arithmetic.cx import CX
 from pypdfbox.jbig2.decoder.generic_refinement_region_decoding_procedure import (
     T0,
     T1,
+    GenericRefinementRegionDecodingProcedure,
     _java_mod,
-)
-from pypdfbox.jbig2.decoder.generic_refinement_region_decoding_procedure import (
-    GenericRefinementRegionDecodingProcedure as GRRDP,
 )
 
 
@@ -50,8 +48,8 @@ class _StubArith:
         return bit
 
 
-def _proc(arith=None, cx=None) -> GRRDP:
-    return GRRDP(arith or _StubArith(), cx or CX(8192, 1))
+def _proc(arith=None, cx=None) -> GenericRefinementRegionDecodingProcedure:
+    return GenericRefinementRegionDecodingProcedure(arith or _StubArith(), cx or CX(8192, 1))
 
 
 # --------------------------------------------------------------------------
@@ -62,40 +60,56 @@ def _proc(arith=None, cx=None) -> GRRDP:
 def test_decode_rejects_null_arith_decoder():
     ref = Bitmap(4, 4)
     with pytest.raises(ValueError, match="arithDecoder"):
-        GRRDP.decode(None, CX(8192, 1), 4, 4, 1, False, ref, 0, 0, None, None)
+        GenericRefinementRegionDecodingProcedure.decode(
+            None, CX(8192, 1), 4, 4, 1, False, ref, 0, 0, None, None
+        )
 
 
 def test_decode_rejects_null_cx():
     ref = Bitmap(4, 4)
     with pytest.raises(ValueError, match="cx"):
-        GRRDP.decode(_StubArith(), None, 4, 4, 1, False, ref, 0, 0, None, None)
+        GenericRefinementRegionDecodingProcedure.decode(
+            _StubArith(), None, 4, 4, 1, False, ref, 0, 0, None, None
+        )
 
 
 def test_decode_rejects_null_reference_bitmap():
     with pytest.raises(ValueError, match="referenceBitmap"):
-        GRRDP.decode(_StubArith(), CX(8192, 1), 4, 4, 1, False, None, 0, 0, None, None)
+        GenericRefinementRegionDecodingProcedure.decode(
+            _StubArith(), CX(8192, 1), 4, 4, 1, False, None, 0, 0, None, None
+        )
 
 
 def test_decode_rejects_bad_template():
     ref = Bitmap(4, 4)
     with pytest.raises(ValueError, match="grTemplate must be 0 or 1"):
-        GRRDP.decode(_StubArith(), CX(8192, 1), 4, 4, 2, False, ref, 0, 0, None, None)
+        GenericRefinementRegionDecodingProcedure.decode(
+            _StubArith(), CX(8192, 1), 4, 4, 2, False, ref, 0, 0, None, None
+        )
 
 
 def test_decode_template0_requires_at_arrays_of_length_two():
     ref = Bitmap(4, 4)
     with pytest.raises(ValueError, match="length 2 for template 0"):
-        GRRDP.decode(_StubArith(), CX(8192, 1), 4, 4, 0, False, ref, 0, 0, [0], [0])
+        GenericRefinementRegionDecodingProcedure.decode(
+            _StubArith(), CX(8192, 1), 4, 4, 0, False, ref, 0, 0, [0], [0]
+        )
     with pytest.raises(ValueError, match="length 2 for template 0"):
-        GRRDP.decode(_StubArith(), CX(8192, 1), 4, 4, 0, False, ref, 0, 0, None, None)
+        GenericRefinementRegionDecodingProcedure.decode(
+            _StubArith(), CX(8192, 1), 4, 4, 0, False, ref, 0, 0, None, None
+        )
 
 
 def test_decode_rejects_non_positive_dimensions():
     ref = Bitmap(4, 4)
     with pytest.raises(ValueError, match="must be > 0"):
-        GRRDP.decode(_StubArith(), CX(8192, 1), 0, 4, 1, False, ref, 0, 0, None, None)
+        GenericRefinementRegionDecodingProcedure.decode(
+            _StubArith(), CX(8192, 1), 0, 4, 1, False, ref, 0, 0, None, None
+        )
     with pytest.raises(ValueError, match="must be > 0"):
-        GRRDP.decode(_StubArith(), CX(8192, 1), 4, -1, 1, False, ref, 0, 0, None, None)
+        GenericRefinementRegionDecodingProcedure.decode(
+            _StubArith(), CX(8192, 1), 4, -1, 1, False, ref, 0, 0, None, None
+        )
 
 
 # --------------------------------------------------------------------------

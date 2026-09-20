@@ -258,7 +258,7 @@ def test_default_registry_has_at_least_forty_operators() -> None:
     """After this cluster the default registry should expose at least
     the originally-wired 12 operators plus the ~41 new stubs."""
     registry = OperatorRegistry()
-    handler_map = registry._handlers  # noqa: SLF001 — test-only introspection
+    handler_map = registry._handlers
     assert len(handler_map) >= 40, (
         f"default registry only exposes {len(handler_map)} handlers"
     )

@@ -42,7 +42,7 @@ def _inline_params(
 
 def test_decode_inline_image_expands_abbreviated_rgb_gray_and_jpeg() -> None:
     rgb_params = _inline_params(width=2, height=1, color_space="RGB")
-    rgb = PDFRenderer._decode_inline_image(  # noqa: SLF001
+    rgb = PDFRenderer._decode_inline_image(
         rgb_params,
         bytes([255, 0, 0, 0, 255, 0]),
     )
@@ -58,7 +58,7 @@ def test_decode_inline_image_expands_abbreviated_rgb_gray_and_jpeg() -> None:
         color_space="DeviceGray",
         use_long_names=True,
     )
-    gray = PDFRenderer._decode_inline_image(gray_params, bytes([0, 255]))  # noqa: SLF001
+    gray = PDFRenderer._decode_inline_image(gray_params, bytes([0, 255]))
     assert gray is not None
     assert gray.mode == "RGB"
     assert gray.getpixel((0, 0)) == (0, 0, 0)
@@ -72,7 +72,7 @@ def test_decode_inline_image_expands_abbreviated_rgb_gray_and_jpeg() -> None:
     filters = COSArray()
     filters.add(COSName.get_pdf_name("DCT"))
     jpeg_params.set_item(COSName.get_pdf_name("F"), filters)
-    jpeg = PDFRenderer._decode_inline_image(jpeg_params, payload.getvalue())  # noqa: SLF001
+    jpeg = PDFRenderer._decode_inline_image(jpeg_params, payload.getvalue())
     assert jpeg is not None
     assert jpeg.mode == "RGB"
     assert jpeg.size == (1, 1)
@@ -80,19 +80,19 @@ def test_decode_inline_image_expands_abbreviated_rgb_gray_and_jpeg() -> None:
 
 def test_decode_inline_image_rejects_malformed_or_deferred_payloads() -> None:
     assert (
-        PDFRenderer._decode_inline_image(  # noqa: SLF001
+        PDFRenderer._decode_inline_image(
             _inline_params(width=None), b"\x00\x00\x00"
         )
         is None
     )
     assert (
-        PDFRenderer._decode_inline_image(  # noqa: SLF001
+        PDFRenderer._decode_inline_image(
             _inline_params(height=0), b"\x00\x00\x00"
         )
         is None
     )
     assert (
-        PDFRenderer._decode_inline_image(  # noqa: SLF001
+        PDFRenderer._decode_inline_image(
             _inline_params(bits_per_component=1), b"\x00"
         )
         is None
@@ -100,11 +100,11 @@ def test_decode_inline_image_rejects_malformed_or_deferred_payloads() -> None:
 
     compressed_params = _inline_params()
     compressed_params.set_item(COSName.get_pdf_name("F"), COSName.get_pdf_name("Fl"))
-    assert PDFRenderer._decode_inline_image(compressed_params, b"\x00") is None  # noqa: SLF001
+    assert PDFRenderer._decode_inline_image(compressed_params, b"\x00") is None
 
     cmyk_params = _inline_params(color_space="CMYK")
     assert (
-        PDFRenderer._decode_inline_image(  # noqa: SLF001
+        PDFRenderer._decode_inline_image(
             cmyk_params, bytes([0, 0, 0, 0])
         )
         is None
@@ -117,7 +117,7 @@ def test_decode_inline_image_accepts_numeric_float_dimensions() -> None:
     params.set_item(COSName.get_pdf_name("H"), COSFloat(1.0))
     params.set_item(COSName.get_pdf_name("BPC"), COSInteger.get(8))
 
-    decoded = PDFRenderer._decode_inline_image(params, bytes([1, 2, 3]))  # noqa: SLF001
+    decoded = PDFRenderer._decode_inline_image(params, bytes([1, 2, 3]))
 
     assert decoded is not None
     assert decoded.getpixel((0, 0)) == (1, 2, 3)

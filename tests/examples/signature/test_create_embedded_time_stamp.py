@@ -252,7 +252,7 @@ class _FakeSig:
         self._contents = contents
         self._byte_range = byte_range or [0, 10, 28, 4]
 
-    def get_contents_from_bytes(self, doc_bytes):  # noqa: D401
+    def get_contents_from_bytes(self, doc_bytes):
         return self._contents
 
     def get_byte_range(self):

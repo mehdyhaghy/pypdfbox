@@ -21,7 +21,7 @@ def test_constructor_uses_java_truncation_for_negative_columns() -> None:
         sink, predictor=2, colors=1, bits_per_component=8, columns=-1
     )
     try:
-        assert stream._row_length == 0  # noqa: SLF001
+        assert stream._row_length == 0
     finally:
         stream.close()
 

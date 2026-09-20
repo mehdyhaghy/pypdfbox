@@ -149,10 +149,10 @@ def test_encode_openjpeg_failure_wraps_into_oserror(
     import pypdfbox.filter.jpx_decode as jmod
 
     class _FakeImage:
-        def save(self, buf: Any, format: str | None = None) -> None:  # noqa: ARG002
+        def save(self, buf: Any, format: str | None = None) -> None:
             raise RuntimeError("simulated OpenJPEG crash")
 
-    def fake_frombytes(mode: str, size: tuple[int, int], raw: bytes) -> _FakeImage:  # noqa: ARG001
+    def fake_frombytes(mode: str, size: tuple[int, int], raw: bytes) -> _FakeImage:
         return _FakeImage()
 
     monkeypatch.setattr(jmod.Image, "frombytes", fake_frombytes)

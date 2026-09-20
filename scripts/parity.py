@@ -341,8 +341,7 @@ def parse_python_file(path: Path, package_root: Path) -> list[PythonClass]:
 
     rel = path.relative_to(package_root.parent)
     module = ".".join(rel.with_suffix("").parts)
-    if module.endswith(".__init__"):
-        module = module[: -len(".__init__")]
+    module = module.removesuffix(".__init__")
 
     classes: list[PythonClass] = []
     for node in ast.walk(tree):

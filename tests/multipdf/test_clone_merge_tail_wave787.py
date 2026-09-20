@@ -49,7 +49,7 @@ def test_wave787_clone_merge_noops_for_none_and_unresolved_source() -> None:
         target = COSArray([COSInteger.get(1)])
 
         cloner.clone_merge(None, _Wrap(target))
-        cloner._clone_merge_cos_base(COSObject(3, 0), target, set())  # noqa: SLF001
+        cloner._clone_merge_cos_base(COSObject(3, 0), target, set())
 
         assert target.size() == 1
         assert target.get(0) == COSInteger.get(1)

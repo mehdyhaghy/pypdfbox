@@ -130,15 +130,15 @@ def test_from_int_out_of_range_raises_index_error(bad: int) -> None:
 @pytest.mark.parametrize("mode_int", list(range(8)))
 def test_tr_operator_sets_each_in_range_mode(mode_int: int) -> None:
     r = _bare_renderer()
-    r._op_set_text_rendering_mode(None, [COSInteger(mode_int)])  # noqa: SLF001
-    assert r._gs.text_rendering_mode == mode_int  # noqa: SLF001
+    r._op_set_text_rendering_mode(None, [COSInteger(mode_int)])
+    assert r._gs.text_rendering_mode == mode_int
 
 
 def test_tr_operator_missing_operand_is_noop() -> None:
     r = _bare_renderer()
-    r._gs.text_rendering_mode = 5  # noqa: SLF001
-    r._op_set_text_rendering_mode(None, [])  # noqa: SLF001
-    assert r._gs.text_rendering_mode == 5  # noqa: SLF001
+    r._gs.text_rendering_mode = 5
+    r._op_set_text_rendering_mode(None, [])
+    assert r._gs.text_rendering_mode == 5
 
 
 @pytest.mark.parametrize("bad", [8, 9, 99, 1000, -1, -5])
@@ -147,24 +147,24 @@ def test_tr_operator_out_of_range_leaves_previous_mode(bad: int) -> None:
     # val < 0 || val >= 8 — the previously-set mode persists, it is NOT
     # clamped to 0 / 7.
     r = _bare_renderer()
-    r._gs.text_rendering_mode = 6  # noqa: SLF001
-    r._op_set_text_rendering_mode(None, [COSInteger(bad)])  # noqa: SLF001
-    assert r._gs.text_rendering_mode == 6  # noqa: SLF001
+    r._gs.text_rendering_mode = 6
+    r._op_set_text_rendering_mode(None, [COSInteger(bad)])
+    assert r._gs.text_rendering_mode == 6
 
 
 def test_tr_operator_non_number_operand_dropped() -> None:
     # Upstream drops a non-COSNumber operand and leaves the mode alone.
     r = _bare_renderer()
-    r._gs.text_rendering_mode = 2  # noqa: SLF001
-    r._op_set_text_rendering_mode(None, [COSName.get_pdf_name("X")])  # noqa: SLF001
-    assert r._gs.text_rendering_mode == 2  # noqa: SLF001
+    r._gs.text_rendering_mode = 2
+    r._op_set_text_rendering_mode(None, [COSName.get_pdf_name("X")])
+    assert r._gs.text_rendering_mode == 2
 
 
 def test_tr_operator_accepts_real_operand_truncates() -> None:
     # COSFloat 2.0 → int_value 2 (FILL_STROKE).
     r = _bare_renderer()
-    r._op_set_text_rendering_mode(None, [COSFloat(2.0)])  # noqa: SLF001
-    assert r._gs.text_rendering_mode == 2  # noqa: SLF001
+    r._op_set_text_rendering_mode(None, [COSFloat(2.0)])
+    assert r._gs.text_rendering_mode == 2
 
 
 # ======================================================================
@@ -206,9 +206,9 @@ def _paint_renderer(mode: int, *, clip_mask: Any = None) -> tuple[Any, _Recorder
     gs.stroke_rgb = (200, 100, 50)
     r = _bare_renderer(gs)
     rec = _Recorder()
-    r._accumulate_text_clip_path = rec.accumulate  # noqa: SLF001
-    r._paint_glyph_path_direct = rec.direct  # noqa: SLF001
-    r._paint_glyph_path_through_clip = rec.through_clip  # noqa: SLF001
+    r._accumulate_text_clip_path = rec.accumulate
+    r._paint_glyph_path_direct = rec.direct
+    r._paint_glyph_path_through_clip = rec.through_clip
     return r, rec
 
 
@@ -217,7 +217,7 @@ def test_paint_decision_triple_matches_upstream(mode_int: int) -> None:
     want_fill, want_stroke, want_clip = MODE_TRIPLES[mode_int]
     r, rec = _paint_renderer(mode_int)
     # fill_rgb is the non-stroking colour passed in by the caller.
-    r._paint_glyph_path(object(), (1, 0, 0, 1, 0, 0), (10, 20, 30))  # noqa: SLF001
+    r._paint_glyph_path(object(), (1, 0, 0, 1, 0, 0), (10, 20, 30))
 
     # Clip accumulation must happen for clip modes (4-7) and only those.
     assert (len(rec.clip_calls) == 1) is want_clip
@@ -236,7 +236,7 @@ def test_paint_decision_triple_matches_upstream(mode_int: int) -> None:
 
 def test_invisible_mode_paints_nothing() -> None:
     r, rec = _paint_renderer(3)
-    r._paint_glyph_path(object(), (1, 0, 0, 1, 0, 0), (0, 0, 0))  # noqa: SLF001
+    r._paint_glyph_path(object(), (1, 0, 0, 1, 0, 0), (0, 0, 0))
     assert rec.direct_calls == []
     assert rec.through_clip_calls == []
     assert rec.clip_calls == []
@@ -244,7 +244,7 @@ def test_invisible_mode_paints_nothing() -> None:
 
 def test_clip_only_mode_accumulates_but_paints_nothing() -> None:
     r, rec = _paint_renderer(7)
-    r._paint_glyph_path(object(), (1, 0, 0, 1, 0, 0), (0, 0, 0))  # noqa: SLF001
+    r._paint_glyph_path(object(), (1, 0, 0, 1, 0, 0), (0, 0, 0))
     assert len(rec.clip_calls) == 1
     assert rec.direct_calls == []
     assert rec.through_clip_calls == []
@@ -254,14 +254,14 @@ def test_fill_uses_non_stroking_colour() -> None:
     # Mode 0 (fill): the colour handed to the direct paint helper is the
     # caller-supplied non-stroking RGB, never the stroking RGB.
     r, rec = _paint_renderer(0)
-    r._paint_glyph_path(object(), (1, 0, 0, 1, 0, 0), (10, 20, 30))  # noqa: SLF001
+    r._paint_glyph_path(object(), (1, 0, 0, 1, 0, 0), (10, 20, 30))
     assert rec.direct_calls[0]["fill_rgb"] == (10, 20, 30)
     assert rec.direct_calls[0]["fill_rgb"] != (200, 100, 50)
 
 
 def test_stroke_only_mode_does_not_fill() -> None:
     r, rec = _paint_renderer(1)
-    r._paint_glyph_path(object(), (1, 0, 0, 1, 0, 0), (10, 20, 30))  # noqa: SLF001
+    r._paint_glyph_path(object(), (1, 0, 0, 1, 0, 0), (10, 20, 30))
     assert rec.direct_calls[0]["do_fill"] is False
     assert rec.direct_calls[0]["do_stroke"] is True
 
@@ -270,7 +270,7 @@ def test_stroke_only_mode_does_not_fill() -> None:
 def test_visible_clip_modes_both_paint_and_clip(mode_int: int) -> None:
     want_fill, want_stroke, _ = MODE_TRIPLES[mode_int]
     r, rec = _paint_renderer(mode_int)
-    r._paint_glyph_path(object(), (1, 0, 0, 1, 0, 0), (10, 20, 30))  # noqa: SLF001
+    r._paint_glyph_path(object(), (1, 0, 0, 1, 0, 0), (10, 20, 30))
     assert len(rec.clip_calls) == 1  # added to clip path
     assert len(rec.direct_calls) == 1  # and painted
     assert rec.direct_calls[0]["do_fill"] is want_fill
@@ -284,7 +284,7 @@ def test_paint_through_clip_when_gs_clip_active(mode_int: int) -> None:
     want_fill, want_stroke, _ = MODE_TRIPLES[mode_int]
     sentinel_mask = object()
     r, rec = _paint_renderer(mode_int, clip_mask=sentinel_mask)
-    r._paint_glyph_path(object(), (1, 0, 0, 1, 0, 0), (10, 20, 30))  # noqa: SLF001
+    r._paint_glyph_path(object(), (1, 0, 0, 1, 0, 0), (10, 20, 30))
     assert rec.direct_calls == []
     assert len(rec.through_clip_calls) == 1
     call = rec.through_clip_calls[0]
@@ -303,46 +303,46 @@ def test_clip_path_accumulates_across_glyphs_then_resets_at_et() -> None:
     # commits the union and clears the buffer (PDF 32000-1 §9.3.6 — the
     # clip is established at the end of the text object).
     r, rec = _paint_renderer(7)
-    r._text_clip_paths = []  # noqa: SLF001
+    r._text_clip_paths = []
 
     # Re-route accumulate to actually append (simulate real behaviour).
     def _append(path: Any, ctm: Any) -> None:
-        r._text_clip_paths.append(path)  # noqa: SLF001
+        r._text_clip_paths.append(path)
 
-    r._accumulate_text_clip_path = _append  # noqa: SLF001
+    r._accumulate_text_clip_path = _append
 
     for _ in range(4):
-        r._paint_glyph_path(object(), (1, 0, 0, 1, 0, 0), (0, 0, 0))  # noqa: SLF001
-    assert len(r._text_clip_paths) == 4  # noqa: SLF001
+        r._paint_glyph_path(object(), (1, 0, 0, 1, 0, 0), (0, 0, 0))
+    assert len(r._text_clip_paths) == 4
 
     # ET clears the buffer. _commit_text_clip needs an image; stub it.
     committed: list[bool] = []
-    r._commit_text_clip = lambda: committed.append(True)  # noqa: SLF001
-    r._maybe_end_text_knockout = lambda: None  # noqa: SLF001
-    r._op_end_text(None, [])  # noqa: SLF001
+    r._commit_text_clip = lambda: committed.append(True)
+    r._maybe_end_text_knockout = lambda: None
+    r._op_end_text(None, [])
     assert committed == [True]
-    assert r._text_clip_paths == []  # noqa: SLF001
+    assert r._text_clip_paths == []
 
 
 def test_non_clip_mode_does_not_accumulate_clip_path() -> None:
     r, rec = _paint_renderer(0)
-    r._text_clip_paths = []  # noqa: SLF001
+    r._text_clip_paths = []
 
     def _append(path: Any, ctm: Any) -> None:  # pragma: no cover
-        r._text_clip_paths.append(path)  # noqa: SLF001
+        r._text_clip_paths.append(path)
 
-    r._accumulate_text_clip_path = _append  # noqa: SLF001
-    r._paint_glyph_path(object(), (1, 0, 0, 1, 0, 0), (0, 0, 0))  # noqa: SLF001
-    assert r._text_clip_paths == []  # noqa: SLF001
+    r._accumulate_text_clip_path = _append
+    r._paint_glyph_path(object(), (1, 0, 0, 1, 0, 0), (0, 0, 0))
+    assert r._text_clip_paths == []
 
 
 def test_et_without_clip_glyphs_does_not_commit() -> None:
     # No clip-mode glyph was shown → no text-clip buffer → ET commits
     # nothing (the clip is unchanged).
     r, rec = _paint_renderer(0)
-    r._text_clip_paths = []  # noqa: SLF001
+    r._text_clip_paths = []
     committed: list[bool] = []
-    r._commit_text_clip = lambda: committed.append(True)  # noqa: SLF001
-    r._maybe_end_text_knockout = lambda: None  # noqa: SLF001
-    r._op_end_text(None, [])  # noqa: SLF001
+    r._commit_text_clip = lambda: committed.append(True)
+    r._maybe_end_text_knockout = lambda: None
+    r._op_end_text(None, [])
     assert committed == []

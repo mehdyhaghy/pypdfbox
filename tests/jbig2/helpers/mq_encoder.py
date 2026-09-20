@@ -326,7 +326,7 @@ def encode_generic_region_template0(
         while x < padded_width:
             result = 0
             next_byte = x + 8
-            minor_width = 8 if width - x > 8 else width - x
+            minor_width = min(width - x, 8)
 
             if line_number > 0:
                 line1 = (line1 << 8) | (

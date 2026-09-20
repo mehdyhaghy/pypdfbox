@@ -41,16 +41,16 @@ def test_wave531_dispatch_test_restores_existing_handler(caplog: Any) -> None:
     ) -> None:
         raise AssertionError("should be restored, not called")
 
-    previous = wave531.renderer_mod._DISPATCH.get("W531")  # noqa: SLF001
-    wave531.renderer_mod._DISPATCH["W531"] = original_handler  # noqa: SLF001
+    previous = wave531.renderer_mod._DISPATCH.get("W531")
+    wave531.renderer_mod._DISPATCH["W531"] = original_handler
     try:
         caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
 
         wave531.test_process_operator_logs_and_swallows_handler_value_error(caplog)
 
-        assert wave531.renderer_mod._DISPATCH["W531"] is original_handler  # noqa: SLF001
+        assert wave531.renderer_mod._DISPATCH["W531"] is original_handler
     finally:
         if previous is None:
-            wave531.renderer_mod._DISPATCH.pop("W531", None)  # noqa: SLF001
+            wave531.renderer_mod._DISPATCH.pop("W531", None)
         else:
-            wave531.renderer_mod._DISPATCH["W531"] = previous  # noqa: SLF001
+            wave531.renderer_mod._DISPATCH["W531"] = previous

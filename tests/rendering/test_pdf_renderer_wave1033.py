@@ -24,7 +24,7 @@ def test_wave741_make_doc_removes_existing_pages(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(wave741, "PDDocument", FakeDocument)
 
-    doc, page = wave741._make_doc(24.0, 36.0)  # noqa: SLF001
+    doc, page = wave741._make_doc(24.0, 36.0)
 
     assert isinstance(doc, FakeDocument)
     assert doc.removed_indexes == [0, 0]

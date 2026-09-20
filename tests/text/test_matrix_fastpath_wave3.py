@@ -86,9 +86,9 @@ def test_origin_translate_matches_full_multiply(
     stripper = PDFTextStripper()
     for text_x, text_y in _XY:
         state = _make_state(tm, ctm, rise)
-        full = stripper._origin_matrix(state, text_x, text_y)  # noqa: SLF001
+        full = stripper._origin_matrix(state, text_x, text_y)
         want_x, want_y = full.get_translate_x(), full.get_translate_y()
-        got_x, got_y = stripper._origin_translate(  # noqa: SLF001
+        got_x, got_y = stripper._origin_translate(
             state, text_x, text_y
         )
         # Raw byte identity — not just == — so a sign-of-zero drift would fail.
@@ -105,9 +105,9 @@ def test_origin_translate_non_finite_raises_like_multiply() -> None:
     ctm.set_value(2, 0, math.inf)  # ctm translate-x cell
     state = _make_state((1.0, 0.0, 0.0, 1.0), ctm)
     with pytest.raises(ValueError, match="illegal values"):
-        stripper._origin_matrix(state, 5.0, 5.0).get_translate_x()  # noqa: SLF001
+        stripper._origin_matrix(state, 5.0, 5.0).get_translate_x()
     with pytest.raises(ValueError, match="illegal values"):
-        stripper._origin_translate(state, 5.0, 5.0)  # noqa: SLF001
+        stripper._origin_translate(state, 5.0, 5.0)
 
 
 # --------------------------------------------------------------------------
@@ -122,37 +122,37 @@ def test_scale_and_dir_matches_text_rendering_matrix(
 ) -> None:
     stripper = PDFTextStripper()
     state = _make_state(tm, ctm)
-    trm = stripper._text_rendering_matrix(state)  # noqa: SLF001
+    trm = stripper._text_rendering_matrix(state)
     want = (
         trm.get_scaling_factor_x(),
         trm.get_scaling_factor_y(),
-        stripper._text_dir(trm),  # noqa: SLF001
+        stripper._text_dir(trm),
     )
-    got = stripper._scale_and_dir(state)  # noqa: SLF001
+    got = stripper._scale_and_dir(state)
     assert tuple(_bits(v) for v in got) == tuple(_bits(v) for v in want)
 
 
 def test_scale_and_dir_is_translation_invariant_and_cached() -> None:
     stripper = PDFTextStripper()
     state = _make_state((14.0, 0.0, 0.0, 14.0), _CTMS[1])
-    first = stripper._scale_and_dir(state)  # noqa: SLF001
-    assert state._trm_cache is first  # cached  # noqa: SLF001
+    first = stripper._scale_and_dir(state)
+    assert state._trm_cache is first  # cached
     # Moving the cursor (as Tj/Td do) must NOT change the derived values.
     state.text_x += 500.0
     state.text_y -= 42.0
-    trm = stripper._text_rendering_matrix(state)  # noqa: SLF001
+    trm = stripper._text_rendering_matrix(state)
     fresh = (
         trm.get_scaling_factor_x(),
         trm.get_scaling_factor_y(),
-        stripper._text_dir(trm),  # noqa: SLF001
+        stripper._text_dir(trm),
     )
     assert tuple(_bits(v) for v in fresh) == tuple(_bits(v) for v in first)
     # Cache still serves the same object (no invalidation on cursor move).
-    assert stripper._scale_and_dir(state) is first  # noqa: SLF001
+    assert stripper._scale_and_dir(state) is first
 
 
 def _dispatch(stripper: PDFTextStripper, op: str, operands, state) -> None:
-    stripper._dispatch(op, operands, state, [])  # noqa: SLF001
+    stripper._dispatch(op, operands, state, [])
 
 
 @pytest.mark.parametrize(
@@ -182,18 +182,18 @@ def test_invalidating_operators_drop_the_cache(op: str, operands) -> None:
         _dispatch(stripper, "q", [], state)
         operands = []
     # Warm the cache.
-    stripper._scale_and_dir(state)  # noqa: SLF001
-    assert state._trm_cache is not None  # noqa: SLF001
+    stripper._scale_and_dir(state)
+    assert state._trm_cache is not None
     _dispatch(stripper, op, operands, state)
-    assert state._trm_cache is None, op  # noqa: SLF001
+    assert state._trm_cache is None, op
 
 
 def test_cursor_operator_td_does_not_drop_cache() -> None:
     stripper = PDFTextStripper()
     state = _make_state((1.0, 0.0, 0.0, 1.0), Matrix())
     state.in_text_object = True
-    stripper._scale_and_dir(state)  # noqa: SLF001
-    warmed = state._trm_cache  # noqa: SLF001
+    stripper._scale_and_dir(state)
+    warmed = state._trm_cache
     _dispatch(stripper, "Td", [COSFloat("7"), COSFloat("9")], state)
     # Td only moves the cursor; the derived scale/dir cache stays valid.
-    assert state._trm_cache is warmed  # noqa: SLF001
+    assert state._trm_cache is warmed

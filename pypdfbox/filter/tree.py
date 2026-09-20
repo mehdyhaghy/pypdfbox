@@ -73,46 +73,46 @@ class Tree:
     # script's name-only matcher can find them. Calling them raises — they
     # belong to the (intentionally absent) debugger UI surface.
 
-    def add_popup_menu_items(self, node_path):  # noqa: D401, ARG002
+    def add_popup_menu_items(self, node_path):
         """Debugger UI parity stub — no Swing UI in pypdfbox."""
         raise NotImplementedError("debugger UI not ported")
 
-    def get_file_extension_for_stream(self, cos_stream, node_path):  # noqa: ARG002
+    def get_file_extension_for_stream(self, cos_stream, node_path):
         """Debugger UI parity stub — no Swing UI in pypdfbox."""
         raise NotImplementedError("debugger UI not ported")
 
-    def get_file_open_menu(self, cos_stream, node_path):  # noqa: ARG002
+    def get_file_open_menu(self, cos_stream, node_path):
         """Debugger UI parity stub — no Swing UI in pypdfbox."""
         raise NotImplementedError("debugger UI not ported")
 
-    def get_filters(self, cos_stream):  # noqa: ARG002
+    def get_filters(self, cos_stream):
         """Debugger UI parity stub — no Swing UI in pypdfbox."""
         raise NotImplementedError("debugger UI not ported")
 
-    def get_partial_stream_saving_menu_item(self, index_of_stop_filter, stream):  # noqa: ARG002
+    def get_partial_stream_saving_menu_item(self, index_of_stop_filter, stream):
         """Debugger UI parity stub — no Swing UI in pypdfbox."""
         raise NotImplementedError("debugger UI not ported")
 
-    def get_partially_decoded_stream_save_menu(self, cos_stream):  # noqa: ARG002
+    def get_partially_decoded_stream_save_menu(self, cos_stream):
         """Debugger UI parity stub — no Swing UI in pypdfbox."""
         raise NotImplementedError("debugger UI not ported")
 
-    def get_popup_location(self, event):  # noqa: ARG002
+    def get_popup_location(self, event):
         """Debugger UI parity stub — no Swing UI in pypdfbox."""
         raise NotImplementedError("debugger UI not ported")
 
-    def get_raw_stream_save_menu(self, cos_stream):  # noqa: ARG002
+    def get_raw_stream_save_menu(self, cos_stream):
         """Debugger UI parity stub — no Swing UI in pypdfbox."""
         raise NotImplementedError("debugger UI not ported")
 
-    def get_stream_save_menu(self, cos_stream, node_path):  # noqa: ARG002
+    def get_stream_save_menu(self, cos_stream, node_path):
         """Debugger UI parity stub — no Swing UI in pypdfbox."""
         raise NotImplementedError("debugger UI not ported")
 
-    def get_tree_path_menu_item(self, path):  # noqa: ARG002
+    def get_tree_path_menu_item(self, path):
         """Debugger UI parity stub — no Swing UI in pypdfbox."""
         raise NotImplementedError("debugger UI not ported")
 
-    def save_stream(self, data, file_filter, extension):  # noqa: ARG002
+    def save_stream(self, data, file_filter, extension):
         """Debugger UI parity stub — no Swing UI in pypdfbox."""
         raise NotImplementedError("debugger UI not ported")

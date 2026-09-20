@@ -240,7 +240,7 @@ def create_memory_only_stream_cache() -> StreamCacheCreateFunction:
     """
     # Local import — random_access_stream_cache_impl imports back to
     # io_utils indirectly through the package __init__.
-    from .random_access_stream_cache_impl import (  # noqa: PLC0415
+    from .random_access_stream_cache_impl import (
         RandomAccessStreamCacheImpl,
     )
 
@@ -259,8 +259,8 @@ def create_temp_file_only_stream_cache() -> StreamCacheCreateFunction:
     ``ScratchFile``-backed cache directly because pypdfbox's
     ``MemoryUsageSetting`` does not yet expose a ``stream_cache`` field.
     """
-    from .memory_usage_setting import MemoryUsageSetting  # noqa: PLC0415
-    from .scratch_file import ScratchFile  # noqa: PLC0415
+    from .memory_usage_setting import MemoryUsageSetting
+    from .scratch_file import ScratchFile
 
     setting = MemoryUsageSetting.setup_temp_file_only()
 

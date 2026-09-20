@@ -131,7 +131,7 @@ class PDOutputIntent:
     ) -> None:
         # Local import to avoid a hard cycle between pdmodel and the
         # graphics.color subpackage.
-        from pypdfbox.pdmodel.pd_document import PDDocument  # noqa: PLC0415
+        from pypdfbox.pdmodel.pd_document import PDDocument
 
         self._document: PDDocument | None
         self._dictionary: COSDictionary
@@ -339,7 +339,7 @@ class PDOutputIntent:
         # Local import to avoid a hard cycle with the broader color
         # subpackage — PDICCBased imports PDColorSpace which can pull in
         # the colour-space factory.
-        from pypdfbox.pdmodel.graphics.color.pd_icc_based import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.color.pd_icc_based import (
             PDICCBased,
         )
 
@@ -392,8 +392,8 @@ class PDOutputIntent:
                 f"unexpected /DestOutputProfile type: {type(cos).__name__}"
             )
         # Local import — see set_dest_output_profile for rationale.
-        from pypdfbox.cos import COSArray  # noqa: PLC0415
-        from pypdfbox.pdmodel.graphics.color.pd_icc_based import (  # noqa: PLC0415
+        from pypdfbox.cos import COSArray
+        from pypdfbox.pdmodel.graphics.color.pd_icc_based import (
             PDICCBased,
         )
 

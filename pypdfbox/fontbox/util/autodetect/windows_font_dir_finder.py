@@ -21,7 +21,7 @@ class WindowsFontDirFinder(FontDirFinder):
         result: list[Path] = []
         windir = os.environ.get("windir")  # noqa: SIM112 — case-sensitive on POSIX
         if windir and len(windir) > 2:
-            if windir.endswith("/") or windir.endswith("\\"):
+            if windir.endswith(("/", "\\")):
                 windir = windir[:-1]
             os_fonts = Path(f"{windir}{os.sep}FONTS")
             if os_fonts.exists() and os_fonts.is_dir():

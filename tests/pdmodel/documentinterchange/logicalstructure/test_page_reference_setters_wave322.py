@@ -26,7 +26,7 @@ def test_wave322_mcr_set_page_rejects_non_page_wrapper_without_overwriting_pg() 
     mcr.set_page(page_dict)
 
     with pytest.raises(TypeError, match="PDPage, COSDictionary, or None"):
-        mcr.set_page(cast(Any, _NotPageWrapper()))
+        mcr.set_page(cast("Any", _NotPageWrapper()))
 
     assert mcr.get_pg() is page_dict
     assert mcr.get_cos_object().get_dictionary_object(_PG) is page_dict
@@ -38,7 +38,7 @@ def test_wave322_objr_set_page_rejects_non_page_wrapper_without_overwriting_pg()
     objr.set_page(page_dict)
 
     with pytest.raises(TypeError, match="PDPage, COSDictionary, or None"):
-        objr.set_page(cast(Any, _NotPageWrapper()))
+        objr.set_page(cast("Any", _NotPageWrapper()))
 
     assert objr.get_pg() is page_dict
     assert objr.get_cos_object().get_dictionary_object(_PG) is page_dict

@@ -66,6 +66,6 @@ def test_wave826_tiff_sub_byte_round_trip_pads_short_final_row() -> None:
 
 
 def test_wave826_signed_abs_sum_treats_bytes_as_signed() -> None:
-    assert _predictor._signed_abs_sum(bytes([0, 1, 127, 128, 200, 255])) == (  # noqa: SLF001
+    assert _predictor._signed_abs_sum(bytes([0, 1, 127, 128, 200, 255])) == (
         0 + 1 + 127 + 128 + 56 + 1
     )

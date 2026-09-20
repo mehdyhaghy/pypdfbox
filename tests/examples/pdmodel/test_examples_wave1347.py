@@ -138,7 +138,7 @@ def test_embedded_fonts_glyph_fallback_renders_placeholder(
     calls: dict[str, int] = {"n": 0}
 
     class FlakyStream(real_pcs):  # type: ignore[misc, valid-type]
-        def show_text(self, text: str) -> None:  # noqa: D401
+        def show_text(self, text: str) -> None:
             calls["n"] += 1
             if calls["n"] == 2:
                 raise ValueError("simulated unmappable glyph")

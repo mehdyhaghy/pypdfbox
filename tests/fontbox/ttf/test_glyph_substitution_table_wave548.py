@@ -160,5 +160,5 @@ def test_wave548_dflt_reuses_last_supported_script_when_available() -> None:
     gsub = GlyphSubstitutionTable()
     gsub.populate_from_fonttools(FakeTTFont(table, ["a", "a.latn", "a.cyrl"]))
 
-    assert gsub._select_script_tag(("cyrl",)) == "cyrl"  # noqa: SLF001
-    assert gsub._select_script_tag(("DFLT",)) == "cyrl"  # noqa: SLF001
+    assert gsub._select_script_tag(("cyrl",)) == "cyrl"
+    assert gsub._select_script_tag(("DFLT",)) == "cyrl"

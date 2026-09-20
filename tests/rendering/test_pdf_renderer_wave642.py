@@ -26,16 +26,16 @@ def _prepared_renderer(
 ) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -43,13 +43,13 @@ def _finish(renderer: PDFRenderer) -> None:
 def test_close_open_subpath_is_noop_without_current_subpath() -> None:
     doc, renderer = _prepared_renderer()
     try:
-        renderer._current_subpath = None  # noqa: SLF001
-        renderer._subpaths = []  # noqa: SLF001
+        renderer._current_subpath = None
+        renderer._subpaths = []
 
-        renderer._close_open_subpath()  # noqa: SLF001
+        renderer._close_open_subpath()
 
-        assert renderer._subpaths == []  # noqa: SLF001
-        assert renderer._current_subpath is None  # noqa: SLF001
+        assert renderer._subpaths == []
+        assert renderer._current_subpath is None
     finally:
         _finish(renderer)
         doc.close()
@@ -58,11 +58,11 @@ def test_close_open_subpath_is_noop_without_current_subpath() -> None:
 def test_build_path_mask_returns_none_without_active_image() -> None:
     doc, renderer = _prepared_renderer()
     try:
-        renderer._image = None  # noqa: SLF001
+        renderer._image = None
 
-        assert renderer._build_path_mask(even_odd=False) is None  # noqa: SLF001
+        assert renderer._build_path_mask(even_odd=False) is None
     finally:
-        renderer._draw = None  # noqa: SLF001
+        renderer._draw = None
         doc.close()
 
 
@@ -71,13 +71,13 @@ def test_pattern_fill_returns_for_absent_pattern_or_degenerate_mask(
 ) -> None:
     doc, renderer = _prepared_renderer()
     try:
-        renderer._gs.fill_pattern = None  # noqa: SLF001
-        renderer._paint_pattern_fill(even_odd=False)  # noqa: SLF001
+        renderer._gs.fill_pattern = None
+        renderer._paint_pattern_fill(even_odd=False)
 
-        renderer._gs.fill_pattern = object()  # noqa: SLF001
+        renderer._gs.fill_pattern = object()
         monkeypatch.setattr(renderer, "_build_path_mask", lambda *, even_odd: None)
 
-        renderer._paint_pattern_fill(even_odd=True)  # noqa: SLF001
+        renderer._paint_pattern_fill(even_odd=True)
     finally:
         _finish(renderer)
         doc.close()
@@ -89,4 +89,4 @@ def test_aggdraw_pen_curve_to_records_complete_cubic_segment() -> None:
     pen.curve_to((2.0, 4.0), (6.0, 8.0), (10.0, 12.0))
 
     assert pen.has_segments is True
-    assert pen._last == (5.0, 6.0)  # noqa: SLF001
+    assert pen._last == (5.0, 6.0)

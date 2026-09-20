@@ -17,20 +17,20 @@ def _make_path_pen() -> Any:
     """Build a fontTools BasePen subclass that records draw commands as
     the simple list-of-tuples format used by ``PD…Font.get_glyph_path``.
     """
-    from fontTools.pens.basePen import BasePen  # type: ignore[import-untyped]  # noqa: PLC0415
+    from fontTools.pens.basePen import BasePen  # type: ignore[import-untyped]
 
     class _PathPen(BasePen):  # type: ignore[misc]
         def __init__(self) -> None:
             super().__init__(glyphSet=None)
             self.commands: list[tuple[Any, ...]] = []
 
-        def _moveTo(self, pt: tuple[float, float]) -> None:
+        def _moveTo(self, pt: tuple[float, float]) -> None:  # noqa: N802 (fontTools BasePen hook)
             self.commands.append(("moveto", float(pt[0]), float(pt[1])))
 
-        def _lineTo(self, pt: tuple[float, float]) -> None:
+        def _lineTo(self, pt: tuple[float, float]) -> None:  # noqa: N802 (fontTools BasePen hook)
             self.commands.append(("lineto", float(pt[0]), float(pt[1])))
 
-        def _curveToOne(
+        def _curveToOne(  # noqa: N802 (fontTools BasePen hook)
             self,
             pt1: tuple[float, float],
             pt2: tuple[float, float],
@@ -48,7 +48,7 @@ def _make_path_pen() -> Any:
                 )
             )
 
-        def _closePath(self) -> None:
+        def _closePath(self) -> None:  # noqa: N802 (fontTools BasePen hook)
             self.commands.append(("closepath",))
 
     return _PathPen()
@@ -142,7 +142,7 @@ class CFFFont:
     @classmethod
     def from_bytes(cls, data: bytes | bytearray | memoryview) -> CFFFont:
         """Parse a CFF font from raw ``/FontFile3`` bytes (``/Subtype /Type1C``)."""
-        from fontTools.cffLib import CFFFontSet  # type: ignore[import-untyped]  # noqa: PLC0415
+        from fontTools.cffLib import CFFFontSet  # type: ignore[import-untyped]
 
         fontset = CFFFontSet()
         fontset.decompile(io.BytesIO(bytes(data)), otFont=None)
@@ -336,7 +336,7 @@ class CFFFont:
             return 0
         try:
             return len(self._charstrings_dict())
-        except Exception:  # noqa: BLE001
+        except Exception:
             return 0
 
     def get_global_subrs(self) -> int:
@@ -466,7 +466,7 @@ class CFFFont:
             return []
         try:
             cs_map = self._charstrings_dict()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return []
         out: list[bytes] = []
         for name in self.get_charset():
@@ -480,7 +480,7 @@ class CFFFont:
                 # fontTools may lazily compile on demand; trigger it.
                 try:
                     cs.compile()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     out.append(b"")
                     continue
                 bc = getattr(cs, "bytecode", None)
@@ -528,7 +528,7 @@ class CFFFont:
         if not name:
             return 0
         # Standard SIDs first (immutable, font-independent).
-        from fontTools.cffLib import cffStandardStrings  # noqa: PLC0415
+        from fontTools.cffLib import cffStandardStrings
 
         try:
             return int(cffStandardStrings.index(name))
@@ -560,7 +560,7 @@ class CFFFont:
         the Standard Strings; higher SIDs index into the font's STRING
         INDEX. Returns an empty string for an unknown SID.
         """
-        from fontTools.cffLib import cffStandardStrings  # noqa: PLC0415
+        from fontTools.cffLib import cffStandardStrings
 
         if sid < 0:
             return ""
@@ -658,7 +658,7 @@ class CFFFont:
             return {}
         try:
             cs_map = self._charstrings_dict()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return {}
         for name in cs_map.keys():  # noqa: SIM118 — fontTools mapping isn't a real dict
             if name not in self._widths:
@@ -669,7 +669,7 @@ class CFFFont:
     def font_matrix(self) -> list[float]:
         """Six-element font matrix. Default for CFF is ``[0.001 0 0 0.001 0 0]``."""
         if self._font_matrix is None:
-            assert self._top is not None  # noqa: S101
+            assert self._top is not None
             matrix = self._top.FontMatrix
             self._font_matrix = [float(v) for v in matrix]
         return self._font_matrix
@@ -689,7 +689,7 @@ class CFFFont:
 
     def _charstrings_dict(self) -> Any:
         if self._charstrings is None:
-            assert self._top is not None  # noqa: S101
+            assert self._top is not None
             self._charstrings = self._top.CharStrings
         return self._charstrings
 
@@ -698,7 +698,7 @@ class CFFFont:
             return False
         try:
             return name in self._charstrings_dict()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
 
     def get_width(self, name: str) -> float:
@@ -720,9 +720,9 @@ class CFFFont:
         except KeyError:
             return 0.0
 
-        from fontTools.misc import psCharStrings  # type: ignore[import-untyped]  # noqa: PLC0415
+        from fontTools.misc import psCharStrings  # type: ignore[import-untyped]
 
-        assert self._top is not None  # noqa: S101
+        assert self._top is not None
         # For name-keyed CFF the Private DICT lives on the Top DICT;
         # for CIDKeyed CFF the Top DICT has no Private DICT — instead
         # fontTools attaches the per-FD Private to each CharString via
@@ -746,7 +746,7 @@ class CFFFont:
         )
         try:
             extractor.execute(cs)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return 0.0
         width = float(extractor.width)
         self._widths[name] = width
@@ -798,7 +798,7 @@ class CFFFont:
         pen = _make_path_pen()
         try:
             cs.draw(pen)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return []
         return list(pen.commands)
 
@@ -833,7 +833,7 @@ class CFFFont:
         # Defer the import: type2_char_string.py imports from this
         # module's package, but the class itself doesn't depend on
         # CFFFont, so circular import is not a concern in practice.
-        from .type2_char_string import Type2CharString  # noqa: PLC0415
+        from .type2_char_string import Type2CharString
 
         charset = self.get_charset()
         if not charset or cid_or_gid < 0:

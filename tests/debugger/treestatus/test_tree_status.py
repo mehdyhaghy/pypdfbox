@@ -154,6 +154,6 @@ def test_resolution_through_xref_entry_unwraps_cos_object() -> None:
     # COSObject wrapping the dict to exercise the unwrap branch.
     cos_obj = COSObject(20, 0, resolved=inner_dict)
     # Search inside a COSObject's resolved dict.
-    out = TreeStatus._search_node(cos_obj, "X")  # noqa: SLF001
+    out = TreeStatus._search_node(cos_obj, "X")
     assert out is not None
     assert out.get_value().int_value() == 99

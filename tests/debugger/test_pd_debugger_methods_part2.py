@@ -51,13 +51,13 @@ def _reset_menu_singletons() -> None:
     from pypdfbox.debugger.ui.text_stripper_menu import TextStripperMenu
     from pypdfbox.debugger.ui.zoom_menu import ZoomMenu
 
-    ViewMenu._reset_instance()  # noqa: SLF001
-    ZoomMenu._reset_instance()  # noqa: SLF001
-    RotationMenu._reset_instance()  # noqa: SLF001
-    RenderDestinationMenu._reset_instance()  # noqa: SLF001
-    TreeViewMenu._reset_for_testing()  # noqa: SLF001
-    ImageTypeMenu._reset_for_testing()  # noqa: SLF001
-    TextStripperMenu._reset_for_testing()  # noqa: SLF001
+    ViewMenu._reset_instance()
+    ZoomMenu._reset_instance()
+    RotationMenu._reset_instance()
+    RenderDestinationMenu._reset_instance()
+    TreeViewMenu._reset_for_testing()
+    ImageTypeMenu._reset_for_testing()
+    TextStripperMenu._reset_for_testing()
 
 
 @pytest.fixture(autouse=True)
@@ -93,7 +93,7 @@ def debugger(tk_root: tk.Tk) -> Iterator[PDFDebugger]:
         yield instance
     finally:
         with contextlib.suppress(tk.TclError):
-            instance._main_frame.destroy()  # noqa: SLF001
+            instance._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------
@@ -131,7 +131,7 @@ def test_get_pdf_file_returns_path(
 
 
 def test_get_pdf_file_none_for_url(debugger: PDFDebugger) -> None:
-    debugger._current_file_path = "https://example.com/foo.pdf"  # noqa: SLF001
+    debugger._current_file_path = "https://example.com/foo.pdf"
     assert debugger.get_pdf_file() is None
 
 
@@ -281,12 +281,12 @@ def test_process_tree_selection_with_real_iid(
 
 def test_update_title_default_no_document(debugger: PDFDebugger) -> None:
     debugger.update_title()
-    assert debugger._toplevel.title() == PDFDebugger.TITLE  # noqa: SLF001
+    assert debugger._toplevel.title() == PDFDebugger.TITLE
 
 
 def test_update_title_explicit_string(debugger: PDFDebugger) -> None:
     debugger.update_title("Custom")
-    assert debugger._toplevel.title() == "Custom"  # noqa: SLF001
+    assert debugger._toplevel.title() == "Custom"
 
 
 # ----------------------------------------------------------------------
@@ -378,6 +378,6 @@ def test_read_pdf_file_updates_title(
     debugger: PDFDebugger, synthetic_pdf: Path
 ) -> None:
     debugger.read_pdf_file(synthetic_pdf)
-    title = debugger._toplevel.title()  # noqa: SLF001
+    title = debugger._toplevel.title()
     # On macOS upstream sets bare filename; on other platforms full prefix.
     assert "sample.pdf" in title or str(synthetic_pdf) in title

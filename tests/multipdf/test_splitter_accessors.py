@@ -127,7 +127,7 @@ def test_has_stream_cache_create_function_round_trip() -> None:
     splitter = Splitter()
     assert not splitter.has_stream_cache_create_function()
 
-    def factory():  # noqa: ANN202
+    def factory():
         return None
 
     splitter.set_stream_cache_create_function(factory)

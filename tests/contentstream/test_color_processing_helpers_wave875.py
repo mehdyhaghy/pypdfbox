@@ -5,7 +5,7 @@ from tests.contentstream.operator.color import test_color_processing_gate_wave31
 
 
 def test_wave875_graphics_state_color_accessors_round_trip() -> None:
-    state = gate_mod._GraphicsState()  # noqa: SLF001
+    state = gate_mod._GraphicsState()
     stroking = PDColor([0.1, 0.2, 0.3], PDDeviceRGB.INSTANCE)
     non_stroking = PDColor([0.4, 0.5, 0.6], PDDeviceRGB.INSTANCE)
 
@@ -20,7 +20,7 @@ def test_wave875_graphics_state_color_accessors_round_trip() -> None:
 
 
 def test_wave875_engine_helper_methods_record_colors_and_state() -> None:
-    engine = gate_mod._Engine()  # noqa: SLF001
+    engine = gate_mod._Engine()
     color = PDColor([0.7, 0.8, 0.9], PDDeviceRGB.INSTANCE)
 
     assert engine.get_graphics_state() is engine.graphics_state

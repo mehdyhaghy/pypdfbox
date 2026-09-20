@@ -334,7 +334,7 @@ class PDFunction:
                 out.append(v)
         return out
 
-    def eval(self, input: list[float]) -> list[float]:  # noqa: A002 - upstream parameter name
+    def eval(self, input: list[float]) -> list[float]:
         """Evaluate the function at ``input``. Subclasses override.
 
         The abstract base raises ``NotImplementedError``; concrete function
@@ -344,7 +344,7 @@ class PDFunction:
             f"eval() is not implemented for {type(self).__name__}"
         )
 
-    def eval_function(self, input: list[float]) -> list[float]:  # noqa: A002 - upstream parameter name
+    def eval_function(self, input: list[float]) -> list[float]:
         """Alias for :meth:`eval` — mirrors the upstream PDFBox convenience
         method ``evalFunction(float[])`` which delegates straight to ``eval``."""
         return self.eval(input)
@@ -500,7 +500,7 @@ class PDFunctionTypeIdentity(PDFunction):
             "PDFunctionTypeIdentity has no /FunctionType — branch on isinstance"
         )
 
-    def eval(self, input: list[float]) -> list[float]:  # noqa: A002 - upstream parameter name
+    def eval(self, input: list[float]) -> list[float]:
         return list(input)
 
     def get_range(self) -> COSArray | None:

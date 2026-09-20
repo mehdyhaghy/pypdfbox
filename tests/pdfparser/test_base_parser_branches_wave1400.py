@@ -85,7 +85,7 @@ def test_read_until_end_of_cos_dictionary_end_keyword_false_match() -> None:
     assert result is False
     # Cursor should be positioned just before the closing '>'.
     # The helper rewinds one byte after the terminating '>'.
-    remaining = p._src.read()  # noqa: SLF001
+    remaining = p._src.read()
     assert remaining == 0x3E  # '>'
 
 

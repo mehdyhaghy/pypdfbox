@@ -235,7 +235,7 @@ def test_create_view_uses_per_thread_copy_cache() -> None:
         # Caller-facing views are distinct instances (different windows),
         # but they share the same cached parent duplicate.
         assert v1 is not v2
-        assert len(r._rarb_copies) == 1  # noqa: SLF001 — internal-state check
+        assert len(r._rarb_copies) == 1
         assert v1.length() == 4
         assert v2.length() == 4
 
@@ -243,9 +243,9 @@ def test_create_view_uses_per_thread_copy_cache() -> None:
 def test_close_drops_view_copies() -> None:
     r = RandomAccessReadBuffer(_values())
     r.create_view(0, 4)
-    assert len(r._rarb_copies) == 1  # noqa: SLF001
+    assert len(r._rarb_copies) == 1
     r.close()
-    assert len(r._rarb_copies) == 0  # noqa: SLF001
+    assert len(r._rarb_copies) == 0
 
 
 def test_chunk_size_matches_input_length_for_byte_source() -> None:

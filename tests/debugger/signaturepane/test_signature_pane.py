@@ -72,7 +72,7 @@ def _build_pkcs7_blob_once() -> bytes:
         # every one being rejected is < 10^-40.
         try:
             certs = pkcs7.load_der_pkcs7_certificates(blob)
-        except Exception:  # noqa: BLE001
+        except Exception:
             continue
         if certs:
             return blob

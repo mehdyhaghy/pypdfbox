@@ -41,7 +41,7 @@ _FIXTURE_TTF = (
 def ttc_v1_bytes() -> bytes:
     """Build a single-font v1.0 TTC. Re-uses the bundled TTF fixture."""
     pytest.importorskip("fontTools")
-    from fontTools.ttLib import TTCollection, TTFont  # noqa: PLC0415
+    from fontTools.ttLib import TTCollection, TTFont
 
     coll = TTCollection()
     coll.fonts.append(TTFont(os.fspath(_FIXTURE_TTF)))
@@ -53,7 +53,7 @@ def ttc_v1_bytes() -> bytes:
 @pytest.fixture(scope="module")
 def two_font_ttc_bytes() -> bytes:
     pytest.importorskip("fontTools")
-    from fontTools.ttLib import TTCollection, TTFont  # noqa: PLC0415
+    from fontTools.ttLib import TTCollection, TTFont
 
     coll = TTCollection()
     coll.fonts.append(TTFont(os.fspath(_FIXTURE_TTF)))
@@ -149,7 +149,7 @@ def test_v2_header_consumes_dsig_fields(two_font_ttc_bytes: bytes) -> None:
     # The patched stream should now parse cleanly as a v2 collection.
     with TrueTypeCollection(bytes(patched)) as ttc:
         assert ttc.get_number_of_fonts() == num_fonts
-        assert ttc._version >= 2  # noqa: SLF001
+        assert ttc._version >= 2
 
 
 # ---------- get_font_by_name ----------------------------------------------
@@ -216,13 +216,13 @@ def test_context_manager_invokes_close(two_font_ttc_bytes: bytes) -> None:
     """The ``with`` form must release the underlying stream on exit."""
     closed: list[bool] = []
     ttc = TrueTypeCollection(two_font_ttc_bytes)
-    original_close = ttc._stream.close  # noqa: SLF001
+    original_close = ttc._stream.close
 
     def _spy() -> None:
         closed.append(True)
         original_close()
 
-    ttc._stream.close = _spy  # type: ignore[method-assign]  # noqa: SLF001
+    ttc._stream.close = _spy  # type: ignore[method-assign]
     with ttc as alias:
         assert alias is ttc
     assert closed == [True]

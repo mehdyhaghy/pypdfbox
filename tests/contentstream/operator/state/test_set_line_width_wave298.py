@@ -45,7 +45,7 @@ def test_wave298_get_line_width_skips_missing_or_non_number_operand() -> None:
 def test_wave298_process_updates_bound_graphics_state_for_number() -> None:
     engine = _Engine()
     processor = SetLineWidth()
-    processor.set_context(cast(Any, engine))
+    processor.set_context(cast("Any", engine))
 
     processor.process(Operator.get_operator("w"), [COSFloat(2.5)])
 
@@ -55,7 +55,7 @@ def test_wave298_process_updates_bound_graphics_state_for_number() -> None:
 def test_wave298_process_ignores_non_number_without_context_mutation() -> None:
     engine = _Engine()
     processor = SetLineWidth()
-    processor.set_context(cast(Any, engine))
+    processor.set_context(cast("Any", engine))
 
     processor.process(Operator.get_operator("w"), [COSString(b"bad")])
 

@@ -68,7 +68,7 @@ def test_wave514_xref_stream_rejects_negative_width() -> None:
     stream.set_item("Size", COSInteger.get(1))
 
     with pytest.raises(PDFParseError, match="negative width"):
-        parser._decode_xref_stream_entries(stream)  # noqa: SLF001
+        parser._decode_xref_stream_entries(stream)
 
 
 def test_wave514_xref_stream_rejects_odd_index_array() -> None:
@@ -80,19 +80,19 @@ def test_wave514_xref_stream_rejects_odd_index_array() -> None:
     stream.set_item("Index", index)
 
     with pytest.raises(PDFParseError, match="odd length"):
-        parser._decode_xref_stream_entries(stream)  # noqa: SLF001
+        parser._decode_xref_stream_entries(stream)
 
 
 def test_wave514_stream_keyword_after_non_dictionary_object_raises() -> None:
     data = b"%PDF-1.4\n1 0 obj\n42\nstream\nabc\nendstream\nendobj\n"
     parser = _parser(data)
     doc = COSDocument()
-    parser._document = doc  # noqa: SLF001
-    parser._cos_parser = COSParser(parser._src, document=doc)  # noqa: SLF001
+    parser._document = doc
+    parser._cos_parser = COSParser(parser._src, document=doc)
 
     try:
         with pytest.raises(PDFParseError, match="stream object body is not a dictionary"):
-            parser._load_indirect_object_at(9, COSObject(1, 0))  # noqa: SLF001
+            parser._load_indirect_object_at(9, COSObject(1, 0))
     finally:
         doc.close()
 
@@ -100,7 +100,7 @@ def test_wave514_stream_keyword_after_non_dictionary_object_raises() -> None:
 def test_wave514_compressed_object_loader_parses_direct_object() -> None:
     parser = _parser(b"")
     doc = COSDocument()
-    parser._document = doc  # noqa: SLF001
+    parser._document = doc
     try:
         obj_stream = COSStream(scratch_file=doc.scratch_file)
         obj_stream.set_item("Type", COSName.get_pdf_name("ObjStm"))
@@ -109,7 +109,7 @@ def test_wave514_compressed_object_loader_parses_direct_object() -> None:
         obj_stream.set_raw_data(b"4 0\n99")
         doc.get_object_from_pool(COSObjectKey(8, 0)).set_object(obj_stream)
 
-        loaded = parser._load_compressed_object(8, 0, COSObject(4, 0))  # noqa: SLF001
+        loaded = parser._load_compressed_object(8, 0, COSObject(4, 0))
 
         assert loaded is COSInteger.get(99)
     finally:

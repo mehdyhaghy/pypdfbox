@@ -457,10 +457,10 @@ class SecurityHandler(ABC):
         """
         # Lazy imports — these submodules import COS types which live below
         # the encryption package in the dependency order.
-        from pypdfbox.cos.cos_array import COSArray  # noqa: PLC0415
-        from pypdfbox.cos.cos_dictionary import COSDictionary  # noqa: PLC0415
-        from pypdfbox.cos.cos_stream import COSStream  # noqa: PLC0415
-        from pypdfbox.cos.cos_string import COSString  # noqa: PLC0415
+        from pypdfbox.cos.cos_array import COSArray
+        from pypdfbox.cos.cos_dictionary import COSDictionary
+        from pypdfbox.cos.cos_stream import COSStream
+        from pypdfbox.cos.cos_string import COSString
 
         if isinstance(obj, COSString):
             return self._decrypt_string_if_absent(obj, obj_num, gen_num)
@@ -527,9 +527,9 @@ class SecurityHandler(ABC):
         # Skip cross-reference streams + (optional) Metadata.
         name: object = None
         try:
-            from pypdfbox.cos.cos_name import COSName  # noqa: PLC0415
+            from pypdfbox.cos.cos_name import COSName
         except ImportError:
-            COSName = None  # type: ignore[assignment]
+            COSName = None  # type: ignore[assignment]  # noqa: N806 (import fallback)
         if COSName is not None:
             stream_type = None
             get_item = getattr(stream, "get_item", None)
@@ -539,7 +539,7 @@ class SecurityHandler(ABC):
                     stream_type = get_cos_name(COSName.TYPE)
                 elif callable(get_item):
                     stream_type = get_item("Type")
-            except Exception:  # noqa: BLE001 — defensive, parity with upstream's broad catch
+            except Exception:
                 stream_type = None
             if stream_type is not None:
                 name = getattr(stream_type, "get_name", lambda: None)()
@@ -587,7 +587,7 @@ class SecurityHandler(ABC):
                     # base handler delegates to ``_decrypt`` for V<4 parity.
                     plain = self.decrypt_stream(bytes(raw), obj_num, gen_num)
                     set_raw(plain)
-            except Exception:  # noqa: BLE001 — mirror upstream tolerant decrypt
+            except Exception:
                 return
 
     def _decrypt_dictionary(
@@ -599,15 +599,15 @@ class SecurityHandler(ABC):
         if callable(get_item):
             try:
                 cf = get_item("CF")
-            except Exception:  # noqa: BLE001
+            except Exception:
                 cf = None
             if cf is not None:
                 return dictionary
         # Detect signature dicts so we don't re-encrypt /Contents.
         is_signature = False
         try:
-            from pypdfbox.cos.cos_array import COSArray  # noqa: PLC0415
-            from pypdfbox.cos.cos_string import COSString  # noqa: PLC0415
+            from pypdfbox.cos.cos_array import COSArray
+            from pypdfbox.cos.cos_string import COSString
 
             type_val = (
                 get_item("Type") if callable(get_item) else None
@@ -620,7 +620,7 @@ class SecurityHandler(ABC):
                 byterange = get_item("ByteRange")
                 if isinstance(contents, COSString) and isinstance(byterange, COSArray):
                     is_signature = True
-        except Exception:  # noqa: BLE001
+        except Exception:
             is_signature = False
 
         # ``entry_set()`` mirrors Java's ``Map.entrySet`` (line 636 upstream).

@@ -154,14 +154,14 @@ def test_set_true_type_font_injects_and_caches() -> None:
     font.set_true_type_font(sentinel)  # type: ignore[arg-type]
     # The cache holds the injected value; subsequent reads return it
     # without touching the (absent) descriptor.
-    assert font._ttf is sentinel  # noqa: SLF001
+    assert font._ttf is sentinel
 
 
 def test_set_true_type_font_none_marks_attempted() -> None:
     font = PDCIDFontType2()
     font.set_true_type_font(None)
     # Internal sentinel -- "tried, no program available".
-    assert font._ttf is False  # noqa: SLF001
+    assert font._ttf is False
     assert font.get_true_type_font() is None
 
 

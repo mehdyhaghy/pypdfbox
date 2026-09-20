@@ -567,7 +567,7 @@ class PDFunctionType0(PDFunction):
             result.append(corners[0])
         return result
 
-    def eval(self, input: list[float]) -> list[float]:  # noqa: A002 - upstream parameter name
+    def eval(self, input: list[float]) -> list[float]:
         """N-dimensional interpolation over the sample table per §7.10.2.
 
         ``/Order = 1`` (linear, default) folds 2^n surrounding samples per

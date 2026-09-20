@@ -255,7 +255,7 @@ def test_rendering_round_trip() -> None:
     """
     # Import lazily so the rendering import only happens when this test
     # actually runs (matches PDFRenderer's own lazy contentstream import).
-    from pypdfbox.rendering import PDFRenderer  # noqa: PLC0415
+    from pypdfbox.rendering import PDFRenderer
 
     doc = PDDocument()
     page = PDPage(PDRectangle(0.0, 0.0, 100.0, 50.0))

@@ -86,7 +86,7 @@ class PageIterator(Iterator["PDPage"]):
         if not self._queue:
             raise StopIteration
         # Local import to avoid a cycle (PDPage imports from pdmodel).
-        from .pd_page import PDPage  # noqa: PLC0415
+        from .pd_page import PDPage
 
         cos_page = self._queue.popleft()
         # Sanitize the /Type entry — match upstream's repair logic.

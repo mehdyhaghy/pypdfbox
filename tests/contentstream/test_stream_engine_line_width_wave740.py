@@ -18,6 +18,6 @@ def test_wave740_stream_engine_to_float_returns_none_for_non_number() -> None:
 
 def test_wave740_set_line_width_skips_when_graphics_state_is_missing() -> None:
     processor = SetLineWidth()
-    processor.set_context(cast(Any, _NoGraphicsStateEngine()))
+    processor.set_context(cast("Any", _NoGraphicsStateEngine()))
 
     processor.process(Operator.get_operator("w"), [COSInteger.get(9)])

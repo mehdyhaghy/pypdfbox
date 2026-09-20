@@ -562,7 +562,7 @@ class PDStructureTreeRoot(PDStructureNode):
 
     # ---------- /K append ----------
 
-    def append_kid(self, kid: Any) -> None:  # noqa: D401 - mirrors upstream
+    def append_kid(self, kid: Any) -> None:
         """Append ``kid`` to the root's ``/K``. Wires ``/P`` for
         :class:`PDStructureElement` kids so they back-reference this root,
         mirroring upstream's ``appendKid(PDStructureElement)`` plumbing.
@@ -626,8 +626,8 @@ class PDStructureElementNumberTreeNode(PDNumberTreeNode[COSBase]):
 
 def _to_cos(value: Any) -> COSBase:
     if hasattr(value, "get_cos_object"):
-        return cast(COSBase, value.get_cos_object())
-    return cast(COSBase, value)
+        return cast("COSBase", value.get_cos_object())
+    return cast("COSBase", value)
 
 
 __all__ = [

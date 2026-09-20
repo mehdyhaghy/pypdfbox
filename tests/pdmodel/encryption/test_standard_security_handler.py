@@ -236,7 +236,7 @@ def test_prepare_for_decryption_owner_password_r6_gets_owner_permissions() -> No
     restricted = AccessPermission()
     restricted.set_can_print(False)
     permissions = restricted.get_permission_bytes()
-    o, oe, u, ue, perms = handler._build_r6_dictionary(  # noqa: SLF001
+    o, oe, u, ue, perms = handler._build_r6_dictionary(
         b"owner", b"user", permissions
     )
 
@@ -276,7 +276,7 @@ def test_prepare_for_decryption_user_password_r6_keeps_limited_permissions() -> 
     restricted = AccessPermission()
     restricted.set_can_print(False)
     permissions = restricted.get_permission_bytes()
-    o, oe, u, ue, perms = handler._build_r6_dictionary(  # noqa: SLF001
+    o, oe, u, ue, perms = handler._build_r6_dictionary(
         b"owner", b"user", permissions
     )
 
@@ -456,14 +456,14 @@ def test_r6_perms_round_trips_permission_bits() -> None:
     handler.set_encryption_key(_os.urandom(32))
     # Custom permission set: deny printing, allow modify, deny extract.
     permissions = -1852  # arbitrary signed-32 representable value
-    _o, _oe, _u, _ue, perms = handler._build_r6_dictionary(  # noqa: SLF001
+    _o, _oe, _u, _ue, perms = handler._build_r6_dictionary(
         b"owner-pw", b"user-pw", permissions
     )
     assert len(perms) == 16
 
     # AES-256 ECB decrypt under the file key must produce the canonical
     # algorithm-10 layout.
-    plain = StandardSecurityHandler._decrypt_perms_r5_r6(  # noqa: SLF001
+    plain = StandardSecurityHandler._decrypt_perms_r5_r6(
         handler.get_encryption_key() or b"", perms
     )
     assert len(plain) == 16
@@ -480,11 +480,11 @@ def test_r6_perms_round_trips_permission_bits() -> None:
     # Byte 8 is 'T' because ``encrypt_metadata`` defaults to True.
     assert plain[8:9] == b"T"
     # Validation helper agrees.
-    assert StandardSecurityHandler._validate_perms_r5_r6(  # noqa: SLF001
+    assert StandardSecurityHandler._validate_perms_r5_r6(
         handler.get_encryption_key() or b"", perms, permissions, True
     ) is True
     # Tampering with the permission integer must fail validation.
-    assert StandardSecurityHandler._validate_perms_r5_r6(  # noqa: SLF001
+    assert StandardSecurityHandler._validate_perms_r5_r6(
         handler.get_encryption_key() or b"", perms, permissions ^ 0xFF, True
     ) is False
 
@@ -499,25 +499,25 @@ def test_r6_perms_validates_encrypt_metadata_flag() -> None:
     handler.set_aes(True)
     handler.set_decrypt_metadata(True)
     # Force the encrypt-metadata flag to False on the writer side.
-    handler._encrypt_metadata = False  # noqa: SLF001
+    handler._encrypt_metadata = False
 
     import os as _os
 
     handler.set_encryption_key(_os.urandom(32))
-    _o, _oe, _u, _ue, perms = handler._build_r6_dictionary(  # noqa: SLF001
+    _o, _oe, _u, _ue, perms = handler._build_r6_dictionary(
         b"owner", b"user", -3904
     )
-    plain = StandardSecurityHandler._decrypt_perms_r5_r6(  # noqa: SLF001
+    plain = StandardSecurityHandler._decrypt_perms_r5_r6(
         handler.get_encryption_key() or b"", perms
     )
     assert plain[8:9] == b"F"
     # And validate_perms must accept it only when the caller passes
     # ``encrypt_metadata=False``.
     file_key = handler.get_encryption_key() or b""
-    assert StandardSecurityHandler._validate_perms_r5_r6(  # noqa: SLF001
+    assert StandardSecurityHandler._validate_perms_r5_r6(
         file_key, perms, -3904, False
     ) is True
-    assert StandardSecurityHandler._validate_perms_r5_r6(  # noqa: SLF001
+    assert StandardSecurityHandler._validate_perms_r5_r6(
         file_key, perms, -3904, True
     ) is False
 
@@ -536,10 +536,10 @@ def test_r6_random_salts_are_unique_per_build() -> None:
     import os as _os
 
     handler.set_encryption_key(_os.urandom(32))
-    o1, _oe1, u1, _ue1, _p1 = handler._build_r6_dictionary(  # noqa: SLF001
+    o1, _oe1, u1, _ue1, _p1 = handler._build_r6_dictionary(
         b"owner", b"user", -3904
     )
-    o2, _oe2, u2, _ue2, _p2 = handler._build_r6_dictionary(  # noqa: SLF001
+    o2, _oe2, u2, _ue2, _p2 = handler._build_r6_dictionary(
         b"owner", b"user", -3904
     )
     # Hashes will differ because OE/UE wrap a fresh file_key — but more
@@ -556,17 +556,17 @@ def test_compute_hash_r5_r6_user_key_below_48_is_ignored() -> None:
     same result as passing ``b""``."""
     pw = b"password"
     salt = b"\x01\x02\x03\x04\x05\x06\x07\x08"
-    h_empty = StandardSecurityHandler._compute_hash_r5_r6(  # noqa: SLF001
+    h_empty = StandardSecurityHandler._compute_hash_r5_r6(
         pw + salt, pw, b"", 6
     )
-    h_short = StandardSecurityHandler._compute_hash_r5_r6(  # noqa: SLF001
+    h_short = StandardSecurityHandler._compute_hash_r5_r6(
         pw + salt, pw, b"too-short", 6
     )
     assert h_empty == h_short
 
     # And a 48-byte user_key must produce a *different* hash — proving the
     # short-circuit is real, not a no-op masking a bug.
-    h_full = StandardSecurityHandler._compute_hash_r5_r6(  # noqa: SLF001
+    h_full = StandardSecurityHandler._compute_hash_r5_r6(
         pw + salt, pw, b"\x00" * 48, 6
     )
     assert h_full != h_empty
@@ -620,7 +620,7 @@ def test_r6_unicode_password_round_trip_utf8() -> None:
     handler.set_encryption_key(_os.urandom(32))
     user_bytes = user_pw.encode("utf-8")
     owner_bytes = owner_pw.encode("utf-8")
-    o, oe, u, ue, perms = handler._build_r6_dictionary(  # noqa: SLF001
+    o, oe, u, ue, perms = handler._build_r6_dictionary(
         owner_bytes, user_bytes, -3904
     )
     encryption = PDEncryption()
@@ -682,7 +682,7 @@ def test_is_user_password_string_uses_utf8_for_r6() -> None:
 
     handler.set_encryption_key(_os.urandom(32))
     user_bytes = user_pw.encode("utf-8")
-    o, oe, u, ue, perms = handler._build_r6_dictionary(  # noqa: SLF001
+    o, oe, u, ue, perms = handler._build_r6_dictionary(
         user_bytes, user_bytes, -3904
     )
     encryption = PDEncryption()
@@ -718,7 +718,7 @@ def test_get_user_password_recovers_padded_user_pw_r3() -> None:
     o = StandardSecurityHandler.compute_owner_password(owner_pw, user_pw, 3, 16)
     recovered = StandardSecurityHandler.get_user_password(owner_pw, o, 3, 16)
     # The recovered bytes should *be* the padded user password.
-    expected = StandardSecurityHandler._pad_password(user_pw)  # noqa: SLF001
+    expected = StandardSecurityHandler._pad_password(user_pw)
     assert recovered == expected
 
 
@@ -736,7 +736,7 @@ def test_get_user_password_r2_with_rc4_40() -> None:
     owner_pw = b"o"
     o = StandardSecurityHandler.compute_owner_password(owner_pw, user_pw, 2, 5)
     recovered = StandardSecurityHandler.get_user_password(owner_pw, o, 2, 5)
-    assert recovered == StandardSecurityHandler._pad_password(user_pw)  # noqa: SLF001
+    assert recovered == StandardSecurityHandler._pad_password(user_pw)
 
 
 # --------------------------------------------------- cross-version dispatch

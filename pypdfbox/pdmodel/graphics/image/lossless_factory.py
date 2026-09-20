@@ -507,7 +507,7 @@ def _create_from_indexed(
         # Vectorised 256-entry LUT equivalent of the per-sample loop:
         # index i maps to ``alpha_table[i]``, or 0xFF when the index is
         # past the end of the (possibly short) transparency table.
-        import numpy as np  # noqa: PLC0415
+        import numpy as np
 
         _lut = np.full(256, 0xFF, dtype=np.uint8)
         _n = min(256, len(alpha_table))
@@ -529,7 +529,7 @@ def _create_from_indexed(
         # (transparent), every other sample bit 1 (opaque). ``packbits``
         # packs MSB-first per row with the same right-zero-padding as
         # ``0x80 >> (x & 7)``.
-        import numpy as np  # noqa: PLC0415
+        import numpy as np
 
         _idx = np.frombuffer(raw_indices, dtype=np.uint8).reshape(height, width)
         packed = np.packbits(_idx != transparency, axis=1).tobytes()

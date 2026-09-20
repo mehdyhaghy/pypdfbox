@@ -50,7 +50,7 @@ def _ref_blend_channel(b_arr: np.ndarray, s_arr: np.ndarray, mode: str) -> np.nd
     for y in range(h):
         for x in range(w):
             v = _blend_scalar(b_arr[y, x] / 255.0, s_arr[y, x] / 255.0, mode)
-            v = 0.0 if v < 0.0 else 1.0 if v > 1.0 else v
+            v = 0.0 if v < 0.0 else min(v, 1.0)
             out[y, x] = int(round(v * 255.0))
     return out
 
@@ -98,7 +98,7 @@ def grid() -> tuple[np.ndarray, np.ndarray]:
 def test_blend_channel_fast_modes_byte_identical(grid, mode: str) -> None:
     b, s = grid
     got = np.asarray(
-        PDFRenderer._blend_channel(Image.fromarray(b, "L"), Image.fromarray(s, "L"), mode)  # noqa: SLF001
+        PDFRenderer._blend_channel(Image.fromarray(b, "L"), Image.fromarray(s, "L"), mode)
     )
     assert np.array_equal(got, _ref_blend_channel(b, s, mode))
 
@@ -109,21 +109,21 @@ def test_blend_channel_fallback_modes_byte_identical(mode: str) -> None:
     b = np.tile(np.arange(0, 256, 8, dtype=np.uint8), (32, 1))
     s = np.tile(np.arange(0, 256, 8, dtype=np.uint8).reshape(32, 1), (1, 32))
     got = np.asarray(
-        PDFRenderer._blend_channel(Image.fromarray(b, "L"), Image.fromarray(s, "L"), mode)  # noqa: SLF001
+        PDFRenderer._blend_channel(Image.fromarray(b, "L"), Image.fromarray(s, "L"), mode)
     )
     assert np.array_equal(got, _ref_blend_channel(b, s, mode))
 
 
 def test_blend_channel_none_returns_same_object() -> None:
     backdrop = Image.new("L", (3, 3), 77)
-    assert PDFRenderer._blend_channel(backdrop, Image.new("L", (3, 3), 12), None) is backdrop  # noqa: SLF001
+    assert PDFRenderer._blend_channel(backdrop, Image.new("L", (3, 3), 12), None) is backdrop
 
 
 class _FakeBase:
     def __init__(self, matte: list[float]) -> None:
         self._matte = matte
 
-    def extract_matte(self, _smask):  # noqa: ANN001
+    def extract_matte(self, _smask):
         return self._matte
 
 
@@ -140,7 +140,7 @@ def test_unpremultiply_matte_byte_identical(m255: list[float]) -> None:
     matte01 = [c / 255.0 for c in m255]
 
     got_r = np.asarray(
-        PDFRenderer._unpremultiply_matte(  # noqa: SLF001
+        PDFRenderer._unpremultiply_matte(
             object.__new__(PDFRenderer),
             Image.fromarray(rgba, "RGBA"),
             Image.fromarray(alpha, "L"),
@@ -166,7 +166,7 @@ def test_color_key_mask_byte_identical() -> None:
     rgb[0, 0] = (100, 100, 100)  # inside range -> keyed out
     ranges = [90, 110, 90, 110, 90, 110]
     got = np.asarray(
-        PDFRenderer._apply_color_key_mask(None, Image.fromarray(rgb, "RGB"), ranges)  # noqa: SLF001
+        PDFRenderer._apply_color_key_mask(None, Image.fromarray(rgb, "RGB"), ranges)
     )
     assert np.array_equal(got, _ref_colorkey(rgb, [(90, 110)] * 3))
 

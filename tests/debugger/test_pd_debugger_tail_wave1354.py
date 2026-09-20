@@ -30,13 +30,13 @@ from pypdfbox.debugger.ui.zoom_menu import ZoomMenu
 
 
 def _reset_menu_singletons() -> None:
-    ViewMenu._reset_instance()  # noqa: SLF001
-    ZoomMenu._reset_instance()  # noqa: SLF001
-    RotationMenu._reset_instance()  # noqa: SLF001
-    RenderDestinationMenu._reset_instance()  # noqa: SLF001
-    TreeViewMenu._reset_for_testing()  # noqa: SLF001
-    ImageTypeMenu._reset_for_testing()  # noqa: SLF001
-    TextStripperMenu._reset_for_testing()  # noqa: SLF001
+    ViewMenu._reset_instance()
+    ZoomMenu._reset_instance()
+    RotationMenu._reset_instance()
+    RenderDestinationMenu._reset_instance()
+    TreeViewMenu._reset_for_testing()
+    ImageTypeMenu._reset_for_testing()
+    TextStripperMenu._reset_for_testing()
 
 
 @pytest.fixture()
@@ -75,7 +75,7 @@ def debugger(tk_root: tk.Tk) -> Iterator[PDFDebugger]:
         yield instance
     finally:
         with contextlib.suppress(tk.TclError):
-            instance._main_frame.destroy()  # noqa: SLF001
+            instance._main_frame.destroy()
 
 
 def _make_map_entry(key_name: str, value: Any) -> MapEntry:
@@ -118,17 +118,17 @@ def test_show_font_replaces_right_component_when_pane_present(
     resources_dict.set_item(COSName.get_pdf_name("Font"), font_container)
 
     grand_iid = _insert(
-        debugger._tree,  # noqa: SLF001
+        debugger._tree,
         "",
         "Resources",
         _make_map_entry("Resources", resources_dict),
     )
     parent_iid = _insert(
-        debugger._tree,  # noqa: SLF001
+        debugger._tree,
         grand_iid,
         "Font",
         _make_map_entry("Font", font_container),
     )
     font_node = _make_map_entry("F1", font_dict)
-    iid = _insert(debugger._tree, parent_iid, "F1", font_node)  # noqa: SLF001
-    debugger._show_font(font_node, iid)  # noqa: SLF001
+    iid = _insert(debugger._tree, parent_iid, "F1", font_node)
+    debugger._show_font(font_node, iid)

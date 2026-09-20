@@ -81,7 +81,7 @@ class SecurityHandlerFactory:
         # ``TYPE_CHECKING`` at module scope to avoid a circular import at
         # load time; we need the concrete class here to make ``isinstance``
         # work.
-        from .protection_policy import ProtectionPolicy  # noqa: PLC0415
+        from .protection_policy import ProtectionPolicy
 
         if isinstance(key, ProtectionPolicy):
             return self.new_security_handler_for_policy(key)

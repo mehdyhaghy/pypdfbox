@@ -319,7 +319,7 @@ def test_main_falls_back_to_sample_when_corpus_empty(
     monkeypatch.setattr(
         BengaliPdfGenerationHelloWorld,
         "get_bengali_text_from_file",
-        staticmethod(lambda: []),
+        staticmethod(list),
     )
     out = tmp_path / "bengali_fallback.pdf"
     BengaliPdfGenerationHelloWorld.main([str(out)])

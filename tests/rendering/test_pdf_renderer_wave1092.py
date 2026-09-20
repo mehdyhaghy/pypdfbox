@@ -17,7 +17,7 @@ def test_pattern_shading_make_doc_removes_seed_pages(
 ) -> None:
     monkeypatch.setattr(pattern_shading, "PDDocument", _SeededDocument)
 
-    doc, page = pattern_shading._make_doc(width=11.0, height=13.0)  # noqa: SLF001
+    doc, page = pattern_shading._make_doc(width=11.0, height=13.0)
     try:
         stored_page = doc.get_page(0)
         assert doc.get_number_of_pages() == 1

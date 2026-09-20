@@ -26,7 +26,7 @@ class _FakeTTFont:
     def __getitem__(self, key: str) -> object:
         return self._tables[key]
 
-    def getGlyphOrder(self) -> list[str]:  # noqa: N802 — fontTools API name
+    def getGlyphOrder(self) -> list[str]:
         return [".notdef", "A", "B"]
 
 

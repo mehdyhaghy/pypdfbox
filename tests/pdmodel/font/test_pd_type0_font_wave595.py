@@ -91,7 +91,7 @@ def test_wave595_embedded_cmap_fallback_success_for_nonembedded_descendant(
         ),
     )
 
-    assert font._unicode_from_embedded_cmap(5) == "A"  # noqa: SLF001
+    assert font._unicode_from_embedded_cmap(5) == "A"
 
 
 def test_wave595_get_width_from_font_delegates_after_cid_resolution(

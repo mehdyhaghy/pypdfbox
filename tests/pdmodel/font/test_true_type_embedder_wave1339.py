@@ -22,8 +22,8 @@ from pypdfbox.cos import COSDictionary, COSName
 if not hasattr(COSName, "BASE_FONT"):
     COSName.BASE_FONT = COSName.get_pdf_name("BaseFont")  # type: ignore[attr-defined]
 
-from pypdfbox.pdmodel.font.true_type_embedder import TrueTypeEmbedder  # noqa: E402
-from pypdfbox.pdmodel.pd_document import PDDocument  # noqa: E402
+from pypdfbox.pdmodel.font.true_type_embedder import TrueTypeEmbedder
+from pypdfbox.pdmodel.pd_document import PDDocument
 
 # ---------- minimal-shape TTF stubs ----------
 

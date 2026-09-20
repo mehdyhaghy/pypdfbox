@@ -17,8 +17,8 @@ def test_standard_handler_compute_user_password_routes_through_base() -> None:
     # Going through the abstract base routes back to the concrete subclass
     # (revision 4 path through algorithm 4).
     handler = StandardSecurityHandler()
-    handler._revision = 4  # noqa: SLF001
-    handler._key_length = 128  # noqa: SLF001
+    handler._revision = 4
+    handler._key_length = 128
     out = SecurityHandler.compute_user_password(
         handler,
         b"password",
@@ -32,8 +32,8 @@ def test_standard_handler_compute_user_password_routes_through_base() -> None:
 
 def test_standard_handler_compute_owner_password_routes_through_base() -> None:
     handler = StandardSecurityHandler()
-    handler._revision = 4  # noqa: SLF001
-    handler._key_length = 128  # noqa: SLF001
+    handler._revision = 4
+    handler._key_length = 128
     out = SecurityHandler.compute_owner_password(
         handler, b"owner", b"user",
     )

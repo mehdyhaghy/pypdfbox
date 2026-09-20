@@ -39,5 +39,5 @@ def test_create_menu_entries_match_labels(tk_root: tk.Tk) -> None:
 def test_create_menu_private_alias_still_works(tk_root: tk.Tk) -> None:
     """The previously-private ``_create_menu`` remains callable for back-compat."""
     menu = ImageTypeMenu.get_instance(master=tk_root)
-    rebuilt = menu._create_menu()  # noqa: SLF001 - back-compat alias
+    rebuilt = menu._create_menu()
     assert isinstance(rebuilt, tk.Menu)

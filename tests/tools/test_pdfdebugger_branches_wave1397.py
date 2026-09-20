@@ -29,7 +29,7 @@ def test_format_node_skips_body_preview_when_sample_is_empty(
     )
     stream = COSStream()
     out: list[str] = []
-    pdfdebugger._format_node(  # noqa: SLF001
+    pdfdebugger._format_node(
         stream, 0, out, visited=set(), depth=0, max_depth=3,
     )
     body_preview = [line for line in out if "stream-body" in line]
@@ -62,7 +62,7 @@ def test_stream_preview_falls_back_to_raw_when_decoded_is_empty(
         def create_raw_input_stream(self) -> _Closer:
             return _Closer(b"RAWBYTES")
 
-    sample, kind = pdfdebugger._stream_preview(_Node())  # noqa: SLF001
+    sample, kind = pdfdebugger._stream_preview(_Node())
     assert kind == "raw"
     assert sample.startswith(b"RAWBYTES")
 
@@ -92,6 +92,6 @@ def test_print_summary_text_mode_with_no_pages_anywhere(
             return original_get(name, *a, **kw)
 
         catalog_cos.get_dictionary_object = _patched_get  # type: ignore[method-assign]
-        pdfdebugger._print_summary(doc, src, output_format="text")  # noqa: SLF001
+        pdfdebugger._print_summary(doc, src, output_format="text")
     captured = capsys.readouterr().out
     assert "Catalog /Pages:" not in captured

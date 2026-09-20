@@ -24,7 +24,7 @@ def test_text_make_doc_removes_existing_pages(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(text_tests, "PDDocument", FakeDocument)
 
-    doc, page = text_tests._make_doc(24.0, 36.0)  # noqa: SLF001
+    doc, page = text_tests._make_doc(24.0, 36.0)
 
     assert isinstance(doc, FakeDocument)
     assert doc.removed_indexes == [0, 0]

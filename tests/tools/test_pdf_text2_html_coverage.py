@@ -371,7 +371,7 @@ def test_write_string_with_positions_routes_through_font_state(
 def test_write_paragraph_end_clears_font_state(patched_parent: list[str]) -> None:
     p = PDFText2HTML()
     # Prime the font state so ``clear`` has something to emit.
-    p._font_state.open("b")  # noqa: SLF001 — exercising port invariant
+    p._font_state.open("b")
     p.write_paragraph_end()
     captured = "".join(patched_parent)
     assert "</b>" in captured

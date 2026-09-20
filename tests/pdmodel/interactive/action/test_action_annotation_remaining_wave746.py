@@ -103,13 +103,13 @@ def test_wave746_embedded_goto_final_destination_absent_and_empty_named(
 ) -> None:
     action = PDActionEmbeddedGoTo()
 
-    assert action._resolve_final_destination(PDDocument()) is None  # noqa: SLF001
+    assert action._resolve_final_destination(PDDocument()) is None
 
     empty_named = PDNamedDestination()
     monkeypatch.setattr(action, "get_d", lambda: empty_named)
     scope = PDDocument()
     try:
-        assert action._resolve_final_destination(scope) is None  # noqa: SLF001
+        assert action._resolve_final_destination(scope) is None
     finally:
         scope.close()
 

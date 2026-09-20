@@ -41,7 +41,7 @@ def test_wave616_constructor_inheritance_parent_alias_and_resources() -> None:
     assert page.get_inheritable_attribute(COSName.RESOURCES) is resources_dict  # type: ignore[attr-defined]
     resources = page.get_resources()
     assert resources.get_cos_object() is resources_dict
-    assert resources._resource_cache is cache  # noqa: SLF001
+    assert resources._resource_cache is cache
 
     page.set_resources(PDResources())
     assert isinstance(page.get_cos_object().get_dictionary_object("Resources"), COSDictionary)

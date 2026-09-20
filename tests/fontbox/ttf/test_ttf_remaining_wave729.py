@@ -127,9 +127,9 @@ def test_open_type_get_cff_uses_raw_data_when_compile_fails_empty() -> None:
             raise ValueError("cannot compile")
 
     font = object.__new__(OpenTypeFont)
-    font._cff = object()  # noqa: SLF001
-    font._cff_resolved = False  # noqa: SLF001
-    font._tt = {"CFF ": _BrokenCFFTable()}  # noqa: SLF001
+    font._cff = object()
+    font._cff_resolved = False
+    font._tt = {"CFF ": _BrokenCFFTable()}
 
     assert font.get_cff() is None
     assert font.get_cff() is None
@@ -155,9 +155,9 @@ def test_open_type_get_cff_uses_cid_wrapper_for_ros_top_dict(
             return b"nonempty"
 
     font = object.__new__(OpenTypeFont)
-    font._cff = None  # noqa: SLF001
-    font._cff_resolved = False  # noqa: SLF001
-    font._tt = {"CFF ": _CFFTable()}  # noqa: SLF001
+    font._cff = None
+    font._cff_resolved = False
+    font._tt = {"CFF ": _CFFTable()}
 
     assert font.get_cff() is sentinel
 
@@ -260,6 +260,6 @@ def test_format_2_stops_repeated_invalid_glyph_logging(
 
 def test_get_char_codes_returns_none_for_missing_multi_map() -> None:
     subtable = CmapSubtable()
-    subtable._glyph_id_to_character_code = [-2_147_483_648]  # noqa: SLF001
+    subtable._glyph_id_to_character_code = [-2_147_483_648]
 
     assert subtable.get_char_codes(0) is None

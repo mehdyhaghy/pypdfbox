@@ -38,7 +38,7 @@ def _synthesize_minimal_otf() -> bytes:
     available in the installed fontTools version.
     """
     try:
-        from fontTools.fontBuilder import FontBuilder  # noqa: PLC0415
+        from fontTools.fontBuilder import FontBuilder
     except ImportError:
         pytest.skip("fontTools FontBuilder not available")
 
@@ -48,14 +48,14 @@ def _synthesize_minimal_otf() -> bytes:
     fb.setupCharacterMap({0x41: "A", 0x20: "space"})
 
     # Empty CFF charstrings (no outlines) — sufficient for parser tests.
-    charstrings = {name: T2_EMPTY for name in glyph_order}
+    charstrings = dict.fromkeys(glyph_order, T2_EMPTY)
     fb.setupCFF(
         psName="TestOTF",
         fontInfo={"FullName": "Test OTF"},
         charStringsDict=charstrings,
         privateDict={},
     )
-    fb.setupHorizontalMetrics({name: (500, 0) for name in glyph_order})
+    fb.setupHorizontalMetrics(dict.fromkeys(glyph_order, (500, 0)))
     fb.setupHorizontalHeader(ascent=800, descent=-200)
     fb.setupNameTable({"familyName": "Test", "styleName": "Regular"})
     fb.setupOS2(sTypoAscender=800, usWinAscent=800, usWinDescent=200)
@@ -70,7 +70,7 @@ def _synthesize_minimal_otf() -> bytes:
 # fontTools CFF builder accepts via T2CharString program API. We pass a
 # raw T2CharString instance for safety.
 def _make_t2_empty():
-    from fontTools.misc.psCharStrings import T2CharString  # noqa: PLC0415
+    from fontTools.misc.psCharStrings import T2CharString
 
     cs = T2CharString()
     cs.program = ["endchar"]

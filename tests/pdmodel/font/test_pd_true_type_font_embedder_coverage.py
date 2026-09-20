@@ -28,14 +28,14 @@ if not hasattr(COSName, "ENCODING"):
 if not hasattr(COSName, "FONT_DESC"):
     COSName.FONT_DESC = COSName.get_pdf_name("FontDescriptor")  # type: ignore[attr-defined]
 
-from pypdfbox.pdmodel.font.encoding.encoding import Encoding  # noqa: E402
-from pypdfbox.pdmodel.font.encoding.win_ansi_encoding import (  # noqa: E402
+from pypdfbox.pdmodel.font.encoding.encoding import Encoding
+from pypdfbox.pdmodel.font.encoding.win_ansi_encoding import (
     WinAnsiEncoding,
 )
-from pypdfbox.pdmodel.font.pd_true_type_font_embedder import (  # noqa: E402
+from pypdfbox.pdmodel.font.pd_true_type_font_embedder import (
     PDTrueTypeFontEmbedder,
 )
-from pypdfbox.pdmodel.pd_document import PDDocument  # noqa: E402
+from pypdfbox.pdmodel.pd_document import PDDocument
 
 _TTF_DIR = Path(__file__).resolve().parents[2].parent / "pypdfbox" / "resources" / "ttf"
 _LIBERATION_SANS = _TTF_DIR / "LiberationSans-Regular.ttf"
@@ -262,7 +262,7 @@ def test_get_unicode_cmap_returns_empty_when_best_cmap_is_none() -> None:
     emb = PDTrueTypeFontEmbedder(doc, COSDictionary(), ttf, WinAnsiEncoding())
 
     class _NullBest:
-        def getBestCmap(self) -> None:  # noqa: N802 — fontTools name
+        def getBestCmap(self) -> None:
             return None
 
     class _ShimTTF:
@@ -295,7 +295,7 @@ def test_set_widths_falls_back_to_zero_on_hmtx_lookup_failure() -> None:
                 return _ExplodingHmtx()
             return self._real[key]
 
-        def getGlyphName(self, gid: int) -> str:  # noqa: N802 — fontTools name
+        def getGlyphName(self, gid: int) -> str:
             return self._real.getGlyphName(gid)
 
         def getGlyphID(self, name: str) -> int:  # noqa: N802 — fontTools name

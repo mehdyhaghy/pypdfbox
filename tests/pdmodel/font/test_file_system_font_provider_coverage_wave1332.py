@@ -174,7 +174,7 @@ def test_add_ttf_metadata_returns_when_post_script_name_is_empty(
             raise KeyError(key)
 
     provider = FileSystemFontProvider(directories=[])
-    provider._add_ttf_metadata(tmp_path / "x.ttf", _FakeTTF())  # noqa: SLF001
+    provider._add_ttf_metadata(tmp_path / "x.ttf", _FakeTTF())
     assert list(provider.get_font_info()) == []
 
 
@@ -197,7 +197,7 @@ def test_add_ttf_metadata_handles_missing_os2_and_head(
     f = tmp_path / "fake.ttf"
     f.write_bytes(b"")
     provider = FileSystemFontProvider(directories=[])
-    provider._add_ttf_metadata(f, _FakeTTF())  # noqa: SLF001
+    provider._add_ttf_metadata(f, _FakeTTF())
     infos = list(provider.get_font_info())
     assert len(infos) == 1
     assert infos[0].get_post_script_name() == "FakeFont"
@@ -226,7 +226,7 @@ def test_add_ttf_metadata_handles_stat_oserror(
     f = tmp_path / "missing.ttf"
     # File never created on disk — `stat` raises ``OSError``.
     provider = FileSystemFontProvider(directories=[])
-    provider._add_ttf_metadata(f, _FakeTTF())  # noqa: SLF001
+    provider._add_ttf_metadata(f, _FakeTTF())
     infos = list(provider.get_font_info())
     assert len(infos) == 1
     assert infos[0].last_modified == 0

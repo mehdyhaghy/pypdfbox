@@ -19,16 +19,16 @@ def _make_doc(width: float = 6.0, height: float = 6.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (6, 6)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -36,14 +36,14 @@ def _finish(renderer: PDFRenderer) -> None:
 def test_paste_image_expands_degenerate_ctm_bbox_to_single_pixel() -> None:
     doc, renderer = _prepared_renderer()
     try:
-        renderer._gs.ctm = (0.0, 0.0, 0.0, 0.0, 3.0, 2.0)  # noqa: SLF001
+        renderer._gs.ctm = (0.0, 0.0, 0.0, 0.0, 3.0, 2.0)
 
-        renderer._paste_image(Image.new("RGB", (2, 2), (10, 20, 30)))  # noqa: SLF001
+        renderer._paste_image(Image.new("RGB", (2, 2), (10, 20, 30)))
         _finish(renderer)
 
-        assert renderer._image.getpixel((3, 2)) == (10, 20, 30)  # noqa: SLF001
-        assert renderer._image.getpixel((2, 2)) == (255, 255, 255)  # noqa: SLF001
-        assert renderer._image.getpixel((3, 3)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image.getpixel((3, 2)) == (10, 20, 30)
+        assert renderer._image.getpixel((2, 2)) == (255, 255, 255)
+        assert renderer._image.getpixel((3, 3)) == (255, 255, 255)
     finally:
         doc.close()
 
@@ -54,11 +54,11 @@ def test_blend_channel_unknown_mode_preserves_backdrop_channel() -> None:
     backdrop.putpixel((1, 0), 180)
     source = Image.new("L", (2, 1), 250)
 
-    blended = PDFRenderer._blend_channel(backdrop, source, "Unknown")  # noqa: SLF001
+    blended = PDFRenderer._blend_channel(backdrop, source, "Unknown")
 
     assert blended.getpixel((0, 0)) == 40
     assert blended.getpixel((1, 0)) == 180
 
 
 def test_hsl_set_sat_handles_repeated_minimum_components() -> None:
-    assert PDFRenderer._hsl_set_sat(0.2, 0.8, 0.2, 0.5) == (0.0, 0.5, 0.0)  # noqa: SLF001
+    assert PDFRenderer._hsl_set_sat(0.2, 0.8, 0.2, 0.5) == (0.0, 0.5, 0.0)

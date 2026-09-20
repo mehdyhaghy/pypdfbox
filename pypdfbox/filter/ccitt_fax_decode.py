@@ -407,7 +407,7 @@ class CCITTFaxDecode(Filter):
         unknown (<= 0) the upstream allocation is empty, so we write nothing.
         """
         row_bytes = (columns + 7) // 8
-        effective_rows = rows if rows > 0 else 0
+        effective_rows = max(0, rows)
         target = row_bytes * effective_rows
         pad_byte = 0x00 if black_is_1 else 0xFF
         buffer = bytes([pad_byte]) * target if target else b""
@@ -538,7 +538,7 @@ class CCITTFaxDecode(Filter):
         # Extract the single encoded strip from the synthetic TIFF.
         try:
             with Image.open(io.BytesIO(tiff_bytes)) as parsed:
-                tag_v2 = cast(Any, parsed).tag_v2
+                tag_v2 = cast("Any", parsed).tag_v2
                 offsets = tag_v2[_TIFF_STRIP_OFFSETS]
                 counts = tag_v2[_TIFF_STRIP_BYTE_COUNTS]
         except Exception as exc:

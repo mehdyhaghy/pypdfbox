@@ -24,8 +24,8 @@ def test_wave593_find_startxref_can_skip_bounds_validation() -> None:
 def test_wave593_populate_document_skips_free_entries_and_lazy_loads_in_use() -> None:
     data = b"1 0 obj\n42\nendobj\n"
     parser = _parser(data)
-    doc = parser._document = COSDocument()  # noqa: SLF001
-    parser._cos_parser = COSParser(parser._src, document=doc)  # noqa: SLF001
+    doc = parser._document = COSDocument()
+    parser._cos_parser = COSParser(parser._src, document=doc)
     parser.get_xref_trailer_resolver().begin_section(0)
     parser.get_xref_trailer_resolver().set_entry(
         COSObjectKey(0, 65535),
@@ -52,7 +52,7 @@ def test_wave593_read_stream_body_reports_missing_endstream_keyword() -> None:
     stream.set_item("Length", COSInteger.get(3))
 
     with pytest.raises(PDFParseError, match="expected 'endstream'"):
-        parser._read_stream_body(stream)  # noqa: SLF001
+        parser._read_stream_body(stream)
 
     assert stream.get_raw_data() == b"ABC"
 
@@ -68,4 +68,4 @@ def test_wave593_resolve_stream_length_rejects_unread_indirect_length() -> None:
     stream.set_item("Length", COSObject(9, 0))
 
     with pytest.raises(PDFParseError, match="Length object content was not read"):
-        parser._resolve_stream_length(stream)  # noqa: SLF001
+        parser._resolve_stream_length(stream)

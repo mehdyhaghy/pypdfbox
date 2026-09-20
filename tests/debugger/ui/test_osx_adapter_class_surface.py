@@ -24,7 +24,7 @@ def test_is_min_jdk9_on_class_surface() -> None:
 def test_is_correct_method_on_class_surface() -> None:
     assert getattr(OSXAdapter, "is_correct_method", None) is not None
 
-    def sample(a, b):  # noqa: ANN001, ANN202 - parameter types not the focus here
+    def sample(a, b):
         return a + b
 
     # Name match, no type constraints, parameter count check.

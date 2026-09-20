@@ -58,7 +58,7 @@ def patched_cos_parser() -> Iterator[dict[str, object]]:
 
         return _impl
 
-    def streams_impl(self, trailer_resolver, security_handler=None):  # noqa: ANN001
+    def streams_impl(self, trailer_resolver, security_handler=None):
         recorder.setdefault("bf_search_for_obj_streams", []).append(  # type: ignore[union-attr]
             (trailer_resolver, security_handler)
         )

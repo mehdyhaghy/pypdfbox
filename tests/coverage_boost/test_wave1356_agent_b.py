@@ -137,7 +137,7 @@ def test_process_set_font_falls_back_when_resolved_font_is_not_pd_font() -> None
     # path (wave 1359) substitutes a Standard-14 default instead of
     # raising — the int is treated as "could not load" and the alias
     # ``Helv`` resolves to Helvetica.
-    from pypdfbox.pdmodel.font import PDType1Font  # noqa: PLC0415
+    from pypdfbox.pdmodel.font import PDType1Font
 
     res = _FontReturningJunkResources()
     da = PDDefaultAppearanceString(COSString("/Helv 12 Tf"), res)

@@ -202,12 +202,12 @@ def test_read_until_endstream_direct_call_eof_raises() -> None:
             return self._closed
 
     parser = _parser(b"")
-    parser._src = _FakeEOFSource()  # noqa: SLF001
+    parser._src = _FakeEOFSource()
     # Upstream COSParser.readUntilEndStream returns whatever it accumulated
     # when the source is exhausted (no exception). With no bytes available the
     # recovered body is empty. (Wave 1517: aligned the EOF/no-marker scan with
     # PDFBox, which scans to EOF rather than raising.)
-    assert parser._read_until_endstream() == b""  # noqa: SLF001
+    assert parser._read_until_endstream() == b""
 
 
 def test_read_until_endstream_partial_read_trims_buffer() -> None:
@@ -267,8 +267,8 @@ def test_read_until_endstream_partial_read_trims_buffer() -> None:
             return self._closed
 
     parser = _parser(b"")
-    parser._src = _ShortReadSource()  # noqa: SLF001
-    body = parser._read_until_endstream()  # noqa: SLF001
+    parser._src = _ShortReadSource()
+    body = parser._read_until_endstream()
     # Body lands before the marker and after EndstreamFilterStream's
     # trailing-EOL trim.
     assert body.startswith(b"abc")
@@ -282,7 +282,7 @@ def test_read_until_endstream_direct_call_missing_marker_returns_to_eof() -> Non
     bytes (after the EndstreamFilterStream trailing-EOL trim) rather than
     raising. (Wave 1517 alignment.)"""
     parser = _parser(b"no marker in here at all\n")
-    body = parser._read_until_endstream()  # noqa: SLF001
+    body = parser._read_until_endstream()
     assert body.startswith(b"no marker in here at all")
     assert b"endstream" not in body
 
@@ -294,9 +294,9 @@ def test_read_until_endstream_direct_call_recovers_body() -> None:
     payload = b"hello world\n"
     data = payload + b"endstream tail"
     parser = _parser(data)
-    out = parser._read_until_endstream()  # noqa: SLF001
+    out = parser._read_until_endstream()
     # Lenient recovery trims the trailing EOL inside the EndstreamFilterStream.
     assert out.startswith(b"hello world")
     # Cursor sits just past 'endstream'.
-    pos = parser._src.get_position()  # noqa: SLF001
+    pos = parser._src.get_position()
     assert data[pos : pos + len(b" tail")] == b" tail"

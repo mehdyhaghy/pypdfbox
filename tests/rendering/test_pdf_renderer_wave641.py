@@ -27,16 +27,16 @@ def _prepared_renderer(
 ) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -44,7 +44,7 @@ def _finish(renderer: PDFRenderer) -> None:
 def test_resource_dependent_operators_skip_without_render_context() -> None:
     doc, _page = _make_doc()
     renderer = PDFRenderer(doc)
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
+    renderer._gs_stack = [_GState()]
     try:
         pattern_name = COSName.get_pdf_name("P0")
 
@@ -52,8 +52,8 @@ def test_resource_dependent_operators_skip_without_render_context() -> None:
         renderer.process_operator("gs", [COSName.get_pdf_name("GS0")])
         renderer.process_operator("sh", [COSName.get_pdf_name("Sh0")])
 
-        assert renderer._gs.stroke_pattern is None  # noqa: SLF001
-        assert renderer._gs.blend_mode is None  # noqa: SLF001
+        assert renderer._gs.stroke_pattern is None
+        assert renderer._gs.blend_mode is None
     finally:
         doc.close()
 
@@ -84,21 +84,21 @@ def test_even_odd_fill_with_stroke_runs_stroke_after_pil_fill(
     doc, renderer = _prepared_renderer()
     calls: list[dict[str, bool]] = []
     try:
-        renderer._subpaths = [  # noqa: SLF001
+        renderer._subpaths = [
             [("M", 1.0, 1.0), ("L", 4.0, 1.0), ("L", 4.0, 4.0), ("Z",)]
         ]
-        renderer._current_subpath = renderer._subpaths[0]  # noqa: SLF001
+        renderer._current_subpath = renderer._subpaths[0]
 
         def fake_draw(*, stroke: bool, fill: bool, even_odd: bool) -> None:
             calls.append({"stroke": stroke, "fill": fill, "even_odd": even_odd})
 
         monkeypatch.setattr(renderer, "_draw_via_aggdraw", fake_draw)
 
-        renderer._paint(stroke=True, fill=True, even_odd=True)  # noqa: SLF001
+        renderer._paint(stroke=True, fill=True, even_odd=True)
 
         assert calls == [{"stroke": True, "fill": True, "even_odd": True}]
-        assert renderer._subpaths == []  # noqa: SLF001
-        assert renderer._current_subpath is None  # noqa: SLF001
+        assert renderer._subpaths == []
+        assert renderer._current_subpath is None
     finally:
         _finish(renderer)
         doc.close()

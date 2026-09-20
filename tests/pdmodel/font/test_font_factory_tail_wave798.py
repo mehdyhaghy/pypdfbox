@@ -12,7 +12,7 @@ from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
 class _RecordingMapper(FontMapper):
     def __init__(self) -> None:
         self.calls: list[tuple[str, PDFontDescriptor | None]] = []
-        self.mapping = FontMapping(cast(FontBoxFont, object()), True)
+        self.mapping = FontMapping(cast("FontBoxFont", object()), True)
 
     def get_true_type_font(
         self,

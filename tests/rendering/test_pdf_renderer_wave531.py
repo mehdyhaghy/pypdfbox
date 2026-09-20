@@ -25,16 +25,16 @@ def _make_doc(width: float = 6.0, height: float = 6.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (6, 6)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -97,15 +97,15 @@ def test_graphics_state_clone_keeps_transparency_and_text_fields() -> None:
 def test_save_restore_uses_clone_and_keeps_base_state_on_extra_restore() -> None:
     doc, renderer = _prepared_renderer()
     try:
-        renderer._gs.fill_rgb = (10, 20, 30)  # noqa: SLF001
+        renderer._gs.fill_rgb = (10, 20, 30)
 
         renderer.process_operator("q", [])
-        renderer._gs.fill_rgb = (200, 0, 0)  # noqa: SLF001
+        renderer._gs.fill_rgb = (200, 0, 0)
         renderer.process_operator("Q", [])
         renderer.process_operator("Q", [])
 
-        assert len(renderer._gs_stack) == 1  # noqa: SLF001
-        assert renderer._gs.fill_rgb == (10, 20, 30)  # noqa: SLF001
+        assert len(renderer._gs_stack) == 1
+        assert renderer._gs.fill_rgb == (10, 20, 30)
     finally:
         _finish(renderer)
         doc.close()
@@ -122,8 +122,8 @@ def test_process_operator_logs_and_swallows_handler_value_error(
         raise ValueError("synthetic handler boom")
 
     doc, renderer = _prepared_renderer()
-    original = renderer_mod._DISPATCH.get("W531")  # noqa: SLF001
-    renderer_mod._DISPATCH["W531"] = _raise_value_error  # noqa: SLF001
+    original = renderer_mod._DISPATCH.get("W531")
+    renderer_mod._DISPATCH["W531"] = _raise_value_error
     try:
         caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
 
@@ -132,9 +132,9 @@ def test_process_operator_logs_and_swallows_handler_value_error(
         assert "dropping operator W531: synthetic handler boom" in caplog.text
     finally:
         if original is None:
-            renderer_mod._DISPATCH.pop("W531", None)  # noqa: SLF001
+            renderer_mod._DISPATCH.pop("W531", None)
         else:
-            renderer_mod._DISPATCH["W531"] = original  # noqa: SLF001
+            renderer_mod._DISPATCH["W531"] = original
         _finish(renderer)
         doc.close()
 
@@ -154,7 +154,7 @@ def test_do_operator_routes_form_xobjects_by_transparency_group(
     calls: list[str] = []
     form = PDFormXObject(COSStream())
     try:
-        renderer._resources = _Resources(form)  # noqa: SLF001
+        renderer._resources = _Resources(form)
         monkeypatch.setattr(
             renderer,
             "_render_form_xobject",

@@ -153,7 +153,7 @@ def test_main_drives_sign_pipeline(
     # without running the full signing pipeline.
     seen: dict[str, object] = {}
 
-    def _stub_sign(self, document, output, signature_field_name):  # noqa: ARG001
+    def _stub_sign(self, document, output, signature_field_name):
         seen["document"] = document
         seen["output"] = output
         seen["sign_designer"] = self._visible_sign_designer
@@ -195,7 +195,7 @@ def test_sign_pdf_threads_tsa_url_into_signer(
     out_pdf = tmp_path / "out.pdf"
     _write_minimal_pdf(in_pdf)
 
-    def _stub(self, doc, out, name):  # noqa: ARG001
+    def _stub(self, doc, out, name):
         out.write(b"%PDF-1.4\n%%EOF\n")
 
     monkeypatch.setattr(CreateVisibleSignature, "_sign_document", _stub)
@@ -219,7 +219,7 @@ def test_sign_pdf_accepts_str_paths(
     out_pdf = tmp_path / "out.pdf"
     _write_minimal_pdf(in_pdf)
 
-    def _stub(self, doc, out, name):  # noqa: ARG001
+    def _stub(self, doc, out, name):
         out.write(b"%PDF-1.4\n%%EOF\n")
 
     monkeypatch.setattr(CreateVisibleSignature, "_sign_document", _stub)
@@ -305,10 +305,10 @@ def test_sign_document_uses_explicit_properties(
     captured: dict[str, object] = {}
 
     class _StubDoc:
-        def add_signature(self, sig, iface, options):  # noqa: ARG002
+        def add_signature(self, sig, iface, options):
             captured["sig"] = sig
 
-        def save_incremental(self, out):  # noqa: ARG002
+        def save_incremental(self, out):
             return None
 
     signer = CreateVisibleSignature(pkcs12_bytes, tsa_password)
@@ -340,10 +340,10 @@ def test_sign_document_embeds_visual_signature_when_image_stream_present(
     captured: dict[str, object] = {}
 
     class _StubDoc:
-        def add_signature(self, sig, iface, options):  # noqa: ARG002
+        def add_signature(self, sig, iface, options):
             captured["options"] = options
 
-        def save_incremental(self, out):  # noqa: ARG002
+        def save_incremental(self, out):
             return None
 
     payload = b"\x89PNG\r\n\x1a\nvisual-bytes"
@@ -385,15 +385,15 @@ def test_sign_document_skips_visual_signature_when_no_image_stream(
     )
 
     class _StubDoc:
-        def add_signature(self, sig, iface, options):  # noqa: ARG002
+        def add_signature(self, sig, iface, options):
             return None
 
-        def save_incremental(self, out):  # noqa: ARG002
+        def save_incremental(self, out):
             return None
 
     called = {"count": 0}
 
-    def _spy(self, stream):  # noqa: ARG001
+    def _spy(self, stream):
         called["count"] += 1
 
     monkeypatch.setattr(SignatureOptions, "set_visual_signature", _spy)
@@ -414,15 +414,15 @@ def _build_stub_doc(fields):
     .get_fields() == fields``."""
 
     class _AcroForm:
-        def get_fields(self_inner):
+        def get_fields(self):
             return fields
 
     class _Catalog:
-        def get_acro_form(self_inner):
+        def get_acro_form(self):
             return _AcroForm()
 
     class _Doc:
-        def get_document_catalog(self_inner):
+        def get_document_catalog(self):
             return _Catalog()
 
     return _Doc()

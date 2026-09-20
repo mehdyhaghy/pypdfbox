@@ -28,7 +28,7 @@ def test_page_index_make_doc_removes_preexisting_page(
 ) -> None:
     monkeypatch.setattr(page_index_tests, "PDDocument", _DocWithExistingPage)
 
-    doc = page_index_tests._make_doc()  # noqa: SLF001
+    doc = page_index_tests._make_doc()
 
     assert isinstance(doc, _DocWithExistingPage)
     assert doc.removed_indices == [0]

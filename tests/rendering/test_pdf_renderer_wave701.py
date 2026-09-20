@@ -28,16 +28,16 @@ def _prepared_renderer(
 ) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -71,8 +71,8 @@ class _RGBFunction:
 
 
 def test_to_float_accepts_direct_integer_and_float_values() -> None:
-    assert _to_float(COSInteger.get(7)) == 7.0  # noqa: SLF001
-    assert _to_float(COSFloat(2.5)) == 2.5  # noqa: SLF001
+    assert _to_float(COSInteger.get(7)) == 7.0
+    assert _to_float(COSFloat(2.5)) == 2.5
 
 
 def test_mesh_shading_fallback_paints_evaluated_color(monkeypatch: Any) -> None:
@@ -84,14 +84,14 @@ def test_mesh_shading_fallback_paints_evaluated_color(monkeypatch: Any) -> None:
             lambda _shading, _t: (0.25, 0.5, 1.0),
         )
 
-        renderer._paint_shading(  # noqa: SLF001
+        renderer._paint_shading(
             PDShadingType4(),
             region_mask=Image.new("L", (2, 2), 255),
         )
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((0, 0)) == (64, 128, 255)  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.getpixel((0, 0)) == (64, 128, 255)
     finally:
         doc.close()
 
@@ -115,14 +115,14 @@ def test_axial_shading_uses_black_ramp_entry_when_eval_fails() -> None:
 
     doc, renderer = _prepared_renderer(size=(1, 1))
     try:
-        renderer._paint_axial_shading(  # noqa: SLF001
+        renderer._paint_axial_shading(
             _Axial(),
             region_mask=Image.new("L", (1, 1), 255),
         )
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((0, 0)) == (0, 0, 0)  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.getpixel((0, 0)) == (0, 0, 0)
     finally:
         doc.close()
 
@@ -143,16 +143,16 @@ def test_function_shading_handles_color_space_error_and_zero_mask() -> None:
 
     doc, renderer = _prepared_renderer(size=(1, 1))
     try:
-        before = renderer._image.copy()  # noqa: SLF001
+        before = renderer._image.copy()
 
-        renderer._paint_function_shading(  # noqa: SLF001
+        renderer._paint_function_shading(
             _FunctionShading(),
             region_mask=Image.new("L", (1, 1), 0),
         )
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.tobytes() == before.tobytes()  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.tobytes() == before.tobytes()
     finally:
         doc.close()
 
@@ -166,4 +166,4 @@ def test_shading_extend_reads_cos_boolean_array_values() -> None:
         def get_extend(self) -> COSArray:
             return ext
 
-    assert PDFRenderer._shading_extend(_Shading()) == (True, False)  # noqa: SLF001
+    assert PDFRenderer._shading_extend(_Shading()) == (True, False)

@@ -670,7 +670,7 @@ class GenericRefinementRegionDecodingProcedure:
         while x < padded_width:
             result = 0
             next_byte = x + 8
-            minor_width = 8 if width - x > 8 else width - x
+            minor_width = min(width - x, 8)
             read_next_byte = next_byte < width
             ref_read_next_byte = next_byte < ref.get_width()
 
@@ -817,7 +817,7 @@ class GenericRefinementRegionDecodingProcedure:
         while x < padded_width:
             result = 0
             next_byte = x + 8
-            minor_width = 8 if width - x > 8 else width - x
+            minor_width = min(width - x, 8)
             read_next_byte = next_byte < width
             ref_read_next_byte = next_byte < ref.get_width()
 

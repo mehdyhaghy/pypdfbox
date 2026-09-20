@@ -80,7 +80,7 @@ def test_has_default_appearance_after_clearing_with_none() -> None:
 def test_text_setters_reject_non_string_values_without_mutating() -> None:
     form = PDAcroForm()
     tf = PDTextField(form)
-    bad_value = cast(Any, 123)
+    bad_value = cast("Any", 123)
 
     tf.set_default_appearance("/Helv 12 Tf 0 g")
     with pytest.raises(TypeError, match="set_default_appearance expected str or None"):

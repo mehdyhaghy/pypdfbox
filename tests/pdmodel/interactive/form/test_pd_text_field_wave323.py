@@ -59,7 +59,7 @@ def test_wave323_get_max_len_inherits_from_acroform() -> None:
 def test_text_field_value_setters_reject_non_string_values_without_mutating() -> None:
     form = PDAcroForm()
     field = PDTextField(form)
-    bad_value = cast(Any, 123)
+    bad_value = cast("Any", 123)
 
     field.set_value("current")
     with pytest.raises(TypeError, match="set_value expected str or None"):

@@ -20,7 +20,7 @@ def test_wave1167_exercises_wave624_page_tree_drop_callback(
         page_tree: Any,
     ) -> None:
         assert page_tree.index_of(COSDictionary()) == -1
-        return None
+        return
 
     monkeypatch.setattr(Splitter, "_k_create_clone", force_page_tree_lookup)
 

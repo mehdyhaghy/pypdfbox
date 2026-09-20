@@ -24,7 +24,7 @@ def test_get_jobs_skips_non_dict_entries() -> None:
     """Closes 210->209: a list with a non-dict entry only surfaces
     the dict entries."""
     schema = _schema()
-    schema._properties["JobRef"] = [  # noqa: SLF001
+    schema._properties["JobRef"] = [
         {"id": "job-1", "name": "A", "url": "http://x"},
         "this-should-be-skipped",
         {"id": "job-2", "name": "B", "url": "http://y"},
@@ -37,7 +37,7 @@ def test_get_jobs_skips_non_dict_entries() -> None:
 def test_dict_to_typed_job_with_only_name_and_url() -> None:
     """Closes 249->251: ID absent — only Name + URL populated."""
     schema = _schema()
-    job = schema._dict_to_typed_job(  # noqa: SLF001
+    job = schema._dict_to_typed_job(
         {TypedJobType.NAME: "no-id-job", TypedJobType.URL: "http://example.com"}
     )
     assert job.get_id() is None
@@ -49,7 +49,7 @@ def test_get_jobs_property_skips_non_dict_entries() -> None:
     """Closes 287->286: a list with a non-dict entry only surfaces
     the dict entries."""
     schema = _schema()
-    schema._properties["JobRef"] = [  # noqa: SLF001
+    schema._properties["JobRef"] = [
         {TypedJobType.ID: "x", TypedJobType.NAME: "Foo"},
         42,
         {TypedJobType.NAME: "Bar"},

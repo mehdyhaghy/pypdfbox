@@ -121,7 +121,7 @@ class PDType1CFont(PDType1Font):
         try:
             raw = font_file3.to_byte_array()
             self._cff = CFFFont.from_bytes(raw)
-        except Exception:  # noqa: BLE001
+        except Exception:
             _LOG.exception("failed to parse /FontFile3 for %s", self.get_name())
             self._cff = False
             return None
@@ -440,7 +440,7 @@ class PDType1CFont(PDType1Font):
             return list(_DEFAULT_FONT_MATRIX)
         try:
             matrix = program.get_font_matrix()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return list(_DEFAULT_FONT_MATRIX)
         if matrix and len(matrix) == 6:
             return [float(v) for v in matrix]
@@ -468,7 +468,7 @@ class PDType1CFont(PDType1Font):
         synthesise one from the embedded CFF program's ``/FontBBox``.
         Returns ``None`` when neither source yields a usable rectangle.
         """
-        from pypdfbox.pdmodel.pd_rectangle import PDRectangle  # noqa: PLC0415
+        from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
         descriptor = self.get_font_descriptor()
         if descriptor is not None:
@@ -480,7 +480,7 @@ class PDType1CFont(PDType1Font):
             return None
         try:
             cff_bbox = program.get_font_bbox()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         if not cff_bbox or len(cff_bbox) != 4:
             return None
@@ -727,7 +727,7 @@ class PDType1CFont(PDType1Font):
         class. Idempotent: the result is *not* cached here; callers
         should go through :meth:`get_bounding_box` for cached access.
         """
-        from pypdfbox.pdmodel.pd_rectangle import PDRectangle  # noqa: PLC0415
+        from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
         descriptor = self.get_font_descriptor()
         if descriptor is not None:
@@ -739,7 +739,7 @@ class PDType1CFont(PDType1Font):
             return None
         try:
             cff_bbox = program.get_font_bbox()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         if not cff_bbox or len(cff_bbox) != 4:
             return None
@@ -803,8 +803,8 @@ class PDType1CFont(PDType1Font):
           upstream's ``StandardEncoding.INSTANCE`` default for the
           remaining branches).
         """
-        from .encoding.built_in_encoding import BuiltInEncoding  # noqa: PLC0415
-        from .encoding.standard_encoding import StandardEncoding  # noqa: PLC0415
+        from .encoding.built_in_encoding import BuiltInEncoding
+        from .encoding.standard_encoding import StandardEncoding
 
         if not self.is_embedded() and self.get_standard_14_font_metrics() is not None:
             # Non-embedded Standard 14: the AFM carries the built-in

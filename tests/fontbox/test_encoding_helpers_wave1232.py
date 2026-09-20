@@ -60,11 +60,11 @@ def test_wave1232_wave1211_local_capture_records_first_matching_tracer() -> None
     captured_tracers = closure["captured_tracers"].cell_contents
     captured_tracers.clear()
 
-    assert local_capture(cast(FrameType, MatchingWave1201Frame()), "line", None) is (
+    assert local_capture(cast("FrameType", MatchingWave1201Frame()), "line", None) is (
         local_capture
     )
     assert captured_tracers == [sentinel_tracer]
-    assert sentinel_tracer(cast(FrameType, MatchingWave1201Frame()), "line", None) is (
+    assert sentinel_tracer(cast("FrameType", MatchingWave1201Frame()), "line", None) is (
         sentinel_tracer
     )
 
@@ -82,24 +82,24 @@ def test_wave1232_wave1211_local_capture_records_first_matching_tracer() -> None
         f_locals = {"local_capture": direct_local_capture}
 
     assert direct_local_capture(
-        cast(FrameType, DirectMatchingWave1211Frame()),
+        cast("FrameType", DirectMatchingWave1211Frame()),
         "line",
         None,
     ) is direct_local_capture
     assert capture_wave1211_local_capture(
-        cast(FrameType, NonmatchingWave1211Frame()),
+        cast("FrameType", NonmatchingWave1211Frame()),
         "line",
         None,
     ) is capture_wave1211_local_capture
     assert captured_local_captures == []
     assert capture_wave1211_local_capture(
-        cast(FrameType, DirectMatchingWave1211Frame()),
+        cast("FrameType", DirectMatchingWave1211Frame()),
         "line",
         None,
     ) is capture_wave1211_local_capture
     assert captured_local_captures == [direct_local_capture]
     assert capture_wave1211_local_capture(
-        cast(FrameType, DirectMatchingWave1211Frame()),
+        cast("FrameType", DirectMatchingWave1211Frame()),
         "line",
         None,
     ) is capture_wave1211_local_capture

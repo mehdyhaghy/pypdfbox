@@ -142,7 +142,7 @@ class _StubEncoding:
     def __init__(self, name: str) -> None:
         self._name = name
 
-    def get_name(self, code: int) -> str:  # noqa: ARG002
+    def get_name(self, code: int) -> str:
         return self._name
 
 

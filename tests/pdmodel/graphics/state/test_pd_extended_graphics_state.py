@@ -229,8 +229,8 @@ def test_line_dash_pattern_round_trip_raw_array() -> None:
     assert gs.get_line_dash_pattern() is None
     arr = COSArray()
     inner = COSArray()
-    arr._items.append(inner)  # noqa: SLF001 - test exercises raw array shape
-    arr._items.append(COSFloat(0.0))  # noqa: SLF001
+    arr._items.append(inner)
+    arr._items.append(COSFloat(0.0))
     gs.set_line_dash_pattern(arr)
     rt = gs.get_line_dash_pattern()
     assert isinstance(rt, PDLineDashPattern)

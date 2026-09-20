@@ -14,7 +14,7 @@ class _StubCharString:
         self.width = width
         self._commands = commands
 
-    def draw(self, pen) -> None:  # noqa: ANN001 - fontTools pen protocol
+    def draw(self, pen) -> None:
         for command in self._commands:
             op = command[0]
             if op == "moveTo":

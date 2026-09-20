@@ -125,14 +125,14 @@ class StreamTextView(ttk.Frame):
             return
         self._on_motion(event)
 
-    def mouse_dragged(self, event: tk.Event[Any] | None = None) -> None:  # noqa: ARG002
+    def mouse_dragged(self, event: tk.Event[Any] | None = None) -> None:
         """No-op — kept for upstream API parity.
 
         Mirrors upstream ``mouseDragged(MouseEvent)`` whose body is
         explicitly empty (``// do nothing``).
         """
 
-    def ancestor_added(self, event: Any | None = None) -> None:  # noqa: ARG002
+    def ancestor_added(self, event: Any | None = None) -> None:
         """No-op — kept for upstream ``AncestorListener`` parity.
 
         Mirrors upstream ``ancestorAdded(AncestorEvent)``. Upstream
@@ -140,13 +140,13 @@ class StreamTextView(ttk.Frame):
         the Tkinter port keeps that wiring host-driven.
         """
 
-    def ancestor_removed(self, event: Any | None = None) -> None:  # noqa: ARG002
+    def ancestor_removed(self, event: Any | None = None) -> None:
         """No-op — kept for upstream ``AncestorListener`` parity.
 
         Mirrors upstream ``ancestorRemoved(AncestorEvent)``.
         """
 
-    def ancestor_moved(self, event: Any | None = None) -> None:  # noqa: ARG002
+    def ancestor_moved(self, event: Any | None = None) -> None:
         """No-op — kept for upstream ``AncestorListener`` parity.
 
         Mirrors upstream ``ancestorMoved(AncestorEvent)`` whose body is
@@ -163,7 +163,7 @@ class StreamTextView(ttk.Frame):
         offset = _text_index_to_offset(self._text, index)
         try:
             tip = self._tool_tip_controller.get_tool_tip(offset, self._text)  # type: ignore[attr-defined]
-        except Exception:  # noqa: BLE001 — controller errors must not break motion
+        except Exception:
             tip = None
         if tip:
             self._show_tooltip(event.x_root, event.y_root, tip)

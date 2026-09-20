@@ -24,16 +24,16 @@ def _make_doc(width: float = 6.0, height: float = 6.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (6, 6)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -72,7 +72,7 @@ def test_soft_mask_luminosity_applies_transfer_lookup(monkeypatch: Any) -> None:
 
         monkeypatch.setattr(PDFRenderer, "_build_transfer_lookup", staticmethod(_lookup))
 
-        alpha = renderer._render_soft_mask_alpha(mask, (2, 2))  # noqa: SLF001
+        alpha = renderer._render_soft_mask_alpha(mask, (2, 2))
 
         assert alpha is not None
         assert seen == [transfer]
@@ -93,9 +93,9 @@ def test_double_quote_text_operator_sets_spacing_moves_line_and_shows(
     shown: list[bytes] = []
     doc, renderer = _prepared_renderer()
     try:
-        renderer._gs.text_leading = 4.0  # noqa: SLF001
-        renderer._gs.text_matrix = (1.0, 0.0, 0.0, 1.0, 3.0, 9.0)  # noqa: SLF001
-        renderer._gs.text_line_matrix = renderer._gs.text_matrix  # noqa: SLF001
+        renderer._gs.text_leading = 4.0
+        renderer._gs.text_matrix = (1.0, 0.0, 0.0, 1.0, 3.0, 9.0)
+        renderer._gs.text_line_matrix = renderer._gs.text_matrix
         monkeypatch.setattr(renderer, "_show_string", lambda data: shown.append(data))
 
         renderer.process_operator(
@@ -104,10 +104,10 @@ def test_double_quote_text_operator_sets_spacing_moves_line_and_shows(
         )
 
         assert shown == [b"line"]
-        assert renderer._gs.text_wordspace == 2.5  # noqa: SLF001
-        assert renderer._gs.text_charspace == 1.5  # noqa: SLF001
-        assert renderer._gs.text_matrix[4:] == (3.0, 5.0)  # noqa: SLF001
-        assert renderer._gs.text_line_matrix[4:] == (3.0, 5.0)  # noqa: SLF001
+        assert renderer._gs.text_wordspace == 2.5
+        assert renderer._gs.text_charspace == 1.5
+        assert renderer._gs.text_matrix[4:] == (3.0, 5.0)
+        assert renderer._gs.text_line_matrix[4:] == (3.0, 5.0)
     finally:
         _finish(renderer)
         doc.close()
@@ -119,20 +119,20 @@ def test_show_text_line_with_spacing_ignores_short_operands(
     shown: list[bytes] = []
     doc, renderer = _prepared_renderer()
     try:
-        renderer._gs.text_wordspace = 8.0  # noqa: SLF001
-        renderer._gs.text_charspace = 9.0  # noqa: SLF001
-        renderer._gs.text_leading = 3.0  # noqa: SLF001
-        renderer._gs.text_matrix = (1.0, 0.0, 0.0, 1.0, 1.0, 2.0)  # noqa: SLF001
-        renderer._gs.text_line_matrix = renderer._gs.text_matrix  # noqa: SLF001
+        renderer._gs.text_wordspace = 8.0
+        renderer._gs.text_charspace = 9.0
+        renderer._gs.text_leading = 3.0
+        renderer._gs.text_matrix = (1.0, 0.0, 0.0, 1.0, 1.0, 2.0)
+        renderer._gs.text_line_matrix = renderer._gs.text_matrix
         monkeypatch.setattr(renderer, "_show_string", lambda data: shown.append(data))
 
         renderer.process_operator('"', [COSFloat(1.0), COSFloat(2.0)])
 
         assert shown == []
-        assert renderer._gs.text_wordspace == 8.0  # noqa: SLF001
-        assert renderer._gs.text_charspace == 9.0  # noqa: SLF001
-        assert renderer._gs.text_matrix[4:] == (1.0, 2.0)  # noqa: SLF001
-        assert renderer._gs.text_line_matrix[4:] == (1.0, 2.0)  # noqa: SLF001
+        assert renderer._gs.text_wordspace == 8.0
+        assert renderer._gs.text_charspace == 9.0
+        assert renderer._gs.text_matrix[4:] == (1.0, 2.0)
+        assert renderer._gs.text_line_matrix[4:] == (1.0, 2.0)
     finally:
         _finish(renderer)
         doc.close()
@@ -148,8 +148,8 @@ def test_line_to_without_current_point_does_implicit_move_to() -> None:
     try:
         # First ``l`` (no current point) starts a subpath at its endpoint.
         renderer.process_operator("l", [COSFloat(1.0), COSFloat(1.0)])
-        assert renderer._subpaths == [[("M", 1.0, 1.0)]]  # noqa: SLF001
-        assert renderer._current_point == (1.0, 1.0)  # noqa: SLF001
+        assert renderer._subpaths == [[("M", 1.0, 1.0)]]
+        assert renderer._current_point == (1.0, 1.0)
         # The curve operators now have a current point and append segments.
         renderer.process_operator(
             "c",
@@ -172,10 +172,10 @@ def test_line_to_without_current_point_does_implicit_move_to() -> None:
         )
         renderer.process_operator("h", [])
 
-        assert renderer._current_subpath is not None  # noqa: SLF001
-        assert renderer._current_subpath[0] == ("M", 1.0, 1.0)  # noqa: SLF001
-        assert renderer._current_subpath[-1] == ("Z",)  # noqa: SLF001
-        assert renderer._current_point == (1.0, 1.0)  # noqa: SLF001
+        assert renderer._current_subpath is not None
+        assert renderer._current_subpath[0] == ("M", 1.0, 1.0)
+        assert renderer._current_subpath[-1] == ("Z",)
+        assert renderer._current_point == (1.0, 1.0)
     finally:
         _finish(renderer)
         doc.close()
@@ -192,8 +192,8 @@ def test_curve_to_without_current_point_does_implicit_move_to() -> None:
             [COSFloat(v) for v in (1.0, 2.0, 3.0, 4.0, 5.0, 6.0)],
         )
         # moveTo(x3, y3) = (5, 6); the curve segment is skipped.
-        assert renderer._subpaths == [[("M", 5.0, 6.0)]]  # noqa: SLF001
-        assert renderer._current_point == (5.0, 6.0)  # noqa: SLF001
+        assert renderer._subpaths == [[("M", 5.0, 6.0)]]
+        assert renderer._current_point == (5.0, 6.0)
     finally:
         _finish(renderer)
         doc.close()
@@ -202,14 +202,14 @@ def test_curve_to_without_current_point_does_implicit_move_to() -> None:
 def test_fill_mask_with_rgb_noops_without_live_canvas() -> None:
     doc, renderer = _prepared_renderer()
     try:
-        renderer._draw = None  # noqa: SLF001
-        before = renderer._image.copy()  # noqa: SLF001
+        renderer._draw = None
+        before = renderer._image.copy()
 
-        renderer._fill_mask_with_rgb(  # noqa: SLF001
+        renderer._fill_mask_with_rgb(
             Image.new("L", (6, 6), 255),
             (10, 20, 30),
         )
 
-        assert renderer._image.tobytes() == before.tobytes()  # noqa: SLF001
+        assert renderer._image.tobytes() == before.tobytes()
     finally:
         doc.close()

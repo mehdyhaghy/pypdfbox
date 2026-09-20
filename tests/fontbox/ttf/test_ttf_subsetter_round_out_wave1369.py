@@ -56,7 +56,7 @@ def test_add_all_dedups_via_internal_set(liberation_sans: object) -> None:
     sub = TTFSubsetter(liberation_sans)  # type: ignore[arg-type]
     sub.add_all([0x41, 0x42, 0x41, 0x43, 0x42])
     # Internal set has each codepoint once.
-    assert sub._unicodes == {0x41, 0x42, 0x43}  # noqa: SLF001
+    assert sub._unicodes == {0x41, 0x42, 0x43}
 
 
 def test_add_glyph_ids_keeps_notdef(liberation_sans: object) -> None:
@@ -64,21 +64,21 @@ def test_add_glyph_ids_keeps_notdef(liberation_sans: object) -> None:
     further ``add_glyph_ids`` calls."""
     sub = TTFSubsetter(liberation_sans)  # type: ignore[arg-type]
     sub.add_glyph_ids([10, 20, 30])
-    assert 0 in sub._glyph_ids  # noqa: SLF001
-    assert {10, 20, 30} <= sub._glyph_ids  # noqa: SLF001
+    assert 0 in sub._glyph_ids
+    assert {10, 20, 30} <= sub._glyph_ids
 
 
 def test_add_glyph_ids_accepts_arbitrary_iterable(liberation_sans: object) -> None:
     sub = TTFSubsetter(liberation_sans)  # type: ignore[arg-type]
     sub.add_glyph_ids(g for g in (5, 6, 7))  # generator
-    assert {5, 6, 7} <= sub._glyph_ids  # noqa: SLF001
+    assert {5, 6, 7} <= sub._glyph_ids
 
 
 def test_add_unicode_codepoint_round_trip(liberation_sans: object) -> None:
     sub = TTFSubsetter(liberation_sans)  # type: ignore[arg-type]
     sub.add(ord("H"))
     sub.add(ord("i"))
-    assert sub._unicodes == {ord("H"), ord("i")}  # noqa: SLF001
+    assert sub._unicodes == {ord("H"), ord("i")}
 
 
 # ---------- dependency expansion (add_compound_references) ----------------
@@ -89,7 +89,7 @@ def test_add_compound_references_keeps_notdef(liberation_sans: object) -> None:
     sub.add(ord("A"))
     sub.add_compound_references()
     # .notdef is still in the keep set after expansion.
-    assert 0 in sub._glyph_ids  # noqa: SLF001
+    assert 0 in sub._glyph_ids
 
 
 def test_add_compound_references_on_empty_subset_is_noop(
@@ -99,9 +99,9 @@ def test_add_compound_references_on_empty_subset_is_noop(
     composites to expand. The call must not raise and must not grow
     the keep-set beyond {.notdef}."""
     sub = TTFSubsetter(liberation_sans)  # type: ignore[arg-type]
-    before = set(sub._glyph_ids)  # noqa: SLF001
+    before = set(sub._glyph_ids)
     sub.add_compound_references()
-    after = set(sub._glyph_ids)  # noqa: SLF001
+    after = set(sub._glyph_ids)
     assert before == after  # no growth
     assert 0 in after
 
@@ -174,7 +174,7 @@ def test_set_prefix_accepts_arbitrary_string(liberation_sans: object) -> None:
     # Any non-empty string; only the *applied* prefix gets format-checked
     # at flush time, and only insofar as it differs from already-applied.
     sub.set_prefix("ZZZZZZ")
-    assert sub._prefix == "ZZZZZZ"  # noqa: SLF001
+    assert sub._prefix == "ZZZZZZ"
 
 
 # ---------- log2 / to_u_int32 helpers (boundary tests) -------------------

@@ -24,7 +24,7 @@ class _PathGlyph:
 
 
 class _PathTable:
-    def getGlyphName(self, gid: int) -> str:  # noqa: N802 - fontTools API
+    def getGlyphName(self, gid: int) -> str:
         if gid != 1:
             raise KeyError(gid)
         return "A"

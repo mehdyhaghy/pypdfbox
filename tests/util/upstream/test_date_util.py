@@ -103,7 +103,7 @@ def _check_parse(
     expected PDF date string + ISO 8601 string. Upstream's ``BAD`` sentinel
     (``-666``) signals an expected parse failure (``cal is None``).
     """
-    BAD = -666
+    bad = -666
     pdf_date = (
         f"D:{yr:04d}{mon:02d}{day:02d}{hr:02d}{minute:02d}{sec:02d}"
         f"{offset_hours:+03d}'{offset_minutes:02d}'"
@@ -116,7 +116,7 @@ def _check_parse(
         cal = DateConverter.to_calendar(orig)
     except (OSError, ValueError):
         cal = None
-    if yr == BAD:
+    if yr == bad:
         assert cal is None, f"expected parse failure for {orig!r}, got {cal!r}"
         return
     assert cal is not None, f"failed to parse {orig!r}"

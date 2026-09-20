@@ -23,7 +23,7 @@ def _java_max(a: float, b: float) -> float:
     degenerate (Infinity / NaN root) path picks the same value as upstream."""
     if math.isnan(a) or math.isnan(b):
         return float("nan")
-    return a if a >= b else b
+    return max(a, b)
 
 
 def _java_int_cast(value: float) -> int:
@@ -163,7 +163,7 @@ class RadialShadingContext(ShadingContext):
         line 170) — solves the quadratic input value, applies extend /
         background rules, picks the larger valid root, and looks up the
         colour table."""
-        from PIL import Image  # noqa: PLC0415
+        from PIL import Image
 
         bg = self.get_background()
         rgb_bg = self.get_rgb_background()

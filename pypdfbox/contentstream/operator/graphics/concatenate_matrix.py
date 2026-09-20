@@ -51,7 +51,21 @@ class ConcatenateMatrix(OperatorProcessor):
         # compatible with both the lite and strict bases.
         ctx = self._context
         if ctx is not None:
-            ctx.transform(matrix)
+            # PDFBOX-6255: a concatenation whose product contains NaN /
+            # infinity is illegal (``Matrix.checkFloatValues`` ->
+            # ``IllegalArgumentException``, ported as ``ValueError``), and
+            # upstream rethrows it as an ``IOException`` (``OSError`` here)
+            # so the engine's normal malformed-operator triage applies
+            # instead of an unchecked exception tearing down the page walk.
+            # The base ``transform`` hook is a no-op so nothing raises
+            # today, but any subclass that concatenates through
+            # :class:`~pypdfbox.util.matrix.Matrix` can — keep the
+            # translation here so this path cannot drift away from
+            # ``state.Concatenate`` / ``check_concatenation``.
+            try:
+                ctx.transform(matrix)
+            except ValueError as ex:
+                raise OSError(str(ex)) from ex
 
     def get_name(self) -> str:
         return OperatorName.CONCAT

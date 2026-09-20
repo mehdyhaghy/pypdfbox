@@ -42,5 +42,5 @@ def test_render_alias_still_works(tk_root) -> None:
     """The original private ``_render`` is preserved as an alias."""
     model = HexModel(b"xy")
     pane = ASCIIPane(tk_root, model)
-    pane._render()  # noqa: SLF001
+    pane._render()
     assert "xy" in pane.get("1.0", "end-1c")

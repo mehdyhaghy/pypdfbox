@@ -31,7 +31,7 @@ def test_is_hex_char_matches_only_hex_digits(tk_root: tk.Tk) -> None:
     # Instance access must also work (legacy call sites).
     assert pane.is_hex_char("c") is True
     # Private alias must still resolve to the same predicate.
-    assert pane._is_hex_char("c") is True  # noqa: SLF001
+    assert pane._is_hex_char("c") is True
 
 
 # ---- get_selected_string -------------------------------------------------
@@ -47,7 +47,7 @@ def test_get_selected_string_returns_styled_descriptor(tk_root: tk.Tk) -> None:
     assert desc["text"] == "AB"
     assert desc["foreground"] == "blue"
     # The font must be the bold variant used elsewhere by _render.
-    assert desc["font"] is pane._bold  # noqa: SLF001
+    assert desc["font"] is pane._bold
 
 
 # ---- put_in_selected -----------------------------------------------------
@@ -59,12 +59,12 @@ def test_put_in_selected_marks_index_and_state(tk_root: tk.Tk) -> None:
 
     pane = HexPane(tk_root, HexModel(b"\x00\x01\x02\x03"))
     pane.put_in_selected(2)
-    assert pane._state == HexPane.SELECTED  # noqa: SLF001
-    assert pane._selected_index == 2  # noqa: SLF001
-    assert pane._selected_char == 0  # noqa: SLF001
+    assert pane._state == HexPane.SELECTED
+    assert pane._selected_index == 2
+    assert pane._selected_char == 0
     # The private alias still works for legacy call-sites.
-    pane._put_in_selected(1)  # noqa: SLF001
-    assert pane._selected_index == 1  # noqa: SLF001
+    pane._put_in_selected(1)
+    assert pane._selected_index == 1
 
 
 # ---- paint_component -----------------------------------------------------
@@ -94,5 +94,5 @@ def test_paint_in_edit_switches_state_to_edit(tk_root: tk.Tk) -> None:
 
     pane = HexPane(tk_root, HexModel(b"\x00\x01\x02"))
     pane.paint_in_edit(0xAB, 1)
-    assert pane._state == HexPane.EDIT  # noqa: SLF001
-    assert pane._selected_index == 1  # noqa: SLF001
+    assert pane._state == HexPane.EDIT
+    assert pane._selected_index == 1

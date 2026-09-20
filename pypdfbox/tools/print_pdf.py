@@ -146,7 +146,7 @@ class PrintPDF:
         # so an encrypted/permission-restricted PDF fails fast rather
         # than handing protected bytes to the spooler.
         try:
-            from pypdfbox.loader import Loader  # noqa: PLC0415
+            from pypdfbox.loader import Loader
 
             with Loader.load_pdf(pdf_path, self.password or "") as document:
                 ap = document.get_current_access_permission()
@@ -167,7 +167,7 @@ class PrintPDF:
 
         if sys.platform.startswith("win"):
             try:
-                os.startfile(str(pdf_path), "print")  # type: ignore[attr-defined]  # noqa: S606
+                os.startfile(str(pdf_path), "print")  # type: ignore[attr-defined]
             except OSError as exc:
                 sys.stderr.write(f"Error printing document [OSError]: {exc}\n")
                 return 4
@@ -209,7 +209,7 @@ class PrintPDF:
         cmd.append(str(pdf_path))
 
         try:
-            subprocess.run(cmd, check=True)  # noqa: S603
+            subprocess.run(cmd, check=True)
         except (subprocess.CalledProcessError, OSError) as exc:
             sys.stderr.write(
                 f"Error printing document [{type(exc).__name__}]: {exc}\n",

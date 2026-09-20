@@ -29,16 +29,16 @@ def _prepared_renderer(
 ) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -100,14 +100,14 @@ def test_axial_shading_clamps_negative_ramp_index(monkeypatch: Any) -> None:
     try:
         _force_round(monkeypatch, -8)
 
-        renderer._paint_axial_shading(  # noqa: SLF001
+        renderer._paint_axial_shading(
             _Axial(),
             region_mask=Image.new("L", (1, 1), 255),
         )
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((0, 0)) == (255, 0, 0)  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.getpixel((0, 0)) == (255, 0, 0)
     finally:
         doc.close()
 
@@ -133,14 +133,14 @@ def test_axial_shading_clamps_large_ramp_index(monkeypatch: Any) -> None:
     try:
         _force_round(monkeypatch, 999)
 
-        renderer._paint_axial_shading(  # noqa: SLF001
+        renderer._paint_axial_shading(
             _Axial(),
             region_mask=Image.new("L", (1, 1), 255),
         )
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((0, 0)) == (255, 0, 0)  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.getpixel((0, 0)) == (255, 0, 0)
     finally:
         doc.close()
 
@@ -166,14 +166,14 @@ def test_radial_shading_clamps_negative_ramp_index(monkeypatch: Any) -> None:
     try:
         _force_round(monkeypatch, -8)
 
-        renderer._paint_radial_shading(  # noqa: SLF001
+        renderer._paint_radial_shading(
             _Radial(),
             region_mask=Image.new("L", (1, 1), 255),
         )
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((0, 0)) == (255, 0, 0)  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.getpixel((0, 0)) == (255, 0, 0)
     finally:
         doc.close()
 
@@ -199,13 +199,13 @@ def test_radial_shading_clamps_large_ramp_index(monkeypatch: Any) -> None:
     try:
         _force_round(monkeypatch, 999)
 
-        renderer._paint_radial_shading(  # noqa: SLF001
+        renderer._paint_radial_shading(
             _Radial(),
             region_mask=Image.new("L", (1, 1), 255),
         )
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((0, 0)) == (255, 0, 0)  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.getpixel((0, 0)) == (255, 0, 0)
     finally:
         doc.close()

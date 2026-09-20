@@ -50,7 +50,7 @@ class _RecordingEngine(PDFGraphicsStreamEngine):
 
     # --- path-construction hooks ---
 
-    def append_rectangle(self, p0, p1, p2, p3) -> None:  # noqa: ANN001
+    def append_rectangle(self, p0, p1, p2, p3) -> None:
         self.events.append(("append_rectangle", (p0, p1, p2, p3)))
         self._current_point = p0
 
@@ -62,7 +62,7 @@ class _RecordingEngine(PDFGraphicsStreamEngine):
         self.events.append(("line_to", (x, y)))
         self._current_point = (x, y)
 
-    def curve_to(self, x1, y1, x2, y2, x3, y3) -> None:  # noqa: ANN001
+    def curve_to(self, x1, y1, x2, y2, x3, y3) -> None:
         self.events.append(("curve_to", (x1, y1, x2, y2, x3, y3)))
         self._current_point = (x3, y3)
 
@@ -101,7 +101,7 @@ class _RecordingEngine(PDFGraphicsStreamEngine):
 
     # --- catch-all fall-through ---
 
-    def unsupported_operator(self, operator, operands) -> None:  # noqa: ANN001
+    def unsupported_operator(self, operator, operands) -> None:
         self.unsupported.append((operator.get_name(), list(operands)))
 
 

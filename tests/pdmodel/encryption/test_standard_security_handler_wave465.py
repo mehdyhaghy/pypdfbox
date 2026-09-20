@@ -124,11 +124,11 @@ def test_wave465_only_identity_is_passthrough_none_and_unknown_are_rc4() -> None
     handler = StandardSecurityHandler()
     handler.set_encryption_key(b"\x01" * 16)
 
-    assert handler._dispatch_encrypt("Identity", b"plain", 1, 0) == b"plain"  # noqa: SLF001
+    assert handler._dispatch_encrypt("Identity", b"plain", 1, 0) == b"plain"
     for cfm in ("None", "BogusCFM"):
-        enc = handler._dispatch_encrypt(cfm, b"plain", 1, 0)  # noqa: SLF001
+        enc = handler._dispatch_encrypt(cfm, b"plain", 1, 0)
         assert enc != b"plain"
-        assert handler._dispatch_decrypt(cfm, enc, 1, 0) == b"plain"  # noqa: SLF001
+        assert handler._dispatch_decrypt(cfm, enc, 1, 0) == b"plain"
 
 
 def test_wave465_prepare_document_requires_policy() -> None:

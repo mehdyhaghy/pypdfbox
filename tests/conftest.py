@@ -86,7 +86,7 @@ def _pypdfbox_skip_tk_env_var() -> None:
     performed in the per-subpackage ``tk_root`` fixtures, which call
     :func:`should_skip_tk` (re-exported below).
     """
-    return None
+    return
 
 
 def should_skip_tk() -> bool:

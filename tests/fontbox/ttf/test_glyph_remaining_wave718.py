@@ -173,7 +173,7 @@ def test_gpos_pair_format2_ignores_missing_and_zero_class_records() -> None:
 class _CompositeGlyph:
     numberOfContours = -1
 
-    def isComposite(self) -> bool:  # noqa: N802 - fontTools API
+    def isComposite(self) -> bool:
         return True
 
     def getCoordinates(self, _glyf_table: Any) -> tuple[list[tuple[int, int]], list[int], bytes]:

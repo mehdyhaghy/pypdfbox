@@ -32,7 +32,7 @@ def _separation_array() -> COSArray:
 
 def test_state_changed_is_underscore_alias(tk_root) -> None:
     """The original ``_on_slider`` name should resolve to the promoted method."""
-    assert CSSeparation._on_slider is CSSeparation.state_changed  # noqa: SLF001
+    assert CSSeparation._on_slider is CSSeparation.state_changed
 
 
 def test_state_changed_updates_tint(tk_root) -> None:
@@ -43,11 +43,11 @@ def test_state_changed_updates_tint(tk_root) -> None:
 
 def test_update_color_bar_alias_and_invocation(tk_root) -> None:
     """``_update_color_bar`` should be the underscore alias of the new public method."""
-    assert CSSeparation._update_color_bar is CSSeparation.update_color_bar  # noqa: SLF001
+    assert CSSeparation._update_color_bar is CSSeparation.update_color_bar
     pane = CSSeparation(_separation_array(), master=tk_root)
     # Bumping the slider through state_changed routes through
     # update_color_bar; the canvas background should change as a side-effect.
     pane.state_changed("0")
-    assert pane._color_bar is not None  # noqa: SLF001
+    assert pane._color_bar is not None
     # The bar's background string is non-empty after the recolor.
-    assert pane._color_bar.cget("background")  # noqa: SLF001
+    assert pane._color_bar.cget("background")

@@ -475,7 +475,7 @@ class _ExplodingCharString:
         pass
 
 
-def test_get_width_returns_zero_when_extractor_raises(monkeypatch) -> None:  # noqa: ANN001
+def test_get_width_returns_zero_when_extractor_raises(monkeypatch) -> None:
     """The ``except Exception`` arm at line 297 maps an extractor crash
     to a width of 0.0 — never propagates."""
     cs = Type1CharString(None, "F", "A", None)
@@ -488,7 +488,7 @@ def test_get_width_returns_zero_when_extractor_raises(monkeypatch) -> None:  # n
     assert cs.get_width() == 0.0
 
 
-def test_get_width_uses_cached_path_branch(monkeypatch) -> None:  # noqa: ANN001
+def test_get_width_uses_cached_path_branch(monkeypatch) -> None:
     """When the path is already cached but width is not, ``get_width``
     reads ``self._t1.width`` directly without re-running the extractor —
     covers line 288-289."""
@@ -499,7 +499,7 @@ def test_get_width_uses_cached_path_branch(monkeypatch) -> None:  # noqa: ANN001
     assert cs.get_width() == 777.0
 
 
-def test_get_path_returns_empty_when_extractor_raises(monkeypatch) -> None:  # noqa: ANN001
+def test_get_path_returns_empty_when_extractor_raises(monkeypatch) -> None:
     cs = Type1CharString(None, "F", "A", None)
     import pypdfbox.fontbox.cff.type1_char_string as mod
 
@@ -525,7 +525,7 @@ def test_get_bounds_includes_curveto_control_points() -> None:
     assert ymax == 300.0  # picked from the curveto control point
 
 
-def test_render_returns_empty_when_extractor_raises(monkeypatch) -> None:  # noqa: ANN001
+def test_render_returns_empty_when_extractor_raises(monkeypatch) -> None:
     """``render()``'s ``except Exception`` arm caches ``[]`` so a
     follow-up call short-circuits — covers lines 425-428."""
     cs = Type1CharString(None, "F", "A", None)
@@ -551,7 +551,7 @@ def test_render_returns_empty_when_extractor_raises(monkeypatch) -> None:  # noq
 # ---------------------------------------------------------------------------
 
 
-def test_seac_with_get_name_raising_falls_back_to_none(monkeypatch) -> None:  # noqa: ANN001
+def test_seac_with_get_name_raising_falls_back_to_none(monkeypatch) -> None:
     """When ``StandardEncoding.get_name`` itself raises (simulated via
     monkey-patch), the inner ``_name`` helper swallows the exception and
     returns ``None`` — exercises the ``except Exception`` arm at lines
@@ -624,7 +624,7 @@ def test_seac_accent_lookup_exception_is_swallowed() -> None:
     assert ctx.path == [("moveto", 1.0, 2.0)]
 
 
-def test_seac_standard_encoding_import_failure_path(monkeypatch) -> None:  # noqa: ANN001
+def test_seac_standard_encoding_import_failure_path(monkeypatch) -> None:
     """If ``StandardEncoding`` fails to import, ``std`` is ``None`` and
     every ``_name(idx)`` returns ``None`` — exercises line 640-641 and
     the ``std is None`` branch of ``_name``."""

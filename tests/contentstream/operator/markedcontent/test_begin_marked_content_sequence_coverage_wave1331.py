@@ -10,7 +10,7 @@ Targets the missed defensive branches:
 from __future__ import annotations
 
 from pypdfbox.contentstream import Operator, PDFStreamEngine
-from pypdfbox.contentstream.operator.markedcontent.begin_marked_content_sequence import (  # noqa: E501
+from pypdfbox.contentstream.operator.markedcontent.begin_marked_content_sequence import (
     BeginMarkedContentSequence,
 )
 from pypdfbox.cos import COSDictionary, COSInteger, COSName, COSString
@@ -39,7 +39,7 @@ def test_process_without_context_returns_silently() -> None:
     we probe the underlying attribute instead.
     """
     processor = BeginMarkedContentSequence()
-    assert processor._context is None  # noqa: SLF001 - intentional probe
+    assert processor._context is None
     processor.process(
         Operator.get_operator("BMC"), [COSName.get_pdf_name("P")]
     )

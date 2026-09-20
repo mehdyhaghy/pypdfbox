@@ -294,7 +294,7 @@ def test_is_self_signed_handles_exception_gracefully(monkeypatch):
 
     class _Cert:
         class _Name:
-            def __eq__(self, other):  # noqa: D401 - x-ref
+            def __eq__(self, other):
                 # Force ``cert.subject == cert.issuer`` to be True so we
                 # exercise the inner ``_verify_signed_by`` call.
                 return True
@@ -328,7 +328,7 @@ def test_verify_signed_by_returns_false_when_signature_invalid(
     # cert in place of the issuer, so the signature check must fail and the
     # helper returns False.
     assert (
-        CertificateVerifier._verify_signed_by(intermediate, intermediate)  # noqa: SLF001
+        CertificateVerifier._verify_signed_by(intermediate, intermediate)
         is False
     )
 
@@ -338,7 +338,7 @@ def test_verify_signed_by_supports_ec_issuer():
     # The EC self-signed cert verifies against its own public key, exercising
     # the EllipticCurvePublicKey branch.
     assert (
-        CertificateVerifier._verify_signed_by(ec_cert, ec_cert)  # noqa: SLF001
+        CertificateVerifier._verify_signed_by(ec_cert, ec_cert)
         is True
     )
 
@@ -462,14 +462,14 @@ def test_build_chain_breaks_on_cycle(self_signed_cert, monkeypatch):
 
     call_count = {"n": 0}
 
-    def _stub_find(cert, _pool):  # noqa: ARG001
+    def _stub_find(cert, _pool):
         call_count["n"] += 1
         return intermediate
 
     monkeypatch.setattr(
         CertificateVerifier, "_find_issuer", staticmethod(_stub_find),
     )
-    chain = CertificateVerifier._build_chain(  # noqa: SLF001
+    chain = CertificateVerifier._build_chain(
         intermediate, [intermediate], [root_cert],
     )
     # The break fires the second iteration (issuer already seen), so the
@@ -499,7 +499,7 @@ def test_verify_signed_by_else_branch_via_stub(monkeypatch):
             return _Pk()
 
     assert (
-        CertificateVerifier._verify_signed_by(_Cert(), _Issuer())  # noqa: SLF001
+        CertificateVerifier._verify_signed_by(_Cert(), _Issuer())
         is True
     )
     assert call["n"] == 1

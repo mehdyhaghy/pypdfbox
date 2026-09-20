@@ -28,7 +28,7 @@ def test_render_destination_make_doc_removes_preexisting_page(
 ) -> None:
     monkeypatch.setattr(render_destination_tests, "PDDocument", _DocWithExistingPage)
 
-    doc = render_destination_tests._make_doc()  # noqa: SLF001
+    doc = render_destination_tests._make_doc()
 
     assert isinstance(doc, _DocWithExistingPage)
     assert doc.removed_indices == [0]

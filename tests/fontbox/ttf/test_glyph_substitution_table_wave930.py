@@ -20,9 +20,9 @@ def test_wave930_liberation_fixture_skip_branch(monkeypatch: pytest.MonkeyPatch)
 def test_wave930_get_gsub_absent_test_exercises_contains_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def get_gsub_probe_non_gsub_key(self):  # noqa: ANN001
+    def get_gsub_probe_non_gsub_key(self):
         assert "head" in self._tt
-        return None
+        return
 
     monkeypatch.setattr(gsub_tests.TrueTypeFont, "get_gsub", get_gsub_probe_non_gsub_key)
 

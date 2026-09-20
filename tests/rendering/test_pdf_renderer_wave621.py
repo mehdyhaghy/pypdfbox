@@ -21,16 +21,16 @@ def _make_doc(width: float = 8.0, height: float = 8.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (8, 8)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -41,11 +41,11 @@ def test_pattern_fill_with_stroke_without_clip_uses_direct_stroke(
     doc, renderer = _prepared_renderer()
     calls: list[tuple[str, bool | None]] = []
     try:
-        renderer._gs.fill_pattern = object()  # noqa: SLF001
-        renderer._subpaths = [  # noqa: SLF001
+        renderer._gs.fill_pattern = object()
+        renderer._subpaths = [
             [("M", 1.0, 1.0), ("L", 6.0, 1.0), ("L", 6.0, 6.0), ("Z",)]
         ]
-        renderer._current_subpath = renderer._subpaths[0]  # noqa: SLF001
+        renderer._current_subpath = renderer._subpaths[0]
 
         def _pattern_fill(*, even_odd: bool) -> None:
             calls.append(("pattern", even_odd))
@@ -56,11 +56,11 @@ def test_pattern_fill_with_stroke_without_clip_uses_direct_stroke(
         monkeypatch.setattr(renderer, "_paint_pattern_fill", _pattern_fill)
         monkeypatch.setattr(renderer, "_stroke_via_aggdraw", _stroke)
 
-        renderer._paint(stroke=True, fill=True, even_odd=False)  # noqa: SLF001
+        renderer._paint(stroke=True, fill=True, even_odd=False)
 
         assert calls == [("pattern", False), ("stroke", None)]
-        assert renderer._subpaths == []  # noqa: SLF001
-        assert renderer._current_subpath is None  # noqa: SLF001
+        assert renderer._subpaths == []
+        assert renderer._current_subpath is None
     finally:
         _finish(renderer)
         doc.close()
@@ -69,12 +69,12 @@ def test_pattern_fill_with_stroke_without_clip_uses_direct_stroke(
 def test_nonzero_path_mask_unions_multiple_subpaths() -> None:
     doc, renderer = _prepared_renderer()
     try:
-        renderer._subpaths = [  # noqa: SLF001
+        renderer._subpaths = [
             [("M", 1.0, 1.0), ("L", 3.0, 1.0), ("L", 3.0, 3.0), ("Z",)],
             [("M", 5.0, 5.0), ("L", 7.0, 5.0), ("L", 7.0, 7.0), ("Z",)],
         ]
 
-        mask = renderer._build_path_mask(even_odd=False)  # noqa: SLF001
+        mask = renderer._build_path_mask(even_odd=False)
 
         assert mask is not None
         # Wave 1373: edge pixels carry sub-pixel AA (not fully 255). Both

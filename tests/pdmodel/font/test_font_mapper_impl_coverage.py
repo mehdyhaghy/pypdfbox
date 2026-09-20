@@ -47,7 +47,7 @@ class _FakeCID:
 
 
 class _FakeFontInfo(FontInfo):
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         post_script_name: str,
         font_format: FontFormat,
@@ -486,7 +486,7 @@ def test_fallback_descriptor_with_missing_font_name() -> None:
     """Descriptor whose ``get_font_name`` raises AttributeError still works."""
 
     class _BrokenName:
-        def get_font_name(self) -> str:  # noqa: D401
+        def get_font_name(self) -> str:
             raise AttributeError("no font name")
 
         def is_fixed_pitch(self) -> bool:

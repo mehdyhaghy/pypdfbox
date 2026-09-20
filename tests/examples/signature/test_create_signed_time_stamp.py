@@ -242,10 +242,10 @@ def test_sign_detached_document_creates_pd_signature_and_calls_save_incremental(
     # Tolerant shims that accept both str and COSName.
     captured_setters: dict[str, object] = {}
 
-    def _accept_any_type(self, value):  # noqa: ANN001
+    def _accept_any_type(self, value):
         captured_setters["type"] = value
 
-    def _accept_any_sub_filter(self, value):  # noqa: ANN001
+    def _accept_any_sub_filter(self, value):
         captured_setters["sub_filter"] = value
 
     monkeypatch.setattr(PDSignature, "set_type", _accept_any_type, raising=True)

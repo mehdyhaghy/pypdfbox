@@ -15,7 +15,7 @@ class _FakeFontSet:
 
 def test_wave320_get_string_decodes_private_string_index_bytes() -> None:
     font = CFFFont()
-    font._fontset = _FakeFontSet([b"CustomGlyph", "PlainGlyph"])  # noqa: SLF001
+    font._fontset = _FakeFontSet([b"CustomGlyph", "PlainGlyph"])
 
     assert font.get_string(CFFFont.NUM_STANDARD_STRINGS) == "CustomGlyph"
     assert font.get_string(CFFFont.NUM_STANDARD_STRINGS + 1) == "PlainGlyph"
@@ -23,6 +23,6 @@ def test_wave320_get_string_decodes_private_string_index_bytes() -> None:
 
 def test_wave320_get_sid_matches_private_string_index_bytes() -> None:
     font = CFFFont()
-    font._fontset = _FakeFontSet([b"CustomGlyph"])  # noqa: SLF001
+    font._fontset = _FakeFontSet([b"CustomGlyph"])
 
     assert font.get_sid("CustomGlyph") == CFFFont.NUM_STANDARD_STRINGS

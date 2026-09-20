@@ -115,7 +115,7 @@ class HexPane(tk.Text):
 
     # ---------------------------------------------------------------- model
 
-    def hex_model_changed(self, event: HexModelChangedEvent) -> None:  # noqa: ARG002
+    def hex_model_changed(self, event: HexModelChangedEvent) -> None:
         self._render()
 
     # -------------------------------------------------------- selection API
@@ -319,28 +319,28 @@ class HexPane(tk.Text):
             return None
         return self._on_click(event)
 
-    def mouse_pressed(self, event: tk.Event | None = None) -> None:  # noqa: ARG002
+    def mouse_pressed(self, event: tk.Event | None = None) -> None:
         """No-op — kept for upstream ``MouseListener`` parity.
 
         Upstream's body is empty (``// do nothing``).
         """
 
-    def mouse_released(self, event: tk.Event | None = None) -> None:  # noqa: ARG002
+    def mouse_released(self, event: tk.Event | None = None) -> None:
         """No-op — kept for upstream ``MouseListener`` parity.
 
         Upstream's body is empty (``// do nothing``).
         """
 
-    def mouse_entered(self, event: tk.Event | None = None) -> None:  # noqa: ARG002
+    def mouse_entered(self, event: tk.Event | None = None) -> None:
         """No-op — kept for upstream ``MouseListener`` parity."""
 
-    def mouse_exited(self, event: tk.Event | None = None) -> None:  # noqa: ARG002
+    def mouse_exited(self, event: tk.Event | None = None) -> None:
         """No-op — kept for upstream ``MouseListener`` parity."""
 
-    def mouse_dragged(self, event: tk.Event | None = None) -> None:  # noqa: ARG002
+    def mouse_dragged(self, event: tk.Event | None = None) -> None:
         """No-op — kept for upstream ``MouseMotionListener`` parity."""
 
-    def mouse_moved(self, event: tk.Event | None = None) -> None:  # noqa: ARG002
+    def mouse_moved(self, event: tk.Event | None = None) -> None:
         """No-op — kept for upstream ``MouseMotionListener`` parity."""
 
     def key_pressed(self, event: tk.Event | None = None) -> str | None:
@@ -356,13 +356,13 @@ class HexPane(tk.Text):
             return None
         return self._on_key(event)
 
-    def key_released(self, event: tk.Event | None = None) -> None:  # noqa: ARG002
+    def key_released(self, event: tk.Event | None = None) -> None:
         """No-op — kept for upstream ``KeyListener`` parity.
 
         Upstream's body is empty (``// do nothing``).
         """
 
-    def key_typed(self, event: tk.Event | None = None) -> None:  # noqa: ARG002
+    def key_typed(self, event: tk.Event | None = None) -> None:
         """No-op — kept for upstream ``KeyListener`` parity.
 
         Upstream's body delegates to ``keyPressed``'s logic; the Tk

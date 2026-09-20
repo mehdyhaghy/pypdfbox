@@ -177,7 +177,7 @@ def test_bridge_silently_ignores_missing_delegate_methods() -> None:
 
 
 def test_glyph_rasterised_through_bridge_matches_recorded_baseline() -> None:
-    from pypdfbox.rendering.pdf_renderer import _AggdrawPathPen  # noqa: PLC0415
+    from pypdfbox.rendering.pdf_renderer import _AggdrawPathPen
 
     # Standard-14 'Helvetica' → LiberationSans-Regular substitute → glyph
     # 'A' is guaranteed to have outlines. We rasterise through two
@@ -198,7 +198,7 @@ def test_glyph_rasterised_through_bridge_matches_recorded_baseline() -> None:
     assert pen_a.has_segments is True
     assert pen_b.has_segments is True
     # Both pens recorded the same final point (close_path doesn't move it).
-    assert pen_a._last == pen_b._last  # noqa: SLF001
+    assert pen_a._last == pen_b._last
     # The aggdraw.Path objects exist and were appended to.
     assert pen_a.path is not None
     assert pen_b.path is not None

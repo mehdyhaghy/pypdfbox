@@ -23,16 +23,16 @@ def _make_doc(width: float = 8.0, height: float = 8.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (8, 8)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -53,11 +53,11 @@ def test_show_string_handles_zero_consumed_code_and_spacing(monkeypatch: Any) ->
     font = _Font()
     drawn_codes: list[int] = []
     try:
-        renderer._gs.text_font = font  # noqa: SLF001
-        renderer._gs.text_font_size = 10.0  # noqa: SLF001
-        renderer._gs.text_charspace = 2.0  # noqa: SLF001
-        renderer._gs.text_wordspace = 3.0  # noqa: SLF001
-        renderer._gs.text_horizontal_scaling = 50.0  # noqa: SLF001
+        renderer._gs.text_font = font
+        renderer._gs.text_font_size = 10.0
+        renderer._gs.text_charspace = 2.0
+        renderer._gs.text_wordspace = 3.0
+        renderer._gs.text_horizontal_scaling = 50.0
         monkeypatch.setattr(renderer, "_get_ttf_glyph_set", lambda _font: (None, None))
         monkeypatch.setattr(renderer, "_get_type1_units_per_em", lambda _font: None)
 
@@ -75,11 +75,11 @@ def test_show_string_handles_zero_consumed_code_and_spacing(monkeypatch: Any) ->
 
         monkeypatch.setattr(renderer, "_draw_glyph", _draw_glyph)
 
-        renderer._show_string(b" A")  # noqa: SLF001
+        renderer._show_string(b" A")
 
         assert drawn_codes == [0x20, ord("A")]
         assert font.calls == 2
-        assert renderer._gs.text_matrix[4] == 8.5  # noqa: SLF001
+        assert renderer._gs.text_matrix[4] == 8.5
     finally:
         _finish(renderer)
         doc.close()
@@ -109,11 +109,11 @@ def test_standard14_placeholder_warning_fires_when_substitute_missing(
     try:
         caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
 
-        renderer._maybe_warn_standard14(font)  # noqa: SLF001
-        renderer._maybe_warn_standard14(font)  # noqa: SLF001
+        renderer._maybe_warn_standard14(font)
+        renderer._maybe_warn_standard14(font)
 
         assert caplog.text.count("Helvetica is a Standard 14 font") == 1
-        assert id(font) in renderer._warned_standard14_fonts  # noqa: SLF001
+        assert id(font) in renderer._warned_standard14_fonts
     finally:
         _finish(renderer)
         doc.close()
@@ -136,11 +136,11 @@ def test_standard14_warn_suppressed_for_symbol_after_dejavu_substitute(
     try:
         caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
 
-        renderer._maybe_warn_standard14(font)  # noqa: SLF001
-        renderer._maybe_warn_standard14(font)  # noqa: SLF001
+        renderer._maybe_warn_standard14(font)
+        renderer._maybe_warn_standard14(font)
 
         assert "Symbol is a Standard 14 font" not in caplog.text
-        assert id(font) not in renderer._warned_standard14_fonts  # noqa: SLF001
+        assert id(font) not in renderer._warned_standard14_fonts
     finally:
         _finish(renderer)
         doc.close()
@@ -162,13 +162,13 @@ def test_standard14_warn_suppressed_for_helvetica_with_liberation(
     try:
         caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
 
-        renderer._maybe_warn_standard14(font)  # noqa: SLF001
-        renderer._maybe_warn_standard14(font)  # noqa: SLF001
+        renderer._maybe_warn_standard14(font)
+        renderer._maybe_warn_standard14(font)
 
         assert "Helvetica is a Standard 14 font" not in caplog.text
         # The cache entry is only added when the warning fires, so it
         # should still be absent.
-        assert id(font) not in renderer._warned_standard14_fonts  # noqa: SLF001
+        assert id(font) not in renderer._warned_standard14_fonts
     finally:
         _finish(renderer)
         doc.close()
@@ -183,7 +183,7 @@ def test_fallback_advance_units_uses_default_when_units_per_em_fails() -> None:
         def get_units_per_em(self) -> int:
             raise RuntimeError("units boom")
 
-    assert PDFRenderer._fallback_advance_units(_Substitute(), 65, 500.0) == 700.0  # noqa: E501, SLF001
+    assert PDFRenderer._fallback_advance_units(_Substitute(), 65, 500.0) == 700.0
 
 
 def test_draw_glyph_does_not_warn_for_non_standard_font(caplog: Any) -> None:
@@ -197,9 +197,9 @@ def test_draw_glyph_does_not_warn_for_non_standard_font(caplog: Any) -> None:
     doc, renderer = _prepared_renderer()
     try:
         caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
-        renderer._gs.text_font_size = 10.0  # noqa: SLF001
+        renderer._gs.text_font_size = 10.0
 
-        advance = renderer._draw_glyph(_Font(), 65, None, None)  # noqa: SLF001
+        advance = renderer._draw_glyph(_Font(), 65, None, None)
         _finish(renderer)
 
         assert advance == 250.0

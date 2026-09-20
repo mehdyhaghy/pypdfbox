@@ -355,9 +355,9 @@ def test_set_document_catalog_replaces_root() -> None:
     new_pages.set_item(COSName.KIDS, _COSArray())  # type: ignore[attr-defined]
     new_pages.set_int(COSName.COUNT, 0)  # type: ignore[attr-defined]
     new_catalog_dict.set_item(COSName.PAGES, new_pages)  # type: ignore[attr-defined]
-    from pypdfbox.pdmodel import PDDocumentCatalog as _PDC
+    from pypdfbox.pdmodel import PDDocumentCatalog
 
-    new_catalog = _PDC(doc, new_catalog_dict)
+    new_catalog = PDDocumentCatalog(doc, new_catalog_dict)
 
     doc.set_document_catalog(new_catalog)
     assert doc.get_document_catalog() is new_catalog
@@ -457,7 +457,7 @@ def test_register_true_type_font_for_closing_appends() -> None:
     doc = PDDocument()
     sentinel = object()
     doc.register_true_type_font_for_closing(sentinel)
-    assert sentinel in doc._fonts_to_close  # noqa: SLF001 — test introspection
+    assert sentinel in doc._fonts_to_close
 
 
 # ---------- get_fonts_to_subset ----------
@@ -500,7 +500,7 @@ def test_set_encryption_dictionary_none_clears_trailer_and_cache() -> None:
 
     doc.set_encryption_dictionary(None)
     assert trailer.get_item(COSName.get_pdf_name("Encrypt")) is None
-    assert doc._encryption is None  # noqa: SLF001 — test introspection
+    assert doc._encryption is None
 
 
 def test_set_encryption_dictionary_none_is_noop_without_trailer() -> None:
@@ -508,7 +508,7 @@ def test_set_encryption_dictionary_none_is_noop_without_trailer() -> None:
     doc = PDDocument()
     # No /Encrypt has ever been set — clearing should silently succeed.
     doc.set_encryption_dictionary(None)
-    assert doc._encryption is None  # noqa: SLF001 — test introspection
+    assert doc._encryption is None
 
 
 # ---------- resource cache ----------

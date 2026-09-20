@@ -14,7 +14,7 @@ class GraphicsOperatorProcessor(OperatorProcessor):
     graphics-typed engine for graphics operator subclasses.
     """
 
-    def get_graphics_context(self):  # noqa: ANN201 - mirrors upstream
+    def get_graphics_context(self):
         """Return the bound stream engine, typed as the graphics engine."""
         return self.get_context()
 

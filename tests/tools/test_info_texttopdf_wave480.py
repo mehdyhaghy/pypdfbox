@@ -81,7 +81,7 @@ class _FakeInfoDocument:
 
 
 def test_collect_info_skips_blank_values_and_sorts_custom_keys() -> None:
-    snapshot = info._collect_info(_FakeInfoDocument(), Path("sample.pdf"))  # type: ignore[arg-type]  # noqa: SLF001
+    snapshot = info._collect_info(_FakeInfoDocument(), Path("sample.pdf"))  # type: ignore[arg-type]
 
     assert snapshot == {
         "file": "sample.pdf",
@@ -114,7 +114,7 @@ def test_print_json_includes_xmp_only_when_present(
         "custom": {},
     }
 
-    info._print_json(snapshot, "<xmp>é</xmp>")  # noqa: SLF001
+    info._print_json(snapshot, "<xmp>é</xmp>")
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["xmp"] == "<xmp>é</xmp>"
@@ -144,7 +144,7 @@ def test_read_xmp_falls_back_to_raw_stream_bytes() -> None:
         def get_document_catalog(self) -> _Catalog:
             return _Catalog()
 
-    assert info._read_xmp(_Doc()) == "<xmp>�</xmp>"  # type: ignore[arg-type]  # noqa: SLF001
+    assert info._read_xmp(_Doc()) == "<xmp>�</xmp>"  # type: ignore[arg-type]
 
 
 def test_info_run_closes_document_loaded_by_tool(
@@ -175,24 +175,24 @@ def test_info_run_closes_document_loaded_by_tool(
 
 
 def test_texttopdf_readlines_preserves_form_feed_and_trailing_blank() -> None:
-    assert texttopdf._readlines("a\r\nb\rc\nbefore\fafter\n") == [  # noqa: SLF001
+    assert texttopdf._readlines("a\r\nb\rc\nbefore\fafter\n") == [
         "a",
         "b",
         "c",
         "before\fafter",
     ]
-    assert texttopdf._readlines("one\n") == ["one"]  # noqa: SLF001
+    assert texttopdf._readlines("one\n") == ["one"]
 
 
 def test_texttopdf_split_words_preserves_trailing_empty_fields() -> None:
-    assert texttopdf._split_words("a  b ") == ["a", "", "b", ""]  # noqa: SLF001
+    assert texttopdf._split_words("a  b ") == ["a", "", "b", ""]
 
 
 def test_texttopdf_string_width_fallback_for_font_without_width_api() -> None:
     class _FontWithoutWidth:
         pass
 
-    assert texttopdf._string_width_units(_FontWithoutWidth(), "abcd") == 2000.0  # type: ignore[arg-type]  # noqa: SLF001
+    assert texttopdf._string_width_units(_FontWithoutWidth(), "abcd") == 2000.0  # type: ignore[arg-type]
 
 
 def test_create_pdf_from_text_accepts_plain_iterable_lines() -> None:

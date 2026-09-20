@@ -95,7 +95,7 @@ def _path_y_bounds(path: Any) -> tuple[float, float] | None:
             try:
                 rect = getattr(path, attr)
                 rect = rect() if callable(rect) else rect
-            except Exception:  # noqa: BLE001 — defensive: any failure ⇒ fall through
+            except Exception:
                 rect = None
             if rect is not None:
                 lo = _maybe_float(getattr(rect, "min_y", None))

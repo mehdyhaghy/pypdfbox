@@ -48,7 +48,7 @@ def test_wave586_save_path_target_closes_file(
         def write(self, document: PDDocument) -> None:
             writes.append(document)
 
-    import pypdfbox.pdfwriter as pdfwriter
+    from pypdfbox import pdfwriter
 
     monkeypatch.setattr(pdfwriter, "COSWriter", Writer)
     doc = PDDocument()
@@ -85,16 +85,16 @@ def test_wave586_render_placeholder_success_pads_byte_range(
         def write(self, _document: COSDocument) -> None:
             self.sink.write(b"head <0000> tail [0 999 999 999] end")
 
-    import pypdfbox.pdfwriter as pdfwriter
+    from pypdfbox import pdfwriter
 
     monkeypatch.setattr(pdfwriter, "COSWriter", Writer)
     doc = PDDocument(COSDocument(source=RandomAccessReadBuffer(b"%PDF-1.4\n%%EOF\n")))
-    doc._pending_signature = PDSignature()  # noqa: SLF001
+    doc._pending_signature = PDSignature()
     monkeypatch.setattr(doc, "_CONTENTS_PLACEHOLDER_HEX_LEN", 4)
     monkeypatch.setattr(doc, "_BYTERANGE_SLOT_WIDTH", 3)
 
     try:
-        rendered, contents_span, byte_range = doc._render_incremental_with_placeholder()  # noqa: SLF001
+        rendered, contents_span, byte_range = doc._render_incremental_with_placeholder()
 
         assert contents_span == (6, 10)
         # Brackets-EXCLUDED convention (wave 1502, matches upstream
@@ -159,9 +159,9 @@ def test_wave586_external_signing_guards_and_success(
 
         signature = PDSignature()
         output = io.BytesIO()
-        doc._pending_signature = signature  # noqa: SLF001
-        doc._pending_signature_interface = object()  # noqa: SLF001
-        doc._pending_signature_options = object()  # noqa: SLF001
+        doc._pending_signature = signature
+        doc._pending_signature_interface = object()
+        doc._pending_signature_options = object()
         monkeypatch.setattr(
             doc,
             "_render_incremental_with_placeholder",
@@ -183,7 +183,7 @@ def test_wave586_external_signing_guards_and_success(
 
 def test_wave586_closed_external_signing_raises() -> None:
     doc = PDDocument(COSDocument(source=RandomAccessReadBuffer(b"%PDF-1.4\n%%EOF\n")))
-    doc._pending_signature = PDSignature()  # noqa: SLF001
+    doc._pending_signature = PDSignature()
     doc.close()
 
     with pytest.raises(OSError, match="Cannot save a document which has been closed"):

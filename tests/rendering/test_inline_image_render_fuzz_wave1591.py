@@ -388,7 +388,7 @@ def test_inline_image_pastes_at_yflipped_box(w, h, x, y) -> None:
     doc, rdr = _renderer_with_canvas(page_h, page_h)
     captured: dict = {}
 
-    def fake_paste(im, box=None, mask=None):  # noqa: ANN001
+    def fake_paste(im, box=None, mask=None):
         captured["box"] = box
         captured["size"] = im.size
 
@@ -417,7 +417,7 @@ def _inline_stencil_capture(fill_rgb, sample_bytes, decode=None, width=8, height
     doc, rdr = _renderer_with_canvas(60, 60)
     captured: dict = {}
 
-    def spy(pil_image, interpolate=True):  # noqa: ANN001
+    def spy(pil_image, interpolate=True):
         captured["rgba"] = pil_image.copy()
         captured["interpolate"] = interpolate
 
@@ -498,7 +498,7 @@ def test_inline_stencil_long_form_imagemask_key() -> None:
     doc, rdr = _renderer_with_canvas(60, 60)
     captured: dict = {}
 
-    def spy(pil_image, interpolate=True):  # noqa: ANN001
+    def spy(pil_image, interpolate=True):
         captured["rgba"] = pil_image.copy()
 
     rdr._paste_image = spy  # type: ignore[method-assign]

@@ -28,9 +28,9 @@ def test_wave545_external_signing_support_splices_once_and_clears_staging() -> N
     output = io.BytesIO()
     doc = PDDocument()
     signature = PDSignature()
-    doc._pending_signature = signature  # noqa: SLF001
-    doc._pending_signature_interface = object()  # noqa: SLF001
-    doc._pending_signature_options = object()  # noqa: SLF001
+    doc._pending_signature = signature
+    doc._pending_signature_interface = object()
+    doc._pending_signature_options = object()
     support = ExternalSigningSupport(
         document=doc,
         output=output,

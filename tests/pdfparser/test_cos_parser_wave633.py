@@ -15,7 +15,7 @@ def test_wave633_read_all_bytes_preserves_current_position() -> None:
     parser = _parser(b"0123456789")
     parser.seek(4)
 
-    data = parser._read_all_bytes()  # noqa: SLF001
+    data = parser._read_all_bytes()
 
     assert data == b"0123456789"
     assert parser.position == 4

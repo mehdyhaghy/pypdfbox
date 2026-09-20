@@ -37,7 +37,7 @@ def _none_output_cloudy_border() -> CloudyBorder:
     """
     rect = PDRectangle(0.0, 0.0, 100.0, 100.0)
     cb = CloudyBorder(_stream(), 1.0, 1.0, rect)
-    cb._output = None  # noqa: SLF001
+    cb._output = None
     return cb
 
 
@@ -66,7 +66,7 @@ def test_begin_output_with_none_output_short_circuits() -> None:
     cb = _none_output_cloudy_border()
     cb.begin_output(5.0, 10.0)
     # _output_started flag still flipped — no observable error.
-    assert cb._output_started is True  # noqa: SLF001
+    assert cb._output_started is True
 
 
 def test_move_to_with_none_output_short_circuits() -> None:
@@ -77,8 +77,8 @@ def test_move_to_with_none_output_short_circuits() -> None:
     cb = _none_output_cloudy_border()
     cb.move_to(1.0, 2.0)
     # The bbox tracking still ran via begin_output.
-    assert cb._bbox_min_x == 1.0  # noqa: SLF001
-    assert cb._bbox_min_y == 2.0  # noqa: SLF001
+    assert cb._bbox_min_x == 1.0
+    assert cb._bbox_min_y == 2.0
 
 
 def test_line_to_with_none_output_short_circuits() -> None:
@@ -90,8 +90,8 @@ def test_line_to_with_none_output_short_circuits() -> None:
     # Drive a move_to first to set _output_started True, then line_to
     cb.move_to(0.0, 0.0)
     cb.line_to(10.0, 20.0)
-    assert cb._bbox_max_x == 10.0  # noqa: SLF001
-    assert cb._bbox_max_y == 20.0  # noqa: SLF001
+    assert cb._bbox_max_x == 10.0
+    assert cb._bbox_max_y == 20.0
 
 
 def test_curve_to_with_none_output_short_circuits() -> None:
@@ -105,7 +105,7 @@ def test_curve_to_with_none_output_short_circuits() -> None:
     # the None-output short-circuit.
     cb.curve_to(1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
     # bbox stays at the seeded rect; assert min was lowered to 1.0.
-    assert cb._bbox_min_x == 0.0  # noqa: SLF001  — seeded
+    assert cb._bbox_min_x == 0.0
 
 
 def test_finish_with_zero_line_width_skips_bbox_pad() -> None:
@@ -115,8 +115,8 @@ def test_finish_with_zero_line_width_skips_bbox_pad() -> None:
     """
     rect = PDRectangle(0.0, 0.0, 100.0, 100.0)
     cb = CloudyBorder(_stream(), 1.0, 0.0, rect)  # line_width=0
-    cb._output_started = True  # noqa: SLF001 — keep the close-path branch
-    initial_max_x = cb._bbox_max_x  # noqa: SLF001
+    cb._output_started = True
+    initial_max_x = cb._bbox_max_x
     cb.finish()
     # No padding applied — bbox is unchanged on the upper-right side.
-    assert cb._bbox_max_x == initial_max_x  # noqa: SLF001
+    assert cb._bbox_max_x == initial_max_x

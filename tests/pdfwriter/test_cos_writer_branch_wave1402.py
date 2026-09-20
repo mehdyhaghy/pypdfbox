@@ -29,17 +29,17 @@ def test_xref_table_multiple_ranges_exercises_outside_range_arrow() -> None:
     writer = COSWriter(sink)
     # Inject non-contiguous xref entries so build_ranges emits multiple
     # ranges. We seed a few entries with deliberate gaps.
-    writer._xref_entries = [  # noqa: SLF001
+    writer._xref_entries = [
         COSWriterXRefEntry(offset=10, key=COSObjectKey(1, 0)),
         COSWriterXRefEntry(offset=20, key=COSObjectKey(5, 0)),
         COSWriterXRefEntry(offset=30, key=COSObjectKey(7, 0)),
     ]
     # Stub the underlying output so _write_xref_range/_write_xref_entry
     # have somewhere to write.
-    writer._do_write_xref_table()  # noqa: SLF001
+    writer._do_write_xref_table()
     # No assertion on output content — coverage is the point. Verify
     # the method ran to completion by checking startxref is set.
-    assert writer._startxref >= 0  # noqa: SLF001
+    assert writer._startxref >= 0
 
 
 def test_body_xref_stream_trailer_present_but_no_root_entry() -> None:
@@ -61,6 +61,6 @@ def test_body_xref_stream_trailer_present_but_no_root_entry() -> None:
     # _do_write_body_xref_stream calls _add_object_to_write and
     # _do_write_objects which may touch other writer state. Patch the
     # heavy methods to no-ops so the test focuses on the branch arrows.
-    writer._add_object_to_write = lambda _o: None  # type: ignore[assignment,method-assign]  # noqa: SLF001
-    writer._do_write_objects = lambda: None  # type: ignore[assignment,method-assign]  # noqa: SLF001
-    writer._do_write_body_xref_stream(cos_doc)  # noqa: SLF001
+    writer._add_object_to_write = lambda _o: None  # type: ignore[assignment,method-assign]
+    writer._do_write_objects = lambda: None  # type: ignore[assignment,method-assign]
+    writer._do_write_body_xref_stream(cos_doc)

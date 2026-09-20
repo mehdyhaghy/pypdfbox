@@ -141,7 +141,7 @@ def test_get_gsub_table_defensive_descendant_paths(
     font = PDType0Font()
     monkeypatch.setattr(font, "get_descendant_font", lambda: descendant)
 
-    out = font._get_gsub_table()  # noqa: SLF001
+    out = font._get_gsub_table()
 
     if expected is None:
         assert out is None

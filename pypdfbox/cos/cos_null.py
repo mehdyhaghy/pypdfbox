@@ -36,7 +36,7 @@ class COSNull(COSBase):
 
     def get_value(self) -> None:
         """Return Python ``None`` — mirrors ``COSNull.getValue()``."""
-        return None
+        return
 
     @staticmethod
     def is_null(value: Any) -> bool:

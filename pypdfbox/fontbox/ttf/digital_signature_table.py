@@ -54,7 +54,7 @@ class DigitalSignatureTable(TTFTable):
         self._signature_blocks = [bytes(getattr(r, "pkcs7", b"") or b"") for r in records]
         self.initialized = True
 
-    def read(self, ttf: TrueTypeFont, data: TTFDataStream) -> None:  # noqa: ARG002
+    def read(self, ttf: TrueTypeFont, data: TTFDataStream) -> None:
         """Stand-in for the upstream no-op ``read`` slot.
 
         Upstream's ``DigitalSignatureTable`` doesn't override ``read``

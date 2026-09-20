@@ -363,8 +363,7 @@ def test_get_index_of_child_through_array_entry_delegates_to_value() -> None:
 
 def _build_xref_entries_with_entry() -> XrefEntries:
     """Construct a working ``XrefEntries`` with at least one row."""
-    from pypdfbox.cos import COSInteger as _CI
-    from pypdfbox.cos import COSObjectKey
+    from pypdfbox.cos import COSInteger, COSObjectKey
     from pypdfbox.pdmodel import PDDocument as _PDDocument
 
     doc = _PDDocument()
@@ -372,7 +371,7 @@ def _build_xref_entries_with_entry() -> XrefEntries:
     key = COSObjectKey(99, 0)
     cos_doc.add_xref_table({key: 1234})
     # Populate the object pool so XrefEntries.get_xref_entry returns a wrapped value.
-    cos_doc.get_object_from_pool(key).set_object(_CI.get(7))
+    cos_doc.get_object_from_pool(key).set_object(COSInteger.get(7))
     return XrefEntries(doc)
 
 

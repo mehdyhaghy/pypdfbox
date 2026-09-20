@@ -1227,7 +1227,7 @@ class PDAppearanceGenerator:
             return None
         try:
             return getter()
-        except Exception:  # noqa: BLE001 — defensive: any failure → /V fallback
+        except Exception:
             return None
 
     @staticmethod
@@ -1374,7 +1374,7 @@ class PDAppearanceGenerator:
                 self._calculate_matrix(bbox_w, bbox_h, rotation)
             )
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
-            cs = cast(PDAppearanceContentStream, raw_cs)
+            cs = cast("PDAppearanceContentStream", raw_cs)
             self._apply_glyph_layout_processor(cs)
             cs.save_graphics_state()
             if is_radio:
@@ -1493,7 +1493,7 @@ class PDAppearanceGenerator:
         selected_indices: list[int] = []
         try:
             options = field.get_options_display_values() or field.get_options()
-        except Exception:  # noqa: BLE001 — defensive on lite-port surface
+        except Exception:
             options = []
         top_index = max(0, field.get_top_index())
         selected_indices = field.get_selected_options_indices()
@@ -1589,7 +1589,7 @@ class PDAppearanceGenerator:
                 resolved_size = self._auto_size(height)
 
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
-            cs = cast(PDAppearanceContentStream, raw_cs)
+            cs = cast("PDAppearanceContentStream", raw_cs)
             self._apply_glyph_layout_processor(cs)
             # Wave 1372 — preserve the /DA font alias (see text-field path).
             self._register_font_alias(cs, font, font_name)
@@ -1684,14 +1684,14 @@ class PDAppearanceGenerator:
 
         # Resolve the highlighted-row index set: union of /I and any
         # option index whose value appears in /V.
-        highlighted: set[int] = set(i for i in selected_indices if i >= 0)
+        highlighted: set[int] = {i for i in selected_indices if i >= 0}
         for sel in selected_values:
             for idx, opt in enumerate(options):
                 if opt == sel:
                     highlighted.add(idx)
 
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
-            cs = cast(PDAppearanceContentStream, raw_cs)
+            cs = cast("PDAppearanceContentStream", raw_cs)
             self._apply_glyph_layout_processor(cs)
             # Wave 1372 — preserve the /DA font alias (see text-field path).
             self._register_font_alias(cs, font, font_name)
@@ -1845,7 +1845,7 @@ class PDAppearanceGenerator:
         line_height = resolved_size * 1.15
 
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
-            cs = cast(PDAppearanceContentStream, raw_cs)
+            cs = cast("PDAppearanceContentStream", raw_cs)
             self._apply_glyph_layout_processor(cs)
             # Pre-register the font under the original /DA alias so the
             # emitted ``/<alias> <size> Tf`` token matches the source /DA
@@ -1941,7 +1941,7 @@ class PDAppearanceGenerator:
         interior_h = max(0.0, height - 2.0)
 
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
-            cs = cast(PDAppearanceContentStream, raw_cs)
+            cs = cast("PDAppearanceContentStream", raw_cs)
             self._apply_glyph_layout_processor(cs)
             self._register_font_alias(cs, base_font, base_font_name)
             cs._buffer.extend(b"/Tx BMC\n")
@@ -2583,7 +2583,7 @@ class PDAppearanceGenerator:
             size = self._auto_size(height)
 
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
-            cs = cast(PDAppearanceContentStream, raw_cs)
+            cs = cast("PDAppearanceContentStream", raw_cs)
             self._apply_glyph_layout_processor(cs)
             cs.save_graphics_state()
             # Background fill.
@@ -2788,7 +2788,7 @@ class PDAppearanceGenerator:
         is_signed = bool(signer_name or sign_date)
 
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
-            cs = cast(PDAppearanceContentStream, raw_cs)
+            cs = cast("PDAppearanceContentStream", raw_cs)
             self._apply_glyph_layout_processor(cs)
             cs.save_graphics_state()
             # /MK /BG fill — drawn first so the border + caption paint on top.
@@ -2869,7 +2869,7 @@ class PDAppearanceGenerator:
         if callable(getter):
             try:
                 da = getter()
-            except Exception:  # noqa: BLE001 — defensive on lite-port surface
+            except Exception:
                 da = None
         if not da:
             da = self._default_appearance_override
@@ -2948,7 +2948,7 @@ class PDAppearanceGenerator:
             # 1) AcroForm /DR /Font — canonical location for /DA fonts.
             try:
                 acro_form = field.get_acro_form()
-            except Exception:  # noqa: BLE001 — defensive on lite-port surface
+            except Exception:
                 acro_form = None
             if acro_form is not None:
                 dr = acro_form.get_default_resources()
@@ -3044,7 +3044,7 @@ class PDAppearanceGenerator:
         if callable(getter):
             try:
                 page = getter()
-            except Exception:  # noqa: BLE001 — defensive on lite-port surface
+            except Exception:
                 page = None
         if not isinstance(page, COSDictionary):
             return None

@@ -16,6 +16,6 @@ class RandomAccessStreamCacheImpl(RandomAccessStreamCache):
     def create_buffer(self) -> RandomAccess:
         return RandomAccessReadWriteBuffer()
 
-    def close(self) -> None:  # noqa: D401 — match upstream signature
+    def close(self) -> None:
         # Nothing to do — the buffers we hand out are managed by callers.
         pass

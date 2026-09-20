@@ -54,12 +54,12 @@ def test_cs_array_based_zero_components_skips_component_count_label(
     pane = CSArrayBased.__new__(CSArrayBased)
     cs = MagicMock()
     cs.get_name.return_value = "DeviceGray"
-    pane._color_space = cs  # type: ignore[attr-defined]  # noqa: SLF001
-    pane._number_of_components = 0  # type: ignore[attr-defined]  # noqa: SLF001
-    pane._panel = None  # type: ignore[attr-defined]  # noqa: SLF001
-    pane._errmsg = ""  # type: ignore[attr-defined]  # noqa: SLF001
+    pane._color_space = cs  # type: ignore[attr-defined]
+    pane._number_of_components = 0  # type: ignore[attr-defined]
+    pane._panel = None  # type: ignore[attr-defined]
+    pane._errmsg = ""  # type: ignore[attr-defined]
     pane.init_ui(tk_root)
-    assert pane._panel is not None  # noqa: SLF001
+    assert pane._panel is not None
 
 
 # ----------------------------------------------------------------------
@@ -78,7 +78,7 @@ def test_ascii_pane_paint_in_selected_with_out_of_range_index(
     model = HexModel(b"ABCDEFGH")
     pane = ASCIIPane(tk_root, model)
     # Negative ⇒ the in-range check is False.
-    pane._selected_index_in_line = -1  # noqa: SLF001
+    pane._selected_index_in_line = -1
     pane.configure(state="normal")
     pane.paint_in_selected(1, "1.0")
     pane.configure(state="disabled")
@@ -132,7 +132,7 @@ def test_font_tool_tip_skips_markup_when_font_has_no_name(
     # Construct manually — init_ui parses "/F1 12 Tf" out of the row text.
     tip = FontToolTip(_Resources(), "/F1 12 Tf")  # type: ignore[arg-type]
     # Empty font name ⇒ markup stays None.
-    assert tip._markup is None  # noqa: SLF001
+    assert tip._markup is None
 
 
 # ----------------------------------------------------------------------
@@ -191,7 +191,7 @@ def test_log_dialog_set_visible_false_when_no_toplevel(
     from pypdfbox.debugger.ui.log_dialog import LogDialog
 
     dialog = LogDialog.__new__(LogDialog)
-    dialog._toplevel = None  # noqa: SLF001
+    dialog._toplevel = None
     dialog.set_visible(False)
 
 
@@ -279,7 +279,7 @@ def test_text_dialog_set_visible_false_when_no_toplevel(
     from pypdfbox.debugger.ui.text_dialog import TextDialog
 
     dialog = TextDialog.__new__(TextDialog)
-    dialog._toplevel = None  # noqa: SLF001
+    dialog._toplevel = None
     dialog.set_visible(False)
 
 
@@ -312,7 +312,7 @@ def test_search_panel_document_listener_without_changed_update(
     """128->exit — document_listener has NO ``changed_update`` method
     ⇒ skip the dispatch."""
     panel = _make_search_panel(tk_root)
-    panel._on_document_event()  # noqa: SLF001
+    panel._on_document_event()
 
 
 def test_search_panel_change_listener_without_state_changed(
@@ -320,13 +320,13 @@ def test_search_panel_change_listener_without_state_changed(
 ) -> None:
     """132->exit — change_listener has NO ``state_changed`` method."""
     panel = _make_search_panel(tk_root)
-    panel._on_state_change()  # noqa: SLF001
+    panel._on_state_change()
 
 
 def test_search_panel_reset_when_counter_not_visible(tk_root: tk.Tk) -> None:
     """165->168 — ``_counter_visible`` is False ⇒ skip the pack_forget."""
     panel = _make_search_panel(tk_root)
-    panel._counter_visible = False  # noqa: SLF001
+    panel._counter_visible = False
     panel.reset()
 
 
@@ -343,14 +343,14 @@ def test_searcher_update_navigation_current_above_range(tk_root: tk.Tk) -> None:
     from pypdfbox.debugger.ui.textsearcher.searcher import Searcher
 
     searcher = Searcher.__new__(Searcher)
-    searcher._current_match = 10  # noqa: SLF001
-    searcher._total_match = 3  # noqa: SLF001 - current 10 > total-1 = 2
-    searcher._previous_enabled = True  # noqa: SLF001
-    searcher._next_enabled = True  # noqa: SLF001
-    searcher._search_panel = None  # noqa: SLF001
+    searcher._current_match = 10
+    searcher._total_match = 3
+    searcher._previous_enabled = True
+    searcher._next_enabled = True
+    searcher._search_panel = None
     searcher.update_navigation_buttons()
     # previous_enabled stays True since neither arm fires.
-    assert searcher._previous_enabled is True  # noqa: SLF001
+    assert searcher._previous_enabled is True
 
 
 def test_searcher_update_navigation_current_negative(tk_root: tk.Tk) -> None:
@@ -361,14 +361,14 @@ def test_searcher_update_navigation_current_negative(tk_root: tk.Tk) -> None:
     from pypdfbox.debugger.ui.textsearcher.searcher import Searcher
 
     searcher = Searcher.__new__(Searcher)
-    searcher._current_match = 10  # noqa: SLF001
-    searcher._total_match = 3  # noqa: SLF001 - current > total - 1
-    searcher._previous_enabled = False  # noqa: SLF001
-    searcher._next_enabled = True  # noqa: SLF001
-    searcher._search_panel = None  # noqa: SLF001
+    searcher._current_match = 10
+    searcher._total_match = 3
+    searcher._previous_enabled = False
+    searcher._next_enabled = True
+    searcher._search_panel = None
     searcher.update_navigation_buttons()
     # next_enabled stays True since neither 216-arm nor 218-arm fires.
-    assert searcher._next_enabled is True  # noqa: SLF001
+    assert searcher._next_enabled is True
 
 
 # ----------------------------------------------------------------------
@@ -422,7 +422,7 @@ def test_stream_pane_build_segments_falls_back_when_parser_fails(
     monkeypatch.setattr(
         pane, "_content_stream_segments", lambda _raw: None
     )
-    pane._build_segments(Stream.DECODED, nice=True)  # noqa: SLF001
+    pane._build_segments(Stream.DECODED, nice=True)
 
 
 def test_stream_pane_document_creator_falls_back_when_content_returns_none(
@@ -444,7 +444,7 @@ def test_stream_pane_document_creator_falls_back_when_content_returns_none(
     )
     creator = DocumentCreator(
         target_view=pane,
-        stream=pane._stream,  # noqa: SLF001
+        stream=pane._stream,
         filter_key=Stream.DECODED,
         nice=True,
     )
@@ -484,7 +484,7 @@ def test_font_encoding_controller_with_unknown_font_type(
     ctrl = _mod.FontEncodingPaneController(
         COSName.get_pdf_name("F1"), COSDictionary(), master=tk_root
     )
-    assert ctrl._font_pane is None  # noqa: SLF001
+    assert ctrl._font_pane is None
 
 
 # ----------------------------------------------------------------------
@@ -553,4 +553,4 @@ def test_font_encoding_controller_with_type0_no_descendant(
     ctrl = _mod.FontEncodingPaneController(
         COSName.get_pdf_name("F1"), COSDictionary(), master=tk_root
     )
-    assert ctrl._font_pane is None  # noqa: SLF001
+    assert ctrl._font_pane is None

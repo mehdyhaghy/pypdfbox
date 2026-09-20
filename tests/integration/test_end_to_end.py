@@ -88,7 +88,7 @@ def test_synthetic_build_save_reload_roundtrip() -> None:
         reloaded = PDDocument(cos_doc)
         # Ownership stays with the loader-returned COSDocument; closing
         # ``reloaded`` would otherwise double-close it.
-        reloaded._owns_document = False  # noqa: SLF001
+        reloaded._owns_document = False
         try:
             assert reloaded.get_number_of_pages() == 2
 
@@ -177,7 +177,7 @@ def test_build_save_with_xref_and_object_streams_reload() -> None:
     cos_doc = Loader.load_pdf(saved)
     try:
         reloaded = PDDocument(cos_doc)
-        reloaded._owns_document = False  # noqa: SLF001
+        reloaded._owns_document = False
         try:
             assert reloaded.get_number_of_pages() == 2
             assert reloaded.get_document_information().get_title() == "Modern"
@@ -272,7 +272,7 @@ def test_cross_document_import_then_save_reload_text_extracts() -> None:
     cos_doc = Loader.load_pdf(saved)
     try:
         reloaded = PDDocument(cos_doc)
-        reloaded._owns_document = False  # noqa: SLF001
+        reloaded._owns_document = False
         try:
             assert reloaded.get_number_of_pages() == 2
             text = PDFTextStripper().get_text(reloaded)

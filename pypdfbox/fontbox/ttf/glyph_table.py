@@ -61,15 +61,15 @@ class GlyphTable(TTFTable):
         we expose a private ``_bind`` shortcut instead of overriding
         :meth:`TTFTable.read`. Called by ``TrueTypeFont.get_glyph``.
         """
-        self._glyf_table = ttf._tt["glyf"]  # noqa: SLF001
-        self._glyph_order = list(ttf._tt.getGlyphOrder())  # noqa: SLF001
+        self._glyf_table = ttf._tt["glyf"]
+        self._glyph_order = list(ttf._tt.getGlyphOrder())
         self._num_glyphs = ttf.get_number_of_glyphs()
         self._units_per_em = ttf.get_units_per_em()
         # Cache the hmtx view so ``get_glyph`` can thread the per-gid LSB into
         # each :class:`GlyphData`, mirroring upstream ``getGlyphData``.
         try:
             self._hmtx = ttf.get_horizontal_metrics()
-        except Exception:  # noqa: BLE001 - hmtx is optional/defensive
+        except Exception:
             self._hmtx = None
         if self._num_glyphs < self.MAX_CACHE_SIZE:
             self._glyphs = [None] * self._num_glyphs
@@ -103,7 +103,7 @@ class GlyphTable(TTFTable):
         if self._hmtx is not None:
             try:
                 left_side_bearing = self._hmtx.get_left_side_bearing(gid)
-            except Exception:  # noqa: BLE001 - defensive, mirror "no shift"
+            except Exception:
                 left_side_bearing = None
         glyph = GlyphData(
             glyf_table=self._glyf_table,
@@ -167,7 +167,7 @@ class GlyphTable(TTFTable):
 
     # ---- TTFTable override (delegates to ``_bind``) ----
 
-    def read(self, ttf: TrueTypeFont, data: TTFDataStream) -> None:  # noqa: ARG002
+    def read(self, ttf: TrueTypeFont, data: TTFDataStream) -> None:
         """Populate this table from ``ttf``.
 
         The legacy ``data`` parameter is unused — the SFNT bytes have

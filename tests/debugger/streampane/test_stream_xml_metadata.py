@@ -15,7 +15,7 @@ def test_is_xml_metadata_stream_true_for_xml_subtype() -> None:
     cos.set_data(b"<x/>")
     assert Stream.is_xml_metadata_stream(cos) is True
     # Private alias preserved for legacy call sites.
-    assert Stream._is_xml_metadata_stream(cos) is True  # noqa: SLF001
+    assert Stream._is_xml_metadata_stream(cos) is True
 
 
 def test_is_xml_metadata_stream_false_for_missing_or_other_subtype() -> None:

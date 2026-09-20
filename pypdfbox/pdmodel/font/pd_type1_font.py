@@ -221,7 +221,7 @@ class PDType1Font(PDSimpleFont):
         try:
             raw = font_file.to_byte_array()
             self._t1 = Type1Font.from_bytes(raw)
-        except Exception:  # noqa: BLE001
+        except Exception:
             _LOG.exception("failed to parse /FontFile for %s", self.get_name())
             self._t1 = False
             return None
@@ -283,12 +283,12 @@ class PDType1Font(PDSimpleFont):
             # without the fall-through, AcroForm widget appearance text
             # on unembedded Helvetica with /Differences painted
             # nothing).
-            from .encoding.dictionary_encoding import (  # noqa: PLC0415
+            from .encoding.dictionary_encoding import (
                 DictionaryEncoding,
             )
-            from .encoding.standard_encoding import StandardEncoding  # noqa: PLC0415
-            from .encoding.symbol_encoding import SymbolEncoding  # noqa: PLC0415
-            from .encoding.zapf_dingbats_encoding import (  # noqa: PLC0415
+            from .encoding.standard_encoding import StandardEncoding
+            from .encoding.symbol_encoding import SymbolEncoding
+            from .encoding.zapf_dingbats_encoding import (
                 ZapfDingbatsEncoding,
             )
 
@@ -447,14 +447,14 @@ class PDType1Font(PDSimpleFont):
         /Differences encoding painted nothing. Returns ``".notdef"`` when no
         name resolves.
         """
-        from .encoding.dictionary_encoding import (  # noqa: PLC0415
+        from .encoding.dictionary_encoding import (
             DictionaryEncoding,
         )
-        from .encoding.standard_encoding import (  # noqa: PLC0415
+        from .encoding.standard_encoding import (
             StandardEncoding,
         )
-        from .encoding.symbol_encoding import SymbolEncoding  # noqa: PLC0415
-        from .encoding.zapf_dingbats_encoding import (  # noqa: PLC0415
+        from .encoding.symbol_encoding import SymbolEncoding
+        from .encoding.zapf_dingbats_encoding import (
             ZapfDingbatsEncoding,
         )
 

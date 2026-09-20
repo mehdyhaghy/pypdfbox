@@ -28,7 +28,7 @@ def _make_drawer() -> tuple[PDDocument, PDFRenderer, PageDrawer]:
     doc.add_page(page)
     renderer = PDFRenderer(doc)
     renderer._image = Image.new("RGB", (100, 100), (255, 255, 255))
-    from pypdfbox.rendering import _aggdraw_compat as aggdraw  # noqa: PLC0415
+    from pypdfbox.rendering import _aggdraw_compat as aggdraw
 
     renderer._draw = aggdraw.Draw(renderer._image)
     renderer._draw.setantialias(True)

@@ -221,7 +221,7 @@ def _string_width_units(font: PDFont, text: str) -> float:
     if not text:
         return 0.0
     if hasattr(font, "encode") and hasattr(font, "get_glyph_width"):
-        width_font = cast(_WidthCapableFont, font)
+        width_font = cast("_WidthCapableFont", font)
         encoded = width_font.encode(text)
         for code in encoded:
             width_total += float(width_font.get_glyph_width(code))

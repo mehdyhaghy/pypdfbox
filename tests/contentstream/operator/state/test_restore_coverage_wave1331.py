@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 
 from pypdfbox.contentstream import Operator, PDFStreamEngine
-from pypdfbox.contentstream.operator.state.empty_graphics_stack_exception import (  # noqa: E501
+from pypdfbox.contentstream.operator.state.empty_graphics_stack_exception import (
     EmptyGraphicsStackException,
 )
 from pypdfbox.contentstream.operator.state.restore import Restore

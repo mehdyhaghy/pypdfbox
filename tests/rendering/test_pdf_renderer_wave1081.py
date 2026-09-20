@@ -9,7 +9,7 @@ from tests.rendering import test_pdf_renderer_wave1071 as wave1071
 
 def test_wave1071_prior_handler_raises_expected_assertion() -> None:
     with pytest.raises(AssertionError, match="prior handler should be restored"):
-        wave1071._prior_handler(None, object(), [])  # noqa: SLF001
+        wave1071._prior_handler(None, object(), [])
 
 
 def test_wave1071_restores_existing_original_handler(

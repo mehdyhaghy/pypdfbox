@@ -17,8 +17,8 @@ class _TypedFontResources:
 
 def test_resolve_font_accepts_typed_resource_cache_entries() -> None:
     font = PDType1Font()
-    renderer = PDFRenderer(cast(Any, object()))
-    renderer._resources = cast(Any, _TypedFontResources(font))
+    renderer = PDFRenderer(cast("Any", object()))
+    renderer._resources = cast("Any", _TypedFontResources(font))
 
     assert renderer._resolve_font(COSName.get_pdf_name("F1")) is font
     assert renderer._resolve_font(COSName.get_pdf_name("F1")) is font

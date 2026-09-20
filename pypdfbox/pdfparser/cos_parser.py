@@ -116,7 +116,7 @@ class COSParser(BaseParser):
         # ``COSParser.fileLen``.
         try:
             self._file_len: int = source.length()
-        except Exception:  # noqa: BLE001 — length() is best-effort here
+        except Exception:
             self._file_len = -1
         # Latches set by upstream's xref-recovery path. We don't drive
         # them automatically (the recovery walker lives in ``PDFParser``)
@@ -1927,7 +1927,7 @@ class COSParser(BaseParser):
         # Local import to avoid a cos_parser → pdmodel.encryption cycle at
         # module load.
         try:
-            from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption  # noqa: PLC0415
+            from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption
         except ImportError:  # pragma: no cover - module always importable here
             return enc_dict
         return PDEncryption(enc_dict)
@@ -2024,7 +2024,7 @@ class COSParser(BaseParser):
         in via ``__init__``. The method exists for parity callers and is
         a no-op when no environment override is present (matches
         upstream when the property is unset)."""
-        import os  # noqa: PLC0415 — local import keeps cos_parser import-cheap
+        import os
         override = os.environ.get(self.SYSPROP_EOFLOOKUPRANGE)
         if override is None:
             return
@@ -2049,8 +2049,7 @@ class COSParser(BaseParser):
         if self._file_len < 0:
             raise PDFParseError("source length unknown; cannot locate startxref")
         trail_byte_count = (
-            self._file_len if self._file_len < self._read_trail_bytes
-            else self._read_trail_bytes
+            min(self._read_trail_bytes, self._file_len)
         )
         skip_bytes = self._file_len - trail_byte_count
         saved = self.position
@@ -2067,7 +2066,7 @@ class COSParser(BaseParser):
                     )
                 off += read
         finally:
-            self._src.seek(saved if saved >= 0 else 0)
+            self._src.seek(max(saved, 0))
         buf_off = self.last_index_of(self.EOF_MARKER, buf, len(buf))
         if buf_off < 0:
             if self._lenient:

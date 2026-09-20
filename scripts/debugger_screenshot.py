@@ -47,7 +47,7 @@ def _settle(root: tk.Tk, ms: int) -> None:
 
 def _select_nth_tree_child(debugger: PDFDebugger, n: int) -> None:
     """Select the nth top-level item in the debugger's tree."""
-    tree = debugger._tree  # noqa: SLF001 — debug helper
+    tree = debugger._tree
     children = tree.get_children()
     if n < 0 or n >= len(children):
         return
@@ -59,7 +59,7 @@ def _select_nth_tree_child(debugger: PDFDebugger, n: int) -> None:
 
 def _select_first_page(debugger: PDFDebugger, page_index: int = 0) -> None:
     """Walk into the document root and select page ``page_index`` (0-based)."""
-    tree = debugger._tree  # noqa: SLF001
+    tree = debugger._tree
     roots = tree.get_children()
     if not roots:
         return

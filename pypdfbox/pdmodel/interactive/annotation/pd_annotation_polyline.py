@@ -210,7 +210,7 @@ class PDAnnotationPolyline(PDAnnotationMarkup):
     def get_measure(self) -> PDMeasureDictionary | None:
         """Return the typed measure dictionary or ``None`` when ``/Measure``
         is absent."""
-        from pypdfbox.pdmodel.interactive.measurement.pd_measure_dictionary import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.interactive.measurement.pd_measure_dictionary import (
             PDMeasureDictionary,
         )
 
@@ -265,13 +265,13 @@ class PDAnnotationPolyline(PDAnnotationMarkup):
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
-            return None
+            return
         from .handlers.pd_polyline_appearance_handler import (
             PDPolylineAppearanceHandler,
         )
 
         PDPolylineAppearanceHandler(self, document).generate_appearance_streams()
-        return None
+        return
 
 
 __all__ = ["PDAnnotationPolyline"]

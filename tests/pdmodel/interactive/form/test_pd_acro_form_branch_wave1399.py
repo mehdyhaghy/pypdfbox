@@ -185,7 +185,7 @@ def test_select_appearance_stream_returns_none_when_ap_n_is_array() -> None:
     ap.set_item(COSName.get_pdf_name("N"), _num_array(1.0, 2.0))
     widget.set_item(COSName.get_pdf_name("AP"), ap)
 
-    result = form._select_appearance_stream(widget)  # noqa: SLF001
+    result = form._select_appearance_stream(widget)
     assert result is None
 
 
@@ -200,4 +200,4 @@ def test_select_appearance_stream_returns_stream_for_simple_normal_state() -> No
     ap.set_item(COSName.get_pdf_name("N"), stream)
     widget.set_item(COSName.get_pdf_name("AP"), ap)
 
-    assert form._select_appearance_stream(widget) is stream  # noqa: SLF001
+    assert form._select_appearance_stream(widget) is stream

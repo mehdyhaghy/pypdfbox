@@ -338,7 +338,7 @@ def _to_cos(value: Any) -> COSBase:
         return COSString(value)
     if isinstance(value, bool):
         # Booleans are ints in Python — check before int to avoid mis-encoding.
-        from pypdfbox.cos import COSBoolean  # noqa: PLC0415
+        from pypdfbox.cos import COSBoolean
 
         return COSBoolean.get_boolean(value)
     if isinstance(value, int):

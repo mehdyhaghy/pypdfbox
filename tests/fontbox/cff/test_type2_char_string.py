@@ -29,7 +29,7 @@ _OTF_CANDIDATES = [
 
 def _load_cff_bytes() -> bytes | None:
     try:
-        from fontTools.ttLib import TTFont  # noqa: PLC0415
+        from fontTools.ttLib import TTFont
     except ImportError:
         return None
     for candidate in _OTF_CANDIDATES:
@@ -43,7 +43,7 @@ def _load_cff_bytes() -> bytes | None:
             buf = io.BytesIO()
             ttf["CFF "].cff.compile(buf, ttf, isCFF2=False)
             return buf.getvalue()
-        except Exception:  # noqa: BLE001
+        except Exception:
             continue
     return None
 

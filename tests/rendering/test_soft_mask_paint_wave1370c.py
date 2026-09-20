@@ -31,7 +31,7 @@ class _StubPaintContext:
         self._color = color
         self.disposed = False
 
-    def get_raster(self, x: int, y: int, w: int, h: int) -> Image.Image:  # noqa: ARG002
+    def get_raster(self, x: int, y: int, w: int, h: int) -> Image.Image:
         return Image.new("RGBA", (w, h), self._color)
 
     def dispose(self) -> None:
@@ -60,13 +60,13 @@ def test_soft_mask_backdrop_white_luminance_is_255() -> None:
     color = PDColor([1.0, 1.0, 1.0], PDDeviceRGB.INSTANCE)
     sm = SoftMask(paint=None, mask=None, bbox_device=None, backdrop_color=color)
     # _bc is the per-component luminance in 0..255 space.
-    assert sm._bc == 255  # noqa: SLF001
+    assert sm._bc == 255
 
 
 def test_soft_mask_backdrop_black_luminance_is_zero() -> None:
     color = PDColor([0.0, 0.0, 0.0], PDDeviceRGB.INSTANCE)
     sm = SoftMask(paint=None, mask=None, bbox_device=None, backdrop_color=color)
-    assert sm._bc == 0  # noqa: SLF001
+    assert sm._bc == 0
 
 
 def test_soft_mask_backdrop_mid_grey_is_about_127() -> None:
@@ -74,7 +74,7 @@ def test_soft_mask_backdrop_mid_grey_is_about_127() -> None:
     color = PDColor([0.5, 0.5, 0.5], PDDeviceRGB.INSTANCE)
     sm = SoftMask(paint=None, mask=None, bbox_device=None, backdrop_color=color)
     # 0.5*255 → 127 (round); BT.601 of (127, 127, 127) is 127.
-    assert 120 < sm._bc < 135  # noqa: SLF001
+    assert 120 < sm._bc < 135
 
 
 def test_soft_mask_backdrop_pure_green_uses_bt601_weight() -> None:
@@ -83,14 +83,14 @@ def test_soft_mask_backdrop_pure_green_uses_bt601_weight() -> None:
     color = PDColor([0.0, 1.0, 0.0], PDDeviceRGB.INSTANCE)
     sm = SoftMask(paint=None, mask=None, bbox_device=None, backdrop_color=color)
     # 587 * 255 / 1000 = 149.685 → 149
-    assert 140 <= sm._bc <= 155  # noqa: SLF001
+    assert 140 <= sm._bc <= 155
 
 
 def test_soft_mask_backdrop_default_is_zero_when_none() -> None:
     """When no backdrop_color is supplied the field stays at 0 (matching
     the upstream default)."""
     sm = SoftMask(paint=None, mask=None, bbox_device=None, backdrop_color=None)
-    assert sm._bc == 0  # noqa: SLF001
+    assert sm._bc == 0
 
 
 def test_soft_mask_identity_transfer_is_dropped() -> None:
@@ -104,7 +104,7 @@ def test_soft_mask_identity_transfer_is_dropped() -> None:
     sm = SoftMask(
         paint=None, mask=None, bbox_device=None, transfer_function=_Identity()
     )
-    assert sm._transfer_function is None  # noqa: SLF001
+    assert sm._transfer_function is None
 
 
 def test_soft_mask_non_identity_transfer_is_kept() -> None:
@@ -119,7 +119,7 @@ def test_soft_mask_non_identity_transfer_is_kept() -> None:
     sm = SoftMask(
         paint=None, mask=None, bbox_device=None, transfer_function=fn
     )
-    assert sm._transfer_function is fn  # noqa: SLF001
+    assert sm._transfer_function is fn
 
 
 def test_soft_mask_create_context_returns_soft_paint_context() -> None:
@@ -139,7 +139,7 @@ def test_soft_mask_create_context_handles_paint_without_create_context() -> None
     sm = SoftMask(paint=object(), mask=None, bbox_device=None)
     ctx = sm.create_context(None, None, None, None, None)
     assert isinstance(ctx, SoftPaintContext)
-    assert ctx._context is None  # noqa: SLF001
+    assert ctx._context is None
 
 
 def test_soft_paint_context_color_model_is_argb() -> None:
@@ -152,7 +152,7 @@ def test_soft_paint_context_dispose_propagates() -> None:
     paint = _StubPaint((10, 20, 30, 255))
     sm = SoftMask(paint=paint, mask=None, bbox_device=None)
     ctx = sm.create_context(None, None, None, None, None)
-    inner = ctx._context  # noqa: SLF001
+    inner = ctx._context
     assert isinstance(inner, _StubPaintContext)
     assert inner.disposed is False
     ctx.dispose()

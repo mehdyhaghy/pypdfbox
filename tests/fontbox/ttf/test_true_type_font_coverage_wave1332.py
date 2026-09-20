@@ -123,7 +123,7 @@ def test_vertical_origin_view_defaults_and_lookup() -> None:
 
 def _wipe_table(ttf: TrueTypeFont, tag: str) -> None:
     """Remove a fontTools table from the underlying ``TTFont`` object."""
-    inner = ttf._tt  # noqa: SLF001
+    inner = ttf._tt
     if tag in inner:
         del inner[tag]
 
@@ -233,8 +233,8 @@ def test_get_gsub_data_returns_no_data_when_no_gsub_table() -> None:
     ttf = TrueTypeFont.from_bytes(_liberation_bytes())
     _wipe_table(ttf, "GSUB")
     # Reset cached resolution so the next call walks the fresh fontTools state.
-    ttf._gsub_resolved = False  # noqa: SLF001
-    ttf._gsub = None  # noqa: SLF001
+    ttf._gsub_resolved = False
+    ttf._gsub = None
     from pypdfbox.fontbox.ttf.gsub.gsub_data import GsubData
 
     # Lines 1113-1115 — branch when get_gsub() returns None.
@@ -247,8 +247,8 @@ def test_get_gsub_data_returns_no_data_when_table_has_no_helper() -> None:
     class _NoHelperTable:
         pass
 
-    ttf._gsub = _NoHelperTable()  # type: ignore[assignment]  # noqa: SLF001
-    ttf._gsub_resolved = True  # noqa: SLF001
+    ttf._gsub = _NoHelperTable()  # type: ignore[assignment]
+    ttf._gsub_resolved = True
     from pypdfbox.fontbox.ttf.gsub.gsub_data import GsubData
 
     # Lines 1117-1118 — ``get_gsub_data`` attr missing on the table.
@@ -262,8 +262,8 @@ def test_get_gsub_data_returns_no_data_when_helper_returns_none() -> None:
         def get_gsub_data(self) -> None:
             return None
 
-    ttf._gsub = _NoneTable()  # type: ignore[assignment]  # noqa: SLF001
-    ttf._gsub_resolved = True  # noqa: SLF001
+    ttf._gsub = _NoneTable()  # type: ignore[assignment]
+    ttf._gsub_resolved = True
     from pypdfbox.fontbox.ttf.gsub.gsub_data import GsubData
 
     # Lines 1120-1121 — helper returned None.
@@ -302,7 +302,7 @@ def test_get_index_to_location_returns_none_without_loca_table() -> None:
     # LiberationSans does have loca; force the absent-table branch.
     ttf = TrueTypeFont.from_bytes(_liberation_bytes())
     _wipe_table(ttf, "loca")
-    ttf._loca_resolved = False  # noqa: SLF001
+    ttf._loca_resolved = False
     # Lines 1405-1407.
     assert ttf.get_index_to_location() is None
 
@@ -321,13 +321,13 @@ def test_get_vertical_origin_projects_vorg_records() -> None:
 
     class _Record:
         def __init__(self, y: int) -> None:
-            self.vOrigY = y  # noqa: N815 — mirror fontTools field name
+            self.vOrigY = y
 
     class _FakeVorg:
         majorVersion = 1  # noqa: N815
         minorVersion = 0  # noqa: N815
         defaultVertOriginY = 880  # noqa: N815
-        VOriginRecords = {"A": _Record(910), "B": _Record(905), "ghost": _Record(0)}  # noqa: N815
+        VOriginRecords = {"A": _Record(910), "B": _Record(905), "ghost": _Record(0)}
 
     # Stub the lazy fontTools access (``ttf._tt['VORG']``).
     class _TTProxy:
@@ -343,10 +343,10 @@ def test_get_vertical_origin_projects_vorg_records() -> None:
                 return self._payload
             raise KeyError(key)
 
-        def getGlyphOrder(self) -> list[str]:  # noqa: N802 — fontTools name
+        def getGlyphOrder(self) -> list[str]:
             return ["A", "B", "C"]
 
-    ttf._tt = _TTProxy(ttf._tt, _FakeVorg())  # type: ignore[assignment]  # noqa: SLF001
+    ttf._tt = _TTProxy(ttf._tt, _FakeVorg())  # type: ignore[assignment]
     view = ttf.get_vertical_origin()
     assert view is not None
     assert view.major_version == 1
@@ -404,7 +404,7 @@ def test_get_unicode_cmap_impl_returns_first_subtable_when_no_unicode() -> None:
         return None
 
     ttf.get_unicode_cmap_subtable = _none  # type: ignore[assignment]
-    out = ttf._get_unicode_cmap_impl(is_strict=False)  # noqa: SLF001
+    out = ttf._get_unicode_cmap_impl(is_strict=False)
     # LiberationSans has at least one cmap subtable, so we get a CmapSubtable
     # back (not None).
     assert out is not None
@@ -413,20 +413,20 @@ def test_get_unicode_cmap_impl_returns_first_subtable_when_no_unicode() -> None:
 def test_get_unicode_cmap_impl_raises_in_strict_mode_when_no_cmap() -> None:
     ttf = TrueTypeFont.from_bytes(_liberation_bytes())
     _wipe_table(ttf, "cmap")
-    ttf._cmap_resolved = False  # noqa: SLF001
-    ttf._cmap_subtable = None  # noqa: SLF001
+    ttf._cmap_resolved = False
+    ttf._cmap_subtable = None
     # Lines 1066-1072.
     with pytest.raises(OSError, match="does not contain a 'cmap'"):
-        ttf._get_unicode_cmap_impl(is_strict=True)  # noqa: SLF001
+        ttf._get_unicode_cmap_impl(is_strict=True)
 
 
 def test_get_unicode_cmap_impl_returns_none_when_no_cmap_non_strict() -> None:
     ttf = TrueTypeFont.from_bytes(_liberation_bytes())
     _wipe_table(ttf, "cmap")
-    ttf._cmap_resolved = False  # noqa: SLF001
-    ttf._cmap_subtable = None  # noqa: SLF001
+    ttf._cmap_resolved = False
+    ttf._cmap_subtable = None
     # Line 1073 — non-strict returns None.
-    assert ttf._get_unicode_cmap_impl(is_strict=False) is None  # noqa: SLF001
+    assert ttf._get_unicode_cmap_impl(is_strict=False) is None
 
 
 def test_get_unicode_cmap_impl_raises_when_no_unicode_strict(
@@ -436,4 +436,4 @@ def test_get_unicode_cmap_impl_raises_when_no_unicode_strict(
     monkeypatch.setattr(ttf, "get_unicode_cmap_subtable", lambda: None)
     # Lines 1075-1077.
     with pytest.raises(OSError, match="does not contain a Unicode cmap"):
-        ttf._get_unicode_cmap_impl(is_strict=True)  # noqa: SLF001
+        ttf._get_unicode_cmap_impl(is_strict=True)

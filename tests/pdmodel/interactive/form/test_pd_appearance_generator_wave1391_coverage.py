@@ -297,7 +297,7 @@ def test_rich_text_unknown_family_with_bold() -> None:
     gen = PDAppearanceGenerator()
     base = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
     run = _RichTextRun(text="x", bold=True, font_family="Wingdings")
-    assert gen._resolve_rich_text_font(base, None, run) is not None  # noqa: SLF001
+    assert gen._resolve_rich_text_font(base, None, run) is not None
 
 
 def test_font_variant_name_unknown_family_returns_none() -> None:
@@ -344,7 +344,7 @@ def test_resolve_rich_text_font_variant_none_returns_base() -> None:
     PDAppearanceGenerator._font_variant_name = staticmethod(_patched)  # type: ignore[method-assign]
     try:
         run = _RichTextRun(text="x", font_family="times")
-        font = gen._resolve_rich_text_font(base, None, run)  # noqa: SLF001
+        font = gen._resolve_rich_text_font(base, None, run)
         assert font is base
     finally:
         PDAppearanceGenerator._font_variant_name = staticmethod(orig)  # type: ignore[method-assign]
@@ -361,7 +361,7 @@ def test_resolve_rich_text_font_variant_not_in_std14() -> None:
     PDAppearanceGenerator._font_variant_name = staticmethod(_patched)  # type: ignore[method-assign]
     try:
         run = _RichTextRun(text="x", font_family="times")
-        font = gen._resolve_rich_text_font(base, None, run)  # noqa: SLF001
+        font = gen._resolve_rich_text_font(base, None, run)
         assert font is base
     finally:
         PDAppearanceGenerator._font_variant_name = staticmethod(orig)  # type: ignore[method-assign]
@@ -371,7 +371,7 @@ def test_resolve_rich_text_font_helvetica_no_bi() -> None:
     gen = PDAppearanceGenerator()
     base = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
     run = _RichTextRun(text="x", font_family="helvetica")
-    assert gen._resolve_rich_text_font(base, "Helv", run) is not None  # noqa: SLF001
+    assert gen._resolve_rich_text_font(base, "Helv", run) is not None
 
 
 def test_rich_text_times_bold_italic() -> None:
@@ -498,7 +498,7 @@ def test_wrap_lines_paragraph_get_lines_raises() -> None:
     try:
         gen = PDAppearanceGenerator()
         font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
-        out = gen._wrap_lines("hello\nworld", font, 12.0, 200.0)  # noqa: SLF001
+        out = gen._wrap_lines("hello\nworld", font, 12.0, 200.0)
         assert out == ["hello", "world"]
     finally:
         pt_mod.PlainText = orig  # type: ignore[misc]
@@ -597,7 +597,7 @@ class _RaisingAcroFormField:
 
 def test_resolve_font_for_field_swallows_acro_form_error() -> None:
     gen = PDAppearanceGenerator()
-    font = gen._resolve_font_for_field(_RaisingAcroFormField(), "Helv", None)  # type: ignore[arg-type]  # noqa: SLF001
+    font = gen._resolve_font_for_field(_RaisingAcroFormField(), "Helv", None)  # type: ignore[arg-type]
     assert font is not None
 
 

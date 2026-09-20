@@ -60,7 +60,6 @@ class _FontStd14NoCID:
 class _FontMinimal:
     """Has no ``has_glyph`` and no ``get_normalized_path``; falls through to empty path."""
 
-    pass
 
 
 class _FontRaisesOSError:

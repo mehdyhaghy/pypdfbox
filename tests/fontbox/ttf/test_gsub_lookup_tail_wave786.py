@@ -77,7 +77,7 @@ def test_gsub_substitution_skips_invalid_lookup_indices_and_non_single_lookup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     table = GlyphSubstitutionTable()
-    table._gsub_table = SimpleNamespace(  # noqa: SLF001
+    table._gsub_table = SimpleNamespace(
         FeatureList=SimpleNamespace(
             FeatureRecord=[
                 SimpleNamespace(
@@ -95,8 +95,8 @@ def test_gsub_substitution_skips_invalid_lookup_indices_and_non_single_lookup(
             ]
         ),
     )
-    table._glyph_order = ["a", "a.alt"]  # noqa: SLF001
-    table._glyph_name_to_gid = {"a": 0, "a.alt": 1}  # noqa: SLF001
+    table._glyph_order = ["a", "a.alt"]
+    table._glyph_name_to_gid = {"a": 0, "a.alt": 1}
     monkeypatch.setattr(table, "_select_script_tag", lambda _tags: "latn")
     monkeypatch.setattr(table, "_collect_feature_indices", lambda *_args: [0])
 
@@ -106,11 +106,11 @@ def test_gsub_substitution_skips_invalid_lookup_indices_and_non_single_lookup(
 
 def test_gpos_pair_format2_materializes_class_zero_and_named_classes() -> None:
     table = GlyphPositioningTable()
-    table._glyph_order = ["A", "V", "X"]  # noqa: SLF001
-    table._glyph_name_to_gid = {"A": 0, "V": 1, "X": 2}  # noqa: SLF001
+    table._glyph_order = ["A", "V", "X"]
+    table._glyph_name_to_gid = {"A": 0, "V": 1, "X": 2}
     pairs: dict[tuple[int, int], int] = {}
 
-    table._absorb_pair_format2(  # noqa: SLF001
+    table._absorb_pair_format2(
         SimpleNamespace(
             Coverage=SimpleNamespace(glyphs=["A"]),
             ClassDef1=SimpleNamespace(classDefs={}),

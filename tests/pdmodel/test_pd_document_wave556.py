@@ -68,7 +68,7 @@ def test_wave556_save_incremental_marks_extra_objects_and_rejects_non_dict(
         def write(self, document: COSDocument) -> None:
             writes.append(document)
 
-    import pypdfbox.pdfwriter as pdfwriter
+    from pypdfbox import pdfwriter
 
     monkeypatch.setattr(pdfwriter, "COSWriter", Writer)
     cos_doc = COSDocument(source=RandomAccessReadBuffer(b"%PDF-1.4\n%%EOF\n"))

@@ -35,14 +35,14 @@ from pypdfbox.cos import (
 pytest.importorskip("pypdfbox.pdmodel.encryption.standard_security_handler")
 pytest.importorskip("pypdfbox.pdmodel.encryption.standard_protection_policy")
 
-from pypdfbox.pdmodel.encryption.access_permission import (  # noqa: E402
+from pypdfbox.pdmodel.encryption.access_permission import (
     AccessPermission,
 )
-from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption  # noqa: E402
-from pypdfbox.pdmodel.encryption.standard_protection_policy import (  # noqa: E402
+from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption
+from pypdfbox.pdmodel.encryption.standard_protection_policy import (
     StandardProtectionPolicy,
 )
-from pypdfbox.pdmodel.encryption.standard_security_handler import (  # noqa: E402
+from pypdfbox.pdmodel.encryption.standard_security_handler import (
     InvalidPasswordException,
     StandardSecurityHandler,
 )
@@ -163,7 +163,7 @@ def test_is_encrypted_after_parsing_encrypted_pdf() -> None:
     try:
         assert cos_doc.is_encrypted() is True
         with PDDocument(cos_doc) as pd:
-            pd._owns_document = False  # noqa: SLF001 — keep cos alive
+            pd._owns_document = False
             assert pd.is_encrypted() is True
     finally:
         cos_doc.close()
@@ -249,7 +249,7 @@ def test_protect_accepts_standard_protection_policy() -> None:
     )
     with PDDocument() as pd:
         pd.protect(policy)
-        assert pd._protection_policy is policy  # noqa: SLF001
+        assert pd._protection_policy is policy
 
 
 def test_protect_rejects_non_standard_policy() -> None:

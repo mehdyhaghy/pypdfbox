@@ -141,7 +141,7 @@ def test_reset_skips_already_cleared_wrapper_without_dereferencing() -> None:
 
     def loader(ref: COSObject) -> None:
         loaded.append(ref)
-        return None
+        return
 
     d = COSDictionary()
     d.set_item(COSName.get_pdf_name("X"), COSObject(0, 0, loader=loader))

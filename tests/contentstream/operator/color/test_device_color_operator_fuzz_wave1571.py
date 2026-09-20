@@ -559,7 +559,7 @@ def test_pattern_cs_stroking_scn_name() -> None:
 
 def test_device_operator_get_color_space_singletons() -> None:
     # The faithful device RGB operator advertises the matching singleton.
-    from pypdfbox.contentstream.operator.color.set_non_stroking_device_rgb_color import (  # noqa: E501
+    from pypdfbox.contentstream.operator.color.set_non_stroking_device_rgb_color import (
         SetNonStrokingDeviceRGBColor,
     )
 

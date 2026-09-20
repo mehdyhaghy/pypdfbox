@@ -84,7 +84,7 @@ class PrintURLs:
             return None
         try:
             action = get_action()
-        except Exception:  # noqa: BLE001 — mirrors broad Java catch
+        except Exception:
             return None
         from pypdfbox.pdmodel.interactive.action.pd_action_uri import PDActionURI
 

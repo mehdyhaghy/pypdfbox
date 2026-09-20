@@ -161,7 +161,7 @@ def _synthesize_font_with_vhea() -> bytes:
     """
     if not FIXTURE.exists():
         pytest.skip(f"Fixture font not present: {FIXTURE}")
-    from fontTools.ttLib import TTFont, newTable  # noqa: PLC0415
+    from fontTools.ttLib import TTFont, newTable
 
     font = TTFont(io.BytesIO(FIXTURE.read_bytes()))
     vhea = newTable("vhea")

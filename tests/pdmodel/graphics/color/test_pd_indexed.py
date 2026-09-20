@@ -44,7 +44,7 @@ def _make_indexed(hival: int, lookup_entry: COSString | COSStream) -> PDIndexed:
 
 
 def test_get_lookup_data_from_cos_string_round_trip() -> None:
-    payload = bytes(range(0, 12))  # 4 entries * 3 components (DeviceRGB)
+    payload = bytes(range(12))  # 4 entries * 3 components (DeviceRGB)
     cs = _make_indexed(3, COSString(payload))
     out = cs.get_lookup_data()
     assert out == payload

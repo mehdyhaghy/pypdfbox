@@ -32,7 +32,7 @@ class _FakeTTFont:
     def __getitem__(self, tag: str) -> object:
         return self._tables[tag]
 
-    def getGlyphOrder(self) -> list[str]:  # noqa: N802 - fontTools API
+    def getGlyphOrder(self) -> list[str]:
         return list(self._glyph_order)
 
     def close(self) -> None:
@@ -41,14 +41,14 @@ class _FakeTTFont:
 
 def _font(tt: _FakeTTFont | None = None, raw: bytes = b"abcdef") -> TrueTypeFont:
     font = object.__new__(TrueTypeFont)
-    font._tt = tt or _FakeTTFont()  # noqa: SLF001
-    font._raw_bytes = raw  # noqa: SLF001
-    font._table_map = None  # noqa: SLF001
-    font._advance_widths = None  # noqa: SLF001
-    font._closed = False  # noqa: SLF001
-    font._post_resolved = False  # noqa: SLF001
-    font._post = None  # noqa: SLF001
-    font._post_script_names = None  # noqa: SLF001
+    font._tt = tt or _FakeTTFont()
+    font._raw_bytes = raw
+    font._table_map = None
+    font._advance_widths = None
+    font._closed = False
+    font._post_resolved = False
+    font._post = None
+    font._post_script_names = None
     return font
 
 
@@ -64,23 +64,23 @@ def test_ttf_parser_scaler_type_edges_without_fonttools_construction() -> None:
     parser = TTFParser()
 
     with pytest.raises(OSError, match="SFNT stream too short"):
-        parser._parse_data_stream(MemoryTTFDataStream(b"abc"))  # noqa: SLF001
+        parser._parse_data_stream(MemoryTTFDataStream(b"abc"))
     with pytest.raises(OSError, match="use OTFParser"):
-        parser._check_scaler_type(0x4F54544F)  # noqa: SLF001
+        parser._check_scaler_type(0x4F54544F)
 
-    parser._check_scaler_type(0x74727565)  # noqa: SLF001
+    parser._check_scaler_type(0x74727565)
 
     otf_parser = OTFParser()
-    assert parser._allow_cff() is False  # noqa: SLF001
-    assert otf_parser._allow_cff() is True  # noqa: SLF001
-    otf_parser._check_scaler_type(0x00010000)  # noqa: SLF001
+    assert parser._allow_cff() is False
+    assert otf_parser._allow_cff() is True
+    otf_parser._check_scaler_type(0x00010000)
     with pytest.raises(OSError, match="expected 'OTTO'"):
-        otf_parser._check_scaler_type(0x12345678)  # noqa: SLF001
+        otf_parser._check_scaler_type(0x12345678)
 
 
 def test_true_type_font_table_byte_helpers_clamp_valid_entries() -> None:
     font = _font(raw=b"0123456789")
-    font._table_map = {"test": _table("test", 2, 5)}  # noqa: SLF001
+    font._table_map = {"test": _table("test", 2, 5)}
 
     assert font.get_table_bytes("test") == b"23456"
     assert font.get_table_n_bytes("test", -10) == b""
@@ -151,7 +151,7 @@ def test_true_type_font_close_is_idempotent() -> None:
     font.__exit__(None, None, None)
     font.close()
 
-    assert font._closed is True  # noqa: SLF001
+    assert font._closed is True
     assert tt.close_count == 1
 
 
@@ -160,10 +160,10 @@ def test_glyph_table_set_glyphs_counts_cache_and_clears() -> None:
 
     table.set_glyphs([GlyphData(), None, GlyphData()])  # type: ignore[list-item]
 
-    assert table._cached == 2  # noqa: SLF001
-    assert table._glyphs is not None  # noqa: SLF001
+    assert table._cached == 2
+    assert table._glyphs is not None
 
     table.set_glyphs(None)
 
-    assert table._cached == 0  # noqa: SLF001
-    assert table._glyphs is None  # noqa: SLF001
+    assert table._cached == 0
+    assert table._glyphs is None

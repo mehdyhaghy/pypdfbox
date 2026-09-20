@@ -150,7 +150,7 @@ def test_wave565_embedded_cmap_fallback_handles_bad_best_cmap_and_finds_match(
         "get_true_type_font",
         lambda: SimpleNamespace(_tt=broken_inner),
     )
-    assert font._unicode_from_embedded_cmap(7) is None  # noqa: SLF001
+    assert font._unicode_from_embedded_cmap(7) is None
 
     good_inner = InnerTTF(cmap=SimpleNamespace(getBestCmap=lambda: {0x2603: "target"}))
     monkeypatch.setattr(
@@ -158,4 +158,4 @@ def test_wave565_embedded_cmap_fallback_handles_bad_best_cmap_and_finds_match(
         "get_true_type_font",
         lambda: SimpleNamespace(_tt=good_inner),
     )
-    assert font._unicode_from_embedded_cmap(7) == "\u2603"  # noqa: SLF001
+    assert font._unicode_from_embedded_cmap(7) == "\u2603"

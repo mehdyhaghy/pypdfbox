@@ -61,7 +61,7 @@ def test_wave660_base_state_falls_back_when_default_dict_returns_none() -> None:
         def get_name(self, key: COSName, default: str) -> None:
             assert key == COSName.get_pdf_name("BaseState")
             assert default == "ON"
-            return None
+            return
 
     class Props(PDOptionalContentProperties):
         def _get_d(self) -> DefaultDict:  # type: ignore[override]

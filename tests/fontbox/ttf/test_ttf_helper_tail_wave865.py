@@ -7,14 +7,14 @@ from tests.fontbox.ttf import test_ttf_data_stream as data_stream_mod
 
 
 def test_wave865_intermittent_eof_stream_reads_and_reports_eof() -> None:
-    stream = data_stream_mod._IntermittentEOFStream([0x41])  # noqa: SLF001
+    stream = data_stream_mod._IntermittentEOFStream([0x41])
 
     assert stream.read() == 0x41
     assert stream.read() == -1
 
 
 def test_wave865_intermittent_eof_stream_abstract_slots_raise() -> None:
-    stream = data_stream_mod._IntermittentEOFStream([])  # noqa: SLF001
+    stream = data_stream_mod._IntermittentEOFStream([])
 
     with pytest.raises(NotImplementedError):
         stream.read_long()
@@ -24,7 +24,7 @@ def test_wave865_intermittent_eof_stream_abstract_slots_raise() -> None:
 
 
 def test_wave865_intermittent_eof_stream_position_and_original_data() -> None:
-    stream = data_stream_mod._IntermittentEOFStream([1, 2, 3])  # noqa: SLF001
+    stream = data_stream_mod._IntermittentEOFStream([1, 2, 3])
 
     stream.seek(2)
 
@@ -35,8 +35,8 @@ def test_wave865_intermittent_eof_stream_position_and_original_data() -> None:
 
 
 def test_wave865_fake_fonttools_ttf_rejects_non_cmap_tag() -> None:
-    fake = true_type_mod._FakeFontToolsTTFont(  # noqa: SLF001
-        true_type_mod._FakeFontToolsCmapTable([]),  # noqa: SLF001
+    fake = true_type_mod._FakeFontToolsTTFont(
+        true_type_mod._FakeFontToolsCmapTable([]),
         [".notdef"],
     )
 

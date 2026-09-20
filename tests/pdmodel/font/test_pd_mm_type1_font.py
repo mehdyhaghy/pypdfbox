@@ -43,7 +43,7 @@ def _stub_type1_program() -> Type1Font:
         def __init__(self, width: float) -> None:
             self.width = width
 
-        def draw(self, pen) -> None:  # noqa: ANN001
+        def draw(self, pen) -> None:
             return None
 
     program._charstrings = {
@@ -209,7 +209,7 @@ def _path_outlined_type1_program() -> Type1Font:
             self.width = width
             self._commands = commands
 
-        def draw(self, pen) -> None:  # noqa: ANN001
+        def draw(self, pen) -> None:
             for cmd in self._commands:
                 op = cmd[0]
                 if op == "moveto":

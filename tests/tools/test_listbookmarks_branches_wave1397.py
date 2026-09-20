@@ -23,7 +23,7 @@ class _StubDestPage(PDPageDestination):
         super().__init__()
         self._page = page
 
-    def retrieve_page_number(self, doc: object) -> int:  # noqa: ARG002
+    def retrieve_page_number(self, doc: object) -> int:
         return self._page
 
 
@@ -51,7 +51,7 @@ class _StubItem:
     def get_action(self) -> object | None:
         return self._action
 
-    def find_destination_page(self, document: object) -> object | None:  # noqa: ARG002
+    def find_destination_page(self, document: object) -> object | None:
         return None
 
 
@@ -59,7 +59,7 @@ def test_resolve_page_number_returns_none_for_unresolved_page_destination() -> N
     """Closes the False arm of ``if isinstance(dest, PDPageDestination)``
     when retrieve_page_number returns -1."""
     dest = _StubDestPage(-1)
-    assert listbookmarks._resolve_page_number(object(), dest) is None  # noqa: SLF001
+    assert listbookmarks._resolve_page_number(object(), dest) is None
 
 
 def test_resolve_page_number_returns_none_for_non_page_non_named_destination() -> None:
@@ -70,7 +70,7 @@ def test_resolve_page_number_returns_none_for_non_page_non_named_destination() -
     class _OtherDest:
         """A bare object — neither PDPageDestination nor PDNamedDestination."""
 
-    assert listbookmarks._resolve_page_number(object(), _OtherDest()) is None  # noqa: SLF001
+    assert listbookmarks._resolve_page_number(object(), _OtherDest()) is None
 
 
 def test_describe_item_skips_dest_when_resolved_is_none() -> None:
@@ -78,7 +78,7 @@ def test_describe_item_skips_dest_when_resolved_is_none() -> None:
     -1 (not in document) — no ``Destination page:`` line is appended."""
     dest = _StubDestPage(-1)
     item = _StubItem(destination=dest, action=None)
-    page_num, info = listbookmarks._describe_item(object(), item)  # noqa: SLF001
+    page_num, info = listbookmarks._describe_item(object(), item)
     assert page_num is None
     # No "Destination page:" line — the resolve failed.
     assert all(not line.startswith("Destination page:") for line in info)
@@ -90,7 +90,7 @@ def test_describe_item_skips_goto_dest_when_resolved_is_none() -> None:
     action_dest = _StubDestPage(-1)
     action = _StubGoToAction(action_dest)
     item = _StubItem(destination=None, action=action)
-    page_num, info = listbookmarks._describe_item(object(), item)  # noqa: SLF001
+    page_num, info = listbookmarks._describe_item(object(), item)
     assert page_num is None
     assert all(not line.startswith("Destination page:") for line in info)
 
@@ -100,7 +100,7 @@ def test_describe_item_goto_action_without_destination() -> None:
     ``action_dest is not None`` arm short-circuits)."""
     action = _StubGoToAction(None)
     item = _StubItem(destination=None, action=action)
-    page_num, info = listbookmarks._describe_item(object(), item)  # noqa: SLF001
+    page_num, info = listbookmarks._describe_item(object(), item)
     assert page_num is None
     # No Destination class line either — action_dest is None.
     assert all(not line.startswith("Destination class:") for line in info)

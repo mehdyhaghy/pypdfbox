@@ -123,7 +123,7 @@ class CreateCheckBox:
         appearance stream lands with the rendering / appearance cluster
         (PRD §6.13)."""
         _ = (document, widget, on, font)
-        return None
+        return
 
 
 if __name__ == "__main__":  # pragma: no cover

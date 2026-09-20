@@ -39,7 +39,7 @@ def liberation_sans(liberation_bytes: bytes) -> TrueTypeFont:
 
 
 def _load_fonttools(buf: bytes):
-    import fontTools.ttLib as ttLib  # noqa: PLC0415
+    from fontTools import ttLib
 
     return ttLib.TTFont(io.BytesIO(buf))
 
@@ -458,9 +458,9 @@ def test_add_compound_references_does_not_shrink_glyph_set(
 ) -> None:
     sub = TTFSubsetter(liberation_sans)
     sub.add_all(ord(c) for c in "Hello")
-    before = set(sub._glyph_ids)  # noqa: SLF001
+    before = set(sub._glyph_ids)
     sub.add_compound_references()
-    after = set(sub._glyph_ids)  # noqa: SLF001
+    after = set(sub._glyph_ids)
     assert before <= after
 
 

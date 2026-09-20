@@ -32,7 +32,7 @@ def test_wave721_make_doc_removes_default_page(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(wave721, "PDDocument", document_factory)
 
-    doc, page = wave721._make_doc()  # noqa: SLF001
+    doc, page = wave721._make_doc()
 
     assert doc is created[0]
     assert doc.removed == [0]
@@ -42,7 +42,7 @@ def test_wave721_make_doc_removes_default_page(monkeypatch: Any) -> None:
 def test_wave721_force_round_delegates_for_other_round_shapes(
     monkeypatch: Any,
 ) -> None:
-    wave721._force_round(monkeypatch, 7)  # noqa: SLF001
+    wave721._force_round(monkeypatch, 7)
 
     assert builtins.round(0.5) == 7
     assert builtins.round(1000.5) == 1000

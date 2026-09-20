@@ -146,7 +146,7 @@ class _AdvanceEngine(PDFStreamEngine):
         w0, w1 = displacement
         # Determine code length to gate word spacing on the *single-byte*
         # code 32 only.
-        consumed = 2 if font._code_bytes == 2 else 1  # noqa: SLF001
+        consumed = 2 if font._code_bytes == 2 else 1
         is_single_byte_space = consumed == 1 and code == 32
         word = self._word_spacing if is_single_byte_space else 0.0
         if font.is_vertical():

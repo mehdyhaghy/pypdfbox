@@ -72,15 +72,15 @@ class _RecordingContext:
 
 
 # Class names must match the production discriminator (type(obj).__name__).
-class PDImageXObject:  # noqa: N801 - mirrors the real production class name
+class PDImageXObject:
     pass
 
 
-class PDTransparencyGroup:  # noqa: N801 - mirrors the real production class name
+class PDTransparencyGroup:
     pass
 
 
-class PDFormXObject:  # noqa: N801 - mirrors the real production class name
+class PDFormXObject:
     pass
 
 

@@ -333,7 +333,7 @@ class PDFStreamEngine:
             return False
         try:
             return bool(is_uncolored())
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
 
     @staticmethod
@@ -427,7 +427,7 @@ class PDFStreamEngine:
         registry-parity surface upstream does not model (upstream's ``BI``
         operator *is* the registered processor).
         """
-        from pypdfbox.pdmodel.graphics.image.pd_inline_image import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.image.pd_inline_image import (
             PDInlineImage,
         )
 
@@ -504,14 +504,14 @@ class PDFStreamEngine:
            inflate) → log at warning, swallow.
         5. anything else → re-raise.
         """
-        from pypdfbox.filter.missing_image_reader_exception import (  # noqa: PLC0415
+        from pypdfbox.filter.missing_image_reader_exception import (
             MissingImageReaderException,
         )
-        from pypdfbox.pdmodel.missing_resource_exception import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.missing_resource_exception import (
             MissingResourceException,
         )
 
-        from .operator.state.empty_graphics_stack_exception import (  # noqa: PLC0415
+        from .operator.state.empty_graphics_stack_exception import (
             EmptyGraphicsStackException,
         )
 
@@ -670,7 +670,7 @@ class PDFStreamEngine:
         same reference when it doesn't — matching the cluster-#2
         contract that the base never inspects frame contents.
         """
-        import copy as _copy  # noqa: PLC0415
+        import copy as _copy
 
         saved = self._graphics_stack
         if saved:
@@ -958,7 +958,7 @@ class PDFStreamEngine:
             page = self._current_page
             page_resources = page.get_resources() if page is not None else None
             if page_resources is None:
-                from pypdfbox.pdmodel.pd_resources import (  # noqa: PLC0415
+                from pypdfbox.pdmodel.pd_resources import (
                     PDResources as _PDResources,
                 )
 
@@ -1231,7 +1231,7 @@ class PDFStreamEngine:
                 # Legacy stream-form font: stash a single BytesIO and walk
                 # it via the stream-style return-int API.
                 if legacy_buf is None:
-                    import io as _stdio  # noqa: PLC0415
+                    import io as _stdio
 
                     legacy_buf = _stdio.BytesIO(bytes(string[offset:]))
                 pos = legacy_buf.tell()

@@ -46,9 +46,9 @@ def test_wave596_clear_helpers_remove_trailer_entries_and_caches() -> None:
         assert trailer.get_dictionary_object(COSName.ROOT) is None  # type: ignore[attr-defined]
         assert trailer.get_dictionary_object(COSName.INFO) is None  # type: ignore[attr-defined]
         assert trailer.get_dictionary_object(COSName.ENCRYPT) is None  # type: ignore[attr-defined]
-        assert doc._catalog is None  # noqa: SLF001
-        assert doc._pages is None  # noqa: SLF001
-        assert doc._document_information is None  # noqa: SLF001
+        assert doc._catalog is None
+        assert doc._pages is None
+        assert doc._document_information is None
     finally:
         doc.close()
 
@@ -93,7 +93,7 @@ def test_wave596_save_incremental_marks_requested_objects_and_rejects_non_dict(
         def write(self, document: COSDocument) -> None:
             writes.append(document)
 
-    import pypdfbox.pdfwriter as pdfwriter
+    from pypdfbox import pdfwriter
 
     monkeypatch.setattr(pdfwriter, "COSWriter", Writer)
     cos_doc = COSDocument(source=RandomAccessReadBuffer(b"%PDF-1.4\n%%EOF\n"))
@@ -114,7 +114,7 @@ def test_wave596_save_incremental_marks_requested_objects_and_rejects_non_dict(
 def test_wave596_write_bytes_to_random_access_write_buffer() -> None:
     sink = RandomAccessWriteBuffer()
 
-    PDDocument._write_bytes_to_target(b"abc", sink)  # noqa: SLF001
+    PDDocument._write_bytes_to_target(b"abc", sink)
 
     assert sink.to_bytes() == b"abc"
 
@@ -168,11 +168,11 @@ def test_wave596_access_permission_uses_handler_and_caches() -> None:
     permission = object()
     handler = SimpleNamespace(get_current_access_permission=lambda: permission)
     doc = PDDocument()
-    doc._security_handler = handler  # noqa: SLF001
+    doc._security_handler = handler
 
     try:
         assert doc.get_current_access_permission() is permission
-        doc._security_handler = SimpleNamespace(  # noqa: SLF001
+        doc._security_handler = SimpleNamespace(
             get_current_access_permission=lambda: object()
         )
         assert doc.get_current_access_permission() is permission
@@ -189,7 +189,7 @@ def test_wave596_protect_clears_security_removal_flag() -> None:
         doc.protect(policy)
 
         assert doc.is_all_security_to_be_removed() is False
-        assert doc._protection_policy is policy  # noqa: SLF001
+        assert doc._protection_policy is policy
     finally:
         doc.close()
 

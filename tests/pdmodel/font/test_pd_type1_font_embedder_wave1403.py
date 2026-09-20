@@ -101,7 +101,7 @@ def test_constructor_skips_base_font_when_type1_name_empty(
     monkeypatch.setattr(
         t1mod.Type1Font,
         "from_bytes",
-        classmethod(lambda cls, data: _NamelessType1()),  # noqa: ARG005
+        classmethod(lambda cls, data: _NamelessType1()),
     )
 
     doc = PDDocument()

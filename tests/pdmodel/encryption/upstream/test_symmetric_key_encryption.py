@@ -114,19 +114,19 @@ def test_pdf_box_4453_repeated_string_values_round_trip(tmp_path: Path) -> None:
     test stays well under the suite's per-test budget while still
     exercising the per-object-key derivation across many objects.
     """
-    import io  # noqa: PLC0415
+    import io
 
-    from pypdfbox.cos.cos_dictionary import COSDictionary  # noqa: PLC0415
-    from pypdfbox.cos.cos_name import COSName  # noqa: PLC0415
-    from pypdfbox.loader import Loader  # noqa: PLC0415
-    from pypdfbox.pdmodel.encryption.access_permission import (  # noqa: PLC0415
+    from pypdfbox.cos.cos_dictionary import COSDictionary
+    from pypdfbox.cos.cos_name import COSName
+    from pypdfbox.loader import Loader
+    from pypdfbox.pdmodel.encryption.access_permission import (
         AccessPermission,
     )
-    from pypdfbox.pdmodel.encryption.standard_protection_policy import (  # noqa: PLC0415
+    from pypdfbox.pdmodel.encryption.standard_protection_policy import (
         StandardProtectionPolicy,
     )
-    from pypdfbox.pdmodel.pd_document import PDDocument  # noqa: PLC0415
-    from pypdfbox.pdmodel.pd_page import PDPage  # noqa: PLC0415
+    from pypdfbox.pdmodel.pd_document import PDDocument
+    from pypdfbox.pdmodel.pd_page import PDPage
 
     testcount = 50  # upstream uses 1000
 

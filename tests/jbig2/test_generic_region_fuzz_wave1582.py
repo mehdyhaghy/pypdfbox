@@ -295,7 +295,7 @@ def test_template0_roundtrip_all_ones_and_all_zeros():
 # ---------------------------------------------------------------------------
 def test_mmr_selection_skips_at_pixels_and_routes_to_g4():
     # MMR=1 -> no AT pixels parsed; the decode path is the CCITT-G4 decompressor.
-    from PIL import Image  # noqa: PLC0415 - only the MMR case needs Pillow
+    from PIL import Image
 
     width, height = 16, 8
     img = Image.new("1", (width, height), 1)
@@ -303,7 +303,7 @@ def test_mmr_selection_skips_at_pixels_and_routes_to_g4():
     for y in range(2, 6):
         for x in range(4, 12):
             px[x, y] = 0
-    import io as _io  # noqa: PLC0415
+    import io as _io
 
     buf = _io.BytesIO()
     img.save(buf, format="TIFF", compression="group4")

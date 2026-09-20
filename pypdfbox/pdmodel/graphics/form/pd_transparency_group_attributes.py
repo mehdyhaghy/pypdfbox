@@ -54,7 +54,7 @@ class PDTransparencyGroupAttributes:
         # resources.
         value = self._dictionary.get_dictionary_object(_CS)
         if resources is not None:
-            from pypdfbox.pdmodel.graphics.color.pd_color_space import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.graphics.color.pd_color_space import (
                 PDColorSpace,
             )
 
@@ -63,7 +63,7 @@ class PDTransparencyGroupAttributes:
         if self._color_space is None or self._color_space_source is not value:
             # Local import keeps the cluster boundary explicit and avoids a
             # cycle through the rest of the graphics package.
-            from pypdfbox.pdmodel.graphics.color.pd_color_space import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.graphics.color.pd_color_space import (
                 PDColorSpace,
             )
 
@@ -88,7 +88,7 @@ class PDTransparencyGroupAttributes:
         re-resolves through ``PDColorSpace.create``."""
         # Local import — avoids a top-level cycle through the colour
         # cluster which itself imports form types in a few places.
-        from pypdfbox.pdmodel.graphics.color.pd_color_space import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.color.pd_color_space import (
             PDColorSpace as _PDColorSpace,
         )
 

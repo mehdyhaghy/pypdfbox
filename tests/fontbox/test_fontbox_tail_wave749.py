@@ -36,7 +36,7 @@ def _read_name_table(raw: bytes) -> NamingTable:
     table = NamingTable()
     table.set_offset(0)
     table.set_length(len(blob))
-    table.read(cast(TrueTypeFont, object()), MemoryTTFDataStream(blob))
+    table.read(cast("TrueTypeFont", object()), MemoryTTFDataStream(blob))
     return table
 
 
@@ -121,7 +121,7 @@ def test_cmap_format_2_suppresses_invalid_glyph_logging_after_threshold(
     subtable = CmapSubtable()
 
     with caplog.at_level(logging.WARNING, logger="pypdfbox.fontbox.ttf.cmap_subtable"):
-        subtable._process_subtype_2(MemoryTTFDataStream(bytes(payload)), num_glyphs=5)  # noqa: SLF001
+        subtable._process_subtype_2(MemoryTTFDataStream(bytes(payload)), num_glyphs=5)
 
     assert caplog.text.count("ignored, numGlyphs is 5") == 11
     assert subtable.get_glyph_id(0) == 0
@@ -129,8 +129,8 @@ def test_cmap_format_2_suppresses_invalid_glyph_logging_after_threshold(
 
 def test_cmap_subtable_returns_none_for_missing_multiple_reverse_mapping() -> None:
     subtable = CmapSubtable()
-    subtable._glyph_id_to_character_code = [-2_147_483_648]  # noqa: SLF001
-    subtable._glyph_id_to_character_code_multiple = {}  # noqa: SLF001
+    subtable._glyph_id_to_character_code = [-2_147_483_648]
+    subtable._glyph_id_to_character_code_multiple = {}
 
     assert subtable.get_char_codes(0) is None
 
@@ -138,7 +138,7 @@ def test_cmap_subtable_returns_none_for_missing_multiple_reverse_mapping() -> No
 def test_naming_table_latin1_fallback_and_record_helpers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def raise_lookup_error(raw: bytes, charset: str) -> str:  # noqa: ARG001
+    def raise_lookup_error(raw: bytes, charset: str) -> str:
         raise LookupError
 
     monkeypatch.setattr(NamingTable, "_decode_string", staticmethod(raise_lookup_error))
@@ -168,26 +168,26 @@ def test_glyph_table_large_bind_disables_cache_and_unbound_lookup_returns_none()
             assert key == "glyf"
             return object()
 
-        def getGlyphOrder(self) -> list[str]:  # noqa: N802
+        def getGlyphOrder(self) -> list[str]:
             return [".notdef"] * GlyphTable.MAX_CACHE_SIZE
 
     unbound = GlyphTable()
-    unbound._num_glyphs = 1  # noqa: SLF001
+    unbound._num_glyphs = 1
     assert unbound.get_glyph(0) is None
 
     font = _Font()
-    font._tt = _TT()  # type: ignore[assignment]  # noqa: SLF001
+    font._tt = _TT()  # type: ignore[assignment]
     table = GlyphTable()
-    table._bind(cast(TrueTypeFont, font))  # noqa: SLF001
+    table._bind(cast("TrueTypeFont", font))
 
-    assert table._glyphs is None  # noqa: SLF001
+    assert table._glyphs is None
 
 
 def test_glyph_table_get_glyphs_uses_placeholder_when_lookup_returns_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     table = GlyphTable()
-    table._num_glyphs = 1  # noqa: SLF001
+    table._num_glyphs = 1
     monkeypatch.setattr(table, "get_glyph", lambda gid: None)
 
     assert isinstance(table.get_glyphs()[0], GlyphData)

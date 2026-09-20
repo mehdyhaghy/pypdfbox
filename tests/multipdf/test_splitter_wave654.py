@@ -108,7 +108,7 @@ def test_wave654_signature_widget_returns_false_when_subtype_lookup_fails() -> N
         def get_name(self, key: COSName) -> str | None:
             raise AttributeError("no names")
 
-    assert not Splitter._is_signature_widget(BrokenAnnotation())  # type: ignore[arg-type]  # noqa: SLF001,E501
+    assert not Splitter._is_signature_widget(BrokenAnnotation())  # type: ignore[arg-type]
 
 
 def test_wave654_stage_link_destination_ignores_non_array_page_destination() -> None:
@@ -122,9 +122,9 @@ def test_wave654_stage_link_destination_ignores_non_array_page_destination() -> 
 
     splitter = Splitter()
 
-    splitter._stage_link_destination(Link(), COSDictionary())  # type: ignore[arg-type]  # noqa: SLF001,E501
+    splitter._stage_link_destination(Link(), COSDictionary())  # type: ignore[arg-type]
 
-    assert splitter._dest_to_fix == []  # noqa: SLF001
+    assert splitter._dest_to_fix == []
 
 
 def test_wave654_stage_link_destination_ignores_uncreatable_destination() -> None:
@@ -142,9 +142,9 @@ def test_wave654_stage_link_destination_ignores_uncreatable_destination() -> Non
 
     splitter = Splitter()
 
-    splitter._stage_link_destination(Link(), COSDictionary())  # type: ignore[arg-type]  # noqa: SLF001,E501
+    splitter._stage_link_destination(Link(), COSDictionary())  # type: ignore[arg-type]
 
-    assert splitter._dest_to_fix == []  # noqa: SLF001
+    assert splitter._dest_to_fix == []
 
 
 def test_wave654_clone_structure_tree_tolerates_bad_page_and_annotation_state() -> None:
@@ -215,11 +215,11 @@ def test_wave654_clone_structure_tree_tolerates_bad_page_and_annotation_state() 
     class_map = COSDictionary()
     source_root_dict.set_item(_CLASS_MAP, class_map)
     splitter = Splitter()
-    splitter._source_document = SourceDocument(_Root(source_root_dict))  # type: ignore[assignment]  # noqa: SLF001,E501
+    splitter._source_document = SourceDocument(_Root(source_root_dict))  # type: ignore[assignment]
     destination = DestinationDocument()
     assert destination.pages.index_of(COSDictionary()) == -1
 
-    splitter._clone_structure_tree(destination)  # type: ignore[arg-type]  # noqa: SLF001
+    splitter._clone_structure_tree(destination)  # type: ignore[arg-type]
 
     assert destination.catalog.root is not None
     cloned_root = destination.catalog.root.get_cos_object()
@@ -232,10 +232,10 @@ def test_wave654_k_clone_drops_page_reference_not_in_destination_tree() -> None:
     src = COSDictionary()
     src.set_item(_PG, source_page)
     splitter = Splitter()
-    splitter._page_dict_map = {id(source_page): cloned_page}  # noqa: SLF001
+    splitter._page_dict_map = {id(source_page): cloned_page}
 
     assert (
-        splitter._k_create_clone(src, COSDictionary(), None, _PageTree(index=-1))  # noqa: SLF001,E501
+        splitter._k_create_clone(src, COSDictionary(), None, _PageTree(index=-1))
         is None
     )
 
@@ -248,7 +248,7 @@ def test_wave654_k_clone_drops_parent_when_all_kids_are_dropped() -> None:
     src.set_item(_K, child)
 
     assert (
-        Splitter()._k_create_clone(src, COSDictionary(), COSDictionary(), _PageTree())  # noqa: SLF001,E501
+        Splitter()._k_create_clone(src, COSDictionary(), COSDictionary(), _PageTree())
         is None
     )
 
@@ -259,7 +259,7 @@ def test_wave654_remove_possible_orphan_annotation_keeps_obj_without_host_page()
     dst = COSDictionary()
     dst.set_item(_OBJ, source_annotation)
 
-    Splitter()._remove_possible_orphan_annotation(  # noqa: SLF001
+    Splitter()._remove_possible_orphan_annotation(
         source_annotation, COSDictionary(), None, dst
     )
 
@@ -269,7 +269,7 @@ def test_wave654_remove_possible_orphan_annotation_keeps_obj_without_host_page()
 def test_wave654_clone_role_map_noops_without_source_role_map() -> None:
     destination = _Root()
 
-    Splitter()._clone_role_map(_Root(), destination)  # noqa: SLF001
+    Splitter()._clone_role_map(_Root(), destination)
 
     assert not destination.get_cos_object().contains_key(_ROLE_MAP)
 
@@ -291,18 +291,18 @@ def test_wave654_clone_id_tree_noops_for_missing_empty_and_unretained_names() ->
 
     destination = _Root()
     splitter = Splitter()
-    splitter._clone_id_tree(_Root(), destination, _IdentityNameTree)  # noqa: SLF001
+    splitter._clone_id_tree(_Root(), destination, _IdentityNameTree)
     assert destination.id_tree is None
 
     source = _Root()
     source.id_tree = EmptyTree()
-    splitter._clone_id_tree(source, destination, _IdentityNameTree)  # noqa: SLF001
+    splitter._clone_id_tree(source, destination, _IdentityNameTree)
     assert destination.id_tree is None
 
     source.id_tree = UnretainedTree()
     assert source.id_tree.get_kids() is None
-    splitter._id_set = {"keep"}  # noqa: SLF001
-    splitter._clone_id_tree(source, destination, _IdentityNameTree)  # noqa: SLF001
+    splitter._id_set = {"keep"}
+    splitter._clone_id_tree(source, destination, _IdentityNameTree)
     assert destination.id_tree is None
 
 
@@ -316,11 +316,11 @@ def test_wave654_k_clone_tracks_id_and_role_on_retained_child() -> None:
     src = COSDictionary()
     src.set_item(_K, child)
     splitter = Splitter()
-    splitter._page_dict_map = {id(source_page): cloned_page}  # noqa: SLF001
+    splitter._page_dict_map = {id(source_page): cloned_page}
 
-    cloned = splitter._k_create_clone(src, COSDictionary(), None, _PageTree())  # noqa: SLF001
+    cloned = splitter._k_create_clone(src, COSDictionary(), None, _PageTree())
 
     assert isinstance(cloned, COSDictionary)
-    assert splitter._id_set == {"child-id"}  # noqa: SLF001
-    assert splitter._role_set == {"P"}  # noqa: SLF001
+    assert splitter._id_set == {"child-id"}
+    assert splitter._role_set == {"P"}
     assert isinstance(cloned.get_dictionary_object(_K), COSDictionary)

@@ -31,7 +31,7 @@ FIXTURE_TTF = (
 
 
 def _make_t2_empty() -> object:
-    from fontTools.misc.psCharStrings import T2CharString  # noqa: PLC0415
+    from fontTools.misc.psCharStrings import T2CharString
 
     cs = T2CharString()
     cs.program = ["endchar"]
@@ -57,7 +57,7 @@ def _synth_otf_name_keyed() -> bytes:
         charStringsDict=cs,
         privateDict={},
     )
-    fb.setupHorizontalMetrics({name: (500, 0) for name in glyph_order})
+    fb.setupHorizontalMetrics(dict.fromkeys(glyph_order, (500, 0)))
     fb.setupHorizontalHeader(ascent=800, descent=-200)
     fb.setupNameTable({"familyName": "UP", "styleName": "Regular"})
     fb.setupOS2(sTypoAscender=800, usWinAscent=800, usWinDescent=200)
@@ -99,7 +99,7 @@ def test_open_type_font_extends_true_type_font() -> None:
 def test_set_version_otto_marks_post_script() -> None:
     """``setVersion`` records ``hasPostScriptTag`` when the IEEE-754
     fingerprint matches ``OTTO`` (OpenTypeFont.java line 44)."""
-    import struct  # noqa: PLC0415
+    import struct
 
     otto_float = struct.unpack(">f", struct.pack(">I", 0x469EA8A9))[0]
     parser = OTFParser()
@@ -188,7 +188,7 @@ def test_get_glyph_table_raises_for_post_script() -> None:
     OpenTypeFont.java line 68. We model the throw with
     ``NotImplementedError`` (the closest stdlib analogue of
     ``UnsupportedOperationException``)."""
-    import struct  # noqa: PLC0415
+    import struct
 
     parser = OTFParser()
     font = parser.parse(_synth_otf_name_keyed())

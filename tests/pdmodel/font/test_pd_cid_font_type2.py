@@ -28,8 +28,8 @@ from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
 
 class _StubGlyph:
     def __init__(self, y_min: int, y_max: int) -> None:
-        self.yMin = y_min  # noqa: N815 — fontTools attribute name
-        self.yMax = y_max  # noqa: N815 — fontTools attribute name
+        self.yMin = y_min
+        self.yMax = y_max
 
 
 class _StubGlyfTable:
@@ -59,7 +59,7 @@ class _StubTTInner:
     def __getitem__(self, key: str) -> Any:
         return self._tables[key]
 
-    def getGlyphOrder(self) -> list[str]:  # noqa: N802 — fontTools name
+    def getGlyphOrder(self) -> list[str]:
         return self._order
 
 
@@ -436,7 +436,7 @@ def test_get_true_type_font_falls_back_to_font_file3_open_type() -> None:
     font.set_font_descriptor(fd)
     assert font.get_true_type_font() is None
     # Sentinel set: "tried, parse failed".
-    assert font._ttf is False  # noqa: SLF001
+    assert font._ttf is False
 
 
 def test_get_true_type_font_tries_font_file3_without_open_type_subtype() -> None:
@@ -448,7 +448,7 @@ def test_get_true_type_font_tries_font_file3_without_open_type_subtype() -> None
     fd.set_font_file3(stream)
     font.set_font_descriptor(fd)
     assert font.get_true_type_font() is None
-    assert font._ttf is False  # noqa: SLF001
+    assert font._ttf is False
 
 
 def test_get_true_type_font_falls_back_to_legacy_font_file() -> None:
@@ -459,7 +459,7 @@ def test_get_true_type_font_falls_back_to_legacy_font_file() -> None:
     fd.set_font_file(stream)
     font.set_font_descriptor(fd)
     assert font.get_true_type_font() is None
-    assert font._ttf is False  # noqa: SLF001
+    assert font._ttf is False
 
 
 # ---------- is_damaged ----------

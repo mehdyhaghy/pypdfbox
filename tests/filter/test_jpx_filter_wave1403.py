@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import importlib
 
-import pypdfbox.filter.jpx_filter as jpx_filter
+from pypdfbox.filter import jpx_filter
 from pypdfbox.filter.filter_factory import FilterFactory
 
 

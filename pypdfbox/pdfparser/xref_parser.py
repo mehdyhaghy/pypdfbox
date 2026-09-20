@@ -102,7 +102,7 @@ class XrefParser:
         Returns the merged trailer dictionary, or ``None`` when the
         chain is empty."""
         # Upstream's parseXref takes the document fresh — match that.
-        self._parser._document = document  # noqa: SLF001 — façade boundary
+        self._parser._document = document
         return self._parser.parse_xref(start_x_ref_offset)
 
     # ------------------------------------------------------------------

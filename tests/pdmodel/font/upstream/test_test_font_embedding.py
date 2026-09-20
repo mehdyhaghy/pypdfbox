@@ -78,7 +78,7 @@ def test_cid_font_type2(use_subset: bool) -> None:
 
 class _StubOS2:
     def __init__(self, fs_type: int) -> None:
-        self.fsType = fs_type  # noqa: N815 — mirrors fontTools attribute
+        self.fsType = fs_type
 
 
 class _StubTTF:

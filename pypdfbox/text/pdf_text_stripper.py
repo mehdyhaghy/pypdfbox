@@ -770,13 +770,13 @@ class PDFTextStripper:
         # cropbox so unrotated pages keep their existing raw-user-space frame.
         try:
             self._page_rotation = int(page.get_rotation()) % 360
-        except Exception:  # noqa: BLE001 — defensive: bad /Rotate
+        except Exception:
             self._page_rotation = 0
         try:
             crop = page.get_crop_box()
             self._page_width = float(crop.get_width())
             self._page_height = float(crop.get_height())
-        except Exception:  # noqa: BLE001 — defensive: missing/odd CropBox
+        except Exception:
             self._page_width = 0.0
             self._page_height = 0.0
         self._cmap_cache = {}
@@ -1236,7 +1236,7 @@ class PDFTextStripper:
             if is_image is not None and is_image(name):
                 return
             xobject = resources.get_x_object(name)
-        except Exception:  # noqa: BLE001 — defensive: malformed XObject entry
+        except Exception:
             return
         if xobject is None:
             return
@@ -1248,7 +1248,7 @@ class PDFTextStripper:
 
         try:
             body = self._get_form_contents(xobject)
-        except Exception:  # noqa: BLE001 — defensive: malformed form stream
+        except Exception:
             return
         if not body:
             return
@@ -1269,7 +1269,7 @@ class PDFTextStripper:
         saved_font_height = self._active_font_height
         try:
             form_resources = xobject.get_resources()
-        except Exception:  # noqa: BLE001 — defensive
+        except Exception:
             form_resources = None
         self._active_resources = form_resources
         self._cmap_cache = {}
@@ -1319,7 +1319,7 @@ class PDFTextStripper:
         absent or malformed)."""
         try:
             values = xobject.get_matrix()  # type: ignore[attr-defined]
-        except Exception:  # noqa: BLE001 — defensive
+        except Exception:
             return Matrix()
         if values is None or len(values) != 6:
             return Matrix()
@@ -1368,7 +1368,7 @@ class PDFTextStripper:
                 pl = resources.get_property_list(prop)
                 if pl is not None:
                     return pl.get_cos_object()
-            except Exception:  # noqa: BLE001 — defensive: malformed resources
+            except Exception:
                 return None
         return None
 
@@ -1546,14 +1546,14 @@ class PDFTextStripper:
         if not callable(read_code) or not callable(get_width):
             return None
         try:
-            from pypdfbox.pdmodel.font import PDType3Font  # noqa: PLC0415
+            from pypdfbox.pdmodel.font import PDType3Font
 
             type3_scale = (
                 font.get_font_matrix()[0]
                 if isinstance(font, PDType3Font)
                 else None
             )
-        except Exception:  # noqa: BLE001 — defensive
+        except Exception:
             type3_scale = None
         font_size = state.font_size
         char_spacing = state.char_spacing
@@ -1583,7 +1583,7 @@ class PDFTextStripper:
                     advance += word_spacing
                 segments.append((piece, advance, glyph_width))
                 offset += consumed
-        except Exception:  # noqa: BLE001 — defensive: malformed font / decode
+        except Exception:
             return None
         if not segments:
             return None
@@ -1609,7 +1609,7 @@ class PDFTextStripper:
             if piece is None and font is not None:
                 try:
                     piece = font.to_unicode(code)
-                except Exception:  # noqa: BLE001 — defensive
+                except Exception:
                     piece = None
             return piece if piece is not None else ""
         if font is not None:
@@ -1617,14 +1617,14 @@ class PDFTextStripper:
                 piece = font.to_unicode(code)
                 if piece is not None:
                     return piece
-            except Exception:  # noqa: BLE001 — defensive
+            except Exception:
                 pass
-            from pypdfbox.pdmodel.font import PDSimpleFont  # noqa: PLC0415
+            from pypdfbox.pdmodel.font import PDSimpleFont
 
             if isinstance(font, PDSimpleFont):
                 try:
                     return font.decode(code_bytes)
-                except Exception:  # noqa: BLE001 — defensive
+                except Exception:
                     pass
         return code_bytes.decode("latin-1", errors="replace")
 
@@ -1646,7 +1646,7 @@ class PDFTextStripper:
             return False
         try:
             return bool(is_vertical())
-        except Exception:  # noqa: BLE001 — defensive: malformed CMap
+        except Exception:
             return False
 
     def _emit_vertical(
@@ -1719,7 +1719,7 @@ class PDFTextStripper:
                 break
             try:
                 code, consumed = read_code(raw_bytes, offset)
-            except Exception:  # noqa: BLE001 — defensive: malformed font / bytes
+            except Exception:
                 break
             if consumed <= 0:
                 break
@@ -1733,12 +1733,12 @@ class PDFTextStripper:
             # ``/W2``.
             try:
                 v_x, v_y = font.get_position_vector(code)
-            except Exception:  # noqa: BLE001 — defensive
+            except Exception:
                 v_x, v_y = 0.0, 0.0
             # Vertical displacement (em); ``w1y`` is negative (advance down).
             try:
                 _w0, w1y = font.get_displacement(code)
-            except Exception:  # noqa: BLE001 — defensive
+            except Exception:
                 w1y = -1.0
             # Glyph origin in text space = cursor + positionVector·fontSize,
             # carried through the text-matrix scale/shear into the
@@ -2415,7 +2415,7 @@ class PDFTextStripper:
                 if isinstance(to_unicode, COSStream):
                     with to_unicode.create_input_stream() as src:
                         cmap = CMapParser().parse(src.read())
-        except Exception:  # noqa: BLE001 — defensive: malformed CMap → no decode
+        except Exception:
             cmap = None
         self._cmap_cache[font_resource_name] = cmap
         return cmap
@@ -2445,12 +2445,12 @@ class PDFTextStripper:
             # module's import graph at top level (circular: pdmodel.font
             # imports COSStream which imports the filter module which
             # imports …).
-            from pypdfbox.pdmodel.font import PDSimpleFont  # noqa: PLC0415
+            from pypdfbox.pdmodel.font import PDSimpleFont
 
             if isinstance(font, PDSimpleFont):
                 try:
                     return font.decode(text_bytes)
-                except Exception:  # noqa: BLE001 — defensive
+                except Exception:
                     pass
         # Fallback: construct a transient COSString purely for its
         # PDFDocEncoding-aware decode logic. We can't reuse ``s`` here
@@ -2470,7 +2470,7 @@ class PDFTextStripper:
         font: PDFont | None = None
         try:
             # Local import to break the pdmodel.font ↔ text cycle.
-            from pypdfbox.pdmodel.font import PDFontFactory  # noqa: PLC0415
+            from pypdfbox.pdmodel.font import PDFontFactory
 
             resources = self._current_resources()
             if resources is None:
@@ -2482,7 +2482,7 @@ class PDFTextStripper:
                     font = PDFontFactory.create_font(font_entry)
                 else:
                     font = font_entry
-        except Exception:  # noqa: BLE001 — defensive: malformed font → no decode
+        except Exception:
             font = None
         self._font_cache[font_resource_name] = font
         return font
@@ -2501,7 +2501,7 @@ class PDFTextStripper:
             return None
         # Local import to avoid pulling pdmodel.font into module-load
         # time (cycle).
-        from pypdfbox.pdmodel.font import PDSimpleFont  # noqa: PLC0415
+        from pypdfbox.pdmodel.font import PDSimpleFont
 
         if not isinstance(font, PDSimpleFont):
             return None
@@ -2518,7 +2518,7 @@ class PDFTextStripper:
         # which the rendering / text engine uses to advance the cursor. Using
         # the fixed 1/1000 here would mis-scale every Type 3 advance by the
         # ratio of the real FontMatrix x-scale to 0.001.
-        from pypdfbox.pdmodel.font.pd_type3_font import PDType3Font  # noqa: PLC0415
+        from pypdfbox.pdmodel.font.pd_type3_font import PDType3Font
 
         if isinstance(font, PDType3Font):
             x_scale = font.get_font_matrix()[0]
@@ -2553,7 +2553,7 @@ class PDFTextStripper:
         glyph_height = 0.0
         try:
             bbox = font.get_bounding_box()
-        except Exception:  # noqa: BLE001 — defensive: malformed font program
+        except Exception:
             bbox = None
         if bbox is not None:
             lower_left_y = bbox.get_lower_left_y()
@@ -2565,7 +2565,7 @@ class PDFTextStripper:
             glyph_height = bbox_height / 2.0
         try:
             descriptor = font.get_font_descriptor()
-        except Exception:  # noqa: BLE001 — defensive
+        except Exception:
             descriptor = None
         if descriptor is not None:
             cap_height = descriptor.get_cap_height()
@@ -2581,12 +2581,12 @@ class PDFTextStripper:
             ):
                 glyph_height = (ascent - descent) / 2.0
         # Glyph space → text space.
-        from pypdfbox.pdmodel.font.pd_type3_font import PDType3Font  # noqa: PLC0415
+        from pypdfbox.pdmodel.font.pd_type3_font import PDType3Font
 
         if isinstance(font, PDType3Font):
             try:
                 height = font.get_font_matrix()[3] * glyph_height
-            except Exception:  # noqa: BLE001 — defensive
+            except Exception:
                 height = glyph_height / 1000.0
         else:
             height = glyph_height / 1000.0
@@ -2617,7 +2617,7 @@ class PDFTextStripper:
             if callable(get_glyph_width):
                 try:
                     width = float(get_glyph_width(32))
-                except Exception:  # noqa: BLE001 — defensive: malformed font metrics
+                except Exception:
                     width = 0.0
                 if width > 0.0:
                     return width / 1000.0 * font_size
@@ -2645,7 +2645,7 @@ class PDFTextStripper:
         ``BytesIO`` rather than threading the parser through a glyph
         positioning pass.
         """
-        import io as _io  # noqa: PLC0415 — local: only used here
+        import io as _io
 
         stream = _io.BytesIO(text_bytes)
         out: list[str] = []
@@ -2662,7 +2662,7 @@ class PDFTextStripper:
             if piece is None and font is not None:
                 try:
                     piece = font.to_unicode(code)
-                except Exception:  # noqa: BLE001 — defensive: malformed font
+                except Exception:
                     piece = None
             if piece is not None:
                 out.append(piece)
@@ -2963,8 +2963,8 @@ class PDFTextStripper:
         #
         # ``min_y_line_axis`` selects the upright-unrotated MIN-user-Y path.
         min_y_line_axis = not self._flip_axes and self._page_rotation == 0
-        _MAX_Y_RESET = math.inf if min_y_line_axis else -math.inf
-        _MAX_HEIGHT_RESET = -1.0
+        max_y_reset = math.inf if min_y_line_axis else -math.inf
+        max_height_reset = -1.0
         # When a ``carry`` dict is supplied the running line state persists
         # across article (bead-bucket) boundaries — mirroring upstream's
         # ``writePage``, which declares this state outside the per-article
@@ -2974,8 +2974,8 @@ class PDFTextStripper:
         # spans do not overlap. ``open_page_paragraph`` already guards the
         # once-per-page paragraph open, so resuming ``prev`` does not re-open
         # the page paragraph.
-        max_y_for_line = _MAX_Y_RESET
-        max_height_for_line = _MAX_HEIGHT_RESET
+        max_y_for_line = max_y_reset
+        max_height_for_line = max_height_reset
 
         wrote_any = False
         prev: TextPosition | None = None
@@ -3002,9 +3002,9 @@ class PDFTextStripper:
         last_line_start: PositionWrapper | None = None
         last_wrapper: PositionWrapper | None = None
         if carry is not None and carry:
-            max_y_for_line = carry.get("max_y_for_line", _MAX_Y_RESET)  # type: ignore[assignment]
+            max_y_for_line = carry.get("max_y_for_line", max_y_reset)  # type: ignore[assignment]
             max_height_for_line = carry.get(  # type: ignore[assignment]
-                "max_height_for_line", _MAX_HEIGHT_RESET
+                "max_height_for_line", max_height_reset
             )
             prev = carry.get("prev")  # type: ignore[assignment]
             last_line_start = carry.get("last_line_start")  # type: ignore[assignment]
@@ -3134,8 +3134,8 @@ class PDFTextStripper:
                     # The new line's first glyph becomes the next
                     # ``lastLineStartPosition`` (PDFTextStripper.java:1565).
                     last_line_start = cur_wrapper
-                    max_y_for_line = _MAX_Y_RESET
-                    max_height_for_line = _MAX_HEIGHT_RESET
+                    max_y_for_line = max_y_reset
+                    max_height_for_line = max_height_reset
                 else:
                     if self._is_word_break(pos, prev):
                         _flush_word()
@@ -3145,8 +3145,8 @@ class PDFTextStripper:
                     # — reset the line extents so the next glyph re-anchors
                     # them (upstream PDFTextStripper.java:681-687).
                     if not self._flip_axes and self._is_column_jump(pos, prev):
-                        max_y_for_line = _MAX_Y_RESET
-                        max_height_for_line = _MAX_HEIGHT_RESET
+                        max_y_for_line = max_y_reset
+                        max_height_for_line = max_height_reset
             # Accumulate the line's vertical extent (upstream lines
             # 689-707): track the bottom-most baseline and the tallest glyph.
             # In the upright unrotated y-up frame the bottom-most baseline is
@@ -3547,7 +3547,7 @@ class PDFTextStripper:
             return []
         try:
             beads = page.get_thread_beads()
-        except Exception:  # noqa: BLE001 — defensive: malformed /B
+        except Exception:
             return []
         if not beads:
             return []
@@ -3563,7 +3563,7 @@ class PDFTextStripper:
             crop = page.get_crop_box()
             crop_llx = float(crop.get_lower_left_x())
             crop_lly = float(crop.get_lower_left_y())
-        except Exception:  # noqa: BLE001 — defensive: missing/odd CropBox
+        except Exception:
             crop_llx = 0.0
             crop_lly = 0.0
         rects: list[tuple[float, float, float, float] | None] = []
@@ -3573,7 +3573,7 @@ class PDFTextStripper:
                 continue
             try:
                 r = bead.get_rectangle()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 rects.append(None)
                 continue
             if r is None:
@@ -3807,7 +3807,7 @@ class PDFTextStripper:
         run from ``_format_positions`` so the hook stays observable
         without re-engineering the parser walk.
         """
-        return None
+        return
 
     def should_skip_glyph(self, text: TextPosition) -> bool:
         """Return ``True`` to drop ``text`` from the formatted output.
@@ -3905,7 +3905,7 @@ class PDFTextStripper:
         (``TextPosition`` granularity, not glyph granularity); subclasses
         that want to capture or transform per-glyph output can override.
         """
-        return None
+        return
 
     def start_document(self, document: PDDocument) -> None:
         """Hook invoked once at the start of every ``get_text`` walk.
@@ -3914,7 +3914,7 @@ class PDFTextStripper:
         base implementation is a no-op; subclasses override to install
         per-document state (e.g. a streaming writer).
         """
-        return None
+        return
 
     def end_document(self, document: PDDocument) -> None:
         """Hook invoked once at the end of every ``get_text`` walk.
@@ -3923,7 +3923,7 @@ class PDFTextStripper:
         base implementation is a no-op; subclasses override to flush
         per-document state.
         """
-        return None
+        return
 
     def start_page(self, page: PDPage) -> None:
         """Hook invoked at the start of every page in the walk, before
@@ -3935,7 +3935,7 @@ class PDFTextStripper:
         sink — it lets subclasses observe the page boundary without
         committing characters.
         """
-        return None
+        return
 
     def end_page(self, page: PDPage) -> None:
         """Hook invoked at the end of every page in the walk, after
@@ -3943,7 +3943,7 @@ class PDFTextStripper:
 
         Mirrors upstream's protected ``endPage(PDPage)``.
         """
-        return None
+        return
 
     def start_article(self, is_ltr: bool = True) -> None:
         """Hook invoked at the start of an article (bead-bounded
@@ -3956,12 +3956,12 @@ class PDFTextStripper:
         — callers and subclass tests can drive it directly. The base
         implementation is a no-op for parity with upstream.
         """
-        return None
+        return
 
     def end_article(self) -> None:
         """Hook invoked at the end of an article. Mirrors upstream's
         protected ``endArticle``."""
-        return None
+        return
 
     # ---------- additional upstream helpers (1:1 parity) ----------
 
@@ -4069,14 +4069,14 @@ class PDFTextStripper:
         rects: list[tuple[float, float, float, float]] = []
         try:
             beads = page.get_thread_beads()
-        except Exception:  # noqa: BLE001 — defensive: malformed /B
+        except Exception:
             beads = []
         for bead in beads or []:
             if bead is None:
                 continue
             try:
                 r = bead.get_rectangle()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 continue
             if r is None:
                 continue
@@ -4493,7 +4493,7 @@ class PDFTextStripper:
         if properties is not None:
             try:
                 raw = properties.get_string("ActualText")
-            except Exception:  # noqa: BLE001 — defensive
+            except Exception:
                 raw = None
             if raw is not None:
                 actual = raw.replace("­", "")

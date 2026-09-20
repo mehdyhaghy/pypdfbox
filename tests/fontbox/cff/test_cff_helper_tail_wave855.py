@@ -99,11 +99,11 @@ def test_wave855_cff_loader_helpers_ignore_fonts_without_cff_table(
     candidates_name: str,
     loader_name: str,
 ) -> None:
-    import fontTools.ttLib as ttlib
+    from fontTools import ttLib
 
     monkeypatch.setattr(module, candidates_name, ["plain.ttf"])
     monkeypatch.setattr(module, "Path", _ExistingPath)
-    monkeypatch.setattr(ttlib, "TTFont", _NoCFFFont)
+    monkeypatch.setattr(ttLib, "TTFont", _NoCFFFont)
 
     assert getattr(module, loader_name)() is None
 
@@ -120,10 +120,10 @@ def test_wave855_cff_loader_helpers_ignore_unreadable_candidates(
     candidates_name: str,
     loader_name: str,
 ) -> None:
-    import fontTools.ttLib as ttlib
+    from fontTools import ttLib
 
     monkeypatch.setattr(module, candidates_name, ["broken.otf"])
     monkeypatch.setattr(module, "Path", _ExistingPath)
-    monkeypatch.setattr(ttlib, "TTFont", _BrokenTTFont)
+    monkeypatch.setattr(ttLib, "TTFont", _BrokenTTFont)
 
     assert getattr(module, loader_name)() is None

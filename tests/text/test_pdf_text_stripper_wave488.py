@@ -39,7 +39,7 @@ def _make_page_with_stream(doc: PDDocument, content: bytes | None) -> PDPage:
 
 def test_wave488_configuration_accessors_round_trip() -> None:
     stripper = PDFTextStripper()
-    bookmark = cast(Any, object())
+    bookmark = cast("Any", object())
 
     stripper.set_start_page("2")
     stripper.set_end_page("4")
@@ -155,12 +155,12 @@ def test_wave488_cmap_lookup_parses_stream_and_caches_negative(
 
     monkeypatch.setattr(CMapParser, "parse", parse)
     stripper = PDFTextStripper()
-    stripper._active_page = page  # noqa: SLF001
+    stripper._active_page = page
 
-    assert stripper._get_cmap_for_font(None) is None  # noqa: SLF001
-    assert stripper._get_cmap_for_font("F0") is parsed  # noqa: SLF001
-    assert stripper._get_cmap_for_font("F0") is parsed  # noqa: SLF001
-    assert stripper._get_cmap_for_font("Missing") is None  # noqa: SLF001
+    assert stripper._get_cmap_for_font(None) is None
+    assert stripper._get_cmap_for_font("F0") is parsed
+    assert stripper._get_cmap_for_font("F0") is parsed
+    assert stripper._get_cmap_for_font("Missing") is None
     assert calls == [b"fake-cmap"]
 
 
@@ -187,12 +187,12 @@ def test_wave488_get_font_for_wraps_dictionary_and_caches_failures(
 
     monkeypatch.setattr(font_module.PDFontFactory, "create_font", create_font)
     stripper = PDFTextStripper()
-    stripper._active_page = page  # noqa: SLF001
+    stripper._active_page = page
 
-    assert stripper._get_font_for(None) is None  # noqa: SLF001
-    assert stripper._get_font_for("F0") is typed  # noqa: SLF001
-    assert stripper._get_font_for("F0") is typed  # noqa: SLF001
-    assert stripper._get_font_for("Missing") is None  # noqa: SLF001
+    assert stripper._get_font_for(None) is None
+    assert stripper._get_font_for("F0") is typed
+    assert stripper._get_font_for("F0") is typed
+    assert stripper._get_font_for("Missing") is None
     assert calls == [font_dict]
 
 
@@ -205,9 +205,9 @@ def test_wave488_decode_text_via_cmap_skips_misses_and_stops_on_stall() -> None:
         def to_unicode(self, code: int) -> str | None:
             return {65: "A", 67: "C"}.get(code)
 
-    assert PDFTextStripper._decode_text_via_cmap(b"ABC", cast(Any, FakeCMap())) == "AC"
+    assert PDFTextStripper._decode_text_via_cmap(b"ABC", cast("Any", FakeCMap())) == "AC"
 
-    assert PDFTextStripper._decode_text_via_cmap(b"A", cast(Any, StallingCMap())) == ""
+    assert PDFTextStripper._decode_text_via_cmap(b"A", cast("Any", StallingCMap())) == ""
 
 
 def test_wave488_width_helpers_and_sorting_paths() -> None:
@@ -228,27 +228,27 @@ def test_wave488_width_helpers_and_sorting_paths() -> None:
         TextPosition(text="bottom", x=10.0, y=100.0, font_size=10.0, width=10.0),
         TextPosition(text="top", x=20.0, y=200.0, font_size=10.0, width=10.0),
     ]
-    assert stripper._format_positions(positions) == "top\nbottom"  # noqa: SLF001
+    assert stripper._format_positions(positions) == "top\nbottom"
 
     stripper.set_should_flip_axes(True)
     positions = [
         TextPosition(text="right", x=20.0, y=10.0, font_size=10.0, width=10.0),
         TextPosition(text="left", x=10.0, y=10.0, font_size=10.0, width=10.0),
     ]
-    assert stripper._format_positions(positions) == "left\nright"  # noqa: SLF001
+    assert stripper._format_positions(positions) == "left\nright"
 
 
 def test_wave488_partition_by_beads_defensive_paths() -> None:
     stripper = PDFTextStripper()
     pos = TextPosition(text="x", x=1.0, y=1.0, font_size=1.0)
 
-    assert stripper._partition_by_beads([pos]) == []  # noqa: SLF001
+    assert stripper._partition_by_beads([pos]) == []
 
-    stripper._active_page = cast(Any, SimpleNamespace(get_thread_beads=lambda: []))  # noqa: SLF001
-    assert stripper._partition_by_beads([pos]) == []  # noqa: SLF001
+    stripper._active_page = cast("Any", SimpleNamespace(get_thread_beads=list))
+    assert stripper._partition_by_beads([pos]) == []
 
-    stripper._active_page = cast(  # noqa: SLF001
-        Any,
+    stripper._active_page = cast(
+        "Any",
         SimpleNamespace(
             get_thread_beads=lambda: [
                 None,
@@ -259,11 +259,11 @@ def test_wave488_partition_by_beads_defensive_paths() -> None:
             ]
         ),
     )
-    assert stripper._partition_by_beads([pos]) == []  # noqa: SLF001
+    assert stripper._partition_by_beads([pos]) == []
 
     rect = PDRectangle(0.0, 0.0, 5.0, 5.0)
-    stripper._active_page = cast(  # noqa: SLF001
-        Any,
+    stripper._active_page = cast(
+        "Any",
         SimpleNamespace(
             get_thread_beads=lambda: [
                 None,
@@ -271,4 +271,4 @@ def test_wave488_partition_by_beads_defensive_paths() -> None:
             ]
         ),
     )
-    assert stripper._partition_by_beads([pos]) == [[pos]]  # noqa: SLF001
+    assert stripper._partition_by_beads([pos]) == [[pos]]

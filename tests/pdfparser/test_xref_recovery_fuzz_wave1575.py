@@ -200,7 +200,7 @@ def test_binary_junk_between_objects() -> None:
     data = (
         b"%PDF-1.4\n"
         b"1 0 obj\n<<>>\nendobj\n"
-        + bytes(range(0, 32))
+        + bytes(range(32))
         + b"\n2 0 obj\n<<>>\nendobj\n%%EOF"
     )
     found = _offsets(data)

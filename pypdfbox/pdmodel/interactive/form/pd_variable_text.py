@@ -43,18 +43,18 @@ def _parse_rich_text_dom(raw: str) -> Document:
         raise OSError("DOCTYPE declarations are not allowed in /RV")
     try:
         try:
-            from defusedxml.minidom import parseString as _safe_parse
+            from defusedxml import minidom as _defused_minidom
 
             # pragma: no cover -- defusedxml is an optional hardening
             # path; not in pyproject (the project ships permissive-only,
             # no-new-deps gate) so this branch only fires for downstream
             # users who add defusedxml themselves.
-            return _safe_parse(  # pragma: no cover
+            return _defused_minidom.parseString(  # pragma: no cover
                 data, forbid_dtd=True, forbid_entities=True
             )
         except ImportError:
             return minidom.parseString(data)
-    # ``_safe_parse`` (defusedxml) may surface parser errors as
+    # ``defusedxml`` may surface parser errors as
     # OSError. defusedxml is opt-in (not pinned in pyproject.toml),
     # so this branch is unreachable in the default install.
     except OSError:  # pragma: no cover -- defusedxml not pinned

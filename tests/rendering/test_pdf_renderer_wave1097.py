@@ -28,7 +28,7 @@ def test_image_color_make_doc_removes_preexisting_page(
 ) -> None:
     monkeypatch.setattr(image_color_tests, "PDDocument", _DocWithExistingPage)
 
-    doc, page = image_color_tests._make_doc(12.0, 13.0)  # noqa: SLF001
+    doc, page = image_color_tests._make_doc(12.0, 13.0)
 
     assert isinstance(doc, _DocWithExistingPage)
     assert doc.removed_indices == [0]

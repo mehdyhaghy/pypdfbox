@@ -155,7 +155,7 @@ class _NonType3StubFont:
 
     # Conditionally expose ``get_normalized_path`` so the ``getattr``
     # callable check inside calculate_glyph_bounds still triggers.
-    def get_normalized_path(self, code: int):  # noqa: D401 - duck method
+    def get_normalized_path(self, code: int):
         if self._normalized_path_fn is None:
             return None
         return self._normalized_path_fn(code)

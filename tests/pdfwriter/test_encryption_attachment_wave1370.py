@@ -147,7 +147,7 @@ def test_security_handler_cached_back_on_pddocument_after_save() -> None:
         sink = io.BytesIO()
         doc.save(sink)
         # Handler must be set after save.
-        assert doc._security_handler is not None  # noqa: SLF001
+        assert doc._security_handler is not None
     finally:
         doc.close()
 

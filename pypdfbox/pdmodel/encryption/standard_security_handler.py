@@ -2196,7 +2196,7 @@ class StandardSecurityHandler(SecurityHandler):
         absent — Python's ``cryptography`` ships with full key-length support
         unconditionally, so this is a no-op. Kept for API parity.
         """
-        return None
+        return
 
     def prepare_encryption_dict_aes(
         self, encryption_dictionary: PDEncryption, aes_v_name: str

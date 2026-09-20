@@ -71,8 +71,8 @@ def test_wave489_is_dynamic_xfa_swallows_probe_exceptions() -> None:
         def xfa_is_dynamic(self) -> bool:
             raise RuntimeError("bad xfa")
 
-    assert PDFMergerUtility._is_dynamic_xfa(None) is False  # noqa: SLF001
-    assert PDFMergerUtility._is_dynamic_xfa(BrokenForm()) is False  # noqa: SLF001
+    assert PDFMergerUtility._is_dynamic_xfa(None) is False
+    assert PDFMergerUtility._is_dynamic_xfa(BrokenForm()) is False
 
 
 def test_wave489_merge_into_skips_excluded_and_existing_keys() -> None:
@@ -86,7 +86,7 @@ def test_wave489_merge_into_skips_excluded_and_existing_keys() -> None:
     dst = COSDictionary()
     dst.set_item(existing, COSString("dest"))
 
-    PDFMergerUtility._merge_into(  # noqa: SLF001
+    PDFMergerUtility._merge_into(
         src,
         dst,
         _IdentityCloner(),  # type: ignore[arg-type]
@@ -105,7 +105,7 @@ def test_wave489_merge_names_removes_misplaced_id_tree_after_clone() -> None:
     src_dict.set_item(_NAMES, names)
     dest_dict = COSDictionary()
 
-    PDFMergerUtility()._merge_names(  # noqa: SLF001
+    PDFMergerUtility()._merge_names(
         _IdentityCloner(),  # type: ignore[arg-type]
         _Catalog(src_dict),
         _Catalog(dest_dict),
@@ -125,7 +125,7 @@ def test_wave489_strip_struct_parent_from_annots_skips_non_dict_entries() -> Non
     page = COSDictionary()
     page.set_item("Annots", annots)
 
-    PDFMergerUtility._strip_struct_parent_from_annots(page)  # noqa: SLF001
+    PDFMergerUtility._strip_struct_parent_from_annots(page)
 
     assert annot.get_dictionary_object(_STRUCT_PARENT) is None
 
@@ -183,7 +183,7 @@ def test_wave489_update_parent_entry_sets_parent_and_optional_structure_type() -
     parent = COSDictionary()
     k_array = COSArray([child, non_dict])
 
-    PDFMergerUtility._update_parent_entry(k_array, parent, _PART)  # noqa: SLF001
+    PDFMergerUtility._update_parent_entry(k_array, parent, _PART)
 
     assert child.get_dictionary_object(_P) is parent
     assert child.get_dictionary_object(_S) == _PART
@@ -198,7 +198,7 @@ def test_wave489_update_page_references_recurses_into_nested_k_arrays() -> None:
     parent = COSDictionary()
     parent.set_item(_K, nested)
 
-    PDFMergerUtility()._update_page_references_dict(  # noqa: SLF001
+    PDFMergerUtility()._update_page_references_dict(
         _IdentityCloner(),  # type: ignore[arg-type]
         parent,
         {id(old_page): new_page},

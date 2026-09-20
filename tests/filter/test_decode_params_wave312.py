@@ -62,7 +62,7 @@ def _g4_strip(image: Image.Image) -> bytes:
     image.save(tiff, format="TIFF", compression="group4")
 
     with Image.open(io.BytesIO(tiff.getvalue())) as parsed:
-        tag_v2 = cast(Any, parsed).tag_v2
+        tag_v2 = cast("Any", parsed).tag_v2
         offsets = tag_v2[273]
         counts = tag_v2[279]
 

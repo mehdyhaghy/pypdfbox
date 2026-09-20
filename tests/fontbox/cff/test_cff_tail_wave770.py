@@ -59,7 +59,7 @@ def test_cid_path_and_width_return_defaults_when_gid_name_is_blank() -> None:
 
 def test_type1_width_and_path_fall_back_when_draw_fails() -> None:
     char_string = Type1CharString(None, "F", "broken", None)
-    char_string._t1 = object()  # type: ignore[attr-defined]  # noqa: SLF001
+    char_string._t1 = object()  # type: ignore[attr-defined]
 
     assert char_string.get_width() == 0.0
     assert char_string.get_path() == []
@@ -71,6 +71,6 @@ def test_type1_path_falls_back_without_precomputed_width() -> None:
     class _BadCharString:
         program: list[Any] = []
 
-    char_string._t1 = _BadCharString()  # type: ignore[attr-defined]  # noqa: SLF001
+    char_string._t1 = _BadCharString()  # type: ignore[attr-defined]
 
     assert char_string.get_path() == []

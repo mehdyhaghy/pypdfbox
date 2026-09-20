@@ -81,7 +81,7 @@ class CFFTable(TTFTable):
         font in the CFF FontSet. Subset-aware Type1C re-parsing later
         re-reads the bytes via the byte source.
         """
-        from pypdfbox.fontbox.cff.cff_parser import CFFParser  # noqa: PLC0415
+        from pypdfbox.fontbox.cff.cff_parser import CFFParser
 
         payload = data.read_bytes(int(self.get_length()))
         parser = CFFParser()
@@ -96,7 +96,7 @@ class CFFTable(TTFTable):
 
     def read_headers(
         self,
-        ttf: TrueTypeFont,  # noqa: ARG002 — mirror upstream signature
+        ttf: TrueTypeFont,
         data: TTFDataStream,
         out_headers: FontHeaders,
     ) -> None:
@@ -112,7 +112,7 @@ class CFFTable(TTFTable):
         :class:`RandomAccessReadBuffer`, matching upstream's same
         fallback path.
         """
-        from pypdfbox.fontbox.cff.cff_parser import CFFParser  # noqa: PLC0415
+        from pypdfbox.fontbox.cff.cff_parser import CFFParser
 
         length = int(self.get_length())
         sub_view = data.create_sub_view(length)

@@ -28,7 +28,7 @@ from pypdfbox.contentstream.operator.color.set_color import SetColor
 from pypdfbox.contentstream.operator.markedcontent.begin_marked_content_sequence_with_properties import (  # noqa: E501
     BeginMarkedContentSequenceWithProperties,
 )
-from pypdfbox.contentstream.operator.markedcontent.marked_content_point_with_properties import (  # noqa: E501
+from pypdfbox.contentstream.operator.markedcontent.marked_content_point_with_properties import (
     MarkedContentPointWithProperties,
 )
 from pypdfbox.contentstream.operator.state.concatenate import Concatenate

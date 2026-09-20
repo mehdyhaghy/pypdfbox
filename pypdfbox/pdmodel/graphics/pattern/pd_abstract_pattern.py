@@ -63,8 +63,8 @@ class PDAbstractPattern:
         a content-stream-bearing resources subtree."""
         # Local imports avoid a circular dependency between the abstract
         # base and its subclasses.
-        from .pd_shading_pattern import PDShadingPattern  # noqa: PLC0415
-        from .pd_tiling_pattern import PDTilingPattern  # noqa: PLC0415
+        from .pd_shading_pattern import PDShadingPattern
+        from .pd_tiling_pattern import PDTilingPattern
 
         if dictionary is None:
             return None
@@ -253,7 +253,7 @@ class PDAbstractPattern:
         # Local import — PDExtendedGraphicsState lives under graphics.state
         # which we don't want to drag in at module-load time (keeps the
         # pattern module dependency-light).
-        from pypdfbox.pdmodel.graphics.state.pd_extended_graphics_state import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.state.pd_extended_graphics_state import (
             PDExtendedGraphicsState,
         )
 
@@ -266,7 +266,7 @@ class PDAbstractPattern:
         """Typed ``/ExtGState`` setter. Accepts a
         ``PDExtendedGraphicsState``, a raw ``COSDictionary``, or ``None``
         (clears the entry)."""
-        from pypdfbox.pdmodel.graphics.state.pd_extended_graphics_state import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.state.pd_extended_graphics_state import (
             PDExtendedGraphicsState,
         )
 

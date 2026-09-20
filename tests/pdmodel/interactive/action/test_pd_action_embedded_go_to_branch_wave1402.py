@@ -98,7 +98,7 @@ def test_target_chain_next_scope_same_as_source_document_does_not_append() -> No
         # itself so the "is source_document" arm of 244 fires.
         original_open = pd_action_embedded_go_to._open_embedded_pdf
 
-        def _open_returning_src(scope, filename, doc_cls):  # noqa: ANN001
+        def _open_returning_src(scope, filename, doc_cls):
             del scope, filename, doc_cls
             return src
 

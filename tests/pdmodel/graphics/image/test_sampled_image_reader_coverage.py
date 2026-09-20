@@ -53,7 +53,6 @@ class _NoComponentsCS:
 class _NoMethodCS:
     """Color space missing ``get_number_of_components`` entirely (AttributeError path)."""
 
-    pass
 
 
 class _StubDecode:

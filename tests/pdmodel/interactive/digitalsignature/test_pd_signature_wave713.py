@@ -52,21 +52,21 @@ def test_verify_uses_sha1_for_legacy_pkcs7_sha1_subfilter() -> None:
     result = sig.verify(b"HEADxxxxTAIL")
 
     assert result.is_valid is False
-    assert result.computed_digest == hashlib.sha1(b"HEADTAIL").digest()  # noqa: S324
+    assert result.computed_digest == hashlib.sha1(b"HEADTAIL").digest()
     assert result.errors[0].startswith("failed to parse PKCS#7 /Contents")
 
 
 def test_has_extended_key_usage_reports_absent_wrong_and_matching_usage() -> None:
     oid = "1.3.6.1.5.5.7.3.8"
 
-    assert sig_utils._has_extended_key_usage(_Certificate(None), oid) is False  # noqa: SLF001
-    assert sig_utils._has_extended_key_usage(_Certificate(["1.2.3.4"]), oid) is False  # noqa: SLF001
-    assert sig_utils._has_extended_key_usage(_Certificate([oid]), oid) is True  # noqa: SLF001
+    assert sig_utils._has_extended_key_usage(_Certificate(None), oid) is False
+    assert sig_utils._has_extended_key_usage(_Certificate(["1.2.3.4"]), oid) is False
+    assert sig_utils._has_extended_key_usage(_Certificate([oid]), oid) is True
 
 
 def test_der_length_helper_rejects_eof() -> None:
     with pytest.raises(ValueError, match="unexpected EOF"):
-        sig_utils._read_der_length(b"", 0)  # noqa: SLF001
+        sig_utils._read_der_length(b"", 0)
 
 
 def test_extract_pkcs7_message_digest_returns_none_when_set_extends_past_buffer() -> None:

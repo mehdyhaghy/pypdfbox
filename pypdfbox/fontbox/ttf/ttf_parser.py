@@ -126,7 +126,7 @@ class FontHeaders:
         the project porting rules."""
         self._non_otf_gcid_142 = value
 
-    def set_is_otf_and_post_script(self, value: bool) -> None:  # noqa: FBT001
+    def set_is_otf_and_post_script(self, value: bool) -> None:
         self._is_otf_and_post_script = value
 
     def set_otf_ros(
@@ -169,8 +169,8 @@ class TTFParser:
 
     def __init__(
         self,
-        is_embedded: bool = False,  # noqa: FBT001, FBT002 — mirror upstream signature
-        parse_on_demand: bool = True,  # noqa: FBT001, FBT002
+        is_embedded: bool = False,
+        parse_on_demand: bool = True,
     ) -> None:
         self._is_embedded: bool = is_embedded
         self._parse_on_demand: bool = parse_on_demand
@@ -342,7 +342,7 @@ class TTFParser:
         # the resulting font for the same fields upstream's loop fills in.
         try:
             raw = data.get_original_data()
-        except Exception as exc:  # noqa: BLE001 — surface as FontHeaders error
+        except Exception as exc:
             out.set_error(f"could not read SFNT bytes: {exc}")
             return out
 
@@ -365,7 +365,7 @@ class TTFParser:
 
         try:
             font = self.new_font(data)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             out.set_error(f"could not load font: {exc}")
             return out
 
@@ -404,7 +404,7 @@ class TTFParser:
                 out.set_os2_windows(font.get_os2_windows())
 
         # OTF + isPostScript discrimination
-        from .open_type_font import OpenTypeFont  # noqa: PLC0415
+        from .open_type_font import OpenTypeFont
 
         is_otf_and_post_script = False
         is_post_script = False
@@ -457,7 +457,7 @@ class TTFParser:
         """
         return TrueTypeFont(data)
 
-    def read_table(self, tag: str) -> TTFTable:  # noqa: ARG002 — tag kept for parity
+    def read_table(self, tag: str) -> TTFTable:
         """Factory hook for unknown tables encountered in the SFNT
         directory.
 
@@ -631,7 +631,7 @@ class TTFParser:
             return MemoryTTFDataStream(bytes(source))
         # 4. RandomAccessRead — wrap with the stream adapter that already
         #    drains it into memory.
-        from pypdfbox.io.random_access_read import RandomAccessRead  # noqa: PLC0415
+        from pypdfbox.io.random_access_read import RandomAccessRead
 
         if isinstance(source, RandomAccessRead):
             return RandomAccessReadDataStream(source)

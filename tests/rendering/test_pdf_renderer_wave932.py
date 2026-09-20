@@ -26,7 +26,7 @@ def test_wave451_make_doc_removes_existing_pages(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(wave451, "PDDocument", FakeDocument)
 
-    doc, page = wave451._make_doc()  # noqa: SLF001
+    doc, page = wave451._make_doc()
 
     assert isinstance(doc, FakeDocument)
     assert doc.removed_indexes == [0, 0]
@@ -42,8 +42,8 @@ def test_wave451_inline_image_legacy_stub_guards_are_exercised(
             inline_image.get_cos_object()
         with pytest.raises(AssertionError, match="legacy decoder"):
             inline_image.get_stream()
-        renderer._image.putpixel((1, 1), image.getpixel((0, 0)))  # noqa: SLF001
-        renderer._draw = None  # noqa: SLF001
+        renderer._image.putpixel((1, 1), image.getpixel((0, 0)))
+        renderer._draw = None
 
     monkeypatch.setattr(wave451.PDFRenderer, "show_inline_image", show_inline_stub)
 

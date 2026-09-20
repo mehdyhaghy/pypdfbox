@@ -76,7 +76,7 @@ class PrintImageLocations(PDFStreamEngine):
                     return
                 xobject = resources.get_x_object(operands[0])
                 self._maybe_print_image(operands[0], xobject)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
             return
         with contextlib.suppress(AttributeError):
@@ -113,7 +113,7 @@ class PrintImageLocations(PDFStreamEngine):
         for name in x_object_names:
             try:
                 xobject = resources.get_x_object(name)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 continue
             self._maybe_print_image(name, xobject)
 

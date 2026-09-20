@@ -207,7 +207,7 @@ def extract_from_tiff(
                 raise OSError(
                     "CCITT Group 3 'fill bits before EOL' is not supported"
                 )
-        elif tag == 324:  # noqa: SIM102 - mirrors upstream switch/if structure
+        elif tag == 324:
             if count == 1:
                 dataoffset = val
         elif tag == 325:  # noqa: SIM102 - mirrors upstream switch/if structure

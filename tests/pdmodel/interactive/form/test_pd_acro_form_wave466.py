@@ -60,7 +60,7 @@ def test_wave466_collect_terminals_logs_and_stops_on_cycle(
     child.get_cos_object().set_item("Kids", COSArray([parent.get_cos_object()]))
 
     with caplog.at_level(logging.ERROR):
-        assert form._collect_terminals(parent) == []  # noqa: SLF001
+        assert form._collect_terminals(parent) == []
 
     assert "ignored to avoid recursion" in caplog.text
 
@@ -71,42 +71,42 @@ def test_wave466_select_appearance_stream_handles_direct_and_state_dict() -> Non
     ap.set_item("N", direct)
     widget = COSDictionary()
     widget.set_item("AP", ap)
-    assert PDAcroForm._select_appearance_stream(widget) is direct  # noqa: SLF001
+    assert PDAcroForm._select_appearance_stream(widget) is direct
 
     selected = _appearance()
     normal = COSDictionary()
     normal.set_item("Yes", selected)
     ap.set_item("N", normal)
     widget.set_item("AS", COSName.get_pdf_name("Yes"))
-    assert PDAcroForm._select_appearance_stream(widget) is selected  # noqa: SLF001
+    assert PDAcroForm._select_appearance_stream(widget) is selected
 
 
 def test_wave466_resolve_widget_page_returns_none_without_document() -> None:
     widget = COSDictionary()
     widget.set_item("P", COSName.get_pdf_name("NotAPage"))
 
-    assert PDAcroForm()._resolve_widget_page(widget) is None  # noqa: SLF001
-    assert PDAcroForm(object())._resolve_widget_page(widget) is None  # noqa: SLF001
+    assert PDAcroForm()._resolve_widget_page(widget) is None
+    assert PDAcroForm(object())._resolve_widget_page(widget) is None
 
 
 def test_wave466_read_rect_normalizes_reversed_corners() -> None:
     rect = _num_array(20.0, 10.0, 5.0, 30.0)
 
-    assert PDAcroForm._read_rect(rect) == (5.0, 10.0, 20.0, 30.0)  # noqa: SLF001
+    assert PDAcroForm._read_rect(rect) == (5.0, 10.0, 20.0, 30.0)
 
 
 def test_wave466_read_form_geometry_rejects_malformed_bbox() -> None:
     stream = _appearance(bbox=None)
     stream.set_item("BBox", COSArray([COSFloat(0.0), COSName.get_pdf_name("bad")]))
 
-    bbox, matrix = PDAcroForm._read_form_geometry(stream)  # noqa: SLF001
+    bbox, matrix = PDAcroForm._read_form_geometry(stream)
 
     assert bbox is None
     assert matrix == (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
 
 
 def test_wave466_compute_ctm_handles_zero_sized_transformed_bbox() -> None:
-    assert PDAcroForm._compute_ctm(  # noqa: SLF001
+    assert PDAcroForm._compute_ctm(
         (10.0, 20.0, 30.0, 50.0),
         (0.0, 0.0, 0.0, 0.0),
         (1.0, 0.0, 0.0, 1.0, 5.0, 7.0),
@@ -117,8 +117,8 @@ def test_wave466_add_xobject_skips_existing_names_and_creates_resources() -> Non
     page = COSDictionary()
     form_xobject = _appearance()
 
-    first_name = PDAcroForm._add_xobject_to_page(page, _appearance())  # noqa: SLF001
-    second_name = PDAcroForm._add_xobject_to_page(page, form_xobject)  # noqa: SLF001
+    first_name = PDAcroForm._add_xobject_to_page(page, _appearance())
+    second_name = PDAcroForm._add_xobject_to_page(page, form_xobject)
 
     assert first_name.name == "Fm0"
     assert second_name.name == "Fm1"
@@ -135,7 +135,7 @@ def test_wave466_append_do_to_page_promotes_single_stream_to_array() -> None:
     existing.set_raw_data(b"existing")
     page.set_item("Contents", existing)
 
-    PDAcroForm._append_do_to_page(  # noqa: SLF001
+    PDAcroForm._append_do_to_page(
         page, (1.0, 0.0, 0.0, 2.0, 3.0, 4.0), COSName.get_pdf_name("Fm9")
     )
 
@@ -151,7 +151,7 @@ def test_wave466_remove_widget_from_page_handles_missing_annots() -> None:
     page = COSDictionary()
     widget = COSDictionary()
 
-    PDAcroForm._remove_widget_from_page(page, widget)  # noqa: SLF001
+    PDAcroForm._remove_widget_from_page(page, widget)
 
     assert page.get_dictionary_object("Annots") is None
 

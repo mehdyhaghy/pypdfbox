@@ -32,7 +32,7 @@ class Type4ShadingPaint(ShadingPaint):
         the shared :class:`GouraudShadingContext` covers the Type 4 and 5
         triangle-mesh cases."""
         _ = (user_bounds, hints)
-        from .gouraud_shading_context import GouraudShadingContext  # noqa: PLC0415
+        from .gouraud_shading_context import GouraudShadingContext
 
         ctx = GouraudShadingContext(self.shading, cm, xform, self.matrix)
         try:

@@ -56,21 +56,21 @@ def test_wave644_get_root_ignores_missing_or_non_dictionary_root() -> None:
 def test_wave644_read_stream_body_rewinds_after_resolving_length() -> None:
     data = b"4 0 obj\n3\nendobj\nABC\nendstream\n"
     parser = _parser(data)
-    doc = parser._document = COSDocument()  # noqa: SLF001
-    parser._cos_parser = COSParser(parser._src, document=doc)  # noqa: SLF001
+    doc = parser._document = COSDocument()
+    parser._cos_parser = COSParser(parser._src, document=doc)
     try:
         length_ref = doc.get_object_from_pool(COSObjectKey(4, 0))
         length_ref.set_loader(
-            lambda obj: parser._load_indirect_object_at(0, obj)  # noqa: SLF001
+            lambda obj: parser._load_indirect_object_at(0, obj)
         )
         stream = COSStream()
         stream.set_item(COSName.LENGTH, length_ref)
-        parser._src.seek(data.index(b"\nABC"))  # noqa: SLF001
+        parser._src.seek(data.index(b"\nABC"))
 
-        parser._read_stream_body(stream)  # noqa: SLF001
+        parser._read_stream_body(stream)
 
         assert stream.get_raw_data() == b"ABC"
-        assert parser._src.get_position() > data.index(b"endstream")  # noqa: SLF001
+        assert parser._src.get_position() > data.index(b"endstream")
     finally:
         doc.close()
 
@@ -84,5 +84,5 @@ def test_wave644_read_stream_body_recovers_negative_direct_length() -> None:
     stream = COSStream()
     stream.set_item(COSName.LENGTH, COSInteger.get(-1))
 
-    parser._read_stream_body(stream)  # noqa: SLF001
+    parser._read_stream_body(stream)
     assert stream.get_raw_data() == b"ABC"

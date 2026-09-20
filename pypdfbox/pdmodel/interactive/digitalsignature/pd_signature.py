@@ -1055,7 +1055,7 @@ class PDSignature:
 
         sub_filter = (self.get_sub_filter() or "").lower()
         if sub_filter == "adbe.pkcs7.sha1":
-            result.computed_digest = hashlib.sha1(signed_data).digest()  # noqa: S324
+            result.computed_digest = hashlib.sha1(signed_data).digest()
         else:
             result.computed_digest = hashlib.sha256(signed_data).digest()
 
@@ -1091,7 +1091,7 @@ class PDSignature:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", UserWarning)
                 certs = pkcs7.load_der_pkcs7_certificates(trimmed)
-        except Exception as exc:  # noqa: BLE001 — surface any parse failure
+        except Exception as exc:
             result.errors.append(f"failed to parse PKCS#7 /Contents: {exc}")
             return result
 
@@ -1103,11 +1103,11 @@ class PDSignature:
         result.signer_certificate = cert
         try:
             result.signer_subject = cert.subject.rfc4514_string()
-        except Exception:  # noqa: BLE001
+        except Exception:
             result.signer_subject = None
         try:
             result.signer_serial_number = int(cert.serial_number)
-        except Exception:  # noqa: BLE001
+        except Exception:
             result.signer_serial_number = None
 
         # Recover the messageDigest signed-attribute from the SignedData
@@ -1118,7 +1118,7 @@ class PDSignature:
 
         try:
             result.signed_digest = extract_pkcs7_message_digest(trimmed)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             result.errors.append(f"failed to recover messageDigest: {exc}")
             result.signed_digest = None
 

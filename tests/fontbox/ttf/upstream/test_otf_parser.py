@@ -41,8 +41,8 @@ def _synthesize_minimal_otf() -> bytes:
     fixture, and skip when fontTools' builder API is unavailable.
     """
     try:
-        from fontTools.fontBuilder import FontBuilder  # noqa: PLC0415
-        from fontTools.misc.psCharStrings import T2CharString  # noqa: PLC0415
+        from fontTools.fontBuilder import FontBuilder
+        from fontTools.misc.psCharStrings import T2CharString
     except ImportError:
         pytest.skip("fontTools FontBuilder / T2CharString unavailable")
 
@@ -123,7 +123,7 @@ def test_new_font_returns_open_type_font(otf_bytes: bytes) -> None:
     """Mirrors ``OpenTypeFont newFont(TTFDataStream)``
     (OTFParser.java L60-L63). Factory returns an ``OpenTypeFont``,
     never a plain ``TrueTypeFont``."""
-    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream  # noqa: PLC0415
+    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 
     parser = OTFParser()
     font = parser.new_font(MemoryTTFDataStream(otf_bytes))
@@ -173,7 +173,7 @@ def test_parse_otto_returns_open_type_font(otf_bytes: bytes) -> None:
 def test_parse_random_access_read(otf_bytes: bytes) -> None:
     """Mirrors how upstream tests call ``parse(new
     RandomAccessReadBuffer(stream))``."""
-    from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer  # noqa: PLC0415
+    from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer
 
     font = OTFParser().parse(RandomAccessReadBuffer(otf_bytes))
     assert isinstance(font, OpenTypeFont)

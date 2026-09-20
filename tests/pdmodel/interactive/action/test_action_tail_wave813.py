@@ -42,7 +42,7 @@ def test_import_data_complex_file_spec_without_factory_wrapper_has_no_path(
 
     def create_none(value: Any) -> None:
         assert value is raw_file_spec
-        return None
+        return
 
     monkeypatch.setattr(
         "pypdfbox.pdmodel.common.filespecification.pd_file_specification."
@@ -73,7 +73,7 @@ def test_submit_form_complex_file_spec_without_factory_wrapper_has_no_url(
 
     def create_none(value: Any) -> None:
         assert value is raw_file_spec
-        return None
+        return
 
     monkeypatch.setattr(
         "pypdfbox.pdmodel.common.filespecification.pd_file_specification."

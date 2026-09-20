@@ -99,7 +99,7 @@ def test_correct_length_ascii_body() -> None:
 
 
 def test_correct_length_binary_body() -> None:
-    body = bytes(range(0, 20))
+    body = bytes(range(20))
     raw, length = _load_stream(_build_pdf(_stream_obj(b"20", body)))
     assert raw == body
     assert length == COSInteger.get(20)
@@ -268,7 +268,7 @@ def test_indirect_length_correct_keeps_indirect_reference() -> None:
 
 
 def test_indirect_length_correct_binary_body() -> None:
-    body = bytes(range(0, 32))
+    body = bytes(range(32))
     so = (
         b"3 0 obj\n<< /Length 4 0 R >>\nstream\n"
         + body

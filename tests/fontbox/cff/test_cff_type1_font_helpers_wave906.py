@@ -21,7 +21,7 @@ class _CIDKeyedTop:
 
 
 class _CFFProgram:
-    fontNames = ["CIDFont"]  # noqa: N815 - mirrors fontTools attribute
+    fontNames = ["CIDFont"]
 
     def __getitem__(self, _name: str) -> _CIDKeyedTop:
         return _CIDKeyedTop()
@@ -46,13 +46,13 @@ class _CIDKeyedTTFont:
 def test_wave906_type1_loader_skips_cid_keyed_cff_candidates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import fontTools.ttLib as ttlib
+    from fontTools import ttLib
 
     monkeypatch.setattr(type1_mod, "_TYPE1_OTF_CANDIDATES", ["cid-keyed.otf"])
     monkeypatch.setattr(type1_mod, "Path", _ExistingPath)
-    monkeypatch.setattr(ttlib, "TTFont", _CIDKeyedTTFont)
+    monkeypatch.setattr(ttLib, "TTFont", _CIDKeyedTTFont)
 
-    assert type1_mod._load_type1_cff_bytes() is None  # noqa: SLF001
+    assert type1_mod._load_type1_cff_bytes() is None
 
 
 class _NoCFFTTFont:
@@ -71,7 +71,7 @@ class _RaisesTTFont:
 def test_wave906_cid_rejection_helper_skips_after_no_cff_and_broken_candidate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import fontTools.ttLib as ttlib
+    from fontTools import ttLib
 
     calls = iter([_NoCFFTTFont, _RaisesTTFont])
 
@@ -79,7 +79,7 @@ def test_wave906_cid_rejection_helper_skips_after_no_cff_and_broken_candidate(
         return next(calls)(*args, **kwargs)
 
     monkeypatch.setattr(type1_mod, "Path", _ExistingPath)
-    monkeypatch.setattr(ttlib, "TTFont", fake_ttfont)
+    monkeypatch.setattr(ttLib, "TTFont", fake_ttfont)
 
     with pytest.raises(pytest.skip.Exception, match="no CIDKeyed font"):
         type1_mod.TestCFFType1FontFromCIDFontRaises().test_from_bytes_rejects_cid_keyed()

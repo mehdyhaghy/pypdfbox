@@ -52,19 +52,19 @@ def _build_composite_with_one_component() -> GlyfCompositeDescript:
     desc = GlyfCompositeDescript()
     comp = GlyfCompositeComp.__new__(GlyfCompositeComp)
     # Wire only the fields we need (avoid the bytes-driven constructor).
-    comp._flags = 0  # noqa: SLF001
-    comp._glyph_index = 0  # noqa: SLF001
-    comp._x_translate = 0  # noqa: SLF001
-    comp._y_translate = 0  # noqa: SLF001
-    comp._first_index = 0  # noqa: SLF001
-    comp._first_contour = 0  # noqa: SLF001
-    comp._scale01 = 0.0  # noqa: SLF001
-    comp._scale10 = 0.0  # noqa: SLF001
-    comp._xscale = 1.0  # noqa: SLF001
-    comp._yscale = 1.0  # noqa: SLF001
-    desc._components = [comp]  # noqa: SLF001
-    desc._descriptions = {0: _FakeSimpleDescript(point_count=4, contour_count=1)}  # noqa: SLF001
-    desc._resolved = True  # noqa: SLF001
+    comp._flags = 0
+    comp._glyph_index = 0
+    comp._x_translate = 0
+    comp._y_translate = 0
+    comp._first_index = 0
+    comp._first_contour = 0
+    comp._scale01 = 0.0
+    comp._scale10 = 0.0
+    comp._xscale = 1.0
+    comp._yscale = 1.0
+    desc._components = [comp]
+    desc._descriptions = {0: _FakeSimpleDescript(point_count=4, contour_count=1)}
+    desc._resolved = True
     return desc
 
 
@@ -114,13 +114,13 @@ def test_get_composite_comp_skips_component_with_missing_description() -> None:
     desc = GlyfCompositeDescript()
     # Component points at glyph 42 — but no description registered.
     comp = GlyfCompositeComp.__new__(GlyfCompositeComp)
-    comp._flags = 0  # noqa: SLF001
-    comp._glyph_index = 42  # noqa: SLF001
-    comp._first_index = 0  # noqa: SLF001
-    comp._first_contour = 0  # noqa: SLF001
-    desc._components = [comp]  # noqa: SLF001
-    desc._descriptions = {}  # missing 42  # noqa: SLF001
-    desc._resolved = True  # noqa: SLF001
+    comp._flags = 0
+    comp._glyph_index = 42
+    comp._first_index = 0
+    comp._first_contour = 0
+    desc._components = [comp]
+    desc._descriptions = {}  # missing 42
+    desc._resolved = True
 
     # get_composite_comp with i=0 — first_index<=0 is True but gd is None.
     assert desc.get_composite_comp(0) is None
@@ -134,11 +134,11 @@ def test_get_composite_comp_end_pt_skips_component_with_missing_description() ->
     """
     desc = GlyfCompositeDescript()
     comp = GlyfCompositeComp.__new__(GlyfCompositeComp)
-    comp._flags = 0  # noqa: SLF001
-    comp._glyph_index = 42  # noqa: SLF001
-    comp._first_index = 0  # noqa: SLF001
-    comp._first_contour = 0  # noqa: SLF001
-    desc._components = [comp]  # noqa: SLF001
-    desc._descriptions = {}  # noqa: SLF001
-    desc._resolved = True  # noqa: SLF001
+    comp._flags = 0
+    comp._glyph_index = 42
+    comp._first_index = 0
+    comp._first_contour = 0
+    desc._components = [comp]
+    desc._descriptions = {}
+    desc._resolved = True
     assert desc.get_composite_comp_end_pt(0) is None

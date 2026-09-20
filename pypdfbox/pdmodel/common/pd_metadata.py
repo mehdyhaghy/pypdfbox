@@ -64,8 +64,8 @@ class PDMetadata(PDStream):
         input_data: bytes | bytearray | memoryview | str | BinaryIO | TextIO | None = None,
     ) -> None:
         # Local import to avoid circular dependency.
-        from pypdfbox.cos import COSDocument  # noqa: PLC0415
-        from pypdfbox.pdmodel.pd_document import PDDocument  # noqa: PLC0415
+        from pypdfbox.cos import COSDocument
+        from pypdfbox.pdmodel.pd_document import PDDocument
 
         if isinstance(stream_or_doc, COSStream):
             # Wrap-as-is: do NOT set /Type or /Subtype. Mirrors upstream

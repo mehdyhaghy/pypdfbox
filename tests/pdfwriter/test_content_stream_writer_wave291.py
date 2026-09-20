@@ -32,7 +32,7 @@ def test_content_stream_writer_string_adapter_uses_callable_write_bytes() -> Non
     ).parse()
     sink = _WriteBytesSink()
 
-    ContentStreamWriter(cast(Any, sink)).write_tokens(tokens)
+    ContentStreamWriter(cast("Any", sink)).write_tokens(tokens)
 
     assert bytes(sink.buf) == b"BT\n(Hello) Tj\nET\n"
 
@@ -43,6 +43,6 @@ def test_content_stream_writer_string_adapter_rejects_unwritable_sink() -> None:
         write_bytes = None
 
     with pytest.raises(TypeError, match="write or write_bytes"):
-        ContentStreamWriter(cast(Any, _BrokenSink())).write_tokens(
+        ContentStreamWriter(cast("Any", _BrokenSink())).write_tokens(
             PDFStreamParser(RandomAccessReadBuffer(b"(Hello) Tj")).parse()
         )

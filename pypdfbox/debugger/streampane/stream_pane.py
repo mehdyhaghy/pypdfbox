@@ -319,7 +319,7 @@ class StreamPane:
             tokens = parser.parse()
         except OSError:
             return None
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _LOG.error("content-stream parse failed: %s", exc)
             return None
 
@@ -381,7 +381,7 @@ def _xml_segments(data: bytes) -> list[tuple[str, str | None]]:
         # Drop blank lines introduced by toprettyxml.
         pretty = "\n".join(line for line in pretty.splitlines() if line.strip())
         return [(pretty, None)]
-    except Exception:  # noqa: BLE001 — fall back to raw text on parse failure
+    except Exception:
         return _plain_text_segments(data, "utf-8")
 
 
@@ -644,7 +644,7 @@ class DocumentCreator:
             tokens = parser.parse()
         except OSError:
             return None
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _LOG.error("content-stream parse failed: %s", exc)
             return None
         emitter = _ContentStreamEmitter()
@@ -678,7 +678,7 @@ class DocumentCreator:
     ) -> None:
         """Mirror upstream's ``writeOperand(Object, StyledDocument)``."""
         target = emitter or _ContentStreamEmitter()
-        target._write_operand(obj)  # noqa: SLF001 - same-module helper
+        target._write_operand(obj)
 
     def add_operators(
         self,
@@ -687,7 +687,7 @@ class DocumentCreator:
     ) -> None:
         """Mirror upstream's ``addOperators(Object, StyledDocument)``."""
         target = emitter or _ContentStreamEmitter()
-        target._add_operator(op)  # noqa: SLF001
+        target._add_operator(op)
 
     def write_indent(
         self,
@@ -696,6 +696,6 @@ class DocumentCreator:
         """Mirror upstream's ``writeIndent(StyledDocument)`` (no-op
         when ``need_indent`` is ``False``)."""
         target = emitter or _ContentStreamEmitter()
-        target._write_indent()  # noqa: SLF001
+        target._write_indent()
 
 

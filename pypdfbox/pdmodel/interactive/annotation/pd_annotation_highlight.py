@@ -56,7 +56,7 @@ class PDAnnotationHighlight(PDAnnotationTextMarkup):
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
-            return None
+            return
         from .handlers.pd_highlight_appearance_handler import (
             PDHighlightAppearanceHandler,
         )
@@ -64,7 +64,7 @@ class PDAnnotationHighlight(PDAnnotationTextMarkup):
         PDHighlightAppearanceHandler(
             self, document
         ).generate_appearance_streams()
-        return None
+        return
 
 
 __all__ = ["PDAnnotationHighlight"]

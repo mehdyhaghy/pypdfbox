@@ -78,13 +78,13 @@ def _reset_menu_singletons() -> None:
     from pypdfbox.debugger.ui.text_stripper_menu import TextStripperMenu
     from pypdfbox.debugger.ui.zoom_menu import ZoomMenu
 
-    ViewMenu._reset_instance()  # noqa: SLF001
-    ZoomMenu._reset_instance()  # noqa: SLF001
-    RotationMenu._reset_instance()  # noqa: SLF001
-    RenderDestinationMenu._reset_instance()  # noqa: SLF001
-    TreeViewMenu._reset_for_testing()  # noqa: SLF001
-    ImageTypeMenu._reset_for_testing()  # noqa: SLF001
-    TextStripperMenu._reset_for_testing()  # noqa: SLF001
+    ViewMenu._reset_instance()
+    ZoomMenu._reset_instance()
+    RotationMenu._reset_instance()
+    RenderDestinationMenu._reset_instance()
+    TreeViewMenu._reset_for_testing()
+    ImageTypeMenu._reset_for_testing()
+    TextStripperMenu._reset_for_testing()
 
 
 @pytest.fixture(autouse=True)
@@ -105,7 +105,7 @@ def debugger(tk_root: tk.Tk) -> Iterator[PDFDebugger]:
         yield instance
     finally:
         with contextlib.suppress(tk.TclError):
-            instance._main_frame.destroy()  # noqa: SLF001
+            instance._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------
@@ -118,7 +118,7 @@ def test_create_file_menu_appends_exit_on_non_mac(
 ) -> None:
     """Force ``_is_mac_os`` False so we exercise the ``Exit`` branch."""
     monkeypatch.setattr(_pd_debugger, "_is_mac_os", lambda: False)
-    parent = tk.Menu(debugger._toplevel)  # noqa: SLF001
+    parent = tk.Menu(debugger._toplevel)
     menu = debugger.create_file_menu(parent)
     # ``end`` index is now larger than the print index — the Exit row sits
     # after a separator that follows Print.
@@ -146,17 +146,17 @@ def test_create_file_menu_appends_exit_on_non_mac(
 def test_populate_recent_files_menu_returns_when_menu_unbuilt(
     debugger: PDFDebugger,
 ) -> None:
-    debugger._recent_files_menu = None  # noqa: SLF001
+    debugger._recent_files_menu = None
     # No raise — the method returns immediately because the cascade has
     # not been built.
-    debugger._populate_recent_files_menu()  # noqa: SLF001
+    debugger._populate_recent_files_menu()
 
 
 def test_populate_recent_files_menu_returns_when_file_menu_unbuilt(
     debugger: PDFDebugger,
 ) -> None:
-    debugger._file_menu = None  # noqa: SLF001
-    debugger._populate_recent_files_menu()  # noqa: SLF001
+    debugger._file_menu = None
+    debugger._populate_recent_files_menu()
 
 
 def test_add_recent_file_items_early_return_when_menu_unbuilt(
@@ -164,21 +164,21 @@ def test_add_recent_file_items_early_return_when_menu_unbuilt(
 ) -> None:
     """``add_recent_file_items`` mirrors upstream's public spelling — it
     must short-circuit when the cascade hasn't been built yet."""
-    debugger._recent_files_menu = None  # noqa: SLF001
+    debugger._recent_files_menu = None
     debugger.add_recent_file_items()
 
 
 def test_add_recent_file_items_early_return_when_file_menu_unbuilt(
     debugger: PDFDebugger,
 ) -> None:
-    debugger._file_menu = None  # noqa: SLF001
+    debugger._file_menu = None
     debugger.add_recent_file_items()
 
 
 def test_add_recent_file_items_returns_when_no_files(debugger: PDFDebugger) -> None:
     """No recorded entries — ``is_empty()`` triggers the second early
     return after the menu-built guard."""
-    debugger._recent_files.remove_all()  # noqa: SLF001
+    debugger._recent_files.remove_all()
     debugger.add_recent_file_items()
 
 
@@ -186,14 +186,14 @@ def test_add_recent_file_items_rebuilds_with_entries(
     debugger: PDFDebugger, tmp_path: Path
 ) -> None:
     """Populate the recent-files cache so we walk the full body."""
-    debugger._recent_files.remove_all()  # noqa: SLF001
+    debugger._recent_files.remove_all()
     path = tmp_path / "alpha.pdf"
     path.write_bytes(b"%PDF-1.7\n")
-    debugger._recent_files.add_file(str(path))  # noqa: SLF001
+    debugger._recent_files.add_file(str(path))
     debugger.add_recent_file_items()
     # The cascade should now host the one entry.
-    assert debugger._recent_files_menu is not None  # noqa: SLF001
-    assert debugger._recent_files_menu.index("end") == 0  # noqa: SLF001
+    assert debugger._recent_files_menu is not None
+    assert debugger._recent_files_menu.index("end") == 0
 
 
 # ----------------------------------------------------------------------
@@ -205,7 +205,7 @@ def test_get_find_menu_item_returns_none_before_build(tk_root: tk.Tk) -> None:
     debugger = PDFDebugger(tk_root)
     # Even after construction, ``_find_menu_index`` may be set; force it
     # back to None so we hit the ``return None`` branch.
-    debugger._find_menu_index = None  # noqa: SLF001
+    debugger._find_menu_index = None
     assert debugger.get_find_menu_item() is None
 
 
@@ -213,7 +213,7 @@ def test_get_find_next_menu_item_returns_none_before_build(
     tk_root: tk.Tk,
 ) -> None:
     debugger = PDFDebugger(tk_root)
-    debugger._find_next_menu_index = None  # noqa: SLF001
+    debugger._find_next_menu_index = None
     assert debugger.get_find_next_menu_item() is None
 
 
@@ -221,7 +221,7 @@ def test_get_find_previous_menu_item_returns_none_before_build(
     tk_root: tk.Tk,
 ) -> None:
     debugger = PDFDebugger(tk_root)
-    debugger._find_previous_menu_index = None  # noqa: SLF001
+    debugger._find_previous_menu_index = None
     assert debugger.get_find_previous_menu_item() is None
 
 
@@ -239,19 +239,19 @@ class _StubDoc:
 
 
 def test_on_tree_open_returns_when_no_selection(debugger: PDFDebugger) -> None:
-    debugger._document = _StubDoc()  # noqa: SLF001
+    debugger._document = _StubDoc()
     # ``self._tree.focus()`` returns "" when nothing focused — the method
     # should return immediately.
-    debugger._on_tree_open(None)  # type: ignore[arg-type]  # noqa: SLF001
+    debugger._on_tree_open(None)  # type: ignore[arg-type]
 
 
 def test_on_tree_open_returns_when_get_node_is_none(debugger: PDFDebugger) -> None:
-    debugger._document = _StubDoc()  # noqa: SLF001
+    debugger._document = _StubDoc()
     # Insert a sentinel-only row whose ``get_node`` returns None.
-    iid = debugger._tree.insert("", "end", text="x")  # noqa: SLF001
-    debugger._tree.insert(iid, "end", text="...")  # noqa: SLF001
-    debugger._tree.focus(iid)  # noqa: SLF001
-    debugger._on_tree_open(None)  # type: ignore[arg-type]  # noqa: SLF001
+    iid = debugger._tree.insert("", "end", text="x")
+    debugger._tree.insert(iid, "end", text="...")
+    debugger._tree.focus(iid)
+    debugger._on_tree_open(None)  # type: ignore[arg-type]
 
 
 # ----------------------------------------------------------------------
@@ -264,7 +264,7 @@ def test_show_page_returns_when_underneath_not_cos_dict(
 ) -> None:
     # ``_get_underneath_object`` of a plain string returns the string
     # itself, which is not a COSDictionary -> early return.
-    debugger._show_page("not-a-dict")  # noqa: SLF001
+    debugger._show_page("not-a-dict")
 
 
 # ----------------------------------------------------------------------
@@ -281,7 +281,7 @@ def test_show_color_pane_handles_other_colorspace_name(
     # CSArrayBased's constructor doesn't crash; an empty dict is enough.
     arr.add(COSName.get_pdf_name("CalGray"))
     arr.add(COSDictionary())
-    debugger._show_color_pane(arr)  # noqa: SLF001
+    debugger._show_color_pane(arr)
 
 
 def test_dispatch_selection_routes_colorspace_to_pane(
@@ -293,12 +293,12 @@ def test_dispatch_selection_routes_colorspace_to_pane(
     arr.add(COSName.get_pdf_name("CalGray"))
     arr.add(COSDictionary())
     node = _make_map_entry("CS", arr)
-    iid = _insert(debugger._tree, "", "CS", node)  # noqa: SLF001
-    debugger._dispatch_selection(node, None, iid, "")  # noqa: SLF001
+    iid = _insert(debugger._tree, "", "CS", node)
+    debugger._dispatch_selection(node, None, iid, "")
 
 
 def test_show_color_pane_returns_when_array_empty(debugger: PDFDebugger) -> None:
-    debugger._show_color_pane(COSArray())  # noqa: SLF001
+    debugger._show_color_pane(COSArray())
 
 
 def test_show_color_pane_returns_when_first_not_cos_name(
@@ -306,7 +306,7 @@ def test_show_color_pane_returns_when_first_not_cos_name(
 ) -> None:
     arr = COSArray()
     arr.add(COSString("hi"))
-    debugger._show_color_pane(arr)  # noqa: SLF001
+    debugger._show_color_pane(arr)
 
 
 # ----------------------------------------------------------------------
@@ -318,7 +318,7 @@ def test_show_flag_pane_returns_when_underneath_not_cos_dict(
     debugger: PDFDebugger,
 ) -> None:
     # Parent's underneath is not a COSDictionary -> early return at 1046.
-    debugger._show_flag_pane("parent", "node")  # noqa: SLF001
+    debugger._show_flag_pane("parent", "node")
 
 
 def test_show_flag_pane_returns_when_key_is_none(debugger: PDFDebugger) -> None:
@@ -327,7 +327,7 @@ def test_show_flag_pane_returns_when_key_is_none(debugger: PDFDebugger) -> None:
     # _get_node_key returns None.
     parent = COSDictionary()
     # Plain string node → _get_node_key returns None → line 1050.
-    debugger._show_flag_pane(parent, "node-without-key")  # noqa: SLF001
+    debugger._show_flag_pane(parent, "node-without-key")
 
 
 class _NullViewPane:
@@ -365,7 +365,7 @@ def test_show_flag_pane_returns_when_view_is_none(
     monkeypatch.setattr(_pd_debugger, "FlagBitsPane", _NullViewPane)
     parent = COSDictionary()
     node = _make_map_entry("Ff", COSDictionary())
-    debugger._show_flag_pane(parent, node)  # noqa: SLF001
+    debugger._show_flag_pane(parent, node)
 
 
 def test_show_flag_pane_uses_get_panel_when_view_not_widget(
@@ -376,7 +376,7 @@ def test_show_flag_pane_uses_get_panel_when_view_not_widget(
     monkeypatch.setattr(_pd_debugger, "FlagBitsPane", _PanelOnlyPane)
     parent = COSDictionary()
     node = _make_map_entry("Ff", COSDictionary())
-    debugger._show_flag_pane(parent, node)  # noqa: SLF001
+    debugger._show_flag_pane(parent, node)
 
 
 # ----------------------------------------------------------------------
@@ -423,10 +423,10 @@ def test_show_stream_contents_with_page_resources(debugger: PDFDebugger) -> None
     page.set_item(COSName.RESOURCES, resources)
     node = _make_map_entry("Contents", _stream_with())
     parent_iid = _insert(
-        debugger._tree, "", "page", _make_map_entry("Page", page)  # noqa: SLF001
+        debugger._tree, "", "page", _make_map_entry("Page", page)
     )
-    iid = _insert(debugger._tree, parent_iid, "Contents", node)  # noqa: SLF001
-    debugger._show_stream(node, iid, parent_iid)  # noqa: SLF001
+    iid = _insert(debugger._tree, parent_iid, "Contents", node)
+    debugger._show_stream(node, iid, parent_iid)
 
 
 def test_show_stream_grandparent_charprocs(debugger: PDFDebugger) -> None:
@@ -436,39 +436,39 @@ def test_show_stream_grandparent_charprocs(debugger: PDFDebugger) -> None:
     page.set_item(COSName.RESOURCES, resources)
     charprocs = COSDictionary()
     grand_iid = _insert(
-        debugger._tree, "", "page", _make_map_entry("Page", page)  # noqa: SLF001
+        debugger._tree, "", "page", _make_map_entry("Page", page)
     )
     parent_iid = _insert(
-        debugger._tree,  # noqa: SLF001
+        debugger._tree,
         grand_iid,
         "CharProcs",
         _make_map_entry("CharProcs", charprocs),
     )
     stream_node = _make_map_entry("cp1", _stream_with())
-    iid = _insert(debugger._tree, parent_iid, "cp1", stream_node)  # noqa: SLF001
-    debugger._show_stream(stream_node, iid, parent_iid)  # noqa: SLF001
+    iid = _insert(debugger._tree, parent_iid, "cp1", stream_node)
+    debugger._show_stream(stream_node, iid, parent_iid)
 
 
 def test_show_stream_form_with_resources(debugger: PDFDebugger) -> None:
     """``/Subtype /Form`` stream with ``/Resources`` → resources branch."""
     resources = COSDictionary()
     node = _make_map_entry("F1", _stream_with(subtype="Form", resources=resources))
-    iid = _insert(debugger._tree, "", "form", node)  # noqa: SLF001
-    debugger._show_stream(node, iid, "")  # noqa: SLF001
+    iid = _insert(debugger._tree, "", "form", node)
+    debugger._show_stream(node, iid, "")
 
 
 def test_show_stream_pattern_type_one(debugger: PDFDebugger) -> None:
     """``/PatternType 1`` triggers content-stream classification."""
     node = _make_map_entry("Pat", _stream_with(pattern_type=1))
-    iid = _insert(debugger._tree, "", "pat", node)  # noqa: SLF001
-    debugger._show_stream(node, iid, "")  # noqa: SLF001
+    iid = _insert(debugger._tree, "", "pat", node)
+    debugger._show_stream(node, iid, "")
 
 
 def test_show_stream_thumb_branch(debugger: PDFDebugger) -> None:
     """Node key == ``/Thumb`` → ``is_thumb`` branch."""
     node = _make_map_entry("Thumb", _stream_with())
-    iid = _insert(debugger._tree, "", "thumb", node)  # noqa: SLF001
-    debugger._show_stream(node, iid, "")  # noqa: SLF001
+    iid = _insert(debugger._tree, "", "thumb", node)
+    debugger._show_stream(node, iid, "")
 
 
 def test_show_stream_image_with_grandparent_resources(
@@ -479,26 +479,26 @@ def test_show_stream_image_with_grandparent_resources(
     s = _stream_with(subtype="Image")
     node = _make_map_entry("Im1", s)
     grand_iid = _insert(
-        debugger._tree,  # noqa: SLF001
+        debugger._tree,
         "",
         "res",
         _make_map_entry("Resources", resources),
     )
     parent_iid = _insert(
-        debugger._tree,  # noqa: SLF001
+        debugger._tree,
         grand_iid,
         "xobj",
         _make_map_entry("XObject", COSDictionary()),
     )
-    iid = _insert(debugger._tree, parent_iid, "Im1", node)  # noqa: SLF001
-    debugger._show_stream(node, iid, parent_iid)  # noqa: SLF001
+    iid = _insert(debugger._tree, parent_iid, "Im1", node)
+    debugger._show_stream(node, iid, parent_iid)
 
 
 def test_show_stream_returns_when_underneath_not_cos_stream(
     debugger: PDFDebugger,
 ) -> None:
     # Not a stream -> early return.
-    debugger._show_stream("nope", "", "")  # noqa: SLF001
+    debugger._show_stream("nope", "", "")
 
 
 # ----------------------------------------------------------------------
@@ -509,16 +509,16 @@ def test_show_stream_returns_when_underneath_not_cos_stream(
 def test_show_font_falls_back_when_no_key(debugger: PDFDebugger) -> None:
     # A plain (non-MapEntry) node has no key — falls through to
     # ``_show_text_details``.
-    iid = _insert(debugger._tree, "", "x", "x")  # noqa: SLF001
-    debugger._show_font("x", iid)  # noqa: SLF001
+    iid = _insert(debugger._tree, "", "x", "x")
+    debugger._show_font("x", iid)
 
 
 def test_show_font_falls_back_when_no_resources_dict(debugger: PDFDebugger) -> None:
     """Grandparent's underneath is not a COSDictionary -> notdef fallback."""
     font_dict = COSDictionary()
     node = _make_map_entry("F1", font_dict)
-    iid = _insert(debugger._tree, "", "F1", node)  # noqa: SLF001
-    debugger._show_font(node, iid)  # noqa: SLF001
+    iid = _insert(debugger._tree, "", "F1", node)
+    debugger._show_font(node, iid)
 
 
 class _NullPaneController:
@@ -546,20 +546,20 @@ def test_show_font_resolves_to_text_details_when_pane_none(
     resources_dict.set_item(COSName.get_pdf_name("Font"), font_container)
 
     grand_iid = _insert(
-        debugger._tree,  # noqa: SLF001
+        debugger._tree,
         "",
         "Resources",
         _make_map_entry("Resources", resources_dict),
     )
     parent_iid = _insert(
-        debugger._tree,  # noqa: SLF001
+        debugger._tree,
         grand_iid,
         "Font",
         _make_map_entry("Font", font_container),
     )
     font_node = _make_map_entry("F1", font_dict)
-    iid = _insert(debugger._tree, parent_iid, "F1", font_node)  # noqa: SLF001
-    debugger._show_font(font_node, iid)  # noqa: SLF001
+    iid = _insert(debugger._tree, parent_iid, "F1", font_node)
+    debugger._show_font(font_node, iid)
 
 
 # ----------------------------------------------------------------------
@@ -584,13 +584,13 @@ class _SaveRaisingDoc:
 def test_save_as_recovers_from_oserror(
     debugger: PDFDebugger, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    debugger._document = _SaveRaisingDoc()  # type: ignore[assignment]  # noqa: SLF001
+    debugger._document = _SaveRaisingDoc()  # type: ignore[assignment]
     monkeypatch.setattr(
         "pypdfbox.debugger.pd_debugger.filedialog.asksaveasfilename",
         lambda **_: "/tmp/out.pdf",
     )
     # No raise — the OSError is swallowed and surfaced via ErrorDialog.
-    debugger._save_as_menu_item_action_performed()  # noqa: SLF001
+    debugger._save_as_menu_item_action_performed()
 
 
 class _SelectedStreamRaising:
@@ -620,8 +620,8 @@ def test_save_decoded_stream_recovers_from_oserror(
         raise OSError("io err")
 
     monkeypatch.setattr("pypdfbox.debugger.pd_debugger._read_stream_bytes", _raise)
-    debugger._save_decoded_stream()  # noqa: SLF001
-    debugger._save_raw_stream()  # noqa: SLF001
+    debugger._save_decoded_stream()
+    debugger._save_raw_stream()
 
 
 def test_save_decoded_stream_returns_when_no_stream(
@@ -630,8 +630,8 @@ def test_save_decoded_stream_returns_when_no_stream(
     monkeypatch.setattr(
         PDFDebugger, "_selected_stream", lambda _self: None, raising=False
     )
-    debugger._save_decoded_stream()  # noqa: SLF001
-    debugger._save_raw_stream()  # noqa: SLF001
+    debugger._save_decoded_stream()
+    debugger._save_raw_stream()
 
 
 def test_save_decoded_stream_returns_when_user_cancels_dialog(
@@ -644,8 +644,8 @@ def test_save_decoded_stream_returns_when_user_cancels_dialog(
         "pypdfbox.debugger.pd_debugger.filedialog.asksaveasfilename",
         lambda **_: "",
     )
-    debugger._save_decoded_stream()  # noqa: SLF001
-    debugger._save_raw_stream()  # noqa: SLF001
+    debugger._save_decoded_stream()
+    debugger._save_raw_stream()
 
 
 # ----------------------------------------------------------------------
@@ -669,7 +669,7 @@ def test_text_dialog_uses_urlopen_for_http_resource(
             return None
 
     monkeypatch.setattr(urllib.request, "urlopen", lambda *_a, **_kw: _Resp())
-    debugger._text_dialog("title", "http://example.invalid/license")  # noqa: SLF001
+    debugger._text_dialog("title", "http://example.invalid/license")
 
 
 def test_text_dialog_recovers_when_urlopen_fails(
@@ -681,7 +681,7 @@ def test_text_dialog_recovers_when_urlopen_fails(
         raise OSError("connection refused")
 
     monkeypatch.setattr(urllib.request, "urlopen", _raise)
-    debugger._text_dialog("title", "http://example.invalid/license")  # noqa: SLF001
+    debugger._text_dialog("title", "http://example.invalid/license")
 
 
 # ----------------------------------------------------------------------
@@ -693,9 +693,9 @@ def test_update_title_uses_prefix_on_non_mac(
     debugger: PDFDebugger, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(_pd_debugger, "_is_mac_os", lambda: False)
-    debugger._current_file_path = "/tmp/foo.pdf"  # noqa: SLF001
+    debugger._current_file_path = "/tmp/foo.pdf"
     debugger.update_title()
-    assert "PDF Debugger - " in debugger._toplevel.title()  # noqa: SLF001
+    assert "PDF Debugger - " in debugger._toplevel.title()
 
 
 # ----------------------------------------------------------------------
@@ -755,37 +755,37 @@ def test_convert_to_string_for_cos_stream_returns_none_on_oserror(
 
 def test_is_font_descriptor_false_when_no_type_key() -> None:
     node = COSDictionary()  # plain dict; no /Type key
-    assert PDFDebugger._is_font_descriptor(node) is False  # noqa: SLF001
+    assert PDFDebugger._is_font_descriptor(node) is False
 
 
 def test_is_font_descriptor_false_when_type_mismatches() -> None:
     """Dict with ``/Type /Pages`` (not FontDescriptor) -> False."""
     node = COSDictionary()
     node.set_name(COSName.TYPE, "Pages")
-    assert PDFDebugger._is_font_descriptor(node) is False  # noqa: SLF001
+    assert PDFDebugger._is_font_descriptor(node) is False
 
 
 def test_is_font_descriptor_false_when_underneath_not_dict() -> None:
     """``_get_underneath_object`` returns a non-COSDictionary (a
     COSArray) -> hit the trailing ``return False`` (line 970)."""
-    assert PDFDebugger._is_font_descriptor(COSArray()) is False  # noqa: SLF001
+    assert PDFDebugger._is_font_descriptor(COSArray()) is False
 
 
 def test_is_annot_false_when_no_type_key() -> None:
     node = COSDictionary()
-    assert PDFDebugger._is_annot(node) is False  # noqa: SLF001
+    assert PDFDebugger._is_annot(node) is False
 
 
 def test_is_annot_false_when_type_mismatches() -> None:
     """Dict with ``/Type /Page`` (not Annot) -> False."""
     node = COSDictionary()
     node.set_name(COSName.TYPE, "Page")
-    assert PDFDebugger._is_annot(node) is False  # noqa: SLF001
+    assert PDFDebugger._is_annot(node) is False
 
 
 def test_is_annot_false_when_underneath_not_dict() -> None:
     """COSArray instead of a COSDictionary -> trailing False (line 978)."""
-    assert PDFDebugger._is_annot(COSArray()) is False  # noqa: SLF001
+    assert PDFDebugger._is_annot(COSArray()) is False
 
 
 # ----------------------------------------------------------------------
@@ -803,4 +803,4 @@ def test_init_global_event_handlers_returns_when_not_mac(
     """Force the ``not _is_mac_os()`` branch (line 501)."""
     monkeypatch.setattr(_pd_debugger, "_is_mac_os", lambda: False)
     # No raise — the method returns immediately on non-mac.
-    debugger._init_global_event_handlers()  # noqa: SLF001
+    debugger._init_global_event_handlers()

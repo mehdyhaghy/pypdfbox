@@ -68,7 +68,7 @@ class CreateVisibleSignature2(CreateSignatureBase):
         if not in_path.exists():
             raise FileNotFoundError("Document for signing does not exist")
         self.set_tsa_url(tsa_url)
-        self._human_rect = human_rect  # noqa: SLF001 - captured for appearance draw
+        self._human_rect = human_rect
 
         from pypdfbox.pdmodel.pd_document import PDDocument
 
@@ -147,10 +147,10 @@ class CreateVisibleSignature2(CreateSignatureBase):
 
         from pypdfbox.pdmodel.common.pd_stream import PDStream
         from pypdfbox.pdmodel.graphics.form.pd_form_x_object import PDFormXObject
-        from pypdfbox.pdmodel.interactive.annotation.pd_appearance_dictionary import (  # noqa: E501
+        from pypdfbox.pdmodel.interactive.annotation.pd_appearance_dictionary import (
             PDAppearanceDictionary,
         )
-        from pypdfbox.pdmodel.interactive.annotation.pd_appearance_stream import (  # noqa: E501
+        from pypdfbox.pdmodel.interactive.annotation.pd_appearance_stream import (
             PDAppearanceStream,
         )
         from pypdfbox.pdmodel.interactive.form.pd_acro_form import PDAcroForm

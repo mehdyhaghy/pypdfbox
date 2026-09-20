@@ -33,7 +33,7 @@ def test_wave712_make_doc_removes_default_page(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(wave712, "PDDocument", document_factory)
 
-    doc, page = wave712._make_doc()  # noqa: SLF001
+    doc, page = wave712._make_doc()
 
     assert doc is created[0]
     assert doc.removed == [0]
@@ -41,7 +41,7 @@ def test_wave712_make_doc_removes_default_page(monkeypatch: Any) -> None:
 
 
 def test_wave712_float_array_adds_each_value() -> None:
-    array = wave712._float_array(1.25, -2.5)  # noqa: SLF001
+    array = wave712._float_array(1.25, -2.5)
 
     assert array.size() == 2
     assert isinstance(array.get_object(0), COSFloat)

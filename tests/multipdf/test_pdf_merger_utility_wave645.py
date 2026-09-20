@@ -22,7 +22,7 @@ class _IdentityCloner:
 class _NoneCloner:
     def clone_for_new_document(self, value: object) -> None:
         del value
-        return None
+        return
 
 
 class _Field:
@@ -107,10 +107,10 @@ def test_wave645_configuration_setters_and_getters_round_trip() -> None:
 
 
 def test_wave645_dynamic_xfa_probe_is_defensive() -> None:
-    assert PDFMergerUtility._is_dynamic_xfa(None) is False  # noqa: SLF001
-    assert PDFMergerUtility._is_dynamic_xfa(object()) is False  # noqa: SLF001
-    assert PDFMergerUtility._is_dynamic_xfa(_DynamicXfa(True)) is True  # noqa: SLF001
-    assert PDFMergerUtility._is_dynamic_xfa(_DynamicXfa(RuntimeError("bad"))) is False  # noqa: SLF001
+    assert PDFMergerUtility._is_dynamic_xfa(None) is False
+    assert PDFMergerUtility._is_dynamic_xfa(object()) is False
+    assert PDFMergerUtility._is_dynamic_xfa(_DynamicXfa(True)) is True
+    assert PDFMergerUtility._is_dynamic_xfa(_DynamicXfa(RuntimeError("bad"))) is False
 
 
 def test_wave645_merge_into_skips_excluded_existing_and_unclonable_values() -> None:
@@ -124,7 +124,7 @@ def test_wave645_merge_into_skips_excluded_existing_and_unclonable_values() -> N
     destination = COSDictionary()
     destination.set_item(overwrite, COSString("old"))
 
-    PDFMergerUtility._merge_into(  # noqa: SLF001
+    PDFMergerUtility._merge_into(
         source,
         destination,
         _IdentityCloner(),  # type: ignore[arg-type]
@@ -136,7 +136,7 @@ def test_wave645_merge_into_skips_excluded_existing_and_unclonable_values() -> N
     assert destination.get_dictionary_object(excluded) is None
 
     missing_destination = COSDictionary()
-    PDFMergerUtility._merge_into(  # noqa: SLF001
+    PDFMergerUtility._merge_into(
         source,
         missing_destination,
         _NoneCloner(),  # type: ignore[arg-type]
@@ -153,7 +153,7 @@ def test_wave645_ignored_acro_form_errors_are_logged(
     util.set_ignore_acro_form_errors(True)
 
     with caplog.at_level(logging.WARNING, logger="pypdfbox.multipdf.pdf_merger_utility"):
-        util._merge_acro_form(  # noqa: SLF001
+        util._merge_acro_form(
             _IdentityCloner(),  # type: ignore[arg-type]
             _BrokenCatalog(),
             _BrokenCatalog(),
@@ -167,7 +167,7 @@ def test_wave645_acro_form_modes_append_and_rename_colliding_fields() -> None:
     source_form = _Form([_Field("source", "shared")])
     util = PDFMergerUtility()
 
-    util._merge_acro_form(  # noqa: SLF001
+    util._merge_acro_form(
         _IdentityCloner(),  # type: ignore[arg-type]
         _CatalogWithForm(destination_form),
         _CatalogWithForm(source_form),
@@ -178,7 +178,7 @@ def test_wave645_acro_form_modes_append_and_rename_colliding_fields() -> None:
 
     joined_form = _Form([])
     util.set_acro_form_merge_mode(AcroFormMergeMode.JOIN_FORM_FIELDS_MODE)
-    util._merge_acro_form(  # noqa: SLF001
+    util._merge_acro_form(
         _IdentityCloner(),  # type: ignore[arg-type]
         _CatalogWithForm(joined_form),
         _CatalogWithForm(_Form([_Field("joined", "joined")])),

@@ -31,8 +31,8 @@ def _make_objstm(
     Returns ``(stream, document)`` — the document is kept on the test
     so the scratch-file buffer backing the stream isn't garbage-
     collected mid-test."""
-    from pypdfbox.cos.cos_integer import COSInteger  # noqa: PLC0415
-    from pypdfbox.cos.cos_name import COSName  # noqa: PLC0415
+    from pypdfbox.cos.cos_integer import COSInteger
+    from pypdfbox.cos.cos_name import COSName
 
     doc = COSDocument()
     stream = doc.create_cos_stream()

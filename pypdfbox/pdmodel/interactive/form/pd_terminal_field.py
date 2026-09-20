@@ -210,7 +210,7 @@ class PDTerminalField(PDField):
           to mirror upstream's IOException-equivalent fallback being
           unreachable for well-formed FDFs.
         """
-        from pypdfbox.cos import COSStream  # noqa: PLC0415 — avoid I/O cycle
+        from pypdfbox.cos import COSStream
 
         if isinstance(value, COSName):
             self.set_value(value.name)
@@ -222,7 +222,7 @@ class PDTerminalField(PDField):
             self.set_value(value.to_text_string())
             return
         if isinstance(value, COSArray):
-            from .pd_choice import PDChoice  # noqa: PLC0415 — defer import
+            from .pd_choice import PDChoice
 
             if isinstance(self, PDChoice):
                 self.set_value(value.to_cos_string_string_list())
@@ -244,7 +244,7 @@ class PDTerminalField(PDField):
         is intentionally absent — upstream's comment notes that kids on a
         terminal field are widget annotations, not nested fields.
         """
-        from pypdfbox.pdmodel.fdf.fdf_field import FDFField  # noqa: PLC0415
+        from pypdfbox.pdmodel.fdf.fdf_field import FDFField
 
         fdf_field = FDFField()
         fdf_field.set_partial_field_name(self.get_partial_name())

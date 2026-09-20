@@ -339,7 +339,7 @@ def test_compute_signed_digest_supports_sha1() -> None:
 
     document = b"HEAD" + b"x" * 92 + b"TAIL"
     br = [0, 4, 96, 4]
-    expected = hashlib.sha1(b"HEADTAIL").digest()  # noqa: S324
+    expected = hashlib.sha1(b"HEADTAIL").digest()
     assert compute_signed_digest(document, br, algorithm="sha1") == expected
 
 

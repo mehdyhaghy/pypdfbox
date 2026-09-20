@@ -60,7 +60,7 @@ def _fake_opener_for(payload: bytes):
         def read(self) -> bytes:
             return self._data
 
-    def _opener(_req, timeout: int = 0):  # noqa: ARG001
+    def _opener(_req, timeout: int = 0):
         return _Resp(payload)
 
     return _opener

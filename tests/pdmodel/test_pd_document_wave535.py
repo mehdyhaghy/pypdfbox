@@ -102,18 +102,18 @@ def test_wave535_deep_copy_resolves_cos_object_references() -> None:
 def test_wave535_write_bytes_to_random_access_write_buffer() -> None:
     sink = RandomAccessWriteBuffer()
 
-    PDDocument._write_bytes_to_target(b"abc", sink)  # noqa: SLF001
+    PDDocument._write_bytes_to_target(b"abc", sink)
 
     assert sink.to_bytes() == b"abc"
 
 
 def test_wave535_splice_signature_rejects_blob_larger_than_placeholder() -> None:
     with pytest.raises(ValueError, match="larger than"):
-        PDDocument._splice_signature(bytearray(b"<0000>"), (1, 5), b"\x00\x01\x02")  # noqa: SLF001
+        PDDocument._splice_signature(bytearray(b"<0000>"), (1, 5), b"\x00\x01\x02")
 
 
 def test_wave535_extract_bracketed_concatenates_declared_slices() -> None:
-    assert PDDocument._extract_bracketed(b"abcdefghi", [1, 3, 6, 2]) == b"bcdgh"  # noqa: SLF001
+    assert PDDocument._extract_bracketed(b"abcdefghi", [1, 3, 6, 2]) == b"bcdgh"
 
 
 def test_wave535_add_signature_uses_next_available_signature_field_name() -> None:
@@ -200,7 +200,7 @@ def test_wave535_get_current_access_permission_uses_security_handler_once() -> N
 
     doc = PDDocument()
     handler = Handler()
-    doc._security_handler = handler  # noqa: SLF001
+    doc._security_handler = handler
     try:
         first = doc.get_current_access_permission()
         second = doc.get_current_access_permission()

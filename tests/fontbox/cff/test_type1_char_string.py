@@ -359,11 +359,11 @@ def test_op_sbw_extended_prologue_runs_without_error() -> None:
 
 def test_op_callsubr_and_return_recurse_into_subroutine() -> None:
     """``callsubr`` enters a subr program; ``return`` exits back."""
-    from fontTools.misc.psCharStrings import T1CharString as FT_T1
+    from fontTools.misc.psCharStrings import T1CharString
 
     # Subr 0 = ``100 0 rlineto return``
-    subr0 = FT_T1(program=[100, 0, "rlineto", "return"])
-    main = FT_T1(
+    subr0 = T1CharString(program=[100, 0, "rlineto", "return"])
+    main = T1CharString(
         program=[
             0, 500, "hsbw",
             0, 0, "rmoveto",

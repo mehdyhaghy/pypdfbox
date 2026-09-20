@@ -59,13 +59,13 @@ def _reset_menu_singletons() -> None:
     from pypdfbox.debugger.ui.text_stripper_menu import TextStripperMenu
     from pypdfbox.debugger.ui.zoom_menu import ZoomMenu
 
-    ViewMenu._reset_instance()  # noqa: SLF001
-    ZoomMenu._reset_instance()  # noqa: SLF001
-    RotationMenu._reset_instance()  # noqa: SLF001
-    RenderDestinationMenu._reset_instance()  # noqa: SLF001
-    TreeViewMenu._reset_for_testing()  # noqa: SLF001
-    ImageTypeMenu._reset_for_testing()  # noqa: SLF001
-    TextStripperMenu._reset_for_testing()  # noqa: SLF001
+    ViewMenu._reset_instance()
+    ZoomMenu._reset_instance()
+    RotationMenu._reset_instance()
+    RenderDestinationMenu._reset_instance()
+    TreeViewMenu._reset_for_testing()
+    ImageTypeMenu._reset_for_testing()
+    TextStripperMenu._reset_for_testing()
 
 
 @pytest.fixture(autouse=True)
@@ -101,7 +101,7 @@ def debugger(tk_root: tk.Tk) -> Iterator[PDFDebugger]:
         yield instance
     finally:
         with contextlib.suppress(tk.TclError):
-            instance._main_frame.destroy()  # noqa: SLF001
+            instance._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------
@@ -133,7 +133,7 @@ def test_window_closing_destroys_toplevel(debugger: PDFDebugger) -> None:
     debugger.window_closing()
     with pytest.raises(tk.TclError):
         # Once destroyed, any Tk method should fail.
-        debugger._toplevel.title()  # noqa: SLF001
+        debugger._toplevel.title()
 
 
 def test_window_closing_accepts_event_argument(tk_root: tk.Tk) -> None:
@@ -150,7 +150,7 @@ def test_init_components_rebuilds_widget_tree(debugger: PDFDebugger) -> None:
     # Calling again is allowed — destroys + rebuilds the body.
     debugger.init_components()
     # After rebuild, the tree should still exist.
-    assert debugger._tree is not None  # noqa: SLF001
+    assert debugger._tree is not None
 
 
 def test_init_components_does_not_raise_without_document(
@@ -179,7 +179,7 @@ def test_init_global_event_handlers_no_op_on_non_mac(
 
 def test_load_configuration_no_file_is_silent(
     tmp_path: Path, monkeypatch
-) -> None:  # noqa: ANN001
+) -> None:
     monkeypatch.chdir(tmp_path)
     saved = dict(PDFDebugger.configuration)
     PDFDebugger.configuration.clear()
@@ -193,7 +193,7 @@ def test_load_configuration_no_file_is_silent(
 
 def test_load_configuration_parses_value(
     tmp_path: Path, monkeypatch
-) -> None:  # noqa: ANN001
+) -> None:
     (tmp_path / "config.properties").write_text("a=b\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     saved = dict(PDFDebugger.configuration)
@@ -227,7 +227,7 @@ def test_osx_open_files_swallows_bad_path(debugger: PDFDebugger) -> None:
 def test_osx_quit_destroys_toplevel(debugger: PDFDebugger) -> None:
     debugger.osx_quit()
     with pytest.raises(tk.TclError):
-        debugger._toplevel.title()  # noqa: SLF001
+        debugger._toplevel.title()
 
 
 # ----------------------------------------------------------------------
@@ -267,13 +267,13 @@ def test_hyperlink_update_invalid_url_does_not_raise(
 
 
 def test_replace_right_component_mounts_widget(debugger: PDFDebugger) -> None:
-    label = tk.Label(debugger._right_frame, text="hi")  # noqa: SLF001
+    label = tk.Label(debugger._right_frame, text="hi")
     debugger.replace_right_component(label)
     assert debugger.get_right_widget() is label
 
 
 def test_replace_right_component_clears_when_none(debugger: PDFDebugger) -> None:
-    label = tk.Label(debugger._right_frame, text="hi")  # noqa: SLF001
+    label = tk.Label(debugger._right_frame, text="hi")
     debugger.replace_right_component(label)
     debugger.replace_right_component(None)
     assert debugger.get_right_widget() is None
@@ -351,7 +351,7 @@ def test_open_returns_none_when_no_path_set(debugger: PDFDebugger) -> None:
 def test_open_returns_loaded_document(
     debugger: PDFDebugger, synthetic_pdf: Path
 ) -> None:
-    debugger._current_file_path = str(synthetic_pdf)  # noqa: SLF001
+    debugger._current_file_path = str(synthetic_pdf)
     doc = debugger.open()
     assert doc is not None
     assert debugger.has_document() is True

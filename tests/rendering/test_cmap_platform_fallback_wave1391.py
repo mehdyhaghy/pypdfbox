@@ -91,7 +91,7 @@ def test_poems_beads_resolves_real_glyph_ids() -> None:
             ttf = font.get_true_type_font()
             assert ttf is not None, f"{font.get_name()} should be embedded"
             for code in (ord("A"), ord("G"), ord("a"), ord("e"), ord("o")):
-                gid = font._code_to_gid(code, ttf)  # noqa: SLF001
+                gid = font._code_to_gid(code, ttf)
                 if gid != 0:
                     any_resolved = True
                     break

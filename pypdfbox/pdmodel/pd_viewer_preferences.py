@@ -44,13 +44,13 @@ class PDViewerPreferences:
 
     # ---------- nested enumerations (mirror upstream's Java enums) ----------
 
-    class NON_FULL_SCREEN_PAGE_MODE(StrEnum):
+    class NON_FULL_SCREEN_PAGE_MODE(StrEnum):  # noqa: N801 (upstream Java enum name)
         UseNone = "UseNone"
         UseOutlines = "UseOutlines"
         UseThumbs = "UseThumbs"
         UseOC = "UseOC"
 
-    class READING_DIRECTION(StrEnum):
+    class READING_DIRECTION(StrEnum):  # noqa: N801 (upstream Java enum name)
         L2R = "L2R"
         R2L = "R2L"
 
@@ -66,7 +66,7 @@ class PDViewerPreferences:
         DuplexFlipShortEdge = "DuplexFlipShortEdge"
         DuplexFlipLongEdge = "DuplexFlipLongEdge"
 
-    class PRINT_SCALING(StrEnum):
+    class PRINT_SCALING(StrEnum):  # noqa: N801 (upstream Java enum name)
         None_ = "None"  # ``None`` is reserved in Python; expose under ``None_``.
         AppDefault = "AppDefault"
 
@@ -394,7 +394,7 @@ class PDViewerPreferences:
     def get_num_copies(self) -> int:
         # PDF 32000-1 Table 150: default value is 1.
         v = self._prefs.get_int(_NUM_COPIES, 1)
-        return v if v >= 1 else 1
+        return max(v, 1)
 
     def get_num_copies_raw(self) -> int | None:
         """Return the raw ``/NumCopies`` integer (no clamping, no spec

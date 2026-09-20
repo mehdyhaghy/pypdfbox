@@ -60,7 +60,7 @@ def test_remove_action_listeners_alias_still_works(tk_root: tk.Tk) -> None:
     base.set_menu(menu)
     fired: list[str] = []
     base.add_menu("Foo", lambda: fired.append("foo"))
-    base._remove_action_listeners(0)  # noqa: SLF001 - back-compat alias
+    base._remove_action_listeners(0)
     menu.invoke(0)
     assert fired == []
 

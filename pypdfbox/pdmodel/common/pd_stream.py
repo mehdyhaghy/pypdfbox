@@ -53,7 +53,7 @@ class PDStream:
         filters: COSName | COSArray | None = None,
     ) -> None:
         # Local import to avoid cycle (PDDocument -> PDPage -> PDResources -> ...).
-        from pypdfbox.pdmodel.pd_document import PDDocument  # noqa: PLC0415
+        from pypdfbox.pdmodel.pd_document import PDDocument
 
         if document_or_stream is None:
             self._stream: COSStream = COSStream()
@@ -186,7 +186,7 @@ class PDStream:
         raises ``OSError``: callers of ``PDStream`` are typed handles
         that often legitimately wrap a fresh-and-empty COSStream.)"""
         if not self._stream.has_data():
-            import io as _io  # noqa: PLC0415 — local to avoid leaking name
+            import io as _io
 
             return _io.BytesIO(b"")
         return self._stream.create_input_stream(stop_filters)
@@ -440,7 +440,7 @@ class PDStream:
         """``/F`` — external file specification. Returns ``None`` when the
         entry is absent. Mirrors upstream
         ``getFile() : PDFileSpecification``."""
-        from pypdfbox.pdmodel.common.filespecification import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.common.filespecification import (
             PDFileSpecification,
         )
 

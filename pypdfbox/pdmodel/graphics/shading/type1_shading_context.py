@@ -43,7 +43,7 @@ class Type1ShadingContext(ShadingContext):
         line 91) — evaluates the 2-parameter function ``f(x, y)`` at each
         pixel against the shading's ``/Domain`` rectangle and converts
         to RGB via the shading colour space."""
-        from PIL import Image  # noqa: PLC0415
+        from PIL import Image
 
         bg = self.get_background()
         domain = self._domain

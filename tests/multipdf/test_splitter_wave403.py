@@ -97,7 +97,7 @@ def test_wave403_widget_parent_is_removed_while_non_signature_widget_kept() -> N
     annots.add(widget)
     imported.get_cos_object().set_item(_ANNOTS, annots)
 
-    Splitter()._process_annotations(source_page, imported)  # noqa: SLF001
+    Splitter()._process_annotations(source_page, imported)
 
     cloned_annots = imported.get_cos_object().get_dictionary_object(_ANNOTS)
     assert isinstance(cloned_annots, COSArray)

@@ -32,7 +32,7 @@ class _StubTTF:
 
 
 def _as_ttf(stub: _StubTTF) -> TrueTypeFont:
-    return cast(TrueTypeFont, stub)
+    return cast("TrueTypeFont", stub)
 
 
 def _pack_metric(advance: int, lsb: int) -> bytes:

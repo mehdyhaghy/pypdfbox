@@ -79,7 +79,7 @@ def test_encode_embedded_non_type0_parent_raises_and_skips_all_parent_branches()
     """
     font = _embedded_font_with_ttf(cmap_mapping={ord("A"): 0x41})
     # A non-PDType0Font parent object.
-    font._parent = object()  # noqa: SLF001
+    font._parent = object()
     with pytest.raises(ValueError, match="No glyph"):
         font.encode(ord("A"))
 
@@ -104,7 +104,7 @@ def test_encode_identity_parent_with_no_cmap_subtable_skips_glyph_lookup() -> No
             return None
 
     font = _embedded_font_with_ttf(cmap_mapping=None)
-    font._parent = _StubParent()  # noqa: SLF001
+    font._parent = _StubParent()
     with pytest.raises(ValueError, match="No glyph"):
         font.encode(ord("A"))
 
@@ -130,6 +130,6 @@ def test_encode_to_unicode_present_but_returns_none_falls_through() -> None:
             return _FakeToUnicodeCmap({"Z": b"\x00\x01"})
 
     font = _embedded_font_with_ttf(cmap_mapping={ord("C"): 0})
-    font._parent = _StubParent()  # noqa: SLF001
+    font._parent = _StubParent()
     with pytest.raises(ValueError, match="No glyph"):
         font.encode(ord("C"))

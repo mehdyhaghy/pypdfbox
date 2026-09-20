@@ -72,14 +72,14 @@ class PDAnnotationSound(PDAnnotationMarkup):
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
-            return None
+            return
         from .handlers.pd_sound_appearance_handler import (
             PDSoundAppearanceHandler,
         )
 
         appearance_handler = PDSoundAppearanceHandler(self, document)
         appearance_handler.generate_appearance_streams()
-        return None
+        return
 
     # ---------- /Sound (sound stream, required) ----------
 

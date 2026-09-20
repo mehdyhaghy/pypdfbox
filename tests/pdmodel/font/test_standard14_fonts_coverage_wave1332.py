@@ -90,12 +90,12 @@ def test_command_recording_pen_last_point_walks_back_through_curveto() -> None:
     pen.move_to((0.0, 0.0))
     pen.curve_to((1.0, 1.0), (2.0, 2.0), (3.0, 3.0))
     # After a curveto the _last_point should resolve to (3.0, 3.0).
-    assert pen._last_point() == (3.0, 3.0)  # noqa: SLF001
+    assert pen._last_point() == (3.0, 3.0)
     # Closepath does not change the last point.
     pen.close_path()
-    assert pen._last_point() == (3.0, 3.0)  # noqa: SLF001
+    assert pen._last_point() == (3.0, 3.0)
     # Empty pen returns None (line 448).
-    assert _CommandRecordingPen()._last_point() is None  # noqa: SLF001
+    assert _CommandRecordingPen()._last_point() is None
 
 
 def test_command_recording_pen_addcomponent_is_noop() -> None:
@@ -228,7 +228,7 @@ class _RaisingGlyphSetTTF:
         def getGlyphSet(self) -> dict[str, Any]:  # noqa: N802
             raise RuntimeError("glyphset failed")
 
-        def getGlyphName(self, gid: int) -> str:  # noqa: N802
+        def getGlyphName(self, gid: int) -> str:
             return "A"
 
     _tt: Any = _TT()
@@ -245,7 +245,7 @@ def test_ttf_glyph_path_for_gid_returns_empty_on_glyphset_exception() -> None:
 def test_load_substitution_ttf_returns_none_for_unmapped_name() -> None:
     # Lines 472-475 — canonical with no TTF mapping (none currently exist,
     # so simulate by passing an unknown canonical name).
-    s14._LIBERATION_TTF_CACHE.pop("UnknownFont", None)  # noqa: SLF001
+    s14._LIBERATION_TTF_CACHE.pop("UnknownFont", None)
     assert _load_substitution_ttf("UnknownFont") is None
     # Cached as ``False`` for the second call (the early return at 469-471
     # is exercised on the next probe).
@@ -256,7 +256,7 @@ def test_load_substitution_ttf_handles_missing_resource(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Lines 476-487 — bytes read raises FileNotFoundError.
-    s14._LIBERATION_TTF_CACHE.pop("Helvetica", None)  # noqa: SLF001
+    s14._LIBERATION_TTF_CACHE.pop("Helvetica", None)
 
     class _Bad:
         def __truediv__(self, _other: str) -> Any:
@@ -268,14 +268,14 @@ def test_load_substitution_ttf_handles_missing_resource(
     monkeypatch.setattr(s14.resources, "files", lambda _pkg: _Bad())
     assert _load_substitution_ttf("Helvetica") is None
     # Re-cleanup so the real font is reachable for other tests.
-    s14._LIBERATION_TTF_CACHE.pop("Helvetica", None)  # noqa: SLF001
+    s14._LIBERATION_TTF_CACHE.pop("Helvetica", None)
 
 
 def test_load_substitution_ttf_handles_parse_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Lines 492-501 — TTF parses fail.
-    s14._LIBERATION_TTF_CACHE.pop("Times-Roman", None)  # noqa: SLF001
+    s14._LIBERATION_TTF_CACHE.pop("Times-Roman", None)
 
     class _Good:
         def __truediv__(self, _other: str) -> Any:
@@ -286,11 +286,11 @@ def test_load_substitution_ttf_handles_parse_failure(
 
     monkeypatch.setattr(s14.resources, "files", lambda _pkg: _Good())
     assert _load_substitution_ttf("Times-Roman") is None
-    s14._LIBERATION_TTF_CACHE.pop("Times-Roman", None)  # noqa: SLF001
+    s14._LIBERATION_TTF_CACHE.pop("Times-Roman", None)
 
 
 def test_load_substitution_ttf_returns_cached_truetype_font() -> None:
-    s14._LIBERATION_TTF_CACHE.pop("Helvetica", None)  # noqa: SLF001
+    s14._LIBERATION_TTF_CACHE.pop("Helvetica", None)
     a = _load_substitution_ttf("Helvetica")
     assert a is not None
     # Second probe hits the cache short-circuit (lines 469-471).

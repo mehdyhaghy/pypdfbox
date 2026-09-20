@@ -95,7 +95,7 @@ def _process_stream(stream: COSStream, *, skip_images: bool) -> None:
         # decoded payload eagerly so we can swap it in as the raw body.
         with stream.create_input_stream() as src:
             decoded = src.read()
-    except Exception:  # noqa: BLE001 — upstream catches IOException and skips
+    except Exception:
         # PDFBox prints "skip <key> obj: <msg>" to stderr and moves on; we
         # mirror the swallow-and-continue behaviour so a single corrupt
         # stream doesn't sink the whole rewrite.

@@ -40,7 +40,7 @@ class CertInformationHelper:
         try:
             digest = hashlib.sha1(content, usedforsecurity=False).digest()
             return digest.hex().upper()
-        except Exception:  # noqa: BLE001 - mirror upstream lenient catch
+        except Exception:
             LOG.error("No SHA-1 Algorithm found", exc_info=True)
             return None
 
@@ -67,7 +67,7 @@ class CertInformationHelper:
                 cert_info.set_issuer_url(descr.access_location.value)
 
     @staticmethod
-    def extract_crl_url_from_sequence(sequence) -> str | None:  # noqa: ANN001
+    def extract_crl_url_from_sequence(sequence) -> str | None:
         """Pull the first http(s) URL from a CRL DP sequence (upstream private 128)."""
         return None
 

@@ -50,13 +50,13 @@ def test_wave680_should_use_main_memory_honors_unlimited_cap() -> None:
             scratch,
         )
 
-        assert scratch._should_use_main_memory() is True  # noqa: SLF001
+        assert scratch._should_use_main_memory() is True
 
 
 def test_wave680_file_backed_page_without_mapping_reads_as_zeroes() -> None:
     with ScratchFile(MemoryUsageSetting.setup_temp_file_only(), page_size=4) as scratch:
-        scratch._page_count = 1  # noqa: SLF001
-        scratch._mem_pages.append(None)  # noqa: SLF001
+        scratch._page_count = 1
+        scratch._mem_pages.append(None)
 
         buf = bytearray(b"xxxx")
 
@@ -66,8 +66,8 @@ def test_wave680_file_backed_page_without_mapping_reads_as_zeroes() -> None:
 
 def test_wave680_file_backed_store_allocates_missing_mapping_lazily() -> None:
     with ScratchFile(MemoryUsageSetting.setup_temp_file_only(), page_size=4) as scratch:
-        scratch._page_count = 1  # noqa: SLF001
-        scratch._mem_pages.append(None)  # noqa: SLF001
+        scratch._page_count = 1
+        scratch._mem_pages.append(None)
 
         scratch.write_page(0, b"AB", length=2)
 

@@ -361,7 +361,6 @@ class _StubCIDFontWithMap:
             via subclass. We patch the COSStream isinstance check by
             using a real COSStream below."""
 
-            pass
 
         # Real COSStream with patched ``to_byte_array`` raising
         # AttributeError, plus a ``create_input_stream`` context manager.

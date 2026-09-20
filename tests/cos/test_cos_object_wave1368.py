@@ -228,7 +228,7 @@ def test_loader_receives_holder_self() -> None:
 
     def loader(holder: COSObject) -> None:
         captured_holder.append(holder)
-        return None
+        return
 
     ref = COSObject(15, 0, loader=loader)
     ref.get_object()

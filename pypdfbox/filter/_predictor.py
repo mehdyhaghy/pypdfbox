@@ -409,7 +409,7 @@ def _tiff_encode_1bit_1color(row: bytes) -> bytes:
     """
     actline = bytearray(row)
     for byte_idx in range(len(actline) - 1, -1, -1):
-        for bit in range(0, 8):
+        for bit in range(8):
             if byte_idx == 0 and bit == 7:
                 continue
             cur = (actline[byte_idx] >> bit) & 1

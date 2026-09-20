@@ -300,11 +300,11 @@ def test_template0_nominal_at_no_override_matches_oracle():
 @pytest.mark.parametrize("gr_template", [0, 1])
 @pytest.mark.parametrize("tpgr", [False, True])
 def test_decode_is_deterministic(gr_template, tpgr):
-    kwargs = dict(
-        gr_template=gr_template, width=16, height=6, ref_w=16, ref_h=6,
-        dx=0, dy=0, tpgr=tpgr, ref_hex="8040c030aa5511220ff0a1b2",
-        coded_hex="84c73b00ff12abcd5566",
-    )
+    kwargs = {
+        "gr_template": gr_template, "width": 16, "height": 6, "ref_w": 16, "ref_h": 6,
+        "dx": 0, "dy": 0, "tpgr": tpgr, "ref_hex": "8040c030aa5511220ff0a1b2",
+        "coded_hex": "84c73b00ff12abcd5566",
+    }
     first = _decode(**kwargs)
     second = _decode(**kwargs)
     assert first.bitmap_bytes == second.bitmap_bytes

@@ -190,7 +190,7 @@ def test_uax9_paragraph_reordering_is_now_supported() -> None:
     visual = "גבא abc"
     out = s.handle_direction(visual)
     # The Hebrew sub-run reverses; the Latin sub-run stays put.
-    assert "אבג" in out  # noqa: RUF001
+    assert "אבג" in out
     assert "abc" in out
 
 

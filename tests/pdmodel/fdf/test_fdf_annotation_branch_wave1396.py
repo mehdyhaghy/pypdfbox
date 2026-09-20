@@ -59,7 +59,7 @@ def test_rich_contents_to_string_non_root_with_no_attributes() -> None:
         nodeName = "p"
 
         def __init__(self) -> None:
-            from xml.dom.minidom import Text  # noqa: PLC0415
+            from xml.dom.minidom import Text
             t = Text()
             t.data = "body"
             self.childNodes = [t]

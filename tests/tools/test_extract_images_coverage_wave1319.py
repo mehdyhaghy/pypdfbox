@@ -124,7 +124,7 @@ def test_write2file_jb2_suffix_remapped_to_png(tmp_path: Path) -> None:
         def get_suffix(self) -> str:
             return "jb2"
 
-        def get_image(self) -> Any:  # noqa: ANN401
+        def get_image(self) -> Any:
             from PIL import Image as _PILImage
 
             return _PILImage.new("RGB", (4, 4), "white")
@@ -151,10 +151,10 @@ def test_write2file_jpx_suffix_remapped_to_jp2(tmp_path: Path) -> None:
         def get_suffix(self) -> str:
             return "jpx"
 
-        def get_color_space(self) -> Any:  # noqa: ANN401
+        def get_color_space(self) -> Any:
             return None  # non-Gray/RGB → converted (decode) path
 
-        def get_image(self) -> Any:  # noqa: ANN401
+        def get_image(self) -> Any:
             return None  # skip actual write — exercises only the suffix-remap
 
     img = _FakeImage()
@@ -205,7 +205,7 @@ def test_write2file_get_image_attribute_error_swallowed(
         def get_suffix(self) -> str:
             return "png"
 
-        def get_image(self) -> Any:  # noqa: ANN401
+        def get_image(self) -> Any:
             raise AttributeError("synthetic")
 
     cwd = Path.cwd()
@@ -303,7 +303,7 @@ def test_draw_image_non_pdimagexobject_still_writes(tmp_path: Path) -> None:
         def get_suffix(self) -> str:
             return "png"
 
-        def get_image(self) -> Any:  # noqa: ANN401
+        def get_image(self) -> Any:
             from PIL import Image as _PILImage
 
             return _PILImage.new("RGB", (2, 2), "white")
@@ -336,7 +336,7 @@ def test_process_color_dispatches_into_tiling_pattern() -> None:
     tiling = PDTilingPattern()
 
     class _Pattern(PDPattern):
-        def get_pattern(self, color: object) -> object:  # noqa: ARG002
+        def get_pattern(self, color: object) -> object:
             return tiling
 
     class _Color:
@@ -453,7 +453,7 @@ def test_engine_run_ext_g_state_with_soft_mask_processes_group() -> None:
         def get_ext_g_state_names(self) -> list[str]:
             return ["GS1", "GS2", "GS3"]
 
-        def get_ext_g_state(self, name: str) -> Any:  # noqa: ANN401
+        def get_ext_g_state(self, name: str) -> Any:
             # First name → None (continue), second → no soft mask, third → with mask.
             if name == "GS1":
                 return None

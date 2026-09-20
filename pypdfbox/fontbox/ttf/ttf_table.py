@@ -52,16 +52,16 @@ class TTFTable:
         return self.initialized
 
     # ---- override points ----
-    def read(self, ttf: TrueTypeFont, data: TTFDataStream) -> None:  # noqa: ARG002
+    def read(self, ttf: TrueTypeFont, data: TTFDataStream) -> None:
         """Read this table from the data stream. Default: no-op (unknown tag)."""
         # do not flip ``initialized`` for the unknown-table base implementation;
         # the field is intentionally not set so callers know the body wasn't read.
 
     def read_headers(
         self,
-        ttf: TrueTypeFont,  # noqa: ARG002
-        data: TTFDataStream,  # noqa: ARG002
-        out_headers: FontHeaders,  # noqa: ARG002
+        ttf: TrueTypeFont,
+        data: TTFDataStream,
+        out_headers: FontHeaders,
     ) -> None:
         """Read the minimum metadata required by ``FontHeaders``.
 

@@ -110,7 +110,7 @@ def test_set_stroking_color_space_skips_get_initial_when_attr_missing() -> None:
         [COSName.get_pdf_name("CS1")],
     )
     # Colour space did get installed via the setattr fallback path.
-    assert engine._gs.stroking_color_space is cs  # noqa: SLF001
+    assert engine._gs.stroking_color_space is cs
 
 
 def test_set_stroking_color_space_skips_engine_setter_when_missing() -> None:
@@ -130,7 +130,7 @@ def test_set_stroking_color_space_skips_engine_setter_when_missing() -> None:
     )
     # Initial colour landed on the graphics state via the setattr
     # fallback (graphics state also lacks the setter pair).
-    assert engine._gs.stroking_color is sentinel  # noqa: SLF001
+    assert engine._gs.stroking_color is sentinel
 
 
 def test_set_stroking_color_space_set_attr_with_none_target_is_noop() -> None:
@@ -138,7 +138,7 @@ def test_set_stroking_color_space_set_attr_with_none_target_is_noop() -> None:
 
     Closes branch (102 → 100)."""
     # No exception when target is None.
-    SetStrokingColorSpace._set_attr(None, "stroking_color_space", object())  # noqa: SLF001
+    SetStrokingColorSpace._set_attr(None, "stroking_color_space", object())
 
 
 # ----------------------------------------------------------------------
@@ -156,7 +156,7 @@ def test_set_non_stroking_color_space_skips_get_initial_when_attr_missing() -> N
         Operator.get_operator("cs"),
         [COSName.get_pdf_name("CS1")],
     )
-    assert engine._gs.non_stroking_color_space is cs  # noqa: SLF001
+    assert engine._gs.non_stroking_color_space is cs
 
 
 def test_set_non_stroking_color_space_skips_engine_setter_when_missing() -> None:
@@ -170,9 +170,9 @@ def test_set_non_stroking_color_space_skips_engine_setter_when_missing() -> None
         Operator.get_operator("cs"),
         [COSName.get_pdf_name("CS1")],
     )
-    assert engine._gs.non_stroking_color is sentinel  # noqa: SLF001
+    assert engine._gs.non_stroking_color is sentinel
 
 
 def test_set_non_stroking_color_space_set_attr_with_none_target_is_noop() -> None:
     """Closes branch (93 → 91)."""
-    SetNonStrokingColorSpace._set_attr(None, "non_stroking_color_space", object())  # noqa: SLF001
+    SetNonStrokingColorSpace._set_attr(None, "non_stroking_color_space", object())

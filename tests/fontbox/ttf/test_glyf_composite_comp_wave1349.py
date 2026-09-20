@@ -35,8 +35,8 @@ def test_decode_point_anchored_args_stores_into_point_fields() -> None:
     assert c.get_x_translate() == 0
     assert c.get_y_translate() == 0
     # Point-anchored slots received the args.
-    assert c._point1 == 7  # noqa: SLF001
-    assert c._point2 == 10  # noqa: SLF001
+    assert c._point1 == 7
+    assert c._point2 == 10
 
 
 def test_has_instructions_true_when_flag_set() -> None:
@@ -44,10 +44,10 @@ def test_has_instructions_true_when_flag_set() -> None:
     set (line 215)."""
     c = GlyfCompositeComp()
     assert c.has_instructions() is False
-    c._flags = GlyfCompositeComp.WE_HAVE_INSTRUCTIONS  # noqa: SLF001
+    c._flags = GlyfCompositeComp.WE_HAVE_INSTRUCTIONS
     assert c.has_instructions() is True
     # Combined with another flag still reports True.
-    c._flags = (  # noqa: SLF001
+    c._flags = (
         GlyfCompositeComp.WE_HAVE_INSTRUCTIONS
         | GlyfCompositeComp.MORE_COMPONENTS
     )

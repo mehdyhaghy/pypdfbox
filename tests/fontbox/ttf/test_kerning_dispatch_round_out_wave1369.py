@@ -263,14 +263,14 @@ class _FakeFTSubtable:
     def __init__(self, coverage: int, format_id: int, kern_table: dict) -> None:
         self.coverage = coverage
         self.format = format_id
-        self.kernTable = kern_table  # noqa: N815 — mirrors fontTools attribute
+        self.kernTable = kern_table
         self.apple = False
 
 
 class _FakeFTKern:
     def __init__(self, version: float, sub_tables: list[_FakeFTSubtable]) -> None:
         self.version = version
-        self.kernTables = sub_tables  # noqa: N815 — mirrors fontTools attribute
+        self.kernTables = sub_tables
 
 
 def test_kerning_table_from_fonttools_propagates_subtables() -> None:

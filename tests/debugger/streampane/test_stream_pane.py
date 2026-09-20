@@ -24,7 +24,7 @@ def test_content_stream_pane_builds_nice_and_raw_views(tk_root) -> None:
     pane = StreamPane(tk_root, _content_stream(), is_content_stream=True, is_thumb=False)
     pane.init()
     # Three tabs: Nice / Raw / Hex.
-    tabs = pane._notebook.tabs()  # noqa: SLF001 — internal accessor
+    tabs = pane._notebook.tabs()
     assert len(tabs) == 3
 
 
@@ -33,7 +33,7 @@ def test_non_content_stream_pane_builds_text_and_hex(tk_root) -> None:
         tk_root, _content_stream(), is_content_stream=False, is_thumb=False
     )
     pane.init()
-    tabs = pane._notebook.tabs()  # noqa: SLF001
+    tabs = pane._notebook.tabs()
     assert len(tabs) == 2
 
 
@@ -42,7 +42,7 @@ def test_image_stream_pane_only_has_image_tab(tk_root) -> None:
         tk_root, _image_stream(), is_content_stream=False, is_thumb=False
     )
     pane.init()
-    tabs = pane._notebook.tabs()  # noqa: SLF001
+    tabs = pane._notebook.tabs()
     assert len(tabs) == 1
 
 

@@ -150,16 +150,16 @@ def test_scripting_handler_is_abstract() -> None:
 
 def test_scripting_handler_concrete_subclass_can_be_instantiated() -> None:
     class _Stub(ScriptingHandler):
-        def keyboard(self, action, value):  # noqa: ANN001
+        def keyboard(self, action, value):
             return value
 
-        def format(self, action, value):  # noqa: ANN001
+        def format(self, action, value):
             return value
 
-        def validate(self, action, value):  # noqa: ANN001
+        def validate(self, action, value):
             return True
 
-        def calculate(self, action, value):  # noqa: ANN001
+        def calculate(self, action, value):
             return value
 
     h = _Stub()

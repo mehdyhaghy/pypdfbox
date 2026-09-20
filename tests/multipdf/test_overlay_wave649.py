@@ -35,7 +35,7 @@ def test_create_content_stream_list_resolves_nested_indirect_streams() -> None:
     )
 
     try:
-        streams = Overlay._create_content_stream_list(nested)  # noqa: SLF001
+        streams = Overlay._create_content_stream_list(nested)
     finally:
         doc.close()
 
@@ -44,14 +44,14 @@ def test_create_content_stream_list_resolves_nested_indirect_streams() -> None:
 
 def test_create_content_stream_list_rejects_unknown_content_shape() -> None:
     with pytest.raises(OSError, match="Unknown content type: COSDictionary"):
-        Overlay._create_content_stream_list(COSDictionary())  # noqa: SLF001
+        Overlay._create_content_stream_list(COSDictionary())
 
 
 def test_add_original_content_rejects_unknown_content_shape() -> None:
     target = COSArray()
 
     with pytest.raises(OSError, match="Unknown content type: COSDictionary"):
-        Overlay._add_original_content(COSDictionary(), target)  # noqa: SLF001
+        Overlay._add_original_content(COSDictionary(), target)
 
     assert len(target) == 0
 
@@ -68,7 +68,7 @@ def test_rotated_overlay_stream_uses_swapped_media_box_for_centering() -> None:
     )
 
     try:
-        stream = overlay._create_overlay_stream(  # noqa: SLF001
+        stream = overlay._create_overlay_stream(
             base.get_page(0),
             layout,
             COSName.get_pdf_name("OL0"),
@@ -94,11 +94,11 @@ def test_rotation_matrix_handles_all_quadrant_rotations() -> None:
 
     try:
         layout.overlay_rotation = 90
-        assert Overlay._rotation_matrix(layout) == [0.0, -1.0, 1.0, 0.0, 0.0, 100.0]  # noqa: SLF001
+        assert Overlay._rotation_matrix(layout) == [0.0, -1.0, 1.0, 0.0, 0.0, 100.0]
         layout.overlay_rotation = 180
-        assert Overlay._rotation_matrix(layout) == [-1.0, 0.0, 0.0, -1.0, 100.0, 50.0]  # noqa: SLF001
+        assert Overlay._rotation_matrix(layout) == [-1.0, 0.0, 0.0, -1.0, 100.0, 50.0]
         layout.overlay_rotation = 270
-        assert Overlay._rotation_matrix(layout) == [0.0, 1.0, -1.0, 0.0, 50.0, 0.0]  # noqa: SLF001
+        assert Overlay._rotation_matrix(layout) == [0.0, 1.0, -1.0, 0.0, 50.0, 0.0]
     finally:
         doc.close()
 
@@ -111,10 +111,10 @@ def test_overlay_documents_skips_none_and_keeps_setter_specific_overlay() -> Non
     overlay.set_specific_page_overlay_pdf({1: specific})
 
     try:
-        result = overlay.overlay_documents({1: cast(PDDocument, None)})
+        result = overlay.overlay_documents({1: cast("PDDocument", None)})
     finally:
         specific.close()
         base.close()
 
     assert result is base
-    assert overlay._specific_page_overlay_layout[1].overlay_media_box.get_width() == 25.0  # noqa: SLF001
+    assert overlay._specific_page_overlay_layout[1].overlay_media_box.get_width() == 25.0

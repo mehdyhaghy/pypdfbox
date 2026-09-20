@@ -102,7 +102,7 @@ class _NoToRGBOverride(PDColorSpace):
     def get_number_of_components(self) -> int:
         return 1
 
-    def get_initial_color(self) -> Any:  # noqa: ANN401
+    def get_initial_color(self) -> Any:
         from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
 
         return PDColor([0.0], self)
@@ -140,7 +140,7 @@ class _BaseCMYKShaped(PDColorSpace):
     def get_number_of_components(self) -> int:
         return 4
 
-    def get_initial_color(self) -> Any:  # noqa: ANN401
+    def get_initial_color(self) -> Any:
         from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
 
         return PDColor([0.0, 0.0, 0.0, 1.0], self)

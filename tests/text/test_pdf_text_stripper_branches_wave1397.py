@@ -28,7 +28,7 @@ def test_tf_operator_skips_when_name_operand_is_not_cosname() -> None:
     state = _TextState()
     state.font_name = "preserved"
     # Tf with a non-COSName name → branch at 760 short-circuits.
-    stripper._dispatch(  # noqa: SLF001
+    stripper._dispatch(
         "Tf", [COSString("F1"), COSInteger.get(12)], state, [],
     )
     # font_name is unchanged because the COSName branch was skipped.
@@ -42,7 +42,7 @@ def test_tf_operator_skips_when_size_operand_is_not_cosnumber() -> None:
     state = _TextState()
     state.font_size = 99.0
     # COSName for size — invalid; size branch is skipped.
-    stripper._dispatch(  # noqa: SLF001
+    stripper._dispatch(
         "Tf",
         [COSName.get_pdf_name("F1"), COSName.get_pdf_name("NotANumber")],
         state,
@@ -63,8 +63,8 @@ def test_decode_text_bytes_with_non_simple_font_falls_back_to_latin1() -> None:
         def decode(self, b: bytes) -> str:
             return "should-not-be-used"
 
-    stripper._active_font = _NotASimpleFont()  # noqa: SLF001
-    assert stripper._decode_show_text(b"abc") == "abc"  # noqa: SLF001
+    stripper._active_font = _NotASimpleFont()
+    assert stripper._decode_show_text(b"abc") == "abc"
 
 
 def test_handle_pres_forms_for_arabic_second_char_skips_buffer_reset() -> None:
@@ -137,5 +137,5 @@ def test_begin_marked_content_sequence_with_none_properties() -> None:
     stripper = PDFTextStripper()
     stripper.begin_marked_content_sequence(COSName.get_pdf_name("Span"), None)
     # The stack received a (tag, None, None) tuple.
-    assert len(stripper._marked_content_stack) == 1  # noqa: SLF001
-    assert stripper._marked_content_stack[0][1] is None  # noqa: SLF001
+    assert len(stripper._marked_content_stack) == 1
+    assert stripper._marked_content_stack[0][1] is None

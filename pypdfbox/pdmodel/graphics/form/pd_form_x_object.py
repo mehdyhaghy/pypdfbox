@@ -72,7 +72,7 @@ class PDFormXObject(PDXObject):
     ) -> None:
         # Local import — PDDocument pulls in PDPage / PDResources which
         # themselves depend on this module at construction time.
-        from pypdfbox.pdmodel.pd_document import PDDocument  # noqa: PLC0415
+        from pypdfbox.pdmodel.pd_document import PDDocument
 
         if isinstance(stream, PDDocument):
             # Mirrors upstream ``PDFormXObject(PDDocument)`` — create a
@@ -386,7 +386,7 @@ class PDFormXObject(PDXObject):
         """``/LastModified`` PDF date string parsed to ``datetime``;
         ``None`` when absent or unparseable."""
         # Local import avoids a top-level cycle through pd_document_information.
-        from pypdfbox.pdmodel.pd_document_information import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.pd_document_information import (
             _parse_pdf_date,
         )
 
@@ -394,7 +394,7 @@ class PDFormXObject(PDXObject):
         return _parse_pdf_date(raw) if raw is not None else None
 
     def set_last_modified(self, value: _dt.datetime | None) -> None:
-        from pypdfbox.pdmodel.pd_document_information import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.pd_document_information import (
             _format_pdf_date,
         )
 
@@ -446,7 +446,7 @@ class PDFormXObject(PDXObject):
         streams are bounded so this stays cheap."""
         # Local import avoids a top-level cycle through the io package
         # which itself imports PDF model types in a few places.
-        from pypdfbox.io.random_access_read_buffer import (  # noqa: PLC0415
+        from pypdfbox.io.random_access_read_buffer import (
             RandomAccessReadBuffer,
         )
 

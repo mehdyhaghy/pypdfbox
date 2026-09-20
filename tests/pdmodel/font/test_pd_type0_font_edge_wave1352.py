@@ -229,7 +229,7 @@ def test_subset_forwards_pinned_glyph_ids_to_subsetter(
             return {0: 0, 1: 3, 2: 7, 3: 11}
 
     descendant = PDCIDFontType2(COSDictionary())
-    descendant._ttf = object()  # noqa: SLF001
+    descendant._ttf = object()
     monkeypatch.setattr(descendant, "get_true_type_font", lambda: descendant._ttf)
     monkeypatch.setattr(ttf_module, "TTFSubsetter", _Subsetter)
     monkeypatch.setattr(
@@ -243,7 +243,7 @@ def test_subset_forwards_pinned_glyph_ids_to_subsetter(
     monkeypatch.setattr(font, "get_descendant_font", lambda: descendant)
 
     # Mark the font as subsettable and register raw glyph IDs.
-    font._will_be_subset = True  # noqa: SLF001
+    font._will_be_subset = True
     font.add_glyphs_to_subset([3, 7, 11])
 
     result = font.subset("A", prefix="GIDPIN")
@@ -251,14 +251,14 @@ def test_subset_forwards_pinned_glyph_ids_to_subsetter(
     # Exercises line 1464: the pinned set must reach the subsetter.
     assert captured["glyph_ids"] == {3, 7, 11}
     # After subset the pinned set is cleared (see line 1491).
-    assert font._subset_glyph_ids == set()  # noqa: SLF001
+    assert font._subset_glyph_ids == set()
 
 
 def test_add_glyphs_to_subset_raises_when_subsetting_disabled() -> None:
     """Companion guard test for ``add_glyphs_to_subset``: matches
     upstream's ``IllegalStateException``."""
     font = PDType0Font()
-    font._will_be_subset = False  # noqa: SLF001
+    font._will_be_subset = False
     with pytest.raises(RuntimeError, match="created with subsetting disabled"):
         font.add_glyphs_to_subset([1, 2])
 

@@ -125,8 +125,8 @@ def _seed_xref(parser: PDFParser, key: COSObjectKey, offset: int) -> None:
     we add the entry via the section setter."""
     from pypdfbox.pdfparser import XrefEntry, XrefType
 
-    parser._resolver.begin_section(0)  # noqa: SLF001
-    parser._resolver.set_entry(  # noqa: SLF001
+    parser._resolver.begin_section(0)
+    parser._resolver.set_entry(
         key, XrefEntry(type=XrefType.TABLE, offset=offset)
     )
 
@@ -137,7 +137,7 @@ def test_decode_page_offset_returns_none_when_document_missing() -> None:
     lin = _lin_dict(n=1, h_array=_h_array(100, 200))
     # Seed xref so target_key resolves; leave _document unset.
     _seed_xref(parser, COSObjectKey(2, 0), 100)
-    parser._document = None  # noqa: SLF001
+    parser._document = None
     _set_lin(parser, lin)
     assert parser.decode_page_offset_hint_table() is None
 
@@ -148,14 +148,14 @@ def test_decode_page_offset_returns_none_when_document_missing() -> None:
 def test_read_hint_stream_decoded_returns_none_when_no_linearization() -> None:
     parser = _bare_parser()
     _set_lin(parser, None)
-    assert parser._read_hint_stream_decoded() is None  # noqa: SLF001
+    assert parser._read_hint_stream_decoded() is None
 
 
 def test_read_hint_stream_decoded_returns_none_when_h_array_missing() -> None:
     parser = _bare_parser()
     lin = COSDictionary()  # no /H entry at all
     _set_lin(parser, lin)
-    assert parser._read_hint_stream_decoded() is None  # noqa: SLF001
+    assert parser._read_hint_stream_decoded() is None
 
 
 def test_read_hint_stream_decoded_returns_none_when_h0_wrong_type() -> None:
@@ -166,14 +166,14 @@ def test_read_hint_stream_decoded_returns_none_when_h0_wrong_type() -> None:
     lin = _lin_dict(n=None, h_array=h_arr)
     _set_lin(parser, lin)
     # Line 475: h_off_obj wrong type.
-    assert parser._read_hint_stream_decoded() is None  # noqa: SLF001
+    assert parser._read_hint_stream_decoded() is None
 
 
 def test_read_hint_stream_decoded_returns_none_when_xref_no_match() -> None:
     parser = _bare_parser()
     lin = _lin_dict(n=None, h_array=_h_array(123456789, 0))
     _set_lin(parser, lin)
-    assert parser._read_hint_stream_decoded() is None  # noqa: SLF001
+    assert parser._read_hint_stream_decoded() is None
 
 
 # ---------- _hint_subtable_offset early-exits ----------
@@ -182,7 +182,7 @@ def test_read_hint_stream_decoded_returns_none_when_xref_no_match() -> None:
 def test_hint_subtable_offset_returns_none_when_no_linearization() -> None:
     parser = _bare_parser()
     _set_lin(parser, None)
-    assert parser._hint_subtable_offset(2) is None  # noqa: SLF001
+    assert parser._hint_subtable_offset(2) is None
 
 
 def test_hint_subtable_offset_returns_none_when_slot_wrong_type() -> None:
@@ -193,7 +193,7 @@ def test_hint_subtable_offset_returns_none_when_slot_wrong_type() -> None:
     h_arr.add(COSName.get_pdf_name("non-numeric"))  # slot 2 wrong type
     lin = _lin_dict(n=None, h_array=h_arr)
     _set_lin(parser, lin)
-    assert parser._hint_subtable_offset(2) is None  # noqa: SLF001
+    assert parser._hint_subtable_offset(2) is None
 
 
 def test_hint_subtable_offset_returns_none_when_value_negative() -> None:
@@ -201,7 +201,7 @@ def test_hint_subtable_offset_returns_none_when_value_negative() -> None:
     h_arr = _h_array(0, 0, -5)
     lin = _lin_dict(n=None, h_array=h_arr)
     _set_lin(parser, lin)
-    assert parser._hint_subtable_offset(2) is None  # noqa: SLF001
+    assert parser._hint_subtable_offset(2) is None
 
 
 def test_hint_subtable_offset_accepts_cosfloat_value() -> None:
@@ -213,7 +213,7 @@ def test_hint_subtable_offset_accepts_cosfloat_value() -> None:
     h_arr.add(COSFloat(42.0))
     lin = _lin_dict(n=None, h_array=h_arr)
     _set_lin(parser, lin)
-    assert parser._hint_subtable_offset(2) == 42  # noqa: SLF001
+    assert parser._hint_subtable_offset(2) == 42
 
 
 # ---------- shared / thumbnail decode early-exits ----------
@@ -387,7 +387,7 @@ def _make_parser_with_hint_pointing_at_stream(stream: COSStream, offset: int) ->
     from pypdfbox.cos import COSDocument
 
     doc = COSDocument()
-    parser._document = doc  # noqa: SLF001
+    parser._document = doc
     _seed_xref(parser, COSObjectKey(2, 0), offset)
     # Stash the stream as a fake "object" the document can return.
     cos_object_for_stream = doc.get_object_from_pool(COSObjectKey(2, 0))
@@ -410,7 +410,7 @@ def test_read_hint_stream_decoded_returns_none_on_stream_io_error() -> None:
     parser = _make_parser_with_hint_pointing_at_stream(stream, 6000)
     lin = _lin_dict(n=None, h_array=_h_array(6000, 200))
     _set_lin(parser, lin)
-    assert parser._read_hint_stream_decoded() is None  # noqa: SLF001
+    assert parser._read_hint_stream_decoded() is None
 
 
 # ---------- non-COSStream resolved target (line 442-443 / 492-494) ----------
@@ -421,9 +421,9 @@ def test_decode_page_offset_returns_none_when_target_is_not_stream() -> None:
     parser = _bare_parser()
     from pypdfbox.cos import COSDocument
 
-    parser._document = COSDocument()  # noqa: SLF001
+    parser._document = COSDocument()
     _seed_xref(parser, COSObjectKey(2, 0), 7777)
-    parser._document.get_object_from_pool(COSObjectKey(2, 0)).set_object(  # noqa: SLF001
+    parser._document.get_object_from_pool(COSObjectKey(2, 0)).set_object(
         COSDictionary()
     )
     lin = _lin_dict(n=1, h_array=_h_array(7777, 200))
@@ -436,14 +436,14 @@ def test_read_hint_stream_decoded_returns_none_when_target_is_not_stream() -> No
     parser = _bare_parser()
     from pypdfbox.cos import COSDocument
 
-    parser._document = COSDocument()  # noqa: SLF001
+    parser._document = COSDocument()
     _seed_xref(parser, COSObjectKey(2, 0), 8888)
-    parser._document.get_object_from_pool(COSObjectKey(2, 0)).set_object(  # noqa: SLF001
+    parser._document.get_object_from_pool(COSObjectKey(2, 0)).set_object(
         COSDictionary()
     )
     lin = _lin_dict(n=None, h_array=_h_array(8888, 200))
     _set_lin(parser, lin)
-    assert parser._read_hint_stream_decoded() is None  # noqa: SLF001
+    assert parser._read_hint_stream_decoded() is None
 
 
 def test_decode_page_offset_returns_none_when_target_obj_missing_from_document() -> None:
@@ -453,7 +453,7 @@ def test_decode_page_offset_returns_none_when_target_obj_missing_from_document()
     parser = _bare_parser()
     from pypdfbox.cos import COSDocument
 
-    parser._document = COSDocument()  # noqa: SLF001
+    parser._document = COSDocument()
     _seed_xref(parser, COSObjectKey(2, 0), 9999)
     # Do NOT register the object in the pool → get_object returns None.
     lin = _lin_dict(n=1, h_array=_h_array(9999, 200))
@@ -466,21 +466,21 @@ def test_read_hint_stream_decoded_returns_none_when_target_obj_missing() -> None
     parser = _bare_parser()
     from pypdfbox.cos import COSDocument
 
-    parser._document = COSDocument()  # noqa: SLF001
+    parser._document = COSDocument()
     _seed_xref(parser, COSObjectKey(2, 0), 4444)
     lin = _lin_dict(n=None, h_array=_h_array(4444, 200))
     _set_lin(parser, lin)
-    assert parser._read_hint_stream_decoded() is None  # noqa: SLF001
+    assert parser._read_hint_stream_decoded() is None
 
 
 def test_read_hint_stream_decoded_returns_none_when_document_missing() -> None:
     """Line 488 — ``self._document is None`` in ``_read_hint_stream_decoded``."""
     parser = _bare_parser()
     _seed_xref(parser, COSObjectKey(2, 0), 1234)
-    parser._document = None  # noqa: SLF001
+    parser._document = None
     lin = _lin_dict(n=None, h_array=_h_array(1234, 200))
     _set_lin(parser, lin)
-    assert parser._read_hint_stream_decoded() is None  # noqa: SLF001
+    assert parser._read_hint_stream_decoded() is None
 
 
 def test_decode_shared_object_when_h2_missing_returns_none() -> None:
@@ -493,9 +493,9 @@ def test_decode_shared_object_when_h2_missing_returns_none() -> None:
     stream = COSStream()
     with stream.create_output_stream() as out:
         out.write(b"\x00" * 64)
-    parser._document = COSDocument()  # noqa: SLF001
+    parser._document = COSDocument()
     _seed_xref(parser, COSObjectKey(2, 0), 555)
-    parser._document.get_object_from_pool(COSObjectKey(2, 0)).set_object(  # noqa: SLF001
+    parser._document.get_object_from_pool(COSObjectKey(2, 0)).set_object(
         stream
     )
     # /H[2] missing — only two slots in the array.
@@ -512,9 +512,9 @@ def test_decode_thumbnail_when_h3_missing_returns_none() -> None:
     stream = COSStream()
     with stream.create_output_stream() as out:
         out.write(b"\x00" * 64)
-    parser._document = COSDocument()  # noqa: SLF001
+    parser._document = COSDocument()
     _seed_xref(parser, COSObjectKey(2, 0), 666)
-    parser._document.get_object_from_pool(COSObjectKey(2, 0)).set_object(  # noqa: SLF001
+    parser._document.get_object_from_pool(COSObjectKey(2, 0)).set_object(
         stream
     )
     lin = _lin_dict(n=None, h_array=_h_array(666, 64))
@@ -534,9 +534,9 @@ def test_decode_shared_object_when_body_malformed_returns_none() -> None:
     stream = COSStream()
     with stream.create_output_stream() as out:
         out.write(body)
-    parser._document = COSDocument()  # noqa: SLF001
+    parser._document = COSDocument()
     _seed_xref(parser, COSObjectKey(2, 0), 777)
-    parser._document.get_object_from_pool(COSObjectKey(2, 0)).set_object(  # noqa: SLF001
+    parser._document.get_object_from_pool(COSObjectKey(2, 0)).set_object(
         stream
     )
     # /H[2] = 16 — leaves only 16 bytes of body, not enough for the 24-
@@ -555,9 +555,9 @@ def test_decode_thumbnail_when_body_malformed_returns_none() -> None:
     stream = COSStream()
     with stream.create_output_stream() as out:
         out.write(body)
-    parser._document = COSDocument()  # noqa: SLF001
+    parser._document = COSDocument()
     _seed_xref(parser, COSObjectKey(2, 0), 888)
-    parser._document.get_object_from_pool(COSObjectKey(2, 0)).set_object(  # noqa: SLF001
+    parser._document.get_object_from_pool(COSObjectKey(2, 0)).set_object(
         stream
     )
     # /H[3] = 20 — leaves 12 bytes after offset, not enough for the 20-

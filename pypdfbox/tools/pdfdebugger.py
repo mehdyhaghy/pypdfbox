@@ -385,7 +385,7 @@ def _stream_preview(node: COSStream) -> tuple[bytes, str]:
             sample = decoded.read(_MAX_STREAM_PREVIEW)
         if sample:
             return sample, "decoded"
-    except Exception:  # noqa: BLE001 — filter errors are diverse
+    except Exception:
         pass
     # Fall back to raw, undecoded bytes.
     try:
@@ -700,7 +700,7 @@ def _dump_stream(
     try:
         decoded_bytes = resolved.to_byte_array()
         decoded_err: str | None = None
-    except Exception as exc:  # noqa: BLE001 — filters surface diverse errors
+    except Exception as exc:
         decoded_bytes = b""
         decoded_err = str(exc)
 
@@ -970,7 +970,7 @@ def _print_page_tokens(
     data = page.get_contents()
     try:
         tokens = _tokenize_stream_bytes(data)
-    except Exception as exc:  # noqa: BLE001 — parser errors surface to CLI
+    except Exception as exc:
         print(f"pdfdebugger: tokenize page {one_based_index}: {exc}", flush=True)
         return 4
     if output_format == _FORMAT_JSON:
@@ -1163,7 +1163,7 @@ def _walker_lookup_child(
         return None
     if isinstance(target, (COSDictionary, COSStream)):
         # ``cd /Foo`` and ``cd Foo`` both work — strip a single leading slash.
-        key = token[1:] if token.startswith("/") else token
+        key = token.removeprefix("/")
         return target.get_dictionary_object(COSName.get_pdf_name(key))
     return None
 
@@ -1188,7 +1188,7 @@ def _walker_find_in_subtree(
 
     Cycles are guarded by an id-set; recursion is bounded by
     ``_MAX_DEPTH`` to mirror the pretty-printer."""
-    target = key[1:] if key.startswith("/") else key
+    target = key.removeprefix("/")
     matches: list[str] = []
     visited: set[int] = set()
 
@@ -1231,7 +1231,7 @@ def _walker_stream_preview(
         else:
             with target.create_input_stream() as src:
                 data = src.read(limit)
-    except Exception as exc:  # noqa: BLE001 — surface filter errors verbatim
+    except Exception as exc:
         return f"<error: {exc}>"
     return _hex_dump(data)
 
@@ -1454,7 +1454,7 @@ def run(args: argparse.Namespace) -> int:
     try:
         ctx = PDDocument.load(src, password=password) if password is not None \
             else PDDocument.load(src)
-    except Exception as exc:  # noqa: BLE001 — broad on purpose at the CLI seam
+    except Exception as exc:
         print(f"pdfdebugger: cannot open {src}: {exc}", flush=True)
         return 4
 

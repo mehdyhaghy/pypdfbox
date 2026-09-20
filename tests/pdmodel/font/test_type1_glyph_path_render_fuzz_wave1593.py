@@ -50,7 +50,7 @@ def _stub_type1_program() -> Type1Font:
             self.width = width
             self._commands = commands
 
-        def draw(self, pen) -> None:  # noqa: ANN001 — fontTools pen protocol
+        def draw(self, pen) -> None:
             for cmd in self._commands:
                 if cmd[0] == "moveTo":
                     pen.moveTo(cmd[1])
@@ -166,7 +166,7 @@ def _standard14_font(
 # ---------- helpers ----------
 
 
-def _is_path_command_list(path) -> bool:  # noqa: ANN001
+def _is_path_command_list(path) -> bool:
     if not isinstance(path, list):
         return False
     for cmd in path:

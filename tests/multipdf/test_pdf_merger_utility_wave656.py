@@ -128,18 +128,18 @@ def test_wave656_merge_outline_ignores_cycles_and_stops_when_insert_yields_no_ne
     source_catalog = _Catalog()
     dest_catalog = _Catalog()
     child = _OutlineItem()
-    source_catalog._outline = _Outline(None, [child])  # noqa: SLF001
+    source_catalog._outline = _Outline(None, [child])
 
     looping = _OutlineItem()
-    looping._next_item = looping  # noqa: SLF001
-    dest_catalog._outline = _Outline(looping)  # noqa: SLF001
+    looping._next_item = looping
+    dest_catalog._outline = _Outline(looping)
     with caplog.at_level(logging.WARNING, logger="pypdfbox.multipdf.pdf_merger_utility"):
-        util._merge_outline(_IdentityCloner(), source_catalog, dest_catalog)  # type: ignore[arg-type]  # noqa: SLF001,E501
+        util._merge_outline(_IdentityCloner(), source_catalog, dest_catalog)  # type: ignore[arg-type]
     assert "Outline ignored" in caplog.text
 
     last = _OutlineItem()
-    dest_catalog._outline = _Outline(last)  # noqa: SLF001
-    util._merge_outline(_IdentityCloner(), source_catalog, dest_catalog)  # type: ignore[arg-type]  # noqa: SLF001,E501
+    dest_catalog._outline = _Outline(last)
+    util._merge_outline(_IdentityCloner(), source_catalog, dest_catalog)  # type: ignore[arg-type]
     assert last.inserted is not None
 
 
@@ -155,7 +155,7 @@ def test_wave656_merge_page_labels_replaces_malformed_destination_nums() -> None
     dest_catalog_dict = COSDictionary()
     dest_catalog_dict.set_item(_PAGE_LABELS, dest_labels)
 
-    PDFMergerUtility()._merge_page_labels(  # type: ignore[arg-type]  # noqa: SLF001
+    PDFMergerUtility()._merge_page_labels(  # type: ignore[arg-type]
         _IdentityCloner(),
         _Document(_Catalog(src_catalog_dict)),
         _Document(_Catalog(dest_catalog_dict), page_count=4),
@@ -180,11 +180,11 @@ def test_wave656_prepare_struct_tree_merge_derives_negative_next_key_from_dest_m
     dest_root.set_parent_tree_next_key(-1)
 
     src_catalog = _Catalog()
-    src_catalog._struct_tree = src_root  # noqa: SLF001
+    src_catalog._struct_tree = src_root
     dest_catalog = _Catalog()
-    dest_catalog._struct_tree = dest_root  # noqa: SLF001
+    dest_catalog._struct_tree = dest_root
 
-    result = PDFMergerUtility()._prepare_struct_tree_merge(  # type: ignore[arg-type]  # noqa: SLF001,E501
+    result = PDFMergerUtility()._prepare_struct_tree_merge(  # type: ignore[arg-type]
         src_catalog,
         dest_catalog,
         _Document(dest_catalog),

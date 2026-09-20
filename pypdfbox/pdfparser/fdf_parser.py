@@ -51,7 +51,7 @@ class FDFParser(COSParser):
 
         Mirrors upstream ``FDFParser.parse`` (Java line 66).
         """
-        from pypdfbox.pdmodel.fdf.fdf_document import FDFDocument  # noqa: PLC0415
+        from pypdfbox.pdmodel.fdf.fdf_document import FDFDocument
 
         exception_occurred = True
         try:
@@ -73,7 +73,7 @@ class FDFParser(COSParser):
             if not version:
                 raise PDFParseError("Error: Header doesn't contain versioninfo")
             if self._document is None:
-                from .pdf_parser import PDFParser  # noqa: PLC0415
+                from .pdf_parser import PDFParser
 
                 self._src.seek(0)
                 parser = PDFParser(self._src)

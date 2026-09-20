@@ -11,7 +11,7 @@ from pypdfbox.pdmodel.interactive.annotation.pd_external_data_dictionary import 
 
 def test_annotation_filter_is_abstract() -> None:
     class AcceptAll(AnnotationFilter):
-        def accept(self, annotation):  # noqa: ANN001
+        def accept(self, annotation):
             return True
 
     flt = AcceptAll()

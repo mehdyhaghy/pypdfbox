@@ -59,7 +59,7 @@ class PagePane:
     ) -> None:
         # Lazy imports — pdmodel may not be on the import path during
         # unit tests of the dispatcher's static surface.
-        from pypdfbox.pdmodel import PDPage  # noqa: PLC0415
+        from pypdfbox.pdmodel import PDPage
 
         self._document = document
         self._page: PDPage = PDPage(page_dict)
@@ -166,7 +166,7 @@ class PagePane:
         # Local import — avoid pulling annotation machinery at module
         # load time.
         try:
-            from pypdfbox.pdmodel.interactive.annotation.pd_annotation_link import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.interactive.annotation.pd_annotation_link import (
                 PDAnnotationLink,
             )
         except ImportError:
@@ -191,16 +191,16 @@ class PagePane:
         if rect is None:
             return
         try:
-            from pypdfbox.pdmodel.interactive.action.pd_action_go_to import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.interactive.action.pd_action_go_to import (
                 PDActionGoTo,
             )
-            from pypdfbox.pdmodel.interactive.action.pd_action_uri import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.interactive.action.pd_action_uri import (
                 PDActionURI,
             )
-            from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (  # noqa: PLC0415, E501
+            from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (  # noqa: E501
                 PDNamedDestination,
             )
-            from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: PLC0415, E501
+            from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: E501
                 PDPageDestination,
             )
         except ImportError:
@@ -210,7 +210,7 @@ class PagePane:
             PDNamedDestination = None  # noqa: N806
             PDPageDestination = None  # noqa: N806
             try:
-                from pypdfbox.pdmodel.interactive.action.pd_action_uri import (  # noqa: PLC0415
+                from pypdfbox.pdmodel.interactive.action.pd_action_uri import (
                     PDActionURI,
                 )
             except ImportError:
@@ -328,11 +328,11 @@ class PagePane:
         if self._page_index < 0:
             return
         try:
-            from pypdfbox.debugger.ui.text_dialog import TextDialog  # noqa: PLC0415
-            from pypdfbox.debugger.ui.text_stripper_menu import (  # noqa: PLC0415
+            from pypdfbox.debugger.ui.text_dialog import TextDialog
+            from pypdfbox.debugger.ui.text_stripper_menu import (
                 TextStripperMenu,
             )
-            from pypdfbox.text.pdf_text_stripper import PDFTextStripper  # noqa: PLC0415
+            from pypdfbox.text.pdf_text_stripper import PDFTextStripper
         except ImportError as exc:
             _LOG.error("text extraction dependencies missing: %s", exc)
             return
@@ -374,7 +374,7 @@ class PagePane:
 
     def _render_image(self) -> PilImage:
         # Lazy import — pulls the full rendering stack on first use.
-        from pypdfbox.rendering import PDFRenderer  # noqa: PLC0415
+        from pypdfbox.rendering import PDFRenderer
 
         renderer = PDFRenderer(self._document)
         # Mirror upstream: PDFRenderer.setSubsamplingAllowed is gated on
@@ -419,7 +419,7 @@ class PagePane:
         ):
             return
         try:
-            from PIL import ImageDraw  # noqa: PLC0415
+            from PIL import ImageDraw
         except ImportError:  # pragma: no cover - PIL declared in deps
             return
         draw = ImageDraw.Draw(image)
@@ -438,13 +438,13 @@ class PagePane:
         rotation = _resolve_rotation()
         if rotation:
             try:
-                from pypdfbox.debugger.ui.image_util import ImageUtil  # noqa: PLC0415
+                from pypdfbox.debugger.ui.image_util import ImageUtil
 
                 image = ImageUtil.get_rotated_image(image, rotation)
             except (ImportError, ValueError):
                 pass
         try:
-            from PIL import ImageTk  # noqa: PLC0415
+            from PIL import ImageTk
         except ImportError:  # pragma: no cover - PIL declared in deps
             return
         if self._canvas is None:
@@ -560,7 +560,7 @@ class PagePane:
     # the upstream method names so parity tooling and call-sites that
     # prefer the upstream shape can invoke them directly.
 
-    def action_performed(self, event: Any | None = None) -> None:  # noqa: ARG002
+    def action_performed(self, event: Any | None = None) -> None:
         """Re-render the page on a zoom / rotation / image-type / destination menu change.
 
         Mirrors upstream ``PagePane.actionPerformed(ActionEvent)``.
@@ -574,7 +574,7 @@ class PagePane:
         """
         self.start_rendering()
 
-    def ancestor_added(self, event: Any | None = None) -> None:  # noqa: ARG002
+    def ancestor_added(self, event: Any | None = None) -> None:
         """Enable the page menus when the pane is attached to its host frame.
 
         Mirrors upstream ``ancestorAdded(AncestorEvent)`` from the
@@ -585,13 +585,13 @@ class PagePane:
         body here is a no-op — kept for upstream API parity.
         """
 
-    def ancestor_removed(self, event: Any | None = None) -> None:  # noqa: ARG002
+    def ancestor_removed(self, event: Any | None = None) -> None:
         """Disable the page menus when the pane is detached.
 
         Mirrors upstream ``ancestorRemoved(AncestorEvent)``.
         """
 
-    def ancestor_moved(self, event: Any | None = None) -> None:  # noqa: ARG002
+    def ancestor_moved(self, event: Any | None = None) -> None:
         """No-op — kept for upstream ``AncestorListener`` parity.
 
         Upstream's body is explicitly ``// do nothing``.
@@ -610,19 +610,19 @@ class PagePane:
             return
         self._on_mouse_clicked(event)
 
-    def mouse_pressed(self, event: tk.Event[Any] | None = None) -> None:  # noqa: ARG002
+    def mouse_pressed(self, event: tk.Event[Any] | None = None) -> None:
         """No-op — kept for upstream ``MouseListener`` parity.
 
         Upstream's body is empty (``// do nothing``).
         """
 
-    def mouse_released(self, event: tk.Event[Any] | None = None) -> None:  # noqa: ARG002
+    def mouse_released(self, event: tk.Event[Any] | None = None) -> None:
         """No-op — kept for upstream ``MouseListener`` parity.
 
         Upstream's body is empty (``// do nothing``).
         """
 
-    def mouse_entered(self, event: tk.Event[Any] | None = None) -> None:  # noqa: ARG002
+    def mouse_entered(self, event: tk.Event[Any] | None = None) -> None:
         """No-op — kept for upstream ``MouseListener`` parity.
 
         Upstream's body is empty (``// do nothing``).
@@ -639,7 +639,7 @@ class PagePane:
             return
         self._on_mouse_exited(event)
 
-    def mouse_dragged(self, event: tk.Event[Any] | None = None) -> None:  # noqa: ARG002
+    def mouse_dragged(self, event: tk.Event[Any] | None = None) -> None:
         """No-op — kept for upstream ``MouseMotionListener`` parity.
 
         Upstream's body is empty (``// do nothing``).
@@ -696,7 +696,7 @@ def _safe_get_view_menu() -> Any:
     lifecycle).
     """
     try:
-        from pypdfbox.debugger.ui.view_menu import ViewMenu  # noqa: PLC0415
+        from pypdfbox.debugger.ui.view_menu import ViewMenu
     except ImportError:
         return None
     return getattr(ViewMenu, "_instance", None)
@@ -710,7 +710,7 @@ def _safe_call(target: Any, name: str, default: Any) -> Any:
         return default
     try:
         return method()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return default
 
 
@@ -726,21 +726,21 @@ def _resolve_zoom_scale() -> float:
     singleton first.
     """
     try:
-        from pypdfbox.debugger.ui.zoom_menu import ZoomMenu  # noqa: PLC0415
+        from pypdfbox.debugger.ui.zoom_menu import ZoomMenu
     except ImportError:
         return 1.0
     static_getter = getattr(ZoomMenu, "get_zoom_scale", None)
     if static_getter is not None:
         try:
             return float(static_getter())
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
     instance = getattr(ZoomMenu, "_instance", None)
     if instance is not None:
         try:
             scale = instance.get_page_zoom_scale()
             return float(scale) if scale else 1.0
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
     return 1.0
 
@@ -752,7 +752,7 @@ def _resolve_rotation() -> int:
     singleton — the menu is created by the debugger main shell.
     """
     try:
-        from pypdfbox.debugger.ui.rotation_menu import RotationMenu  # noqa: PLC0415
+        from pypdfbox.debugger.ui.rotation_menu import RotationMenu
     except ImportError:
         return 0
     instance = getattr(RotationMenu, "_instance", None)
@@ -762,7 +762,7 @@ def _resolve_rotation() -> int:
     if static_getter is not None:
         try:
             return int(static_getter())
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
     return 0
 
@@ -774,7 +774,7 @@ def _resolve_image_type() -> Any:
     behaviour. Mirrors upstream's ``ImageTypeMenu.getImageType()``.
     """
     try:
-        from pypdfbox.debugger.ui.image_type_menu import (  # noqa: PLC0415
+        from pypdfbox.debugger.ui.image_type_menu import (
             ImageTypeMenu,
         )
     except ImportError:
@@ -788,7 +788,7 @@ def _resolve_image_type() -> Any:
         # Menu not yet instantiated, or label unknown — defer to the
         # renderer's default (RGB).
         return None
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
 
 
@@ -799,7 +799,7 @@ def _resolve_render_destination() -> Any:
     ``RenderDestinationMenu.getRenderDestination()``.
     """
     try:
-        from pypdfbox.debugger.ui.render_destination_menu import (  # noqa: PLC0415
+        from pypdfbox.debugger.ui.render_destination_menu import (
             RenderDestinationMenu,
         )
     except ImportError:
@@ -809,14 +809,14 @@ def _resolve_render_destination() -> Any:
         return None
     try:
         return getter()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
 
 
 def _resolve_allow_subsampling() -> bool:
     """Mirror upstream's ``ViewMenu.isAllowSubsampling()``."""
     try:
-        from pypdfbox.debugger.ui.view_menu import ViewMenu  # noqa: PLC0415
+        from pypdfbox.debugger.ui.view_menu import ViewMenu
     except ImportError:
         return False
     getter = getattr(ViewMenu, "is_allow_subsampling", None)
@@ -824,7 +824,7 @@ def _resolve_allow_subsampling() -> bool:
         return False
     try:
         return bool(getter())
-    except Exception:  # noqa: BLE001
+    except Exception:
         return False
 
 
@@ -885,12 +885,12 @@ class RenderWorker:
         # step with PagePane's inline path. The intermediate steps
         # mirror upstream's RenderWorker.doInBackground line-for-line:
         #   renderImage → DebugTextOverlay overlay → ImageUtil rotation.
-        image = pp._render_image()  # noqa: SLF001 - same-module helper
-        pp._draw_debug_overlays(image)  # noqa: SLF001
+        image = pp._render_image()
+        pp._draw_debug_overlays(image)
         rotation = _resolve_rotation()
         if rotation:
             try:
-                from pypdfbox.debugger.ui.image_util import (  # noqa: PLC0415
+                from pypdfbox.debugger.ui.image_util import (
                     ImageUtil,
                 )
 
@@ -908,7 +908,7 @@ class RenderWorker:
         """
         if self._result is None:
             return
-        self._page_pane._present_image(self._result)  # noqa: SLF001
+        self._page_pane._present_image(self._result)
 
     def get(self) -> PilImage | None:
         """Return the most recently produced image.

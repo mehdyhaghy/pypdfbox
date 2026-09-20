@@ -79,7 +79,7 @@ def test_coerce_color_components_cosname_returns_none() -> None:
 
 def test_initial_color_rgb_none_returns_none() -> None:
     r = _bare_renderer()
-    assert r._initial_color_rgb(None) is None  # noqa: SLF001
+    assert r._initial_color_rgb(None) is None
 
 
 def test_initial_color_rgb_no_method_returns_none() -> None:
@@ -88,7 +88,7 @@ def test_initial_color_rgb_no_method_returns_none() -> None:
     class _NoGetInitial:
         pass
 
-    assert r._initial_color_rgb(_NoGetInitial()) is None  # noqa: SLF001
+    assert r._initial_color_rgb(_NoGetInitial()) is None
 
 
 def test_initial_color_rgb_raising_get_initial_returns_none() -> None:
@@ -98,7 +98,7 @@ def test_initial_color_rgb_raising_get_initial_returns_none() -> None:
         def get_initial_color(self) -> Any:
             raise RuntimeError("boom")
 
-    assert r._initial_color_rgb(_Raising()) is None  # noqa: SLF001
+    assert r._initial_color_rgb(_Raising()) is None
 
 
 def test_initial_color_rgb_none_initial_returns_none() -> None:
@@ -108,7 +108,7 @@ def test_initial_color_rgb_none_initial_returns_none() -> None:
         def get_initial_color(self) -> Any:
             return None
 
-    assert r._initial_color_rgb(_Owner()) is None  # noqa: SLF001
+    assert r._initial_color_rgb(_Owner()) is None
 
 
 def test_initial_color_rgb_no_components_returns_none() -> None:
@@ -121,7 +121,7 @@ def test_initial_color_rgb_no_components_returns_none() -> None:
         def get_initial_color(self) -> Any:
             return _Empty()
 
-    assert r._initial_color_rgb(_Owner()) is None  # noqa: SLF001
+    assert r._initial_color_rgb(_Owner()) is None
 
 
 def test_initial_color_rgb_components_attribute_alternate() -> None:
@@ -143,7 +143,7 @@ def test_initial_color_rgb_components_attribute_alternate() -> None:
 
     # The branch falls through to ``_color_components_to_rgb`` which
     # uses the colour space's to_rgb; we built one above.
-    assert r._initial_color_rgb(_Owner()) == (128, 128, 128)  # noqa: SLF001
+    assert r._initial_color_rgb(_Owner()) == (128, 128, 128)
 
 
 # ---------- _resolve_color_space ----------
@@ -151,8 +151,8 @@ def test_initial_color_rgb_components_attribute_alternate() -> None:
 
 def test_resolve_color_space_no_resources_returns_none() -> None:
     r = _bare_renderer()
-    r._resources = None  # noqa: SLF001
-    assert r._resolve_color_space(COSName.get_pdf_name("CSCustom")) is None  # noqa: SLF001
+    r._resources = None
+    assert r._resolve_color_space(COSName.get_pdf_name("CSCustom")) is None
 
 
 def test_resolve_color_space_raising_returns_none() -> None:
@@ -162,8 +162,8 @@ def test_resolve_color_space_raising_returns_none() -> None:
         def get_color_space(self, name: COSName) -> Any:
             raise RuntimeError("bad cs")
 
-    r._resources = _RaisingRes()  # noqa: SLF001
-    assert r._resolve_color_space(COSName.get_pdf_name("CSCustom")) is None  # noqa: SLF001
+    r._resources = _RaisingRes()
+    assert r._resolve_color_space(COSName.get_pdf_name("CSCustom")) is None
 
 
 # ---------- _op_set_stroke_color_n / _op_set_fill_color_n ----------
@@ -171,31 +171,31 @@ def test_resolve_color_space_raising_returns_none() -> None:
 
 def test_scn_without_pattern_sets_fill_rgb() -> None:
     r = _bare_renderer()
-    r._op_set_fill_color_n(  # noqa: SLF001
+    r._op_set_fill_color_n(
         None, [COSFloat(1.0), COSFloat(0.0), COSFloat(0.0)]
     )
-    assert r._gs.fill_rgb == (255, 0, 0)  # noqa: SLF001
+    assert r._gs.fill_rgb == (255, 0, 0)
 
 
 def test_scn_clears_pattern_when_solid_colour() -> None:
     r = _bare_renderer()
-    r._gs.fill_pattern = object()  # noqa: SLF001
-    r._gs.fill_pattern_tint = (1, 2, 3)  # noqa: SLF001
-    r._op_set_fill_color_n(  # noqa: SLF001
+    r._gs.fill_pattern = object()
+    r._gs.fill_pattern_tint = (1, 2, 3)
+    r._op_set_fill_color_n(
         None, [COSFloat(0.5), COSFloat(0.5), COSFloat(0.5)]
     )
-    assert r._gs.fill_pattern is None  # noqa: SLF001
-    assert r._gs.fill_pattern_tint is None  # noqa: SLF001
+    assert r._gs.fill_pattern is None
+    assert r._gs.fill_pattern_tint is None
 
 
 def test_scn_uppercase_stroke_path() -> None:
     r = _bare_renderer()
-    r._gs.stroke_pattern = object()  # noqa: SLF001
-    r._op_set_stroke_color_n(  # noqa: SLF001
+    r._gs.stroke_pattern = object()
+    r._op_set_stroke_color_n(
         None, [COSFloat(0.0), COSFloat(1.0), COSFloat(0.0)]
     )
-    assert r._gs.stroke_rgb == (0, 255, 0)  # noqa: SLF001
-    assert r._gs.stroke_pattern is None  # noqa: SLF001
+    assert r._gs.stroke_rgb == (0, 255, 0)
+    assert r._gs.stroke_pattern is None
 
 
 # ---------- _extract_pattern_tint_rgb ----------
@@ -203,19 +203,19 @@ def test_scn_uppercase_stroke_path() -> None:
 
 def test_extract_pattern_tint_rgb_empty_returns_none() -> None:
     r = _bare_renderer()
-    assert r._extract_pattern_tint_rgb([], None) is None  # noqa: SLF001
+    assert r._extract_pattern_tint_rgb([], None) is None
 
 
 def test_extract_pattern_tint_rgb_leading_cosname() -> None:
     r = _bare_renderer()
-    assert r._extract_pattern_tint_rgb(  # noqa: SLF001
+    assert r._extract_pattern_tint_rgb(
         [COSName.get_pdf_name("Foo"), COSName.get_pdf_name("Pat0")], None,
     ) is None
 
 
 def test_extract_pattern_tint_rgb_with_int_components() -> None:
     r = _bare_renderer()
-    out = r._extract_pattern_tint_rgb(  # noqa: SLF001
+    out = r._extract_pattern_tint_rgb(
         [COSInteger(0), COSInteger(1), COSInteger(0), COSName.get_pdf_name("Pat0")],
         None,
     )
@@ -228,7 +228,7 @@ def test_extract_pattern_tint_rgb_with_unconvertible_returns_none() -> None:
     class _Bad:
         pass
 
-    assert r._extract_pattern_tint_rgb(  # noqa: SLF001
+    assert r._extract_pattern_tint_rgb(
         [_Bad(), COSName.get_pdf_name("Pat0")], None,
     ) is None
 
@@ -243,7 +243,7 @@ def test_color_components_to_rgb_raising_cs_returns_none() -> None:
         def to_rgb(self, comps: tuple[float, ...]) -> Any:
             raise RuntimeError("conversion failed")
 
-    assert r._color_components_to_rgb((0.5,), _RaisingCS()) is None  # noqa: SLF001
+    assert r._color_components_to_rgb((0.5,), _RaisingCS()) is None
 
 
 def test_color_components_to_rgb_short_result_returns_none() -> None:
@@ -253,7 +253,7 @@ def test_color_components_to_rgb_short_result_returns_none() -> None:
         def to_rgb(self, comps: tuple[float, ...]) -> tuple[float, ...]:
             return (0.5,)
 
-    assert r._color_components_to_rgb((0.5,), _ShortCS()) is None  # noqa: SLF001
+    assert r._color_components_to_rgb((0.5,), _ShortCS()) is None
 
 
 def test_color_components_to_rgb_non_iterable_returns_none() -> None:
@@ -263,12 +263,12 @@ def test_color_components_to_rgb_non_iterable_returns_none() -> None:
         def to_rgb(self, comps: tuple[float, ...]) -> Any:
             return None
 
-    assert r._color_components_to_rgb((0.5,), _NonIterableCS()) is None  # noqa: SLF001
+    assert r._color_components_to_rgb((0.5,), _NonIterableCS()) is None
 
 
 def test_color_components_to_rgb_unknown_length_returns_none() -> None:
     r = _bare_renderer()
-    assert r._color_components_to_rgb((0.1, 0.2), None) is None  # noqa: SLF001
+    assert r._color_components_to_rgb((0.1, 0.2), None) is None
 
 
 # ---------- transfer-function helpers ----------
@@ -276,14 +276,14 @@ def test_color_components_to_rgb_unknown_length_returns_none() -> None:
 
 def test_apply_transfer_to_rgb_bytes_no_gs_stack_returns_unchanged() -> None:
     r = PDFRenderer.__new__(PDFRenderer)
-    r._gs_stack = []  # noqa: SLF001
-    r._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
-    assert r._apply_transfer_to_rgb_bytes((100, 50, 0)) == (100, 50, 0)  # noqa: SLF001
+    r._gs_stack = []
+    r._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+    assert r._apply_transfer_to_rgb_bytes((100, 50, 0)) == (100, 50, 0)
 
 
 def test_apply_transfer_to_rgb_bytes_no_transfer_returns_unchanged() -> None:
     r = _bare_renderer()
-    assert r._apply_transfer_to_rgb_bytes((100, 50, 0)) == (100, 50, 0)  # noqa: SLF001
+    assert r._apply_transfer_to_rgb_bytes((100, 50, 0)) == (100, 50, 0)
 
 
 def test_apply_transfer_to_rgb_bytes_with_failing_transfer_returns_unchanged() -> None:
@@ -292,8 +292,8 @@ def test_apply_transfer_to_rgb_bytes_with_failing_transfer_returns_unchanged() -
             raise RuntimeError("broke")
 
     r = _bare_renderer()
-    r._gs.transfer_function = _BadTransfer()  # noqa: SLF001
-    assert r._apply_transfer_to_rgb_bytes((100, 50, 0)) == (100, 50, 0)  # noqa: SLF001
+    r._gs.transfer_function = _BadTransfer()
+    assert r._apply_transfer_to_rgb_bytes((100, 50, 0)) == (100, 50, 0)
 
 
 def test_apply_transfer_to_byte_empty_list_returns_value() -> None:
@@ -347,7 +347,7 @@ def test_apply_transfer_to_byte_clamps_above_one() -> None:
 def test_apply_transfer_to_pil_image_no_transfer_returns_same() -> None:
     r = _bare_renderer()
     img = Image.new("RGB", (4, 4), (200, 100, 50))
-    assert r._apply_transfer_to_pil_image(img) is img  # noqa: SLF001
+    assert r._apply_transfer_to_pil_image(img) is img
 
 
 def test_apply_transfer_to_pil_image_l_mode() -> None:
@@ -356,9 +356,9 @@ def test_apply_transfer_to_pil_image_l_mode() -> None:
             return [1.0 - x[0]]
 
     r = _bare_renderer()
-    r._gs.transfer_function = _Invert()  # noqa: SLF001
+    r._gs.transfer_function = _Invert()
     img = Image.new("L", (2, 2), 200)
-    out = r._apply_transfer_to_pil_image(img)  # noqa: SLF001
+    out = r._apply_transfer_to_pil_image(img)
     assert abs(out.getpixel((0, 0)) - 55) <= 2
 
 
@@ -368,9 +368,9 @@ def test_apply_transfer_to_pil_image_1_bit_returns_same() -> None:
             return x
 
     r = _bare_renderer()
-    r._gs.transfer_function = _Identity()  # noqa: SLF001
+    r._gs.transfer_function = _Identity()
     img = Image.new("1", (2, 2), 1)
-    assert r._apply_transfer_to_pil_image(img) is img  # noqa: SLF001
+    assert r._apply_transfer_to_pil_image(img) is img
 
 
 def test_apply_transfer_to_pil_image_rgba_preserves_alpha() -> None:
@@ -379,9 +379,9 @@ def test_apply_transfer_to_pil_image_rgba_preserves_alpha() -> None:
             return x
 
     r = _bare_renderer()
-    r._gs.transfer_function = _Identity()  # noqa: SLF001
+    r._gs.transfer_function = _Identity()
     img = Image.new("RGBA", (2, 2), (100, 150, 200, 64))
-    out = r._apply_transfer_to_pil_image(img)  # noqa: SLF001
+    out = r._apply_transfer_to_pil_image(img)
     assert out.getpixel((0, 0))[3] == 64
 
 
@@ -391,9 +391,9 @@ def test_apply_transfer_to_pil_image_unsupported_mode_returns_same() -> None:
             return x
 
     r = _bare_renderer()
-    r._gs.transfer_function = _Identity()  # noqa: SLF001
+    r._gs.transfer_function = _Identity()
     img = Image.new("CMYK", (2, 2), (50, 100, 150, 200))
-    assert r._apply_transfer_to_pil_image(img) is img  # noqa: SLF001
+    assert r._apply_transfer_to_pil_image(img) is img
 
 
 # ---------- _overprint_suppresses_paint ----------
@@ -408,7 +408,7 @@ def test_overprint_suppresses_paint_stroke_non_black_returns_false() -> None:
         stroke_rgb=(255, 0, 0),
     )
     r = _bare_renderer(gs)
-    assert r._overprint_suppresses_paint(stroke=True, fill=True) is False  # noqa: SLF001
+    assert r._overprint_suppresses_paint(stroke=True, fill=True) is False
 
 
 # ---------- _apply_ext_gstate clamping ----------
@@ -505,26 +505,26 @@ def test_flatten_cubic_bezier_normal_curve_produces_polyline() -> None:
 
 def test_type3_d0_with_too_few_operands_is_noop() -> None:
     r = _bare_renderer()
-    r._type3_d0_wx = None  # noqa: SLF001
-    r._op_type3_d0(None, [COSFloat(100.0)])  # noqa: SLF001
-    assert r._type3_d0_wx is None  # noqa: SLF001
+    r._type3_d0_wx = None
+    r._op_type3_d0(None, [COSFloat(100.0)])
+    assert r._type3_d0_wx is None
 
 
 def test_type3_d1_with_too_few_operands_is_noop() -> None:
     r = _bare_renderer()
-    r._type3_d1_wx = None  # noqa: SLF001
-    r._op_type3_d1(None, [COSFloat(100.0), COSFloat(0.0), COSFloat(0.0)])  # noqa: SLF001
-    assert r._type3_d1_wx is None  # noqa: SLF001
+    r._type3_d1_wx = None
+    r._op_type3_d1(None, [COSFloat(100.0), COSFloat(0.0), COSFloat(0.0)])
+    assert r._type3_d1_wx is None
 
 
 def test_type3_d1_degenerate_bbox_does_not_set_clip() -> None:
     r = _bare_renderer()
-    r._type3_d1_wx = None  # noqa: SLF001
-    r._pending_clip = None  # noqa: SLF001
-    r._subpaths = []  # noqa: SLF001
-    r._current_subpath = None  # noqa: SLF001
-    r._current_point = None  # noqa: SLF001
-    r._op_type3_d1(  # noqa: SLF001
+    r._type3_d1_wx = None
+    r._pending_clip = None
+    r._subpaths = []
+    r._current_subpath = None
+    r._current_point = None
+    r._op_type3_d1(
         None,
         [
             COSFloat(100.0),
@@ -535,8 +535,8 @@ def test_type3_d1_degenerate_bbox_does_not_set_clip() -> None:
             COSFloat(50.0),
         ],
     )
-    assert r._type3_d1_wx == 100.0  # noqa: SLF001
-    assert r._pending_clip is None  # noqa: SLF001
+    assert r._type3_d1_wx == 100.0
+    assert r._pending_clip is None
 
 
 # ---------- _op_set_text_rendering_mode ----------
@@ -544,9 +544,9 @@ def test_type3_d1_degenerate_bbox_does_not_set_clip() -> None:
 
 def test_set_text_rendering_mode_no_operands_is_noop() -> None:
     r = _bare_renderer()
-    r._gs.text_rendering_mode = 3  # noqa: SLF001
-    r._op_set_text_rendering_mode(None, [])  # noqa: SLF001
-    assert r._gs.text_rendering_mode == 3  # noqa: SLF001
+    r._gs.text_rendering_mode = 3
+    r._op_set_text_rendering_mode(None, [])
+    assert r._gs.text_rendering_mode == 3
 
 
 def test_set_text_rendering_mode_negative_leaves_previous_unchanged() -> None:
@@ -554,18 +554,18 @@ def test_set_text_rendering_mode_negative_leaves_previous_unchanged() -> None:
     # val < 0, leaving the previously-set mode in place rather than
     # clamping to 0.
     r = _bare_renderer()
-    r._gs.text_rendering_mode = 2  # noqa: SLF001
-    r._op_set_text_rendering_mode(None, [COSInteger(-5)])  # noqa: SLF001
-    assert r._gs.text_rendering_mode == 2  # noqa: SLF001
+    r._gs.text_rendering_mode = 2
+    r._op_set_text_rendering_mode(None, [COSInteger(-5)])
+    assert r._gs.text_rendering_mode == 2
 
 
 def test_set_text_rendering_mode_above_seven_leaves_previous_unchanged() -> None:
     # Wave 1589 fix: upstream returns (ignores) on val >= 8, leaving the
     # previously-set mode in place rather than clamping to 7.
     r = _bare_renderer()
-    r._gs.text_rendering_mode = 1  # noqa: SLF001
-    r._op_set_text_rendering_mode(None, [COSInteger(99)])  # noqa: SLF001
-    assert r._gs.text_rendering_mode == 1  # noqa: SLF001
+    r._gs.text_rendering_mode = 1
+    r._op_set_text_rendering_mode(None, [COSInteger(99)])
+    assert r._gs.text_rendering_mode == 1
 
 
 # ---------- annotation skip + render ----------
@@ -600,9 +600,9 @@ class _AnnotationWithConstruct:
 def test_render_annotation_invokes_construct_appearances_with_document() -> None:
     doc, _ = _make_doc()
     renderer = PDFRenderer(doc)
-    renderer._document = doc  # noqa: SLF001
+    renderer._document = doc
     annot = _AnnotationWithConstruct()
-    renderer._render_annotation(annot)  # type: ignore[arg-type]  # noqa: SLF001
+    renderer._render_annotation(annot)  # type: ignore[arg-type]
     assert annot.constructed_with_doc is True
 
 
@@ -632,9 +632,9 @@ class _AnnotationConstructRaises:
 def test_render_annotation_swallows_construct_failure() -> None:
     doc, _ = _make_doc()
     renderer = PDFRenderer(doc)
-    renderer._document = doc  # noqa: SLF001
+    renderer._document = doc
     annot = _AnnotationConstructRaises()
-    renderer._render_annotation(annot)  # type: ignore[arg-type]  # noqa: SLF001
+    renderer._render_annotation(annot)  # type: ignore[arg-type]
 
 
 class _AnnotationNoRect:
@@ -676,8 +676,8 @@ class _AnnotationNoRect:
 def test_render_annotation_skips_when_rectangle_none() -> None:
     doc, _ = _make_doc()
     renderer = PDFRenderer(doc)
-    renderer._document = doc  # noqa: SLF001
-    renderer._render_annotation(_AnnotationNoRect())  # type: ignore[arg-type]  # noqa: SLF001
+    renderer._document = doc
+    renderer._render_annotation(_AnnotationNoRect())  # type: ignore[arg-type]
 
 
 class _AnnotationZeroRect:
@@ -719,8 +719,8 @@ class _AnnotationZeroRect:
 def test_render_annotation_skips_when_rect_zero_sized() -> None:
     doc, _ = _make_doc()
     renderer = PDFRenderer(doc)
-    renderer._document = doc  # noqa: SLF001
-    renderer._render_annotation(_AnnotationZeroRect())  # type: ignore[arg-type]  # noqa: SLF001
+    renderer._document = doc
+    renderer._render_annotation(_AnnotationZeroRect())  # type: ignore[arg-type]
 
 
 class _AnnotationHidden:
@@ -742,7 +742,7 @@ class _AnnotationHidden:
 
 def test_annotation_should_skip_hidden_returns_true() -> None:
     r = _bare_renderer()
-    assert r._annotation_should_skip(_AnnotationHidden()) is True  # noqa: SLF001
+    assert r._annotation_should_skip(_AnnotationHidden()) is True
 
 
 class _AnnotationFlagsRaise:
@@ -764,7 +764,7 @@ class _AnnotationFlagsRaise:
 
 def test_annotation_should_skip_swallows_flag_error() -> None:
     r = _bare_renderer()
-    assert r._annotation_should_skip(_AnnotationFlagsRaise()) is False  # noqa: SLF001
+    assert r._annotation_should_skip(_AnnotationFlagsRaise()) is False
 
 
 class _PDAnnotationUnknown:
@@ -789,7 +789,7 @@ _PDAnnotationUnknown.__name__ = "PDAnnotationUnknown"
 
 def test_annotation_should_skip_unknown_invisible() -> None:
     r = _bare_renderer()
-    assert r._annotation_should_skip(_PDAnnotationUnknown()) is True  # noqa: SLF001
+    assert r._annotation_should_skip(_PDAnnotationUnknown()) is True
 
 
 class _PDAnnotationUnknownInvisibleRaises:
@@ -814,7 +814,7 @@ _PDAnnotationUnknownInvisibleRaises.__name__ = "PDAnnotationUnknown"
 
 def test_annotation_should_skip_unknown_invisible_raises_returns_false() -> None:
     r = _bare_renderer()
-    assert r._annotation_should_skip(_PDAnnotationUnknownInvisibleRaises()) is False  # noqa: SLF001
+    assert r._annotation_should_skip(_PDAnnotationUnknownInvisibleRaises()) is False
 
 
 # ---------- behavioural rendering ----------
@@ -841,18 +841,18 @@ def test_render_with_invisible_text_mode_3_leaves_canvas_white() -> None:
 
 def test_resolve_pattern_operand_empty_returns_none() -> None:
     r = _bare_renderer()
-    assert r._resolve_pattern_operand([]) is None  # noqa: SLF001
+    assert r._resolve_pattern_operand([]) is None
 
 
 def test_resolve_pattern_operand_non_name_trailing_returns_none() -> None:
     r = _bare_renderer()
-    assert r._resolve_pattern_operand([COSFloat(0.5)]) is None  # noqa: SLF001
+    assert r._resolve_pattern_operand([COSFloat(0.5)]) is None
 
 
 def test_resolve_pattern_operand_no_resources_returns_none() -> None:
     r = _bare_renderer()
-    r._resources = None  # noqa: SLF001
-    assert r._resolve_pattern_operand([COSName.get_pdf_name("Pat0")]) is None  # noqa: SLF001
+    r._resources = None
+    assert r._resolve_pattern_operand([COSName.get_pdf_name("Pat0")]) is None
 
 
 # ---------- _decode_inline_image ----------
@@ -860,7 +860,7 @@ def test_resolve_pattern_operand_no_resources_returns_none() -> None:
 
 def test_decode_inline_image_with_no_params_returns_none() -> None:
     r = _bare_renderer()
-    assert r._decode_inline_image(None, b"") is None  # type: ignore[arg-type]  # noqa: SLF001
+    assert r._decode_inline_image(None, b"") is None  # type: ignore[arg-type]
 
 
 def test_decode_inline_image_zero_width_returns_none() -> None:
@@ -869,7 +869,7 @@ def test_decode_inline_image_zero_width_returns_none() -> None:
     params.set_int(COSName.get_pdf_name("Width"), 0)
     params.set_int(COSName.get_pdf_name("Height"), 10)
     params.set_int(COSName.get_pdf_name("BitsPerComponent"), 8)
-    assert r._decode_inline_image(params, b"\x00" * 10) is None  # noqa: SLF001
+    assert r._decode_inline_image(params, b"\x00" * 10) is None
 
 
 def test_decode_inline_image_non_8_bpc_returns_none() -> None:
@@ -881,7 +881,7 @@ def test_decode_inline_image_non_8_bpc_returns_none() -> None:
     params.set_item(
         COSName.get_pdf_name("ColorSpace"), COSName.get_pdf_name("DeviceGray")
     )
-    assert r._decode_inline_image(params, b"\x00" * 4) is None  # noqa: SLF001
+    assert r._decode_inline_image(params, b"\x00" * 4) is None
 
 
 def test_decode_inline_image_unknown_filter_returns_none() -> None:
@@ -893,7 +893,7 @@ def test_decode_inline_image_unknown_filter_returns_none() -> None:
     params.set_item(
         COSName.get_pdf_name("Filter"), COSName.get_pdf_name("FlateDecode")
     )
-    assert r._decode_inline_image(params, b"\x00" * 4) is None  # noqa: SLF001
+    assert r._decode_inline_image(params, b"\x00" * 4) is None
 
 
 def test_decode_inline_image_filter_array_form() -> None:
@@ -906,7 +906,7 @@ def test_decode_inline_image_filter_array_form() -> None:
         COSName.get_pdf_name("Filter"),
         COSArray([COSName.get_pdf_name("Fl")]),
     )
-    assert r._decode_inline_image(params, b"\x00" * 4) is None  # noqa: SLF001
+    assert r._decode_inline_image(params, b"\x00" * 4) is None
 
 
 def test_decode_inline_image_devicegray_fast_path() -> None:
@@ -918,7 +918,7 @@ def test_decode_inline_image_devicegray_fast_path() -> None:
     params.set_item(
         COSName.get_pdf_name("ColorSpace"), COSName.get_pdf_name("G")
     )
-    out = r._decode_inline_image(params, b"\xff\x80\x40\x00")  # noqa: SLF001
+    out = r._decode_inline_image(params, b"\xff\x80\x40\x00")
     assert out is not None
     assert out.size == (2, 2)
 
@@ -932,7 +932,7 @@ def test_decode_inline_image_devicecmyk_fast_path() -> None:
     params.set_item(
         COSName.get_pdf_name("ColorSpace"), COSName.get_pdf_name("CMYK")
     )
-    out = r._decode_inline_image(params, b"\x00" * (2 * 2 * 4))  # noqa: SLF001
+    out = r._decode_inline_image(params, b"\x00" * (2 * 2 * 4))
     assert out is not None
 
 
@@ -942,7 +942,7 @@ def test_decode_inline_image_default_devicergb_when_cs_absent() -> None:
     params.set_int(COSName.get_pdf_name("Width"), 2)
     params.set_int(COSName.get_pdf_name("Height"), 2)
     params.set_int(COSName.get_pdf_name("BitsPerComponent"), 8)
-    out = r._decode_inline_image(  # noqa: SLF001
+    out = r._decode_inline_image(
         params,
         b"\xff\x00\x00\x00\xff\x00\x00\x00\xff\xff\xff\xff",
     )
@@ -954,20 +954,20 @@ def test_decode_inline_image_default_devicergb_when_cs_absent() -> None:
 
 def test_maybe_begin_text_knockout_text_knockout_false_returns_early() -> None:
     r = _bare_renderer()
-    r._gs.text_knockout = False  # noqa: SLF001
-    r._maybe_begin_text_knockout()  # noqa: SLF001
+    r._gs.text_knockout = False
+    r._maybe_begin_text_knockout()
 
 
 def test_maybe_end_text_knockout_no_layer_returns_early() -> None:
     r = _bare_renderer()
-    r._text_knockout_layer = None  # noqa: SLF001
-    r._maybe_end_text_knockout()  # noqa: SLF001
+    r._text_knockout_layer = None
+    r._maybe_end_text_knockout()
 
 
 def test_maybe_begin_text_knockout_no_visible_effect_returns_early() -> None:
     r = _bare_renderer()
-    r._gs.text_knockout = True  # noqa: SLF001
-    r._gs.fill_alpha = 1.0  # noqa: SLF001
-    r._gs.blend_mode = None  # noqa: SLF001
-    r._image = Image.new("RGB", (10, 10), (255, 255, 255))  # noqa: SLF001
-    r._maybe_begin_text_knockout()  # noqa: SLF001
+    r._gs.text_knockout = True
+    r._gs.fill_alpha = 1.0
+    r._gs.blend_mode = None
+    r._image = Image.new("RGB", (10, 10), (255, 255, 255))
+    r._maybe_begin_text_knockout()

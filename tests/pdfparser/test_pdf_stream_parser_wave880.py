@@ -12,7 +12,7 @@ class _FakeParser:
 
 
 def test_wave880_parity_content_stream_stub_defensive_methods(monkeypatch) -> None:
-    def from_content_stream(content_stream):  # noqa: ANN001
+    def from_content_stream(content_stream):
         with pytest.raises(NotImplementedError):
             content_stream.get_contents()
         with pytest.raises(NotImplementedError):

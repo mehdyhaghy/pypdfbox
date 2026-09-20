@@ -154,7 +154,7 @@ def _get_dictionary_string(base: COSBase | None, objs: list[COSBase]) -> str:
     """
     # Local import to avoid a hard cos_dictionary→cos_stream cycle at
     # module load (COSStream subclasses COSDictionary).
-    from .cos_stream import COSStream  # noqa: PLC0415
+    from .cos_stream import COSStream
 
     if base is None:
         return "null"
@@ -621,7 +621,7 @@ class COSDictionary(COSBase):
         """
         # Local import to avoid a hard cos_dictionary→cos_stream cycle at
         # module load (COSStream subclasses COSDictionary).
-        from .cos_stream import COSStream  # noqa: PLC0415
+        from .cos_stream import COSStream
 
         v = self.get_dictionary_object(key)
         if isinstance(v, COSStream):

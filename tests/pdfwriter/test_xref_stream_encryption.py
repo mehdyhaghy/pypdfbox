@@ -20,14 +20,14 @@ import pytest
 pytest.importorskip("pypdfbox.pdmodel.encryption.standard_security_handler")
 pytest.importorskip("pypdfbox.pdmodel.encryption.standard_protection_policy")
 
-from pypdfbox import PDDocument  # noqa: E402
-from pypdfbox.cos import COSStream  # noqa: E402
-from pypdfbox.pdfwriter.compress import CompressParameters  # noqa: E402
-from pypdfbox.pdmodel import PDPage  # noqa: E402
-from pypdfbox.pdmodel.encryption.access_permission import (  # noqa: E402
+from pypdfbox import PDDocument
+from pypdfbox.cos import COSStream
+from pypdfbox.pdfwriter.compress import CompressParameters
+from pypdfbox.pdmodel import PDPage
+from pypdfbox.pdmodel.encryption.access_permission import (
     AccessPermission,
 )
-from pypdfbox.pdmodel.encryption.standard_protection_policy import (  # noqa: E402
+from pypdfbox.pdmodel.encryption.standard_protection_policy import (
     StandardProtectionPolicy,
 )
 

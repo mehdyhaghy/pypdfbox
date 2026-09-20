@@ -55,13 +55,13 @@ def _reset_menu_singletons() -> None:
     from pypdfbox.debugger.ui.text_stripper_menu import TextStripperMenu
     from pypdfbox.debugger.ui.zoom_menu import ZoomMenu
 
-    ViewMenu._reset_instance()  # noqa: SLF001
-    ZoomMenu._reset_instance()  # noqa: SLF001
-    RotationMenu._reset_instance()  # noqa: SLF001
-    RenderDestinationMenu._reset_instance()  # noqa: SLF001
-    TreeViewMenu._reset_for_testing()  # noqa: SLF001
-    ImageTypeMenu._reset_for_testing()  # noqa: SLF001
-    TextStripperMenu._reset_for_testing()  # noqa: SLF001
+    ViewMenu._reset_instance()
+    ZoomMenu._reset_instance()
+    RotationMenu._reset_instance()
+    RenderDestinationMenu._reset_instance()
+    TreeViewMenu._reset_for_testing()
+    ImageTypeMenu._reset_for_testing()
+    TextStripperMenu._reset_for_testing()
 
 
 @pytest.fixture(autouse=True)
@@ -102,7 +102,7 @@ def debugger(tk_root: tk.Tk) -> Iterator[PDFDebugger]:
         yield instance
     finally:
         with contextlib.suppress(tk.TclError):
-            instance._main_frame.destroy()  # noqa: SLF001
+            instance._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------
@@ -176,7 +176,7 @@ def test_get_find_previous_menu_item_distinct_from_next(
 
 
 def test_create_find_menu_builds_three_entries(debugger: PDFDebugger) -> None:
-    parent = tk.Menu(debugger._toplevel)  # noqa: SLF001
+    parent = tk.Menu(debugger._toplevel)
     find = debugger.create_find_menu(parent)
     assert isinstance(find, tk.Menu)
     # Three entries: Find / Find Next / Find Previous.
@@ -184,11 +184,11 @@ def test_create_find_menu_builds_three_entries(debugger: PDFDebugger) -> None:
 
 
 def test_create_find_menu_resets_internal_state(debugger: PDFDebugger) -> None:
-    parent = tk.Menu(debugger._toplevel)  # noqa: SLF001
+    parent = tk.Menu(debugger._toplevel)
     debugger.create_find_menu(parent)
-    assert debugger._find_menu is not None  # noqa: SLF001
-    assert debugger._find_menu_index is not None  # noqa: SLF001
-    assert debugger._find_previous_menu_index is not None  # noqa: SLF001
+    assert debugger._find_menu is not None
+    assert debugger._find_menu_index is not None
+    assert debugger._find_previous_menu_index is not None
 
 
 # ----------------------------------------------------------------------
@@ -236,13 +236,13 @@ def test_get_configuration_mutation_visible_across_calls() -> None:
 # ----------------------------------------------------------------------
 
 
-def test_load_configuration_no_file_is_silent(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+def test_load_configuration_no_file_is_silent(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     # Snapshot + clear so we don't pollute other tests.
     saved = dict(PDFDebugger.configuration)
     PDFDebugger.configuration.clear()
     try:
-        PDFDebugger._load_configuration()  # noqa: SLF001
+        PDFDebugger._load_configuration()
         assert PDFDebugger.configuration == {}
     finally:
         PDFDebugger.configuration.clear()
@@ -251,7 +251,7 @@ def test_load_configuration_no_file_is_silent(tmp_path: Path, monkeypatch) -> No
 
 def test_load_configuration_parses_key_value_lines(
     tmp_path: Path, monkeypatch
-) -> None:  # noqa: ANN001
+) -> None:
     (tmp_path / "config.properties").write_text(
         "# comment\nkey=value\nother: thing\n", encoding="utf-8"
     )
@@ -259,7 +259,7 @@ def test_load_configuration_parses_key_value_lines(
     saved = dict(PDFDebugger.configuration)
     PDFDebugger.configuration.clear()
     try:
-        PDFDebugger._load_configuration()  # noqa: SLF001
+        PDFDebugger._load_configuration()
         assert PDFDebugger.configuration["key"] == "value"
         assert PDFDebugger.configuration["other"] == "thing"
     finally:
@@ -304,7 +304,7 @@ def test_call_returns_zero_with_no_input_file(debugger: PDFDebugger) -> None:
 def test_call_loads_existing_file(
     debugger: PDFDebugger, synthetic_pdf: Path
 ) -> None:
-    debugger._current_file_path = str(synthetic_pdf)  # noqa: SLF001
+    debugger._current_file_path = str(synthetic_pdf)
     rc = debugger.call()
     assert rc == 0
     assert debugger.has_document() is True
@@ -317,22 +317,22 @@ def test_call_loads_existing_file(
 
 def test_osx_quit_invokes_exit_handler(
     debugger: PDFDebugger, monkeypatch
-) -> None:  # noqa: ANN001
+) -> None:
     called: list[bool] = []
     monkeypatch.setattr(
         debugger,
         "_exit_menu_item_action_performed",
         lambda: called.append(True),
     )
-    debugger._osx_quit()  # noqa: SLF001
+    debugger._osx_quit()
     assert called == [True]
 
 
-def test_osx_quit_does_not_raise(debugger: PDFDebugger, monkeypatch) -> None:  # noqa: ANN001
+def test_osx_quit_does_not_raise(debugger: PDFDebugger, monkeypatch) -> None:
     # Suppress the destroy() inside the exit handler so the fixture
     # cleanup doesn't trip over a destroyed widget.
     monkeypatch.setattr(debugger, "perform_application_exit", lambda: None)
-    debugger._osx_quit()  # noqa: SLF001  # should not raise
+    debugger._osx_quit()  # should not raise
 
 
 # ----------------------------------------------------------------------
@@ -345,7 +345,7 @@ def test_perform_application_exit_destroys_toplevel(tk_root: tk.Tk) -> None:
     # Hijack the toplevel destroyer so we can observe + avoid killing
     # the shared session root.
     destroyed: list[bool] = []
-    debugger._toplevel = type(  # noqa: SLF001
+    debugger._toplevel = type(
         "Dummy", (), {"destroy": lambda self: destroyed.append(True)}
     )()
     debugger.perform_application_exit()
@@ -357,7 +357,7 @@ def test_perform_application_exit_swallows_errors(debugger: PDFDebugger) -> None
         def destroy(self) -> None:
             raise RuntimeError("boom")
 
-    debugger._toplevel = BadTopLevel()  # type: ignore[assignment]  # noqa: SLF001
+    debugger._toplevel = BadTopLevel()  # type: ignore[assignment]
     debugger.perform_application_exit()  # should not raise
 
 
@@ -369,15 +369,15 @@ def test_perform_application_exit_swallows_errors(debugger: PDFDebugger) -> None
 def test_read_pdf_file_from_path_accepts_path(
     debugger: PDFDebugger, synthetic_pdf: Path
 ) -> None:
-    debugger._read_pdf_file_from_path(synthetic_pdf)  # noqa: SLF001
+    debugger._read_pdf_file_from_path(synthetic_pdf)
     assert debugger.has_document() is True
-    assert debugger._current_file_path == str(synthetic_pdf)  # noqa: SLF001
+    assert debugger._current_file_path == str(synthetic_pdf)
 
 
 def test_read_pdf_file_from_path_accepts_string(
     debugger: PDFDebugger, synthetic_pdf: Path
 ) -> None:
-    debugger._read_pdf_file_from_path(str(synthetic_pdf))  # noqa: SLF001
+    debugger._read_pdf_file_from_path(str(synthetic_pdf))
     assert debugger.has_document() is True
 
 
@@ -403,16 +403,16 @@ def test_text_dialog_opens_for_local_file(
 ) -> None:
     resource = tmp_path / "about.html"
     resource.write_text("<html><body>About</body></html>", encoding="utf-8")
-    debugger._text_dialog("About", str(resource))  # noqa: SLF001
+    debugger._text_dialog("About", str(resource))
     # Pump pending Tk events so the new Toplevel registers as a child
     # of ``_toplevel``. On macOS / Linux a full ``update()`` (which ticks
     # every pending event including MapNotify) is sufficient; Windows
     # needs more than this — see the skipif above.
-    debugger._toplevel.update()  # noqa: SLF001
+    debugger._toplevel.update()
     # The dialog is a Toplevel of our master — at least one extra
     # Toplevel should now exist.
     toplevels = [
-        w for w in debugger._toplevel.winfo_children()  # noqa: SLF001
+        w for w in debugger._toplevel.winfo_children()
         if isinstance(w, tk.Toplevel)
     ]
     assert len(toplevels) >= 1
@@ -427,8 +427,8 @@ def test_text_dialog_handles_missing_resource(
     missing = tmp_path / "nope.html"
     # Should not raise — internally swallows OSError via ErrorDialog.
     # ErrorDialog itself spawns a Toplevel which we'll tear down.
-    debugger._text_dialog("Missing", str(missing))  # noqa: SLF001
-    for w in list(debugger._toplevel.winfo_children()):  # noqa: SLF001
+    debugger._text_dialog("Missing", str(missing))
+    for w in list(debugger._toplevel.winfo_children()):
         if isinstance(w, tk.Toplevel):
             with contextlib.suppress(tk.TclError):
                 w.destroy()
@@ -444,8 +444,8 @@ def test_hyperlink_update_handles_unreachable_url(
 ) -> None:
     # Pointing at a nonexistent local file URL exercises the OSError
     # branch without requiring network access.
-    debugger._hyperlink_update("file:///nonexistent-pypdfbox-test")  # noqa: SLF001
-    for w in list(debugger._toplevel.winfo_children()):  # noqa: SLF001
+    debugger._hyperlink_update("file:///nonexistent-pypdfbox-test")
+    for w in list(debugger._toplevel.winfo_children()):
         if isinstance(w, tk.Toplevel):
             with contextlib.suppress(tk.TclError):
                 w.destroy()
@@ -456,10 +456,10 @@ def test_hyperlink_update_renders_local_file(
 ) -> None:
     payload = tmp_path / "page.txt"
     payload.write_text("hello world", encoding="utf-8")
-    debugger._hyperlink_update(payload.as_uri())  # noqa: SLF001
+    debugger._hyperlink_update(payload.as_uri())
     # Should now have at least one Toplevel containing a Text widget.
     toplevels = [
-        w for w in debugger._toplevel.winfo_children()  # noqa: SLF001
+        w for w in debugger._toplevel.winfo_children()
         if isinstance(w, tk.Toplevel)
     ]
     assert len(toplevels) >= 1

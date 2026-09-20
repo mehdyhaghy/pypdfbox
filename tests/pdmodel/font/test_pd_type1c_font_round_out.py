@@ -216,8 +216,8 @@ def test_get_height_caches_zero_for_glyph_with_empty_path() -> None:
     assert font.get_height(65) == 700.0
     # A second call hits the cache. The numeric value alone doesn't
     # confirm the cache; assert by reading the implementation cache.
-    assert "A" in font._glyph_heights  # noqa: SLF001
-    assert font._glyph_heights["A"] == 700.0  # noqa: SLF001
+    assert "A" in font._glyph_heights
+    assert font._glyph_heights["A"] == 700.0
 
 
 def test_get_height_for_zero_height_glyph_caches_zero() -> None:
@@ -229,7 +229,7 @@ def test_get_height_for_zero_height_glyph_caches_zero() -> None:
     font = _make_injected_font()
     first = font.get_height(66)  # 'B'
     assert first == 500.0
-    assert "B" in font._glyph_heights  # noqa: SLF001
+    assert "B" in font._glyph_heights
     # Second call: identical answer, cache reused.
     assert font.get_height(66) == 500.0
 
@@ -291,7 +291,7 @@ def test_get_cff_font_caches_failure_negative_result() -> None:
     assert font.get_cff_font() is None
     # The damage flag should also be cached on the instance (False sentinel
     # in ``_cff`` for "tried, no parse"). Verify via internal state.
-    assert font._cff is False  # noqa: SLF001
+    assert font._cff is False
 
 
 # ---------- get_average_font_width fallthrough chain ----------

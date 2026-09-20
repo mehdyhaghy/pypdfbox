@@ -138,11 +138,69 @@ target-version = "py314"
 extend-exclude = ["archive"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "SIM"]
-# UP012: prefer explicit encoding="utf-8" / "utf-8" on encode/decode/open
-# for readability and defensiveness, even though Python 3 hard-codes UTF-8
-# as the str.encode default. Project preference.
-ignore = ["UP012"]
+select = [
+    "E", "F", "I", "B", "UP", "SIM",
+    "N",        # pep8-naming — enforces the project's snake_case / no-camelCase-alias policy
+    "RUF100",   # unused `# noqa` directives (stale suppressions rot silently)
+    "RET501",   # explicit `return None` in a function that only ever returns None
+    "FURB136",  # `a if a < b else b` -> min()/max()
+    "FURB188",  # manual prefix/suffix slicing -> str.removeprefix()/removesuffix()
+    "TC006",    # quote the type expression in typing.cast()
+    "PLR0402",  # `import a.b as b` -> `from a import b`
+    "PIE",      # flake8-pie — dead/duplicated constructs
+    "C4",       # flake8-comprehensions
+]
+ignore = [
+    # UP012: prefer explicit encoding="utf-8" / "utf-8" on encode/decode/open
+    # for readability and defensiveness, even though Python 3 hard-codes UTF-8
+    # as the str.encode default. Project preference.
+    "UP012",
+    # N818: "exception name should end in Error". pypdfbox mirrors upstream
+    # Apache PDFBox class names exactly (CLAUDE.md "Compatibility
+    # preservation" — non-negotiable), and PDFBox / fontbox / xmpbox follow
+    # the Java convention of a trailing `Exception`: InvalidPasswordException,
+    # DamagedFontException, MissingImageReaderException, BadFieldValueException,
+    # XmpParsingException, JBIG2Exception, ... Renaming them would break both
+    # upstream parity and the public API. 16 of the 17 library hits are
+    # one-for-one upstream ports (each has a PROVENANCE.md row); the 17th is
+    # the private `_HashAbort` sentinel in multipdf/pdf_merger_utility.py,
+    # a control-flow signal rather than an error and not public surface.
+    # Blanket-ignored rather than scattering 17 identical noqa comments.
+    "N818",
+]
+
+# pep8-naming carve-outs. Two kinds of name are legitimately not snake_case:
+#   1. Third-party API surface that a test double has to mirror exactly.
+#      fontTools reads/writes these attributes on the objects we hand it
+#      (``TTFont.recalcBBoxes``, ``head.unitsPerEm``, ``cmap.platformID``,
+#      CFF ``topDict.rawDict`` / ``nominalWidthX`` ...), and xml.dom nodes
+#      expose ``localName`` / ``namespaceURI`` / ``nodeName``. Renaming a
+#      stub's attribute would simply stop the double from working, so the
+#      camelCase spelling is a contract, not a style choice. The six
+#      ``get*``/``is*`` entries are the fontTools glyph-set / glyph / cmap
+#      methods our fakes implement for the same reason.
+#   2. ``test_*`` functions. pytest collects on the ``test_`` prefix; the
+#      remainder of the name routinely embeds a case-sensitive spec token —
+#      PDF operators (``Tj`` and ``TJ``, ``S`` and ``s``, ``B_star``, ``Q``)
+#      and Unicode bidi classes (``L``, ``EN``, ``AN``, ``RTL``). Lowercasing
+#      those would make the test name ambiguous or wrong. The pattern still
+#      leaves Java-shaped helper names (``getFoo``, ``testFooBar``) flagged,
+#      which is the check the project actually wants from N802.
+[tool.ruff.lint.pep8-naming]
+extend-ignore-names = [
+    "test_*",
+    # fontTools glyph-set / glyph protocol implemented by test doubles
+    "getGlyphOrder", "getGlyphName", "getDebugName", "isComposite",
+    "getCoordinates", "getBestCmap",
+    # fontTools TTFont / table attributes
+    "recalcTimestamp", "recalcBBoxes", "unitsPerEm", "numGlyphs",
+    "numberOfContours", "advanceHeightMax", "yMin", "yMax",
+    "platformID", "platEncID", "nameID", "langID",
+    # fontTools CFF top-dict / private-dict attributes
+    "rawDict", "fontNames", "nominalWidthX", "defaultWidthX",
+    # xml.dom Node attributes
+    "localName", "namespaceURI", "nodeName",
+]
 
 [tool.mypy]
 python_version = "3.14"

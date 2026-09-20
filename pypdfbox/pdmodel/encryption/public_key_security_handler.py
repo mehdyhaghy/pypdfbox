@@ -69,7 +69,7 @@ class PublicKeySecurityHandler(SecurityHandler):
     def prepare_for_decryption(
         self,
         encryption: PDEncryption,
-        document_id: bytes,  # noqa: ARG002 — kept for API parity (unused for pubsec)
+        document_id: bytes,
         decryption_material: object,
     ) -> None:
         """Locate the recipient envelope addressed to ``decryption_material``,
@@ -83,7 +83,7 @@ class PublicKeySecurityHandler(SecurityHandler):
              truncate to the configured key length in bytes.
         """
         # Local import to avoid a hard cycle at module load.
-        from .public_key_decryption_material import PublicKeyDecryptionMaterial  # noqa: PLC0415
+        from .public_key_decryption_material import PublicKeyDecryptionMaterial
 
         if not isinstance(decryption_material, PublicKeyDecryptionMaterial):
             raise TypeError(
@@ -153,7 +153,7 @@ class PublicKeySecurityHandler(SecurityHandler):
                 # final error names the real cause instead of "wrong key".
                 unsupported_algo = True
                 continue
-            except Exception:  # noqa: BLE001 — try every recipient before giving up
+            except Exception:
                 continue
             if envelope_plaintext is not None:
                 break
@@ -289,8 +289,8 @@ class PublicKeySecurityHandler(SecurityHandler):
         # Late imports keep the public-key cluster's heavy dependencies out
         # of the module-load path for callers that only use the standard
         # handler.
-        from .pd_encryption import PDEncryption  # noqa: PLC0415
-        from .public_key_protection_policy import (  # noqa: PLC0415
+        from .pd_encryption import PDEncryption
+        from .public_key_protection_policy import (
             PublicKeyProtectionPolicy,
         )
 
@@ -521,7 +521,7 @@ class PublicKeySecurityHandler(SecurityHandler):
         recipients_array = COSArray()
         for blob in recipients:
             recipients_array.add(COSString(blob))
-        from pypdfbox.cos import COSName  # noqa: PLC0415 — lazy import
+        from pypdfbox.cos import COSName
 
         crypt_filter.get_cos_object().set_item(
             COSName.get_pdf_name("Recipients"), recipients_array
@@ -544,7 +544,7 @@ class PublicKeySecurityHandler(SecurityHandler):
         protected helper. Returns one DER-encoded ``ContentInfo`` per
         recipient, in policy order.
         """
-        from .public_key_protection_policy import (  # noqa: PLC0415
+        from .public_key_protection_policy import (
             PublicKeyProtectionPolicy,
         )
 
@@ -598,7 +598,7 @@ class PublicKeySecurityHandler(SecurityHandler):
         """
         # Pick content algorithm by the attached policy's key length so the
         # write path lines up with `prepare_document`'s V/R selection.
-        from .public_key_protection_policy import (  # noqa: PLC0415
+        from .public_key_protection_policy import (
             PublicKeyProtectionPolicy,
         )
 
@@ -685,7 +685,7 @@ class PublicKeySecurityHandler(SecurityHandler):
         empty-iterator behaviour upstream callers see before
         :meth:`prepare_document` runs.
         """
-        from .public_key_protection_policy import (  # noqa: PLC0415
+        from .public_key_protection_policy import (
             PublicKeyProtectionPolicy,
         )
 
@@ -701,7 +701,7 @@ class PublicKeySecurityHandler(SecurityHandler):
         isn't attached yet so callers can build up the policy fluently
         before invoking :meth:`prepare_document`.
         """
-        from .public_key_protection_policy import (  # noqa: PLC0415
+        from .public_key_protection_policy import (
             PublicKeyProtectionPolicy,
         )
 
@@ -783,7 +783,7 @@ class PublicKeySecurityHandler(SecurityHandler):
         handler picks V/R inline (AES-only), so this accessor is exposed as a
         parity surface for callers that mirror upstream's algorithm pre-flight.
         """
-        from .public_key_protection_policy import (  # noqa: PLC0415
+        from .public_key_protection_policy import (
             PublicKeyProtectionPolicy,
         )
 
@@ -813,7 +813,7 @@ class PublicKeySecurityHandler(SecurityHandler):
         ``handler.getProtectionPolicy().getNumberOfRecipients()``; this alias
         avoids a ``None`` check on the policy slot.
         """
-        from .public_key_protection_policy import (  # noqa: PLC0415
+        from .public_key_protection_policy import (
             PublicKeyProtectionPolicy,
         )
 

@@ -95,7 +95,7 @@ def test_wave1396_create_appender_filter_is_applied() -> None:
     handler so records can be dropped before they reach the buffer."""
 
     class _DropAll(logging.Filter):
-        def filter(self, record: logging.LogRecord) -> bool:  # noqa: A003
+        def filter(self, record: logging.LogRecord) -> bool:
             return False
 
     appender = DebugLogAppender.create_appender(filter=_DropAll())

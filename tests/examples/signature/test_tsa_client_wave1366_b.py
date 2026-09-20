@@ -130,13 +130,13 @@ def test_get_tsa_response_uses_urllib_when_no_transport(monkeypatch) -> None:
         def __enter__(self):
             return self
 
-        def __exit__(self, *exc):  # noqa: D401
+        def __exit__(self, *exc):
             return False
 
         def read(self) -> bytes:
             return self._body
 
-    def _fake_urlopen(req: Request, timeout: int = 30):  # noqa: ARG001
+    def _fake_urlopen(req: Request, timeout: int = 30):
         seen["url"] = req.full_url
         seen["headers"] = dict(req.header_items())
         seen["data"] = req.data

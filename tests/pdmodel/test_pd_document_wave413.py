@@ -150,7 +150,7 @@ def test_current_access_permission_uses_handler_and_encrypted_no_permission_wave
 
     doc = PDDocument()
     handler = Handler()
-    doc._security_handler = handler  # noqa: SLF001
+    doc._security_handler = handler
 
     assert doc.get_current_access_permission() is handler.permission
 

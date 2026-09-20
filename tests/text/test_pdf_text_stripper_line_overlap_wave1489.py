@@ -22,23 +22,23 @@ def _pos(text: str, x: float, y: float, *, font_size: float, height: float) -> T
 
 def test_overlaps_line_shared_baseline() -> None:
     # within(.1) clause — effectively identical baselines.
-    assert PDFTextStripper._overlaps_line(100.0, 8.0, 100.05, 8.0)  # noqa: SLF001
-    assert not PDFTextStripper._overlaps_line(100.0, 8.0, 200.0, 8.0)  # noqa: SLF001
+    assert PDFTextStripper._overlaps_line(100.0, 8.0, 100.05, 8.0)
+    assert not PDFTextStripper._overlaps_line(100.0, 8.0, 200.0, 8.0)
 
 
 def test_overlaps_line_yup_span_containment() -> None:
     # y-up frame: glyph baseline 105 sits within the line span [100, 108].
-    assert PDFTextStripper._overlaps_line(105.0, 8.0, 100.0, 8.0)  # noqa: SLF001
+    assert PDFTextStripper._overlaps_line(105.0, 8.0, 100.0, 8.0)
     # line baseline 100 sits within the glyph span [98, 106].
-    assert PDFTextStripper._overlaps_line(98.0, 8.0, 100.0, 8.0)  # noqa: SLF001
+    assert PDFTextStripper._overlaps_line(98.0, 8.0, 100.0, 8.0)
     # disjoint spans (gap exceeds both heights) — not on the same line.
-    assert not PDFTextStripper._overlaps_line(100.0, 5.0, 110.0, 5.0)  # noqa: SLF001
+    assert not PDFTextStripper._overlaps_line(100.0, 5.0, 110.0, 5.0)
 
 
 def test_overlaps_line_reset_sentinels_open_first_line() -> None:
     # The reset sentinels (max_y = -inf, max_height = -1) must report no
     # overlap so the very first glyph opens the line.
-    assert not PDFTextStripper._overlaps_line(  # noqa: SLF001
+    assert not PDFTextStripper._overlaps_line(
         100.0, 8.0, float("-inf"), -1.0
     )
 
@@ -55,7 +55,7 @@ def test_value_cell_groups_with_wrapped_label() -> None:
         _pos("(as HCl)", x=100.0, y=344.78, font_size=8.0, height=5.6),
         _pos("10 000 - -", x=300.0, y=349.64, font_size=8.0, height=5.6),
     ]
-    out = stripper._format_positions(positions)  # noqa: SLF001
+    out = stripper._format_positions(positions)
     assert "\n" not in out.strip()
     assert out.startswith("(as HCl)")
     assert "10 000 - -" in out
@@ -70,7 +70,7 @@ def test_distinct_lines_split_with_real_height() -> None:
         _pos("First", x=100.0, y=366.72, font_size=48.0, height=33.0),
         _pos("among", x=100.0, y=330.72, font_size=48.0, height=33.0),
     ]
-    out = stripper._format_positions(positions)  # noqa: SLF001
+    out = stripper._format_positions(positions)
     assert out.splitlines()[:2] == ["First", "among"]
 
 
@@ -86,4 +86,4 @@ def test_height_accessor_falls_back_to_font_size() -> None:
 
 
 def test_compute_font_height_none_font_is_half_em() -> None:
-    assert PDFTextStripper()._compute_font_height(None) == 0.5  # noqa: SLF001
+    assert PDFTextStripper()._compute_font_height(None) == 0.5

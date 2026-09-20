@@ -30,7 +30,7 @@ from pypdfbox.pdmodel.graphics.color.pd_separation import PDSeparation
 from pypdfbox.pdmodel.graphics.pattern import PDTilingPattern
 from pypdfbox.pdmodel.pd_resources import PDResources
 from pypdfbox.rendering import PDFRenderer
-from pypdfbox.rendering.pdf_renderer import PDFRenderer as _R
+from pypdfbox.rendering.pdf_renderer import PDFRenderer as PDFRendererFromModule
 from pypdfbox.rendering.pdf_renderer import _GState
 
 
@@ -484,4 +484,4 @@ def test_pattern_tint_survives_gstate_clone() -> None:
 
 
 # Avoid an unused-import warning from typing-only helper.
-_ = _R
+_ = PDFRendererFromModule

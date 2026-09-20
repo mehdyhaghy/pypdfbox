@@ -194,7 +194,7 @@ class TextToPDF:
         self._create_pdf_from_text(doc, text_or_doc)
         return doc
 
-    def _create_pdf_from_text(self, doc: PDDocument, text_reader) -> None:  # noqa: ANN001
+    def _create_pdf_from_text(self, doc: PDDocument, text_reader) -> None:
         if self.font is None:
             self.font = PDFontFactory.create_default_font(self.standard_font.value)
         font_height = _font_bbox_height(self.font) / FONTSCALE

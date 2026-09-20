@@ -94,7 +94,7 @@ class Searcher:
             self.update_high_lighter(self._current_match, self._current_match - 1)
             self.update_navigation_buttons()
 
-    def action_performed(self, event: Any = None) -> None:  # noqa: ARG002
+    def action_performed(self, event: Any = None) -> None:
         """Advance to the next match (default action) on a menu / accelerator event.
 
         Mirrors the two anonymous ``ActionListener.actionPerformed``

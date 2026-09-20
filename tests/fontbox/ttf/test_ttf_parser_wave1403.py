@@ -44,7 +44,7 @@ def test_create_font_with_tables_short_buffer_skips_version() -> None:
             set_calls.append(value)
 
     class _Parser(TTFParser):
-        def new_font(self, data: Any) -> Any:  # noqa: ARG002
+        def new_font(self, data: Any) -> Any:
             return _StubFontTracked()
 
     parser = _Parser()

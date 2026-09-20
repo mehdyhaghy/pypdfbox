@@ -24,16 +24,16 @@ def _make_doc(width: float = 8.0, height: float = 8.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (8, 8)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -68,16 +68,16 @@ def test_axial_shading_leaves_unextended_pixels_white() -> None:
 
     doc, renderer = _prepared_renderer((5, 1))
     try:
-        renderer._paint_axial_shading(  # noqa: SLF001
+        renderer._paint_axial_shading(
             _Shading(),
             region_mask=Image.new("L", (5, 1), 255),
         )
         _finish(renderer)
 
-        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)  # noqa: SLF001
-        assert renderer._image.getpixel((4, 0)) == (255, 255, 255)  # noqa: SLF001
-        assert renderer._image.getpixel((1, 0)) == (0, 0, 0)  # noqa: SLF001
-        assert renderer._image.getpixel((3, 0)) == (255, 0, 0)  # noqa: SLF001
+        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)
+        assert renderer._image.getpixel((4, 0)) == (255, 255, 255)
+        assert renderer._image.getpixel((1, 0)) == (0, 0, 0)
+        assert renderer._image.getpixel((3, 0)) == (255, 0, 0)
     finally:
         doc.close()
 
@@ -107,11 +107,11 @@ def test_function_shading_logs_singular_matrix_and_missing_function(
         caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
         mask = Image.new("L", (8, 8), 255)
 
-        renderer._paint_function_shading(  # noqa: SLF001
+        renderer._paint_function_shading(
             _SingularMatrixShading(),
             region_mask=mask,
         )
-        renderer._paint_function_shading(  # noqa: SLF001
+        renderer._paint_function_shading(
             _MissingFunctionShading(),
             region_mask=mask,
         )
@@ -138,31 +138,31 @@ def test_transparency_group_logs_color_space_and_restores_after_smask_failure(
             return group
 
     def _paint_group(_form: Any) -> None:
-        assert renderer._image is not None  # noqa: SLF001
-        renderer._image.paste((20, 40, 60, 255), (0, 0, 2, 2))  # noqa: SLF001
-        renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-        renderer._draw.setantialias(True)  # noqa: SLF001
+        assert renderer._image is not None
+        renderer._image.paste((20, 40, 60, 255), (0, 0, 2, 2))
+        renderer._draw = aggdraw.Draw(renderer._image)
+        renderer._draw.setantialias(True)
 
     def _raise_mask(_soft_mask: Any, _size: tuple[int, int]) -> None:
         raise RuntimeError("mask boom")
 
     doc, renderer = _prepared_renderer((3, 3))
-    renderer._gs.soft_mask = object()  # noqa: SLF001
+    renderer._gs.soft_mask = object()
     try:
         caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
-        parent_image = renderer._image  # noqa: SLF001
-        parent_draw = renderer._draw  # noqa: SLF001
+        parent_image = renderer._image
+        parent_draw = renderer._draw
         monkeypatch.setattr(renderer, "_render_form_xobject", _paint_group)
         monkeypatch.setattr(renderer, "_render_soft_mask_alpha", _raise_mask)
 
-        renderer._render_transparency_group(_Form())  # noqa: SLF001
+        renderer._render_transparency_group(_Form())
         _finish(renderer)
 
         assert "transparency group /CS=DeviceCMYK" in caplog.text
         assert "soft-mask render failed: mask boom" in caplog.text
-        assert renderer._image is parent_image  # noqa: SLF001
-        assert renderer._draw is not parent_draw  # noqa: SLF001
-        assert renderer._image.getpixel((1, 1)) == (20, 40, 60)  # noqa: SLF001
-        assert renderer._image.getpixel((2, 2)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image is parent_image
+        assert renderer._draw is not parent_draw
+        assert renderer._image.getpixel((1, 1)) == (20, 40, 60)
+        assert renderer._image.getpixel((2, 2)) == (255, 255, 255)
     finally:
         doc.close()

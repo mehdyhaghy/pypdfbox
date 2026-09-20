@@ -46,7 +46,7 @@ def test_overlay_documents_ignores_none_specific_overlay() -> None:
     overlay = Overlay()
     overlay.set_input_pdf(base)
 
-    result = overlay.overlay_documents({1: cast(PDDocument, None)})
+    result = overlay.overlay_documents({1: cast("PDDocument", None)})
 
     assert result is base
     assert (
@@ -94,14 +94,14 @@ def test_load_pdfs_filename_configuration_replaces_staged_documents() -> None:
             return file_overlay
         raise AssertionError(path)
 
-    overlay._load_owned_pdf = MethodType(fake_load_owned_pdf, overlay)  # type: ignore[method-assign]  # noqa: SLF001
+    overlay._load_owned_pdf = MethodType(fake_load_owned_pdf, overlay)  # type: ignore[method-assign]
 
-    overlay._load_pdfs()  # noqa: SLF001
+    overlay._load_pdfs()
 
     assert loaded == ["input-from-file.pdf", "overlay-from-file.pdf"]
-    assert overlay._input_pdf is file_input  # noqa: SLF001
-    assert overlay._default_overlay_document is file_overlay  # noqa: SLF001
-    assert overlay._default_overlay_page is not None  # noqa: SLF001
+    assert overlay._input_pdf is file_input
+    assert overlay._default_overlay_document is file_overlay
+    assert overlay._default_overlay_page is not None
 
 
 def test_create_page_overlay_layout_map_uses_zero_based_page_indexes() -> None:
@@ -110,7 +110,7 @@ def test_create_page_overlay_layout_map_uses_zero_based_page_indexes() -> None:
     overlay = Overlay()
     overlay.set_input_pdf(base)
 
-    layout_map = overlay._create_page_overlay_layout_map(overlay_doc)  # noqa: SLF001
+    layout_map = overlay._create_page_overlay_layout_map(overlay_doc)
 
     assert list(layout_map) == [0, 1, 2]
     assert all(layout.overlay_media_box.get_width() == 300.0 for layout in layout_map.values())
@@ -123,22 +123,22 @@ def test_close_suppresses_document_close_errors_and_clears_caches() -> None:
 
     overlay = Overlay()
     overlay.set_input_pdf(_doc_with_blank_pages(1))
-    overlay._open_documents.append(cast(PDDocument, BadCloseDocument()))  # noqa: SLF001
-    overlay._specific_page_overlay_layout[1] = overlay._create_layout_page(  # noqa: SLF001
+    overlay._open_documents.append(cast("PDDocument", BadCloseDocument()))
+    overlay._specific_page_overlay_layout[1] = overlay._create_layout_page(
         _doc_with_blank_pages(1).get_page(0)
     )
-    overlay._rotated_default_overlay_pages[90] = overlay._specific_page_overlay_layout[1]  # noqa: SLF001
+    overlay._rotated_default_overlay_pages[90] = overlay._specific_page_overlay_layout[1]
 
     overlay.close()
 
-    assert overlay._open_documents == []  # noqa: SLF001
-    assert overlay._specific_page_overlay_layout == {}  # noqa: SLF001
-    assert overlay._rotated_default_overlay_pages == {}  # noqa: SLF001
+    assert overlay._open_documents == []
+    assert overlay._specific_page_overlay_layout == {}
+    assert overlay._rotated_default_overlay_pages == {}
 
 
 def test_add_original_content_ignores_missing_contents() -> None:
     target = COSArray()
 
-    Overlay._add_original_content(None, target)  # noqa: SLF001
+    Overlay._add_original_content(None, target)
 
     assert len(target) == 0

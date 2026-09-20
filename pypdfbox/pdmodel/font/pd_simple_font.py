@@ -474,7 +474,7 @@ class PDSimpleFont(PDFont):
         )
 
     @abstractmethod
-    def get_path(self, name: str) -> Any:  # noqa: ANN401  (upstream returns GeneralPath)
+    def get_path(self, name: str) -> Any:
         """Return the glyph outline for ``name``.
 
         Mirrors upstream ``public abstract GeneralPath getPath(String)``.
@@ -500,7 +500,7 @@ class PDSimpleFont(PDFont):
         )
 
     @abstractmethod
-    def get_font_box_font(self) -> Any:  # noqa: ANN401  (upstream returns FontBoxFont)
+    def get_font_box_font(self) -> Any:
         """Return the embedded or system font used for rendering.
 
         Mirrors upstream ``public abstract FontBoxFont getFontBoxFont()``.

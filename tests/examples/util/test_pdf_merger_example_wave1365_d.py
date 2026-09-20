@@ -139,7 +139,7 @@ def test_merge_handles_destination_setters_missing(
     must still succeed."""
 
     class _ShimMerger:
-        def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002, ANN003
+        def __init__(self, *args, **kwargs) -> None:
             self._inner = PDFMergerUtility()
 
         # Forbid both setters so ``AttributeError`` fires inside the

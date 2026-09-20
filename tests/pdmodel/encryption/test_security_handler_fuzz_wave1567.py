@@ -53,7 +53,7 @@ class _FakeDoc:
         arr.add(COSString(self._id))
         return arr
 
-    def get_document(self):  # noqa: ANN201 - duck-typed
+    def get_document(self):
         return self
 
     def set_encryption_dictionary(self, enc: PDEncryption) -> None:

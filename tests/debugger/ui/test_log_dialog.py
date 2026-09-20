@@ -153,7 +153,7 @@ def test_clear_with_widget_resets_text_widget(tk_root: tk.Tk) -> None:
     dialog.log("pypdfbox.x", "error", "boom")
     dialog.clear()
     assert dialog.get_error_count() == 0
-    text_widget = dialog._text  # noqa: SLF001
+    text_widget = dialog._text
     assert text_widget is not None
     assert text_widget.get("1.0", "end-1c") == ""
     assert label.cget("text") == ""
@@ -164,7 +164,7 @@ def test_show_after_init_pre_seeded_records(tk_root: tk.Tk) -> None:
     dialog.log("pypdfbox.routed", "warn", "w1")
     # ``show`` first build runs the replay loop for pending records.
     dialog.show()
-    text_widget = dialog._text  # noqa: SLF001
+    text_widget = dialog._text
     assert text_widget is not None
     contents = text_widget.get("1.0", "end")
     assert "w1" in contents
@@ -175,7 +175,7 @@ def test_show_with_preset_font_height_applies_to_text(tk_root: tk.Tk) -> None:
     dialog.set_text_font_height(15)  # set before show — exercises the
     # ``_text is None`` branch then later the ``apply on build`` branch.
     dialog.show()
-    text_widget = dialog._text  # noqa: SLF001
+    text_widget = dialog._text
     assert text_widget is not None
 
 
@@ -186,7 +186,7 @@ def test_log_with_throwable_renders_traceback(tk_root: tk.Tk) -> None:
         raise RuntimeError("oh no")
     except RuntimeError as exc:
         dialog.log("pypdfbox.routed", "error", "outer", exc)
-    text_widget = dialog._text  # noqa: SLF001
+    text_widget = dialog._text
     assert text_widget is not None
     contents = text_widget.get("1.0", "end")
     assert "RuntimeError" in contents
@@ -202,4 +202,4 @@ def test_render_record_invalid_level_raises(tk_root: tk.Tk) -> None:
     dialog = LogDialog(owner=tk_root)
     dialog.show()
     with pytest.raises(ValueError):
-        dialog._render_record("name", "unknown", "msg", None)  # noqa: SLF001
+        dialog._render_record("name", "unknown", "msg", None)

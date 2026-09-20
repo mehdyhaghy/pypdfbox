@@ -73,7 +73,7 @@ def test_type1c_average_uses_default_width_x_when_program_widths_empty(
             return 444.0
 
     monkeypatch.setattr(font, "_get_cff_font", lambda: _StubProgram())
-    monkeypatch.setattr(font, "get_widths", lambda: [])
+    monkeypatch.setattr(font, "get_widths", list)
 
     assert font.get_average_character_width() == pytest.approx(444.0)
 
@@ -98,7 +98,7 @@ def test_type1c_average_falls_through_to_afm_when_program_yields_zero(
             return 0.0
 
     monkeypatch.setattr(font, "_get_cff_font", lambda: _StubProgram())
-    monkeypatch.setattr(font, "get_widths", lambda: [])
+    monkeypatch.setattr(font, "get_widths", list)
 
     avg = font.get_average_character_width()
     # Helvetica AFM mean is non-trivial; floor is 500.
@@ -142,7 +142,7 @@ def test_copy_needed_resources_skips_color_space_already_in_stream() -> None:
     )
 
     da = _make_da("/Helv 0 Tf 0 g", dr)
-    da._color_space_names.append(cs_name)  # noqa: SLF001 — drives the loop
+    da._color_space_names.append(cs_name)
     da.copy_needed_resources_to(_appearance_stream_with_resources(sr))
 
     # Stream's value preserved (typed PDDeviceRGB wrapper); default
@@ -159,7 +159,7 @@ def test_copy_needed_resources_skips_color_space_missing_in_dr() -> None:
     dr = PDResources()
     sr = PDResources()
     da = _make_da("/Helv 0 Tf 0 g", dr)
-    da._color_space_names.append(COSName.get_pdf_name("Missing"))  # noqa: SLF001
+    da._color_space_names.append(COSName.get_pdf_name("Missing"))
     # No exception, and stream's /ColorSpace stays untouched: the missing
     # colour space was NOT copied into the stream resources. (Asserted via
     # has_color_space rather than get_color_space, which since wave 1461
@@ -175,10 +175,10 @@ def test_record_named_operand_ignores_empty_and_non_cosname() -> None:
     dr = PDResources()
     da = _make_da("/Helv 0 Tf 0 g", dr)
     sink: list[COSName] = []
-    da._record_named_operand([], sink)  # noqa: SLF001
+    da._record_named_operand([], sink)
     assert sink == []
     # Non-COSName operand (raw COSDictionary) also short-circuits.
-    da._record_named_operand([COSDictionary()], sink)  # noqa: SLF001
+    da._record_named_operand([COSDictionary()], sink)
     assert sink == []
 
 

@@ -433,7 +433,7 @@ class PDSeedValue:
         """
         # Lazy import — pd_signature.py imports from this module via the
         # interactive package, so importing it at module top would cycle.
-        from .pd_signature import PDSignature  # noqa: I001 — cycle guard
+        from .pd_signature import PDSignature
 
         violations: list[str] = []
         if not isinstance(signature, PDSignature):

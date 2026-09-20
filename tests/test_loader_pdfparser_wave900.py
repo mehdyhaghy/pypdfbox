@@ -10,7 +10,7 @@ import tests.test_loader_pdfparser_wave739 as wave739
 def test_wave900_loader_import_fallback_local_branch_is_exercised(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def load_pdf(source, password=""):  # noqa: ANN001, ANN002
+    def load_pdf(source, password=""):
         builtins.__import__("math")
         wave739._FakeParser.password = password
         doc = wave739._FakeParser.document

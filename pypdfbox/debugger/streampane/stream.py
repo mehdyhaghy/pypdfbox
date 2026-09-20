@@ -123,7 +123,7 @@ class Stream:
             return image_x_object.get_image()
         except OSError as exc:
             _LOG.error("%s", exc)
-        except Exception as exc:  # noqa: BLE001 — surface unexpected decode failures
+        except Exception as exc:
             _LOG.error("image decode failed: %s", exc)
         return None
 

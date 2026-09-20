@@ -24,16 +24,16 @@ def _make_doc(width: float = 5.0, height: float = 5.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (5, 5)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -50,19 +50,19 @@ def test_process_operator_logs_and_swallows_handler_os_error(
         raise OSError("synthetic stream failure")
 
     doc, renderer = _prepared_renderer()
-    original = renderer_module._DISPATCH.get("W591")  # noqa: SLF001
+    original = renderer_module._DISPATCH.get("W591")
     try:
         caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
-        monkeypatch.setitem(renderer_module._DISPATCH, "W591", _raise_os_error)  # noqa: SLF001
+        monkeypatch.setitem(renderer_module._DISPATCH, "W591", _raise_os_error)
 
         renderer.process_operator("W591", [])
 
         assert "dropping operator W591: synthetic stream failure" in caplog.text
     finally:
         if original is None:
-            renderer_module._DISPATCH.pop("W591", None)  # noqa: SLF001
+            renderer_module._DISPATCH.pop("W591", None)
         else:
-            monkeypatch.setitem(renderer_module._DISPATCH, "W591", original)  # noqa: SLF001
+            monkeypatch.setitem(renderer_module._DISPATCH, "W591", original)
         _finish(renderer)
         doc.close()
 
@@ -73,12 +73,12 @@ def test_pattern_fill_with_stroke_and_clip_routes_stroke_through_clip(
     doc, renderer = _prepared_renderer()
     calls: list[tuple[str, bool, bool, bool]] = []
     try:
-        renderer._gs.fill_pattern = object()  # noqa: SLF001
-        renderer._gs.clip_mask = Image.new("L", (5, 5), 255)  # noqa: SLF001
-        renderer._subpaths = [  # noqa: SLF001
+        renderer._gs.fill_pattern = object()
+        renderer._gs.clip_mask = Image.new("L", (5, 5), 255)
+        renderer._subpaths = [
             [("M", 1.0, 1.0), ("L", 4.0, 1.0), ("L", 4.0, 4.0), ("Z",)]
         ]
-        renderer._current_subpath = renderer._subpaths[0]  # noqa: SLF001
+        renderer._current_subpath = renderer._subpaths[0]
 
         def _pattern_fill(*, even_odd: bool) -> None:
             calls.append(("pattern", False, True, even_odd))
@@ -90,20 +90,20 @@ def test_pattern_fill_with_stroke_and_clip_routes_stroke_through_clip(
             even_odd: bool,
             clip_mask: Image.Image,
         ) -> None:
-            assert clip_mask is renderer._gs.clip_mask  # noqa: SLF001
+            assert clip_mask is renderer._gs.clip_mask
             calls.append(("clip", stroke, fill, even_odd))
 
         monkeypatch.setattr(renderer, "_paint_pattern_fill", _pattern_fill)
         monkeypatch.setattr(renderer, "_paint_through_clip", _through_clip)
 
-        renderer._paint(stroke=True, fill=True, even_odd=True)  # noqa: SLF001
+        renderer._paint(stroke=True, fill=True, even_odd=True)
 
         assert calls == [
             ("pattern", False, True, True),
             ("clip", True, False, False),
         ]
-        assert renderer._subpaths == []  # noqa: SLF001
-        assert renderer._current_subpath is None  # noqa: SLF001
+        assert renderer._subpaths == []
+        assert renderer._current_subpath is None
     finally:
         _finish(renderer)
         doc.close()
@@ -135,7 +135,7 @@ def test_show_inline_image_logs_legacy_decode_failure_and_skips_paste(
         renderer.show_inline_image(_InlineImage())
 
         assert "cannot decode inline image: params boom" in caplog.text
-        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)
     finally:
         _finish(renderer)
         doc.close()

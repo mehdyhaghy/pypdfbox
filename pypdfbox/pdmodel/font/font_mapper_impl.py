@@ -222,7 +222,7 @@ class FontMapperImpl(FontMapper):
         # "TimesNewRoman". Mirrors upstream constructor (Java line 106-114):
         # for every Standard-14 alias whose substitute list is still empty,
         # adopt the canonical mapped font's substitutes.
-        from .standard14_fonts import Standard14Fonts  # noqa: PLC0415
+        from .standard14_fonts import Standard14Fonts
 
         for base_name in _STANDARD14_ALIAS_NAMES:
             if not self._get_substitutes(base_name):
@@ -470,7 +470,7 @@ class FontMapperImpl(FontMapper):
         the active :class:`FontProvider` so the rest of the mapper
         stays uniform.
         """
-        from pypdfbox.fontbox.cjk_loader import ensure_language  # noqa: PLC0415
+        from pypdfbox.fontbox.cjk_loader import ensure_language
 
         path = ensure_language(ordering)
         if path is None:
@@ -821,7 +821,7 @@ class FontMapperImpl(FontMapper):
            the freshly-indexed FontBox font.
         """
         # 1. Descriptor-keyed cache.
-        from pypdfbox.fontbox import liberation_loader  # noqa: PLC0415
+        from pypdfbox.fontbox import liberation_loader
 
         key = liberation_loader.descriptor_to_key(font_descriptor)
         cached = self._last_resort_by_key.get(key)

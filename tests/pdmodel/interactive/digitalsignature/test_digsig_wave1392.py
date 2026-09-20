@@ -206,7 +206,7 @@ def test_dss_bundle_with_only_certs_skips_crl_ocsp_paths() -> None:
     dss = PDDocumentSecurityStore()
     sig = PDSignature()
     # Stub /Contents so the VRI key resolution works.
-    sig._dict.set_string(COSName.get_pdf_name("Contents"), "abcd")  # noqa: SLF001
+    sig._dict.set_string(COSName.get_pdf_name("Contents"), "abcd")
     vri = dss.bundle(certs=[b"cert-only"], signature=sig)
     assert vri is not None
     assert vri.get_certs() == [b"cert-only"]
@@ -218,7 +218,7 @@ def test_dss_bundle_with_only_crls_skips_cert_ocsp_paths() -> None:
     """Branches 412->414, 421->423, 425->427 — same idea, mirrored."""
     dss = PDDocumentSecurityStore()
     sig = PDSignature()
-    sig._dict.set_string(COSName.get_pdf_name("Contents"), "abcd")  # noqa: SLF001
+    sig._dict.set_string(COSName.get_pdf_name("Contents"), "abcd")
     vri = dss.bundle(crls=[b"crl-only"], signature=sig)
     assert vri is not None
     assert vri.get_certs() == []
@@ -230,7 +230,7 @@ def test_dss_bundle_with_only_ocsps_skips_cert_crl_paths() -> None:
     """Branches 412->414, 414->416, 421->423, 423->425 — only OCSP."""
     dss = PDDocumentSecurityStore()
     sig = PDSignature()
-    sig._dict.set_string(COSName.get_pdf_name("Contents"), "abcd")  # noqa: SLF001
+    sig._dict.set_string(COSName.get_pdf_name("Contents"), "abcd")
     vri = dss.bundle(ocsps=[b"ocsp-only"], signature=sig)
     assert vri is not None
     assert vri.get_certs() == []
@@ -297,7 +297,7 @@ def test_pdseedvalue_violation_digest_method_required_with_disallowed_hint() -> 
     sv.set_digest_method([PDSeedValue.DIGEST_SHA256, PDSeedValue.DIGEST_SHA384])
     sv.set_digest_method_required(True)
     sig = PDSignature()
-    sig._digest_method_hint = "SHA1"  # noqa: SLF001 — explicit signer hint.
+    sig._digest_method_hint = "SHA1"
     violations = sv.check_signature_constraint(sig)
     assert any("DigestMethod" in v for v in violations)
     assert any("SHA1" in v for v in violations)

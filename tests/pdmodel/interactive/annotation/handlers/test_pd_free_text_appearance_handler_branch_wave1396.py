@@ -36,7 +36,7 @@ def test_resolve_font_with_no_document_returns_default() -> None:
     pyramid, so it does not consume branch 439 etc — sanity baseline.
     """
     handler = _make_handler()
-    font = handler._resolve_font()  # noqa: SLF001
+    font = handler._resolve_font()
     assert font is not None
 
 
@@ -48,7 +48,7 @@ def test_resolve_font_when_no_acroform_returns_default() -> None:
     with PDDocument() as document:
         # Default catalog has no /AcroForm.
         handler = _make_handler(document)
-        font = handler._resolve_font()  # noqa: SLF001
+        font = handler._resolve_font()
         assert font is not None
 
 
@@ -63,14 +63,14 @@ def test_resolve_font_when_acroform_lacks_get_default_resources() -> None:
         class FakeAcroForm:
             # No get_default_resources attribute.
             def get_cos_object(self) -> Any:
-                from pypdfbox.cos import COSDictionary as _D
-                return _D()
+                from pypdfbox.cos import COSDictionary
+                return COSDictionary()
 
         # Monkey-patch the catalog's get_acro_form to return our fake.
         catalog = document.get_document_catalog()
         catalog.get_acro_form = lambda: FakeAcroForm()  # type: ignore[method-assign]
         handler = _make_handler(document)
-        font = handler._resolve_font()  # noqa: SLF001
+        font = handler._resolve_font()
         assert font is not None
 
 
@@ -85,13 +85,13 @@ def test_resolve_font_when_default_resources_is_none() -> None:
                 return None
 
             def get_cos_object(self) -> Any:
-                from pypdfbox.cos import COSDictionary as _D
-                return _D()
+                from pypdfbox.cos import COSDictionary
+                return COSDictionary()
 
         catalog = document.get_document_catalog()
         catalog.get_acro_form = lambda: FakeAcroForm()  # type: ignore[method-assign]
         handler = _make_handler(document)
-        font = handler._resolve_font()  # noqa: SLF001
+        font = handler._resolve_font()
         assert font is not None
 
 
@@ -110,13 +110,13 @@ def test_resolve_font_when_resources_lacks_get_font() -> None:
                 return FakeDefaultResources()
 
             def get_cos_object(self) -> Any:
-                from pypdfbox.cos import COSDictionary as _D
-                return _D()
+                from pypdfbox.cos import COSDictionary
+                return COSDictionary()
 
         catalog = document.get_document_catalog()
         catalog.get_acro_form = lambda: FakeAcroForm()  # type: ignore[method-assign]
         handler = _make_handler(document)
-        font = handler._resolve_font()  # noqa: SLF001
+        font = handler._resolve_font()
         assert font is not None
 
 
@@ -129,8 +129,8 @@ def test_extract_font_details_no_da_no_document_uses_defaults() -> None:
     annot = PDAnnotationFreeText()
     handler = PDFreeTextAppearanceHandler(annot, document=None)
     handler.extract_font_details(annot)
-    assert handler._font_size == handler.DEFAULT_FONT_SIZE  # noqa: SLF001
-    assert handler._font_name == handler.DEFAULT_FONT_NAME  # noqa: SLF001
+    assert handler._font_size == handler.DEFAULT_FONT_SIZE
+    assert handler._font_name == handler.DEFAULT_FONT_NAME
 
 
 def test_extract_font_details_no_acroform_uses_defaults() -> None:
@@ -142,7 +142,7 @@ def test_extract_font_details_no_acroform_uses_defaults() -> None:
         annot = PDAnnotationFreeText()
         handler = PDFreeTextAppearanceHandler(annot, document=document)
         handler.extract_font_details(annot)
-        assert handler._font_size == handler.DEFAULT_FONT_SIZE  # noqa: SLF001
+        assert handler._font_size == handler.DEFAULT_FONT_SIZE
 
 
 def test_extract_font_details_acroform_lacks_get_default_appearance() -> None:
@@ -161,7 +161,7 @@ def test_extract_font_details_acroform_lacks_get_default_appearance() -> None:
         annot = PDAnnotationFreeText()
         handler = PDFreeTextAppearanceHandler(annot, document=document)
         handler.extract_font_details(annot)
-        assert handler._font_size == handler.DEFAULT_FONT_SIZE  # noqa: SLF001
+        assert handler._font_size == handler.DEFAULT_FONT_SIZE
 
 
 def test_extract_font_details_da_without_tf_keeps_defaults() -> None:
@@ -174,5 +174,5 @@ def test_extract_font_details_da_without_tf_keeps_defaults() -> None:
     annot.set_default_appearance("0 g")
     handler = PDFreeTextAppearanceHandler(annot, document=None)
     handler.extract_font_details(annot)
-    assert handler._font_size == handler.DEFAULT_FONT_SIZE  # noqa: SLF001
-    assert handler._font_name == handler.DEFAULT_FONT_NAME  # noqa: SLF001
+    assert handler._font_size == handler.DEFAULT_FONT_SIZE
+    assert handler._font_name == handler.DEFAULT_FONT_NAME

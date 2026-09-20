@@ -28,16 +28,16 @@ def _prepared_renderer(
 ) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -113,18 +113,18 @@ def test_function_shading_array_bad_subfunctions_skip_pixel(
     try:
         monkeypatch.setattr(PDFunction, "create", staticmethod(create))
 
-        renderer._paint_function_shading(  # noqa: SLF001
+        renderer._paint_function_shading(
             _Shading(),
             region_mask=Image.new("L", (1, 1), 255),
         )
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
+        assert renderer._image is not None
         # Wave 1598: any bad array entry (create failure / eval failure /
         # empty output) aborts the pixel's evaluation — upstream
         # PDShading.evalFunction propagates the IOException and
         # Type1ShadingContext.getRaster skips the pixel. Canvas preserved.
-        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)
     finally:
         doc.close()
 
@@ -144,7 +144,7 @@ def test_function_shading_scalar_factory_failure_preserves_canvas(
 
     doc, renderer = _prepared_renderer(size=(2, 2))
     try:
-        before = renderer._image.copy()  # noqa: SLF001
+        before = renderer._image.copy()
         monkeypatch.setattr(
             PDFunction,
             "create",
@@ -153,14 +153,14 @@ def test_function_shading_scalar_factory_failure_preserves_canvas(
             ),
         )
 
-        renderer._paint_function_shading(  # noqa: SLF001
+        renderer._paint_function_shading(
             _Shading(),
             region_mask=Image.new("L", (2, 2), 255),
         )
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.tobytes() == before.tobytes()  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.tobytes() == before.tobytes()
     finally:
         doc.close()
 
@@ -184,15 +184,15 @@ def test_axial_shading_constant_domain_uses_first_ramp_entry() -> None:
 
     doc, renderer = _prepared_renderer(size=(2, 1))
     try:
-        renderer._paint_axial_shading(  # noqa: SLF001
+        renderer._paint_axial_shading(
             _Shading(),
             region_mask=Image.new("L", (2, 1), 255),
         )
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((0, 0)) == (64, 0, 0)  # noqa: SLF001
-        assert renderer._image.getpixel((1, 0)) == (64, 0, 0)  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.getpixel((0, 0)) == (64, 0, 0)
+        assert renderer._image.getpixel((1, 0)) == (64, 0, 0)
     finally:
         doc.close()
 
@@ -216,14 +216,14 @@ def test_radial_shading_without_valid_root_leaves_region_white() -> None:
 
     doc, renderer = _prepared_renderer(size=(2, 1))
     try:
-        renderer._paint_radial_shading(  # noqa: SLF001
+        renderer._paint_radial_shading(
             _Shading(),
             region_mask=Image.new("L", (2, 1), 255),
         )
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)  # noqa: SLF001
-        assert renderer._image.getpixel((1, 0)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)
+        assert renderer._image.getpixel((1, 0)) == (255, 255, 255)
     finally:
         doc.close()

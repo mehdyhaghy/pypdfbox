@@ -524,7 +524,7 @@ def test_get_matrix_returns_identity_when_array_too_short() -> None:
 def test_get_matrix_returns_identity_when_entry_non_numeric() -> None:
     """Any non-numeric entry → identity (mirrors upstream
     ``Matrix.createMatrix``'s ``COSNumber`` instanceof loop)."""
-    from pypdfbox.cos import COSName as _CN
+    from pypdfbox.cos import COSName
 
     pattern = PDTilingPattern()
     arr = COSArray(
@@ -533,7 +533,7 @@ def test_get_matrix_returns_identity_when_entry_non_numeric() -> None:
             COSFloat(0.0),
             COSFloat(0.0),
             COSFloat(1.0),
-            _CN.get_pdf_name("Bogus"),  # not numeric
+            COSName.get_pdf_name("Bogus"),  # not numeric
             COSFloat(0.0),
         ]
     )

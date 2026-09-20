@@ -50,7 +50,7 @@ class PDShadingPattern(PDAbstractPattern):
         ``None`` when the entry is absent."""
         # Local import — avoids dragging the shading subclass tree into
         # the pattern module's import graph at load time.
-        from pypdfbox.pdmodel.graphics.shading.pd_shading import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.shading.pd_shading import (
             PDShading as _PDShading,
         )
 
@@ -83,7 +83,7 @@ class PDShadingPattern(PDAbstractPattern):
         Note: the base ``PDAbstractPattern.get_extended_graphics_state``
         returns the raw ``COSDictionary`` for back-compat; on shading
         patterns we override to match upstream's typed return."""
-        from pypdfbox.pdmodel.graphics.state.pd_extended_graphics_state import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.state.pd_extended_graphics_state import (
             PDExtendedGraphicsState,
         )
 
@@ -97,7 +97,7 @@ class PDShadingPattern(PDAbstractPattern):
     ) -> None:
         """Typed ``/ExtGState`` setter — mirrors upstream
         ``PDShadingPattern.setExtendedGraphicsState``."""
-        from pypdfbox.pdmodel.graphics.state.pd_extended_graphics_state import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.state.pd_extended_graphics_state import (
             PDExtendedGraphicsState,
         )
 
@@ -123,7 +123,7 @@ class PDShadingPattern(PDAbstractPattern):
         """Accepts a typed ``PDShading``, a raw ``COSBase`` (typically
         ``COSDictionary`` / ``COSStream``), or ``None`` (clears the
         entry)."""
-        from pypdfbox.pdmodel.graphics.shading.pd_shading import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.shading.pd_shading import (
             PDShading as _PDShading,
         )
 

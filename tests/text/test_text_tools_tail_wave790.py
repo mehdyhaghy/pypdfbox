@@ -48,7 +48,7 @@ def test_wave790_filtered_tj_array_returns_before_base_emit_when_angle_differs()
     stripper = FilteredTextStripper(target_angle=0)
 
     with patch.object(PDFTextStripper, "_emit_tj_array") as base_emit:
-        stripper._emit_tj_array(arr, state, positions)  # noqa: SLF001
+        stripper._emit_tj_array(arr, state, positions)
 
     base_emit.assert_not_called()
     assert positions == []
@@ -62,7 +62,7 @@ def test_wave790_filtered_tj_array_delegates_when_angle_matches() -> None:
     stripper = FilteredTextStripper(target_angle=0)
 
     with patch.object(PDFTextStripper, "_emit_tj_array") as base_emit:
-        stripper._emit_tj_array(arr, state, positions)  # noqa: SLF001
+        stripper._emit_tj_array(arr, state, positions)
 
     base_emit.assert_called_once_with(arr, state, positions)
 

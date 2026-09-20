@@ -53,7 +53,7 @@ class PrintFields:
         else:
             try:
                 field_value = field.get_value_as_string()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 field_value = ""
             out = level + str(parent)
             if partial_name is not None:

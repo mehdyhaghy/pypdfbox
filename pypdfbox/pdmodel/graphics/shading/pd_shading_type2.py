@@ -199,7 +199,7 @@ class PDShadingType2(PDShading):
         ``PDShadingType2.java``) which returns
         ``new AxialShadingPaint(this, matrix)``.
         """
-        from .axial_shading_paint import AxialShadingPaint  # noqa: PLC0415
+        from .axial_shading_paint import AxialShadingPaint
 
         return AxialShadingPaint(self, matrix)
 

@@ -8,12 +8,12 @@ class _StringsWithoutTable:
 
 
 class _FontSetWithoutStringTable:
-    fontNames = ["Wave473"]  # noqa: N815
+    fontNames = ["Wave473"]
     strings = _StringsWithoutTable()
 
 
 class _RaisingCharStringsTop:
-    GlobalSubrs = None  # noqa: N815
+    GlobalSubrs = None
     Private = None
     rawDict: dict[str, object] = {}
     charset = None
@@ -25,16 +25,16 @@ class _RaisingCharStringsTop:
 
 
 class _NoPrivateTop:
-    FontMatrix = [0.001, 0, 0, 0.001, 0, 0]  # noqa: N815
-    GlobalSubrs: list[object] = []  # noqa: N815
+    FontMatrix = [0.001, 0, 0, 0.001, 0, 0]
+    GlobalSubrs: list[object] = []
     rawDict: dict[str, object] = {}
     charset = [".notdef", "A"]
-    CharStrings = {"A": object()}  # noqa: N815
+    CharStrings = {"A": object()}
 
 
 def test_wave473_defensive_accessors_handle_missing_private_charset_and_subrs() -> None:
     font = CFFFont()
-    font._top = _RaisingCharStringsTop()  # noqa: SLF001
+    font._top = _RaisingCharStringsTop()
 
     assert font.get_private_dict() == {}
     assert font.get_charset() == []
@@ -52,7 +52,7 @@ def test_wave473_defensive_accessors_handle_missing_private_charset_and_subrs() 
 
 def test_wave473_string_sid_helpers_tolerate_missing_private_string_table() -> None:
     font = CFFFont()
-    font._fontset = _FontSetWithoutStringTable()  # noqa: SLF001
+    font._fontset = _FontSetWithoutStringTable()
 
     assert font.get_gid_for_sid(-1) == 0
     assert font.get_sid("") == 0
@@ -65,7 +65,7 @@ def test_wave473_unparsed_font_and_no_private_width_lookup_defaults() -> None:
     assert CFFFont().has_glyph("A") is False
 
     font = CFFFont()
-    font._top = _NoPrivateTop()  # noqa: SLF001
+    font._top = _NoPrivateTop()
 
     assert font.get_width("A") == 0.0
-    assert "A" not in font._widths  # noqa: SLF001
+    assert "A" not in font._widths

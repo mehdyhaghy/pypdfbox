@@ -33,7 +33,7 @@ FIXTURE_TTF = (
 
 
 def _make_t2_empty() -> Any:
-    from fontTools.misc.psCharStrings import T2CharString  # noqa: PLC0415
+    from fontTools.misc.psCharStrings import T2CharString
 
     cs = T2CharString()
     cs.program = ["endchar"]
@@ -43,7 +43,7 @@ def _make_t2_empty() -> Any:
 def _synth_name_keyed_otf_bytes() -> bytes:
     """Minimal name-keyed CFF OpenType font (re-used helper)."""
     try:
-        from fontTools.fontBuilder import FontBuilder  # noqa: PLC0415
+        from fontTools.fontBuilder import FontBuilder
     except ImportError:
         pytest.skip("fontTools FontBuilder not available")
 
@@ -58,7 +58,7 @@ def _synth_name_keyed_otf_bytes() -> bytes:
         charStringsDict=cs,
         privateDict={},
     )
-    fb.setupHorizontalMetrics({name: (500, 0) for name in glyph_order})
+    fb.setupHorizontalMetrics(dict.fromkeys(glyph_order, (500, 0)))
     fb.setupHorizontalHeader(ascent=800, descent=-200)
     fb.setupNameTable({"familyName": "Cov", "styleName": "Regular"})
     fb.setupOS2(sTypoAscender=800, usWinAscent=800, usWinDescent=200)
@@ -91,7 +91,7 @@ def test_set_version_with_invalid_input_falls_back_to_zero() -> None:
         pytest.skip("TTF fixture not present")
     font = OTFParser().parse(FIXTURE_TTF.read_bytes())
     # Force the ``except`` path by patching ``struct.pack`` to raise.
-    import struct as _struct  # noqa: PLC0415
+    import struct as _struct
 
     with mock.patch.object(
         _struct, "pack", side_effect=_struct.error("forced failure")
@@ -108,7 +108,7 @@ def test_set_version_otto_magic_marks_post_script() -> None:
     if not FIXTURE_TTF.exists():
         pytest.skip("TTF fixture not present")
     font = OTFParser().parse(FIXTURE_TTF.read_bytes())
-    import struct as _struct  # noqa: PLC0415
+    import struct as _struct
 
     # Round-trip 0x469EA8A9 into a Python float — what upstream's
     # ``Float.intBitsToFloat`` produces from the OTTO fingerprint.

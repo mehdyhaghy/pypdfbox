@@ -31,16 +31,16 @@ def _make_doc(width: float = 24.0, height: float = 24.0) -> tuple[PDDocument, PD
 def _prepared_renderer(size: tuple[int, int] = (24, 24)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -61,18 +61,18 @@ def test_color_space_ops_reset_only_non_pattern_paints() -> None:
     try:
         fill_pattern = object()
         stroke_pattern = object()
-        renderer._gs.fill_pattern = fill_pattern  # noqa: SLF001
-        renderer._gs.stroke_pattern = stroke_pattern  # noqa: SLF001
+        renderer._gs.fill_pattern = fill_pattern
+        renderer._gs.stroke_pattern = stroke_pattern
 
         renderer.process_operator("cs", [COSName.get_pdf_name("Pattern")])
         renderer.process_operator("CS", [COSName.get_pdf_name("Pattern")])
-        assert renderer._gs.fill_pattern is fill_pattern  # noqa: SLF001
-        assert renderer._gs.stroke_pattern is stroke_pattern  # noqa: SLF001
+        assert renderer._gs.fill_pattern is fill_pattern
+        assert renderer._gs.stroke_pattern is stroke_pattern
 
         renderer.process_operator("cs", [COSName.get_pdf_name("DeviceRGB")])
         renderer.process_operator("CS", [])
-        assert renderer._gs.fill_pattern is None  # noqa: SLF001
-        assert renderer._gs.stroke_pattern is None  # noqa: SLF001
+        assert renderer._gs.fill_pattern is None
+        assert renderer._gs.stroke_pattern is None
     finally:
         _finish(renderer)
         doc.close()
@@ -82,20 +82,20 @@ def test_degenerate_paths_do_not_build_masks_or_draw() -> None:
     doc, renderer = _prepared_renderer()
     try:
         renderer.process_operator("m", [])
-        renderer._current_subpath = []  # noqa: SLF001
-        renderer._close_open_subpath()  # noqa: SLF001
-        assert renderer._current_subpath == []  # noqa: SLF001
+        renderer._current_subpath = []
+        renderer._close_open_subpath()
+        assert renderer._current_subpath == []
 
         renderer.process_operator("m", [COSName.get_pdf_name("Bad"), COSName.get_pdf_name("Bad")])
         renderer.process_operator("l", [COSName.get_pdf_name("Bad"), COSName.get_pdf_name("Bad")])
-        assert renderer._build_path_mask(even_odd=False) is None  # noqa: SLF001
-        assert renderer._build_path_mask(even_odd=True) is None  # noqa: SLF001
+        assert renderer._build_path_mask(even_odd=False) is None
+        assert renderer._build_path_mask(even_odd=True) is None
 
-        before = renderer._image.copy()  # noqa: SLF001
-        renderer._subpaths = [[("Z",)]]  # noqa: SLF001
-        renderer._draw_via_aggdraw(stroke=True, fill=True)  # noqa: SLF001
+        before = renderer._image.copy()
+        renderer._subpaths = [[("Z",)]]
+        renderer._draw_via_aggdraw(stroke=True, fill=True)
         _finish(renderer)
-        assert renderer._image.tobytes() == before.tobytes()  # noqa: SLF001
+        assert renderer._image.tobytes() == before.tobytes()
     finally:
         doc.close()
 
@@ -106,18 +106,18 @@ def test_unsupported_pattern_fill_falls_back_through_current_clip(caplog: Any) -
         caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
         clip = Image.new("L", (24, 24), 0)
         clip.paste(255, (0, 0, 12, 24))
-        renderer._gs.clip_mask = clip  # noqa: SLF001
-        renderer._gs.fill_pattern = object()  # noqa: SLF001
-        renderer._gs.fill_rgb = (0, 0, 255)  # noqa: SLF001
+        renderer._gs.clip_mask = clip
+        renderer._gs.fill_pattern = object()
+        renderer._gs.fill_rgb = (0, 0, 255)
         renderer.process_operator("re", [COSName.get_pdf_name("Bad")] * 4)
-        renderer._subpaths = [[("M", 0.0, 0.0), ("L", 24.0, 0.0), ("L", 24.0, 24.0), ("L", 0.0, 24.0), ("Z",)]]  # noqa: E501, SLF001
+        renderer._subpaths = [[("M", 0.0, 0.0), ("L", 24.0, 0.0), ("L", 24.0, 24.0), ("L", 0.0, 24.0), ("Z",)]]  # noqa: E501
 
-        renderer._paint_pattern_fill(even_odd=False)  # noqa: SLF001
+        renderer._paint_pattern_fill(even_odd=False)
         _finish(renderer)
 
         assert "unsupported pattern type object" in caplog.text
-        assert renderer._image.getpixel((6, 12)) == (0, 0, 255)  # noqa: SLF001
-        assert renderer._image.getpixel((18, 12)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image.getpixel((6, 12)) == (0, 0, 255)
+        assert renderer._image.getpixel((18, 12)) == (255, 255, 255)
     finally:
         doc.close()
 
@@ -145,7 +145,7 @@ def test_tiling_pattern_invalid_metadata_and_render_failure_are_debug_logged(
         caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
         mask = Image.new("L", (24, 24), 255)
 
-        renderer._paint_tiling_pattern(  # noqa: SLF001
+        renderer._paint_tiling_pattern(
             _Pattern(None, 4.0, 4.0), region_mask=mask
         )
         # Wave 1563 split the old combined "/BBox or /XStep/YStep" skip message:
@@ -154,7 +154,7 @@ def test_tiling_pattern_invalid_metadata_and_render_failure_are_debug_logged(
         # /BBox skips with this message.
         assert "tiling pattern missing /BBox" in caplog.text
 
-        renderer._paint_tiling_pattern(  # noqa: SLF001
+        renderer._paint_tiling_pattern(
             _Pattern(PDRectangle(0.0, 0.0, 4.0, 4.0), 4.0, 4.0),
             region_mask=mask,
         )
@@ -182,11 +182,11 @@ def test_unknown_shading_type_falls_back_to_function_value(caplog: Any) -> None:
         mask = Image.new("L", (24, 24), 0)
         mask.paste(255, (4, 4, 20, 20))
 
-        renderer._paint_shading(_Shading(), region_mask=mask)  # noqa: SLF001
+        renderer._paint_shading(_Shading(), region_mask=mask)
         _finish(renderer)
 
         assert "unsupported shading type _Shading" in caplog.text
-        assert renderer._image.getpixel((8, 8)) == (64, 64, 64)  # noqa: SLF001
-        assert renderer._image.getpixel((2, 2)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image.getpixel((8, 8)) == (64, 64, 64)
+        assert renderer._image.getpixel((2, 2)) == (255, 255, 255)
     finally:
         doc.close()

@@ -28,16 +28,16 @@ def _prepared_renderer(
 ) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -86,16 +86,16 @@ def test_radial_shading_degenerate_cone_paints_start_colour() -> None:
 
     doc, renderer = _prepared_renderer(size=(1, 1))
     try:
-        renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 2.0, 0.0)  # noqa: SLF001
+        renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 2.0, 0.0)
 
-        renderer._paint_radial_shading(  # noqa: SLF001
+        renderer._paint_radial_shading(
             _Radial(),
             region_mask=Image.new("L", (1, 1), 255),
         )
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((0, 0)) == (255, 0, 0)  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.getpixel((0, 0)) == (255, 0, 0)
     finally:
         doc.close()
 
@@ -116,25 +116,25 @@ def test_radial_shading_equal_domain_uses_first_ramp_entry() -> None:
 
     doc, renderer = _prepared_renderer(size=(1, 1))
     try:
-        renderer._paint_radial_shading(  # noqa: SLF001
+        renderer._paint_radial_shading(
             _Radial(),
             region_mask=Image.new("L", (1, 1), 255),
         )
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((0, 0)) == (255, 0, 0)  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.getpixel((0, 0)) == (255, 0, 0)
     finally:
         doc.close()
 
 
 def test_hsl_clip_color_degenerate_low_and_high_denominators() -> None:
-    assert PDFRenderer._hsl_clip_color(-0.25, -0.25, -0.25) == (  # noqa: SLF001
+    assert PDFRenderer._hsl_clip_color(-0.25, -0.25, -0.25) == (
         0.0,
         0.0,
         0.0,
     )
-    assert PDFRenderer._hsl_clip_color(1.25, 1.25, 1.25) == (  # noqa: SLF001
+    assert PDFRenderer._hsl_clip_color(1.25, 1.25, 1.25) == (
         1.0,
         1.0,
         1.0,
@@ -158,9 +158,9 @@ def test_resolve_font_program_ignores_type1_probe_failure(
         monkeypatch.setattr(PDType1Font, "_get_type1_font", raise_type1)
 
         font = PDType1Font()
-        resolved = renderer._resolve_font_program(font)  # noqa: SLF001
+        resolved = renderer._resolve_font_program(font)
 
-        assert renderer._font_program_cache[id(font)] is resolved  # noqa: SLF001
+        assert renderer._font_program_cache[id(font)] is resolved
     finally:
         _finish(renderer)
         doc.close()

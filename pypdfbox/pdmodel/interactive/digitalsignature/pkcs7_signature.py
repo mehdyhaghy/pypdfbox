@@ -79,7 +79,7 @@ class Pkcs7Signature(SignatureInterface):
             serialization.Encoding.DER,
             [pkcs7.PKCS7Options.DetachedSignature, pkcs7.PKCS7Options.Binary],
         )
-        return cast(bytes, signed)
+        return cast("bytes", signed)
 
 
 __all__ = ["Pkcs7Signature"]

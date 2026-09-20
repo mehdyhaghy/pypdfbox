@@ -28,13 +28,13 @@ class _Certificate:
 
 def test_private_eku_helper_reports_missing_and_matching_usage() -> None:
     assert (
-        sig_utils._has_extended_key_usage(  # noqa: SLF001
+        sig_utils._has_extended_key_usage(
             _Certificate(None), _TIME_STAMPING_EKU
         )
         is False
     )
     assert (
-        sig_utils._has_extended_key_usage(  # noqa: SLF001
+        sig_utils._has_extended_key_usage(
             _Certificate([_TIME_STAMPING_EKU]),
             _TIME_STAMPING_EKU,
         )

@@ -92,11 +92,11 @@ def test_measure_round_trip() -> None:
     # otherwise the constructor signature differs from the stub.
     try:
         from pypdfbox.pdmodel.interactive.measurement.pd_measure_dictionary import (
-            PDMeasureDictionary as _PDMD,
+            PDMeasureDictionary,
         )
 
         resolved = vp.get_measure()
-        assert isinstance(resolved, _PDMD)
+        assert isinstance(resolved, PDMeasureDictionary)
         assert resolved.get_cos_object() is measure.get_cos_object()
     except ImportError:
         pass

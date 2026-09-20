@@ -14,8 +14,11 @@ transcribing 256 SID rows.
 
 from __future__ import annotations
 
+# Imported unaliased: aliasing a CamelCase third-party symbol trips one of
+# pep8-naming's N81x rules whatever the alias looks like, and the upstream
+# name is the clearer one here.
 from fontTools.encodings.StandardEncoding import (  # type: ignore[import-untyped]
-    StandardEncoding as _FT_STANDARD_ENCODING,
+    StandardEncoding,
 )
 
 from .cff_encoding import CFFEncoding
@@ -37,7 +40,7 @@ class CFFStandardEncoding(CFFEncoding):
         # mistype `name` as `sid`). The base Encoding.add semantics are
         # "putIfAbsent" on name->code; replicate that here.
         # pylint: disable=protected-access
-        for code, name in enumerate(_FT_STANDARD_ENCODING):
+        for code, name in enumerate(StandardEncoding):
             self._code_to_name[code] = name
             if name not in self._name_to_code:
                 self._name_to_code[name] = code

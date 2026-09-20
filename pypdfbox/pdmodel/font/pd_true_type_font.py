@@ -128,7 +128,7 @@ class PDTrueTypeFont(PDSimpleFont):
         try:
             raw = font_file2.to_byte_array()
             self._ttf = TrueTypeFont.from_bytes(raw)
-        except Exception:  # noqa: BLE001
+        except Exception:
             _LOG.exception("failed to parse /FontFile2 for %s", self.get_name())
             self._ttf = False
             return None
@@ -195,7 +195,7 @@ class PDTrueTypeFont(PDSimpleFont):
         base_font = self.get_base_font() or ""
         descriptor = self.get_font_descriptor()
         try:
-            from pypdfbox.fontbox.font_mappers import FontMappers  # noqa: PLC0415
+            from pypdfbox.fontbox.font_mappers import FontMappers
 
             mapper = FontMappers.instance()
             mapping = mapper.get_true_type_font(base_font, descriptor)
@@ -205,7 +205,7 @@ class PDTrueTypeFont(PDSimpleFont):
                     adapted = _adapt_substitute_to_true_type_font(fonttools_font)
                     if adapted is not None:
                         return adapted
-        except Exception:  # noqa: BLE001 — mapping failures must not crash callers
+        except Exception:
             _LOG.exception("substitute lookup failed for %s", self.get_name())
         # Deterministic bundled-Liberation last resort.
         return self._bundled_last_resort_substitute(descriptor)
@@ -220,10 +220,10 @@ class PDTrueTypeFont(PDSimpleFont):
         ``None`` only if the bundled asset cannot be loaded (never raises).
         """
         try:
-            from .font_mapper_impl import FontMapperImpl  # noqa: PLC0415
+            from .font_mapper_impl import FontMapperImpl
 
-            last_resort = FontMapperImpl()._get_last_resort_font(descriptor)  # noqa: SLF001
-        except Exception:  # noqa: BLE001
+            last_resort = FontMapperImpl()._get_last_resort_font(descriptor)
+        except Exception:
             _LOG.exception("bundled last-resort substitute load failed")
             return None
         if last_resort is None:
@@ -408,7 +408,7 @@ class PDTrueTypeFont(PDSimpleFont):
             resolved: set[int] = set()
             try:
                 cmap = ttf.get_unicode_cmap_lookup()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 cmap = None
             if cmap is not None:
                 getter = getattr(cmap, "get_glyph_id", None)
@@ -416,7 +416,7 @@ class PDTrueTypeFont(PDSimpleFont):
                     for cp in codepoints:
                         try:
                             gid = int(getter(cp) or 0)
-                        except Exception:  # noqa: BLE001
+                        except Exception:
                             gid = 0
                         if gid:
                             resolved.add(gid)
@@ -799,7 +799,7 @@ class PDTrueTypeFont(PDSimpleFont):
             if name == ".notdef" or not name:
                 return 0
             if self._cmap_win_unicode is not None:
-                from pypdfbox.fontbox.encoding.glyph_list import GlyphList  # noqa: PLC0415
+                from pypdfbox.fontbox.encoding.glyph_list import GlyphList
 
                 unicode = GlyphList.DEFAULT.to_unicode(name)
                 if unicode:  # pragma: no branch
@@ -808,7 +808,7 @@ class PDTrueTypeFont(PDSimpleFont):
                     uni = ord(unicode[0])
                     gid = self._cmap_win_unicode.get_glyph_id(uni)
             if gid == 0 and self._cmap_mac_roman is not None:
-                from pypdfbox.pdmodel.font.encoding.mac_os_roman_encoding import (  # noqa: PLC0415
+                from pypdfbox.pdmodel.font.encoding.mac_os_roman_encoding import (
                     MacOSRomanEncoding,
                 )
 
@@ -820,13 +820,13 @@ class PDTrueTypeFont(PDSimpleFont):
             if gid == 0:
                 try:
                     gid = int(ttf.name_to_gid(name))
-                except Exception:  # noqa: BLE001
+                except Exception:
                     gid = 0
         else:
-            from pypdfbox.pdmodel.font.encoding.mac_roman_encoding import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.font.encoding.mac_roman_encoding import (
                 MacRomanEncoding,
             )
-            from pypdfbox.pdmodel.font.encoding.win_ansi_encoding import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.font.encoding.win_ansi_encoding import (
                 WinAnsiEncoding,
             )
 
@@ -843,7 +843,7 @@ class PDTrueTypeFont(PDSimpleFont):
                     name = encoding.get_name(code)
                     if name == ".notdef" or not name:
                         return 0
-                    from pypdfbox.fontbox.encoding.glyph_list import GlyphList  # noqa: PLC0415
+                    from pypdfbox.fontbox.encoding.glyph_list import GlyphList
 
                     unicode = GlyphList.DEFAULT.to_unicode(name)
                     if unicode:
@@ -883,7 +883,7 @@ class PDTrueTypeFont(PDSimpleFont):
         )
         cmap = self._get_unicode_cmap(ttf)
         if encoding is not None and cmap is not None:
-            from pypdfbox.fontbox.encoding.glyph_list import GlyphList  # noqa: PLC0415
+            from pypdfbox.fontbox.encoding.glyph_list import GlyphList
 
             name = encoding.get_name(code)
             if name and name != ".notdef":
@@ -902,7 +902,7 @@ class PDTrueTypeFont(PDSimpleFont):
             if name and name != ".notdef":
                 try:
                     return int(ttf.name_to_gid(name))
-                except Exception:  # noqa: BLE001
+                except Exception:
                     return 0
         if cmap is not None:
             gid = cmap.get_glyph_id(code)
@@ -923,7 +923,7 @@ class PDTrueTypeFont(PDSimpleFont):
         if not self._cmap_resolved:
             try:
                 self._cmap_subtable = ttf.get_unicode_cmap_subtable()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _LOG.exception("failed to parse cmap for %s", self.get_name())
                 self._cmap_subtable = None
             self._cmap_resolved = True
@@ -962,7 +962,7 @@ class PDTrueTypeFont(PDSimpleFont):
                 if tt_inner is not None and "cmap" in tt_inner
                 else None
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             _LOG.exception("failed to read cmap table for %s", self.get_name())
             self._cmap_initialized = True
             return
@@ -973,7 +973,7 @@ class PDTrueTypeFont(PDSimpleFont):
             glyph_order = (
                 list(tt_inner.getGlyphOrder()) if tt_inner is not None else None
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             glyph_order = None
         for sub in cmap_table.tables:
             platform_id = int(getattr(sub, "platformID", -1))
@@ -1033,7 +1033,7 @@ class PDTrueTypeFont(PDSimpleFont):
         # /Encoding resolves to Type1Encoding, not null).
         afm = self.get_standard14_afm()
         if not self.is_embedded() and afm is not None:
-            from .encoding.type1_encoding import Type1Encoding  # noqa: PLC0415
+            from .encoding.type1_encoding import Type1Encoding
 
             return Type1Encoding(afm)
         if self.get_symbolic_flag() is False:
@@ -1058,7 +1058,7 @@ class PDTrueTypeFont(PDSimpleFont):
             if post is not None:
                 try:
                     name = post.get_name(gid)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     name = None
             if not name:
                 # GID pseudo-name (mirrors upstream's
@@ -1112,7 +1112,7 @@ class PDTrueTypeFont(PDSimpleFont):
         # internally and returns ``None`` for unknown names.
         try:
             path = cff.get_path(name)
-        except Exception:  # noqa: BLE001 — malformed charstring should not crash callers
+        except Exception:
             _LOG.exception("CFF charstring draw failed for glyph %s", name)
             return None
         if not path:
@@ -1127,7 +1127,7 @@ class PDTrueTypeFont(PDSimpleFont):
         | bytearray
         | memoryview
         | BinaryIO,
-        is_embedded: bool = True,  # noqa: FBT001, FBT002 — mirror upstream signature
+        is_embedded: bool = True,
     ) -> Any:
         """Return a :class:`TTFParser` (or :class:`OTFParser`) suited to
         the SFNT flavour of ``random_access_read``.
@@ -1150,8 +1150,8 @@ class PDTrueTypeFont(PDSimpleFont):
             * file-like object with ``.read`` / ``.seek`` / ``.tell`` —
               the four bytes are read and the position restored.
         """
-        from pypdfbox.fontbox.ttf.otf_parser import OTFParser  # noqa: PLC0415
-        from pypdfbox.fontbox.ttf.ttf_parser import TTFParser  # noqa: PLC0415
+        from pypdfbox.fontbox.ttf.otf_parser import OTFParser
+        from pypdfbox.fontbox.ttf.ttf_parser import TTFParser
 
         if isinstance(random_access_read, (bytes, bytearray, memoryview)):
             head = bytes(random_access_read[:4])
@@ -1163,7 +1163,7 @@ class PDTrueTypeFont(PDSimpleFont):
                 start = None
             head_bytes = random_access_read.read(4) or b""
             if start is not None:
-                import contextlib  # noqa: PLC0415
+                import contextlib
 
                 with contextlib.suppress(AttributeError, OSError):
                     random_access_read.seek(start)
@@ -1208,7 +1208,7 @@ class PDTrueTypeFont(PDSimpleFont):
             the TTF's ``hmtx`` table.
         """
         del doc  # signature parity only; unused.
-        from .encoding import WinAnsiEncoding  # noqa: PLC0415
+        from .encoding import WinAnsiEncoding
 
         ttf, ttf_bytes = _resolve_ttf_source(source)
         active_encoding: Encoding = (
@@ -1388,22 +1388,22 @@ def _adapt_substitute_to_true_type_font(
     path = _substitute_font_path(fonttools_font)
     if path is not None:
         try:
-            from pathlib import Path  # noqa: PLC0415
+            from pathlib import Path
 
             return TrueTypeFont.from_bytes(Path(path).read_bytes())
-        except Exception:  # noqa: BLE001 — fall through to the save() round-trip
+        except Exception:
             _LOG.debug("substitute re-parse from path %s failed", path)
     # 3. Serialise the in-memory fontTools font and re-parse.
     save = getattr(fonttools_font, "save", None)
     if not callable(save):
         return None
     try:
-        import io  # noqa: PLC0415
+        import io
 
         buf = io.BytesIO()
         save(buf)
         return TrueTypeFont.from_bytes(buf.getvalue())
-    except Exception:  # noqa: BLE001 — unparsable substitute must not crash callers
+    except Exception:
         _LOG.exception("substitute fontTools save() round-trip failed")
         return None
 
@@ -1438,7 +1438,7 @@ def _fonttools_glyph_set(ttf: TrueTypeFont) -> Any | None:
         return None
     try:
         return inner.getGlyphSet()
-    except Exception:  # noqa: BLE001 — fontTools may raise on malformed tables
+    except Exception:
         _LOG.exception("getGlyphSet failed")
         return None
 
@@ -1449,7 +1449,7 @@ def _gid_to_glyph_name(ttf: TrueTypeFont, gid: int) -> str | None:
         return None
     try:
         order = inner.getGlyphOrder()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
     if 0 <= gid < len(order):
         return str(order[gid])
@@ -1471,13 +1471,13 @@ def _draw_glyph_by_name(ttf: TrueTypeFont, name: str) -> list[tuple[Any, ...]]:
         # ``get_normalized_path``, text extraction, structure tagging) can
         # neither scale nor draw — the component reference would be silently
         # dropped, so the glyph rendered blank.
-        from fontTools.pens.recordingPen import (  # type: ignore[import-untyped]  # noqa: PLC0415
+        from fontTools.pens.recordingPen import (  # type: ignore[import-untyped]
             DecomposingRecordingPen,
         )
 
         pen = DecomposingRecordingPen(glyph_set)
         glyph_set[name].draw(pen)
-    except Exception:  # noqa: BLE001 — unparsable charstrings should not crash callers
+    except Exception:
         _LOG.exception("recordingPen draw failed for glyph %s", name)
         return []
     return list(pen.value)
@@ -1527,7 +1527,7 @@ def _glyph_bbox_height(ttf: TrueTypeFont, gid: int) -> float:
             return 0.0
         _, y_min, _, y_max = pen.bounds
         return float(y_max - y_min)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return 0.0
 
 
@@ -1653,8 +1653,8 @@ def _resolve_ttf_source(
       come from :meth:`TrueTypeFont.get_original_data` so downstream
       embedding still has the on-wire SFNT.
     """
-    import os  # noqa: PLC0415
-    from pathlib import Path  # noqa: PLC0415
+    import os
+    from pathlib import Path
 
     if isinstance(source, TrueTypeFont):
         raw_bytes = source.get_original_data()
@@ -1694,9 +1694,9 @@ def _build_simple_ttf_font(
       the encoding's code-to-name map (codes with no glyph fall back
       to 0).
     """
-    from pypdfbox.cos import COSArray, COSFloat  # noqa: PLC0415
+    from pypdfbox.cos import COSArray, COSFloat
 
-    from .pd_font_descriptor import (  # noqa: PLC0415
+    from .pd_font_descriptor import (
         FLAG_NON_SYMBOLIC,
         PDFontDescriptor,
     )
@@ -1766,7 +1766,7 @@ def _ps_name_from_ttf_local(ttf: TrueTypeFont, fallback: str) -> str:
         return fallback
     try:
         text = record.toUnicode()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return fallback
     text = text.strip()
     return text if text else fallback
@@ -1778,7 +1778,7 @@ def _populate_simple_descriptor_from_ttf(
     """Populate a simple-font /FontDescriptor with metric fields read
     from ``ttf``. Mirrors the upstream ``TrueTypeEmbedder`` field copy
     used by ``PDTrueTypeFont.load``; values are scaled to 1/1000 em."""
-    from pypdfbox.cos import COSArray, COSFloat  # noqa: PLC0415
+    from pypdfbox.cos import COSArray, COSFloat
 
     head = ttf.get_header()
     units_per_em = head.get_units_per_em() if head is not None else 1000
@@ -1825,21 +1825,21 @@ def _build_simple_widths(ttf: TrueTypeFont, encoding: Encoding) -> list[float]:
     for code in range(256):
         try:
             name = encoding.get_name(code)
-        except Exception:  # noqa: BLE001
+        except Exception:
             name = None
         if not name or name == ".notdef":
             widths.append(0.0)
             continue
         try:
             gid = ttf.name_to_gid(name)
-        except Exception:  # noqa: BLE001
+        except Exception:
             gid = 0
         if gid <= 0:
             widths.append(0.0)
             continue
         try:
             advance = ttf.get_advance_width(gid)
-        except Exception:  # noqa: BLE001
+        except Exception:
             advance = 0
         widths.append(float(advance) * scale)
     return widths

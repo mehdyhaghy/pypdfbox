@@ -16,7 +16,7 @@ Covers lines 570, 600, 642-644, 671, 1252 in
 
 from __future__ import annotations
 
-import xml.etree.ElementTree as ET  # noqa: N817
+import xml.etree.ElementTree as ET
 
 import pytest
 
@@ -43,7 +43,7 @@ def test_validate_attribute_form_cardinality_lenient_skips_array_warning() -> No
     parser = _lenient_parser()
     # CREATOR is declared Seq. In strict mode this would raise; in lenient mode
     # the validator returns without raising.
-    parser._validate_attribute_form_cardinality(  # noqa: SLF001
+    parser._validate_attribute_form_cardinality(
         DublinCoreSchema.NAMESPACE, DublinCoreSchema.CREATOR
     )
 
@@ -59,7 +59,7 @@ def test_validate_parse_type_xml_namespace_is_skipped() -> None:
     elem = ET.Element(f"{{{_RDF_NS}}}Description")
     elem.set(f"{{{_XML_NS}}}parseType", "Resource")
     # Should not raise.
-    parser._validate_parse_type_namespace(elem, "ns", "local")  # noqa: SLF001
+    parser._validate_parse_type_namespace(elem, "ns", "local")
 
 
 # ---------- lines 642-644 — Simple-cardinality lenient mode ----------
@@ -69,7 +69,7 @@ def test_validate_element_form_cardinality_simple_with_list_lenient_skips() -> N
     """Simple-declared property got a list (Bag/Seq shape) — lenient
     mode silently accepts (lines 642-644)."""
     parser = _lenient_parser()
-    parser._validate_element_form_cardinality(  # noqa: SLF001
+    parser._validate_element_form_cardinality(
         ET.Element("dummy"),
         DublinCoreSchema.NAMESPACE,
         DublinCoreSchema.COVERAGE,  # declared Simple
@@ -79,7 +79,7 @@ def test_validate_element_form_cardinality_simple_with_list_lenient_skips() -> N
 
 def test_validate_element_form_cardinality_simple_with_dict_lenient_skips() -> None:
     parser = _lenient_parser()
-    parser._validate_element_form_cardinality(  # noqa: SLF001
+    parser._validate_element_form_cardinality(
         ET.Element("dummy"),
         DublinCoreSchema.NAMESPACE,
         DublinCoreSchema.COVERAGE,
@@ -94,7 +94,7 @@ def test_validate_element_form_cardinality_seq_with_str_lenient_skips() -> None:
     """Bag/Seq-declared property received a bare string — lenient mode
     tolerates (line 671)."""
     parser = _lenient_parser()
-    parser._validate_element_form_cardinality(  # noqa: SLF001
+    parser._validate_element_form_cardinality(
         ET.Element("dummy"),
         DublinCoreSchema.NAMESPACE,
         DublinCoreSchema.CREATOR,  # declared Seq
@@ -104,7 +104,7 @@ def test_validate_element_form_cardinality_seq_with_str_lenient_skips() -> None:
 
 def test_validate_element_form_cardinality_seq_with_dict_lenient_skips() -> None:
     parser = _lenient_parser()
-    parser._validate_element_form_cardinality(  # noqa: SLF001
+    parser._validate_element_form_cardinality(
         ET.Element("dummy"),
         DublinCoreSchema.NAMESPACE,
         DublinCoreSchema.CREATOR,
@@ -124,7 +124,7 @@ def test_validate_parse_type_namespace_skips_non_parsetype_attributes() -> None:
     elem.set(f"{{{_RDF_NS}}}about", "http://example.com/")
     elem.set("nakedAttr", "value")
     # Should not raise — neither attribute is parseType.
-    parser._validate_parse_type_namespace(elem, "ns", "local")  # noqa: SLF001
+    parser._validate_parse_type_namespace(elem, "ns", "local")
 
 
 def test_validate_element_form_cardinality_strict_simple_mismatch_raises() -> None:
@@ -132,7 +132,7 @@ def test_validate_element_form_cardinality_strict_simple_mismatch_raises() -> No
     property gets a list/dict shape."""
     parser = DomXmpParser()  # strict default
     with pytest.raises(XmpParsingException) as excinfo:
-        parser._validate_element_form_cardinality(  # noqa: SLF001
+        parser._validate_element_form_cardinality(
             ET.Element("dummy"),
             DublinCoreSchema.NAMESPACE,
             DublinCoreSchema.COVERAGE,  # declared Simple

@@ -91,7 +91,7 @@ def test_get_base_font_returns_none_when_cos_object_is_none(
 
 def test_is_embedded_returns_false_when_ttf_marked_failed() -> None:
     font = PDTrueTypeFont()
-    font._ttf = False  # noqa: SLF001 — simulate prior parse failure
+    font._ttf = False
     # Line 172-173 — cached False short-circuit.
     assert font.is_embedded() is False
 
@@ -118,7 +118,7 @@ def test_get_normalized_path_drops_gid_zero_for_external_nonstandard() -> None:
     # not a Standard 14 name we hit the early-return on line 442.
     # is_embedded() is True here because we injected the TTF — patch it
     # to False to mimic an external program with descriptor-only embedding.
-    font._ttf = False  # noqa: SLF001
+    font._ttf = False
     # No /FontFile2 program → is_embedded False. Not a Standard 14 →
     # is_standard14 False. Path returns empty (line 442 or 438).
     assert font.get_normalized_path(0xFF) == []
@@ -168,7 +168,7 @@ def test_get_normalized_path_returns_empty_when_glyph_path_empty(
 def test_extract_cmap_table_returns_when_no_ttf() -> None:
     font = PDTrueTypeFont()
     font.extract_cmap_table()
-    assert font._cmap_initialized is True  # noqa: SLF001
+    assert font._cmap_initialized is True
 
 
 def test_extract_cmap_table_handles_no_cmap_table(
@@ -179,10 +179,10 @@ def test_extract_cmap_table_handles_no_cmap_table(
     assert ttf is not None
     # Replace _tt with a dict-like that says "cmap" isn't there.
     monkeypatch.setattr(ttf, "_tt", {})
-    font._cmap_initialized = False  # noqa: SLF001
+    font._cmap_initialized = False
     # Lines 684-686 — missing cmap.
     font.extract_cmap_table()
-    assert font._cmap_initialized is True  # noqa: SLF001
+    assert font._cmap_initialized is True
 
 
 def test_extract_cmap_table_handles_inner_exception(
@@ -197,10 +197,10 @@ def test_extract_cmap_table_handles_inner_exception(
             raise RuntimeError("forced")
 
     monkeypatch.setattr(ttf, "_tt", _BadInner())
-    font._cmap_initialized = False  # noqa: SLF001
+    font._cmap_initialized = False
     # Lines 680-683 — exception path.
     font.extract_cmap_table()
-    assert font._cmap_initialized is True  # noqa: SLF001
+    assert font._cmap_initialized is True
 
 
 def test_extract_cmap_table_records_win_symbol_and_mac_roman(
@@ -212,8 +212,8 @@ def test_extract_cmap_table_records_win_symbol_and_mac_roman(
 
     class _Sub:
         def __init__(self, plat: int, enc: int, mapping: dict[int, str]) -> None:
-            self.platformID = plat  # noqa: N815
-            self.platEncID = enc  # noqa: N815
+            self.platformID = plat
+            self.platEncID = enc
             self.cmap = mapping
 
     win_unicode = _Sub(3, 1, {0x41: "A"})
@@ -233,15 +233,15 @@ def test_extract_cmap_table_records_win_symbol_and_mac_roman(
             raise KeyError(key)
 
     monkeypatch.setattr(ttf, "_tt", _Tt())
-    font._cmap_initialized = False  # noqa: SLF001
-    font._cmap_win_unicode = None  # noqa: SLF001
-    font._cmap_win_symbol = None  # noqa: SLF001
-    font._cmap_mac_roman = None  # noqa: SLF001
+    font._cmap_initialized = False
+    font._cmap_win_unicode = None
+    font._cmap_win_symbol = None
+    font._cmap_mac_roman = None
     font.extract_cmap_table()
     # Lines 693-694, 695-699.
-    assert font._cmap_win_unicode is not None  # noqa: SLF001
-    assert font._cmap_win_symbol is not None  # noqa: SLF001
-    assert font._cmap_mac_roman is not None  # noqa: SLF001
+    assert font._cmap_win_unicode is not None
+    assert font._cmap_win_symbol is not None
+    assert font._cmap_mac_roman is not None
 
 
 def test_extract_cmap_table_promotes_unicode_platform_to_win_unicode(
@@ -255,8 +255,8 @@ def test_extract_cmap_table_promotes_unicode_platform_to_win_unicode(
 
     class _Sub:
         def __init__(self, plat: int, enc: int) -> None:
-            self.platformID = plat  # noqa: N815
-            self.platEncID = enc  # noqa: N815
+            self.platformID = plat
+            self.platEncID = enc
             self.cmap = {0x41: "A"}
 
     unicode_sub = _Sub(0, 0)
@@ -274,10 +274,10 @@ def test_extract_cmap_table_promotes_unicode_platform_to_win_unicode(
             raise KeyError(key)
 
     monkeypatch.setattr(ttf, "_tt", _Tt())
-    font._cmap_initialized = False  # noqa: SLF001
-    font._cmap_win_unicode = None  # noqa: SLF001
+    font._cmap_initialized = False
+    font._cmap_win_unicode = None
     font.extract_cmap_table()
-    assert font._cmap_win_unicode is not None  # noqa: SLF001
+    assert font._cmap_win_unicode is not None
 
 
 # ---------- read_encoding_from_font branches -------------------------------

@@ -139,7 +139,7 @@ def test_create_pras_with_attributeerror_catalog() -> None:
     ``except AttributeError`` arm)."""
 
     class _BadDoc:
-        def get_document_catalog(self):  # noqa: ANN201
+        def get_document_catalog(self):
             raise AttributeError("no catalog")
 
     runner = PrintPDF()
@@ -247,7 +247,7 @@ def test_call_windows_startfile_oserror_returns_4(sample_pdf: Path) -> None:
     runner.infile = sample_pdf
     runner.silent_print = True
 
-    import os as os_module  # noqa: PLC0415
+    import os as os_module
 
     fake_startfile = mock.MagicMock(side_effect=OSError("spooler unreachable"))
     with (

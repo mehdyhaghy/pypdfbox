@@ -165,7 +165,7 @@ def test_formatting_in_range():
 
     format_buffer = bytearray(32)
 
-    for max_fraction_digits in range(0, 6):
+    for max_fraction_digits in range(6):
         increment = Decimal(10) ** (-max_fraction_digits)
         value = min_val
         while value < max_val:

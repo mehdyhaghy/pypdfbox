@@ -73,7 +73,7 @@ from pypdfbox.pdfwriter import CompressParameters
 
 with PDDocument() as doc:
     doc.add_page(...)
-    doc.save("out.pdf", compress_parameters=CompressParameters.default_compression())
+    doc.save("output.pdf", compress_parameters=CompressParameters.default_compression())
 
 # Incremental append on a previously loaded document:
 with Loader.load_pdf("existing.pdf") as doc:

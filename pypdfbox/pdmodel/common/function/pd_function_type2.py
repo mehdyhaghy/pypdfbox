@@ -230,7 +230,7 @@ class PDFunctionType2(PDFunction):
             return self._strict_float_array(item)
         return [1.0]
 
-    def eval(self, input: list[float]) -> list[float]:  # noqa: A002 - upstream parameter name
+    def eval(self, input: list[float]) -> list[float]:
         """Exponential interpolation per PDF 32000-1 §7.10.3.
 
         ``y[j] = C0[j] + x**N * (C1[j] - C0[j])`` for each output ``j``.

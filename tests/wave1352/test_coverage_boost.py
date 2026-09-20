@@ -116,9 +116,9 @@ def test_pd_type1_font_load_wires_embedder(
         def getGlyphSet(self) -> _FakeGlyphSet:  # noqa: N802 - fontTools API
             return _FakeGlyphSet()
 
-    import fontTools.t1Lib as t1mod
+    from fontTools import t1Lib
 
-    monkeypatch.setattr(t1mod, "T1Font", _StubT1)
+    monkeypatch.setattr(t1Lib, "T1Font", _StubT1)
 
     doc = PDDocument()
     try:
@@ -143,9 +143,9 @@ def test_pd_type1_font_load_accepts_bytes_stream(
         def getGlyphSet(self):  # noqa: N802 - fontTools API
             return {}
 
-    import fontTools.t1Lib as t1mod
+    from fontTools import t1Lib
 
-    monkeypatch.setattr(t1mod, "T1Font", _StubT1)
+    monkeypatch.setattr(t1Lib, "T1Font", _StubT1)
 
     doc = PDDocument()
     try:
@@ -225,12 +225,12 @@ def _make_drawer() -> tuple[PDDocument, PDFRenderer, PageDrawer]:
     doc.add_page(page)
     renderer = PDFRenderer(doc)
     renderer._image = Image.new("RGB", (50, 50), (255, 255, 255))
-    from pypdfbox.rendering import _aggdraw_compat as aggdraw  # noqa: PLC0415
+    from pypdfbox.rendering import _aggdraw_compat as aggdraw
 
     renderer._draw = aggdraw.Draw(renderer._image)
     renderer._draw.setantialias(True)
     renderer._scale = 1.0
-    from pypdfbox.rendering.pdf_renderer import _GState  # noqa: PLC0415
+    from pypdfbox.rendering.pdf_renderer import _GState
 
     renderer._gs_stack = [_GState()]
     renderer._subpaths = []

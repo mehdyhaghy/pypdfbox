@@ -36,7 +36,7 @@ def test_courier_every_glyph_has_width_600() -> None:
         "Courier-BoldOblique",
     ):
         afm = load_standard14(name)
-        widths = {w for w in afm._widths_by_name.values()}
+        widths = set(afm._widths_by_name.values())
         assert widths == {600.0}, f"{name} widths were {widths}"
 
 

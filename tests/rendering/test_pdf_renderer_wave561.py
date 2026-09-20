@@ -25,16 +25,16 @@ def _make_doc(width: float = 4.0, height: float = 4.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (4, 4)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -46,16 +46,16 @@ def test_render_image_flushes_current_draw_after_process_page_rebinds_it(
     renderer = PDFRenderer(doc)
 
     def _draw_with_rebound_canvas(_page: PDPage) -> None:
-        assert renderer._image is not None  # noqa: SLF001
-        renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-        renderer._draw.setantialias(False)  # noqa: SLF001
+        assert renderer._image is not None
+        renderer._draw = aggdraw.Draw(renderer._image)
+        renderer._draw.setantialias(False)
         path = aggdraw.Path()
         path.moveto(0.0, 0.0)
         path.lineto(4.0, 0.0)
         path.lineto(4.0, 4.0)
         path.lineto(0.0, 4.0)
         path.close()
-        renderer._draw.path(path, None, aggdraw.Brush((0, 0, 0)))  # noqa: SLF001
+        renderer._draw.path(path, None, aggdraw.Brush((0, 0, 0)))
 
     try:
         monkeypatch.setattr(renderer, "process_page", _draw_with_rebound_canvas)
@@ -82,10 +82,10 @@ def test_process_operator_logs_and_swallows_handler_index_error(
         raise IndexError("synthetic bad operand")
 
     doc, renderer = _prepared_renderer()
-    original = renderer_module._DISPATCH["RG"]  # noqa: SLF001
+    original = renderer_module._DISPATCH["RG"]
     try:
         caplog.set_level("DEBUG", logger="pypdfbox.rendering.pdf_renderer")
-        monkeypatch.setitem(renderer_module._DISPATCH, "RG", _broken_handler)  # noqa: SLF001
+        monkeypatch.setitem(renderer_module._DISPATCH, "RG", _broken_handler)
 
         renderer.process_operator(
             "RG",
@@ -93,9 +93,9 @@ def test_process_operator_logs_and_swallows_handler_index_error(
         )
 
         assert "dropping operator RG: synthetic bad operand" in caplog.text
-        assert renderer._gs.stroke_rgb == (0, 0, 0)  # noqa: SLF001
+        assert renderer._gs.stroke_rgb == (0, 0, 0)
     finally:
-        monkeypatch.setitem(renderer_module._DISPATCH, "RG", original)  # noqa: SLF001
+        monkeypatch.setitem(renderer_module._DISPATCH, "RG", original)
         _finish(renderer)
         doc.close()
 
@@ -114,30 +114,30 @@ def test_process_operator_knockout_restore_runs_before_handler_error(
         raise TypeError("paint failed")
 
     doc, renderer = _prepared_renderer()
-    original = renderer_module._DISPATCH["f"]  # noqa: SLF001
+    original = renderer_module._DISPATCH["f"]
     try:
-        renderer._knockout_active = True  # noqa: SLF001
-        renderer._knockout_form_depth = 0  # noqa: SLF001
+        renderer._knockout_active = True
+        renderer._knockout_form_depth = 0
         monkeypatch.setattr(
             renderer,
             "_restore_knockout_snapshot",
             lambda: calls.append("restore"),
         )
-        monkeypatch.setitem(renderer_module._DISPATCH, "f", _broken_paint)  # noqa: SLF001
+        monkeypatch.setitem(renderer_module._DISPATCH, "f", _broken_paint)
 
         renderer.process_operator("f", [])
 
         assert calls == ["restore", "handler"]
     finally:
-        monkeypatch.setitem(renderer_module._DISPATCH, "f", original)  # noqa: SLF001
+        monkeypatch.setitem(renderer_module._DISPATCH, "f", original)
         _finish(renderer)
         doc.close()
 
 
 def test_static_matrix_helpers_cover_singular_and_degenerate_scale() -> None:
-    assert PDFRenderer._invert_matrix((1.0, 2.0, 2.0, 4.0, 5.0, 6.0)) is None  # noqa: SLF001
-    assert PDFRenderer._approx_scale((0.0, 0.0, 0.0, 0.0, 2.0, 3.0)) == 1.0  # noqa: SLF001
-    assert PDFRenderer._apply((2.0, 3.0), (2.0, 1.0, 4.0, 3.0, 5.0, 6.0)) == (  # noqa: SLF001
+    assert PDFRenderer._invert_matrix((1.0, 2.0, 2.0, 4.0, 5.0, 6.0)) is None
+    assert PDFRenderer._approx_scale((0.0, 0.0, 0.0, 0.0, 2.0, 3.0)) == 1.0
+    assert PDFRenderer._apply((2.0, 3.0), (2.0, 1.0, 4.0, 3.0, 5.0, 6.0)) == (
         21.0,
         17.0,
     )
@@ -148,4 +148,4 @@ def test_transparency_group_detection_ignores_non_transparency_group_dict() -> N
         def get_group(self) -> object:
             return COSName.get_pdf_name("NotADictionary")
 
-    assert PDFRenderer._is_transparency_group(_Form()) is False  # noqa: SLF001
+    assert PDFRenderer._is_transparency_group(_Form()) is False

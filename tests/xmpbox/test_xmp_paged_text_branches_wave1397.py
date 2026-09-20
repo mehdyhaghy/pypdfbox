@@ -21,12 +21,12 @@ def _pt() -> XMPageTextSchema:
 
 def test_coerce_boolean_returns_none_for_int_raw() -> None:
     """Closes 133->139: raw is not a str."""
-    assert XMPageTextSchema._coerce_boolean(42) is None  # noqa: SLF001
+    assert XMPageTextSchema._coerce_boolean(42) is None
 
 
 def test_coerce_boolean_returns_none_for_list_raw() -> None:
     """Closes 133->139 (alternate non-str shape)."""
-    assert XMPageTextSchema._coerce_boolean(["True"]) is None  # noqa: SLF001
+    assert XMPageTextSchema._coerce_boolean(["True"]) is None
 
 
 def test_max_page_size_property_dict_without_w() -> None:

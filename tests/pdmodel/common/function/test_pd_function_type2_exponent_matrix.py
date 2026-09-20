@@ -249,7 +249,7 @@ def test_eval_monotonic_in_x_for_positive_c1_minus_c0(n: float) -> None:
     in x — independent of /N (any non-negative real)."""
     fn = _make(c0=[0.0], c1=[1.0], n=n, domain=[0.0, 1.0])
     prev = -math.inf
-    for k in range(0, 11):
+    for k in range(11):
         x = k / 10.0
         out = fn.eval([x])[0]
         assert out >= prev - 1e-9, f"/N={n} x={x} regressed: {out} < {prev}"

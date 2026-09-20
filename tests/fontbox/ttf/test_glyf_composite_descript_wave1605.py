@@ -43,11 +43,11 @@ def _build(component_count: int, points_per_component: int) -> GlyfCompositeDesc
     descriptions = {}
     for index in range(component_count):
         comp = GlyfCompositeComp()
-        comp._glyph_index = index  # noqa: SLF001 — bytes-driven ctor bypassed
+        comp._glyph_index = index
         components.append(comp)
         descriptions[index] = _FakeDescript(points_per_component)
-    descript._components = components  # noqa: SLF001
-    descript._descriptions = descriptions  # noqa: SLF001
+    descript._components = components
+    descript._descriptions = descriptions
     return descript
 
 

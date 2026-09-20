@@ -36,7 +36,7 @@ class _NoCosColorSpace(PDColorSpace):
     the supplied typed color space has no backing COS object.
     """
 
-    def get_cos_object(self) -> Any:  # noqa: ANN401
+    def get_cos_object(self) -> Any:
         return None
 
     def get_name(self) -> str:
@@ -45,7 +45,7 @@ class _NoCosColorSpace(PDColorSpace):
     def get_number_of_components(self) -> int:
         return 1
 
-    def get_initial_color(self) -> Any:  # noqa: ANN401
+    def get_initial_color(self) -> Any:
         from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
 
         return PDColor([0.0], self)
@@ -69,7 +69,7 @@ def test_set_color_space_object_clears_when_typed_cos_is_none() -> None:
 class _ValidCosColorSpace(PDColorSpace):
     """Helper whose ``get_cos_object()`` returns a non-None COSBase."""
 
-    def get_cos_object(self) -> Any:  # noqa: ANN401
+    def get_cos_object(self) -> Any:
         from pypdfbox.cos import COSName
 
         return COSName.get_pdf_name("DeviceGray")
@@ -80,7 +80,7 @@ class _ValidCosColorSpace(PDColorSpace):
     def get_number_of_components(self) -> int:
         return 1
 
-    def get_initial_color(self) -> Any:  # noqa: ANN401
+    def get_initial_color(self) -> Any:
         from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
 
         return PDColor([0.0], self)

@@ -162,7 +162,7 @@ def test_field_write_xml_escapes_name_and_value() -> None:
 
 
 def test_dictionary_write_xml_escapes_file_href() -> None:
-    from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification import (  # noqa: E501
+    from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification import (
         PDSimpleFileSpecification,
     )
 
@@ -180,7 +180,7 @@ def test_dictionary_write_xml_escapes_file_href() -> None:
 
 def test_dictionary_write_xml_skips_f_element_without_file_name() -> None:
     """PDFBOX-5660 also made the ``<f>`` element conditional on a file name."""
-    from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (  # noqa: E501
+    from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (
         PDComplexFileSpecification,
     )
 

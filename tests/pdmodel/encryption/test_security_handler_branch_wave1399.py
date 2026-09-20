@@ -28,10 +28,10 @@ from pypdfbox.pdmodel.encryption.security_handler import SecurityHandler
 
 
 class _ConcreteHandler(SecurityHandler):
-    def prepare_for_decryption(self, encryption, document_id, decryption_material):  # noqa: ARG002
+    def prepare_for_decryption(self, encryption, document_id, decryption_material):
         return None
 
-    def prepare_document(self, document):  # noqa: ARG002
+    def prepare_document(self, document):
         return None
 
     def _decrypt(self, data: bytes, _obj_num: int, _gen_num: int) -> bytes:

@@ -161,7 +161,7 @@ def test_default_prefs_path_uses_xdg_on_posix(monkeypatch, tmp_path: Path) -> No
 
     monkeypatch.setattr(window_prefs.sys, "platform", "linux")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    path = window_prefs._default_prefs_path()  # noqa: SLF001
+    path = window_prefs._default_prefs_path()
     assert path == tmp_path / "pypdfbox" / "debugger.json"
 
 
@@ -170,7 +170,7 @@ def test_default_prefs_path_falls_back_to_home_on_posix(monkeypatch) -> None:
 
     monkeypatch.setattr(window_prefs.sys, "platform", "linux")
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    path = window_prefs._default_prefs_path()  # noqa: SLF001
+    path = window_prefs._default_prefs_path()
     assert path.name == "debugger.json"
     assert "pypdfbox" in path.parts
 
@@ -180,7 +180,7 @@ def test_default_prefs_path_on_windows(monkeypatch, tmp_path: Path) -> None:
 
     monkeypatch.setattr(window_prefs.sys, "platform", "win32")
     monkeypatch.setenv("APPDATA", str(tmp_path))
-    path = window_prefs._default_prefs_path()  # noqa: SLF001
+    path = window_prefs._default_prefs_path()
     assert path == tmp_path / "pypdfbox" / "debugger.json"
 
 
@@ -189,7 +189,7 @@ def test_default_prefs_path_on_windows_no_appdata(monkeypatch) -> None:
 
     monkeypatch.setattr(window_prefs.sys, "platform", "win32")
     monkeypatch.delenv("APPDATA", raising=False)
-    path = window_prefs._default_prefs_path()  # noqa: SLF001
+    path = window_prefs._default_prefs_path()
     assert path.name == "debugger.json"
     assert "pypdfbox" in path.parts
 

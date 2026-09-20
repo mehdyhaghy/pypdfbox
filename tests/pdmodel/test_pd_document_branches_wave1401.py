@@ -49,8 +49,8 @@ def test_save_drop_encrypt_when_trailer_missing(tmp_path) -> None:
     with PDDocument() as doc:
         # Pretend the document is encrypted but expose a trailer-less
         # COSDocument so the inner ``if trailer is not None`` is False.
-        doc._all_security_to_be_removed = True  # noqa: SLF001
-        doc._document = _MissingTrailerCOSDoc()  # noqa: SLF001
+        doc._all_security_to_be_removed = True
+        doc._document = _MissingTrailerCOSDoc()
 
         # is_encrypted() relies on the encryption dictionary; force True.
         doc.is_encrypted = lambda: True  # type: ignore[assignment]
@@ -101,7 +101,7 @@ def test_decrypt_with_no_document_id() -> None:
             def close(self) -> None:
                 pass
 
-        doc._document = _StubCOSDoc()  # noqa: SLF001
+        doc._document = _StubCOSDoc()
 
         # Decrypt with empty password — the standard handler will raise on
         # an invalid encryption dict; tolerate any handler error since we
@@ -146,7 +146,7 @@ def test_decrypt_with_non_string_first_id_entry() -> None:
             def close(self) -> None:
                 pass
 
-        doc._document = _StubCOSDoc()  # noqa: SLF001
+        doc._document = _StubCOSDoc()
 
         with contextlib.suppress(Exception):
             doc.decrypt("")

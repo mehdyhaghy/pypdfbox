@@ -53,7 +53,7 @@ def test_static_constants_survive_clear_resources() -> None:
     # ``COSName`` at import time (e.g. ``PDResources.FONT``) would lose
     # ``is``-equality with fresh lookups. Snapshot and restore the
     # registry around the assertions so unrelated tests stay green.
-    snapshot = dict(COSName._name_map)  # noqa: SLF001 - intentional registry snapshot
+    snapshot = dict(COSName._name_map)
     try:
         type_constant = COSName.TYPE
         dynamic = COSName.get_pdf_name("RegisteredForThisTest1368")
@@ -65,8 +65,8 @@ def test_static_constants_survive_clear_resources() -> None:
         new_dynamic = COSName.get_pdf_name("RegisteredForThisTest1368")
         assert new_dynamic is not dynamic
     finally:
-        COSName._name_map.clear()  # noqa: SLF001
-        COSName._name_map.update(snapshot)  # noqa: SLF001
+        COSName._name_map.clear()
+        COSName._name_map.update(snapshot)
 
 
 # ---------- name accessors ----------
@@ -199,7 +199,7 @@ def test_dunder_lt_with_non_name_is_notimplemented() -> None:
     # Python returns NotImplemented, which lets reflection happen; here
     # comparing to a str will raise TypeError.
     with pytest.raises(TypeError):
-        _ = n < "anything"  # noqa: B015
+        _ = n < "anything"
 
 
 def test_sorted_list_uses_unsigned_byte_order() -> None:

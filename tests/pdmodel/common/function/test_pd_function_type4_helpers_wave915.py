@@ -6,7 +6,7 @@ from tests.pdmodel.common.function import test_pd_function_type4 as type4_mod
 
 
 def test_wave915_make_type4_helper_populates_range_array() -> None:
-    fn = type4_mod._make_type4(  # noqa: SLF001
+    fn = type4_mod._make_type4(
         "{ dup mul }",
         domain=[-10.0, 10.0],
         rng=[0.0, 5.0],

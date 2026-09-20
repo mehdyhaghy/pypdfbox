@@ -90,13 +90,13 @@ def test_wave504_legacy_merge_logs_owned_source_close_failure(
         ):
             util.merge_documents()
     finally:
-        source._document.close()  # noqa: SLF001
+        source._document.close()
 
     assert "error closing source PDDocument" in caplog.text
 
 
 def test_wave504_open_source_accepts_binary_stream_payload() -> None:
-    opened, owns = PDFMergerUtility._open_source(io.BytesIO(_pdf_bytes(2)))  # noqa: SLF001
+    opened, owns = PDFMergerUtility._open_source(io.BytesIO(_pdf_bytes(2)))
 
     try:
         assert owns is True
@@ -185,7 +185,7 @@ def test_wave504_legacy_acroform_skips_bad_fqn_and_advances_dummy_suffix() -> No
     dest_form = Form([], [Field("dummyFieldName7")])
     src_form = Form([Field("Name"), Field("Ignored", raises=True)])
 
-    PDFMergerUtility()._acro_form_legacy_mode(  # noqa: SLF001
+    PDFMergerUtility()._acro_form_legacy_mode(
         _IdentityCloner(), dest_form, src_form
     )
 
@@ -223,8 +223,8 @@ def test_wave504_merge_helpers_append_into_existing_destinations() -> None:
 
     util = PDFMergerUtility()
     cloner = _IdentityCloner()
-    util._merge_names(cloner, _Catalog(src_dict), _Catalog(dest_dict))  # noqa: SLF001
-    util._merge_output_intents(cloner, _Catalog(src_dict), _Catalog(dest_dict))  # noqa: SLF001
+    util._merge_names(cloner, _Catalog(src_dict), _Catalog(dest_dict))
+    util._merge_output_intents(cloner, _Catalog(src_dict), _Catalog(dest_dict))
 
     assert dest_names.get_string(COSName.get_pdf_name("FromSource")) == "name"
     assert dest_dests.get_string(COSName.get_pdf_name("Chapter")) == "dest"
@@ -244,7 +244,7 @@ def test_wave504_page_labels_without_nums_creates_empty_destination_nums() -> No
         labels = COSDictionary()
         source.get_document_catalog().get_cos_object().set_item(_PAGE_LABELS, labels)
 
-        PDFMergerUtility()._merge_page_labels(  # noqa: SLF001
+        PDFMergerUtility()._merge_page_labels(
             _IdentityCloner(), source, destination
         )
 
@@ -264,7 +264,7 @@ def test_wave504_open_action_is_copied_only_when_destination_missing() -> None:
     dest_catalog = _Catalog()
     source_catalog.get_cos_object().set_item(_OPEN_ACTION, source_action)
 
-    PDFMergerUtility()._merge_open_action(  # noqa: SLF001
+    PDFMergerUtility()._merge_open_action(
         _IdentityCloner(), source_catalog, dest_catalog
     )
 
@@ -273,7 +273,7 @@ def test_wave504_open_action_is_copied_only_when_destination_missing() -> None:
     replacement = COSDictionary()
     other_source = _Catalog()
     other_source.get_cos_object().set_item(_OPEN_ACTION, replacement)
-    PDFMergerUtility()._merge_open_action(  # noqa: SLF001
+    PDFMergerUtility()._merge_open_action(
         _IdentityCloner(), other_source, dest_catalog
     )
     assert dest_catalog.get_cos_object().get_dictionary_object(_OPEN_ACTION) is source_action
@@ -283,7 +283,7 @@ def test_wave504_struct_helpers_cover_none_nested_dicts_and_arrays() -> None:
     page = COSDictionary()
     page.set_item(_STRUCT_PARENTS, COSInteger.get(2))
     page.set_item(_STRUCT_PARENT, COSInteger.get(99))
-    PDFMergerUtility._strip_struct_parent_from_annots(page)  # noqa: SLF001
+    PDFMergerUtility._strip_struct_parent_from_annots(page)
     assert page.get_dictionary_object(_STRUCT_PARENT).int_value() == 99
 
     util = PDFMergerUtility()
@@ -296,7 +296,7 @@ def test_wave504_struct_helpers_cover_none_nested_dicts_and_arrays() -> None:
     nested_array = COSArray()
     nested_array.add(COSArray([parent]))
 
-    util._update_page_references_map(_IdentityCloner(), {1: None, 2: nested_array}, {id(old_page): new_page})  # noqa: SLF001,E501
+    util._update_page_references_map(_IdentityCloner(), {1: None, 2: nested_array}, {id(old_page): new_page})  # noqa: E501
 
     assert leaf.get_dictionary_object(_PG) is new_page
 
@@ -310,7 +310,7 @@ def test_wave504_merge_k_entries_handles_array_source_and_empty_source() -> None
     src_root.set_item(_K, src_k)
     dest_root = COSDictionary()
 
-    PDFMergerUtility()._merge_k_entries(  # noqa: SLF001
+    PDFMergerUtility()._merge_k_entries(
         _IdentityCloner(), _Root(src_root), _Root(dest_root)
     )
 
@@ -320,7 +320,7 @@ def test_wave504_merge_k_entries_handles_array_source_and_empty_source() -> None
     assert child.get_dictionary_object(_P) is dest_root
 
     unchanged = COSDictionary()
-    PDFMergerUtility()._merge_k_entries(  # noqa: SLF001
+    PDFMergerUtility()._merge_k_entries(
         _IdentityCloner(), _Root(COSDictionary()), _Root(unchanged)
     )
     assert not unchanged.contains_key(_K)
@@ -348,7 +348,7 @@ def test_wave504_merge_id_tree_skips_none_source_values() -> None:
 
     dest_root = StructRoot(None)
 
-    PDFMergerUtility()._merge_id_tree(  # noqa: SLF001
+    PDFMergerUtility()._merge_id_tree(
         _IdentityCloner(), StructRoot(IdTree()), dest_root
     )
 

@@ -215,8 +215,8 @@ def test_clone_stream_is_added_to_dest_scratch_file() -> None:
         assert isinstance(cloned, COSStream)
         # The cloned stream's backing scratch is dst's scratch (private
         # attribute ``_scratch`` mirrors upstream's ScratchFile field).
-        assert cloned._scratch is dst_scratch  # noqa: SLF001
-        assert cloned._scratch is not src_scratch  # noqa: SLF001
+        assert cloned._scratch is dst_scratch
+        assert cloned._scratch is not src_scratch
 
 
 def test_clone_array_with_self_reference_via_indirect_ref() -> None:

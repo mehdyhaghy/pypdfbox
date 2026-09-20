@@ -89,7 +89,7 @@ def test_wave555_embedded_cmap_fallback_handles_nonembedded_and_bad_ttf(
     monkeypatch.setattr(descendant, "is_embedded", lambda: False)
     monkeypatch.setattr(descendant, "code_to_cid", lambda cid: cid)
 
-    assert font._unicode_from_embedded_cmap(4) is None  # noqa: SLF001
+    assert font._unicode_from_embedded_cmap(4) is None
 
     monkeypatch.setattr(
         font,
@@ -97,7 +97,7 @@ def test_wave555_embedded_cmap_fallback_handles_nonembedded_and_bad_ttf(
         lambda _code: (_ for _ in ()).throw(RuntimeError("bad cmap")),
     )
 
-    assert font._unicode_from_embedded_cmap(4) is None  # noqa: SLF001
+    assert font._unicode_from_embedded_cmap(4) is None
 
 
 def test_wave555_embedded_cmap_fallback_handles_missing_best_cmap(
@@ -116,7 +116,7 @@ def test_wave555_embedded_cmap_fallback_handles_missing_best_cmap(
     monkeypatch.setattr(descendant, "is_embedded", lambda: True)
     monkeypatch.setattr(descendant, "code_to_gid", lambda cid: cid)
 
-    assert font._unicode_from_embedded_cmap(1) is None  # noqa: SLF001
+    assert font._unicode_from_embedded_cmap(1) is None
 
 
 def test_wave555_subset_rejects_type2_descendant_without_ttf(
@@ -138,7 +138,7 @@ def test_wave555_descriptor_population_handles_missing_metric_tables() -> None:
         get_horizontal_header=lambda: None,
     )
 
-    type0_module._populate_descriptor_from_ttf(descriptor, ttf)  # noqa: SLF001
+    type0_module._populate_descriptor_from_ttf(descriptor, ttf)
 
     assert descriptor.get_flags() == 4
     assert descriptor.get_cos_object().get_int(COSName.get_pdf_name("StemV")) == 80

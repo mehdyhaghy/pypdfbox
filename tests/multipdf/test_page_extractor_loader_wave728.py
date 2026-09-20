@@ -85,8 +85,8 @@ def test_wave728_loader_returns_encrypted_document_when_pdmodel_import_fails(
 
     def fake_import(
         name: str,
-        globals: dict[str, object] | None = None,  # noqa: A002
-        locals: dict[str, object] | None = None,  # noqa: A002
+        globals: dict[str, object] | None = None,
+        locals: dict[str, object] | None = None,
         fromlist: tuple[str, ...] = (),
         level: int = 0,
     ) -> object:

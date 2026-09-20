@@ -15,8 +15,8 @@ def test_wave936_identity_cloner_merges_all_non_excluded_keys_and_overwrites() -
     src.set_item(existing, COSInteger.get(3))
     dst.set_item(existing, COSInteger.get(99))
 
-    cloner = wave605._IdentityCloner()  # noqa: SLF001
-    cloner._clone_merge_cos_base(src, dst, {excluded})  # noqa: SLF001
+    cloner = wave605._IdentityCloner()
+    cloner._clone_merge_cos_base(src, dst, {excluded})
 
     assert dst.get_item(keep) is COSInteger.get(1)
     assert dst.get_item(excluded) is None

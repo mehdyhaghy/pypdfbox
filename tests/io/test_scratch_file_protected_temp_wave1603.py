@@ -21,7 +21,7 @@ from pypdfbox.io import io_utils as io_utils_module
 
 
 def _backing_path(sf: ScratchFile) -> Path | None:
-    return sf._tmp_path  # noqa: SLF001
+    return sf._tmp_path
 
 
 def test_backing_file_uses_protected_helper_naming_and_dir(tmp_path: Path) -> None:
@@ -66,7 +66,7 @@ def test_backing_file_registered_for_shutdown_deletion(tmp_path: Path) -> None:
     setting = MemoryUsageSetting.setup_temp_file_only().set_temp_dir(tmp_path)
     with ScratchFile(setting) as sf:
         path = _backing_path(sf)
-        assert path in io_utils_module._TEMP_DIRS_TO_DELETE  # noqa: SLF001
+        assert path in io_utils_module._TEMP_DIRS_TO_DELETE
 
 
 def test_mixed_mode_spill_creates_protected_backing_file(tmp_path: Path) -> None:

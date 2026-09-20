@@ -15,7 +15,7 @@ import io
 
 import pytest
 
-import pypdfbox.filter._predictor as _predictor
+from pypdfbox.filter import _predictor
 from pypdfbox.filter._predictor import predict, unpredict
 from pypdfbox.filter.predictor_output_stream import PredictorOutputStream
 

@@ -28,7 +28,7 @@ def test_smask_make_doc_removes_preexisting_page(
 ) -> None:
     monkeypatch.setattr(smask_tests, "PDDocument", _DocWithExistingPage)
 
-    doc, page = smask_tests._make_doc(12.0, 13.0)  # noqa: SLF001
+    doc, page = smask_tests._make_doc(12.0, 13.0)
 
     assert isinstance(doc, _DocWithExistingPage)
     assert doc.removed_indices == [0]

@@ -507,7 +507,7 @@ def test_remove_page_resource_from_cache_skips_inherited_resources() -> None:
         def __init__(self) -> None:
             self.calls = 0
 
-        def remove_x_object(self, obj: COSObject) -> None:  # noqa: ARG002
+        def remove_x_object(self, obj: COSObject) -> None:
             self.calls += 1
 
     parent = COSDictionary()

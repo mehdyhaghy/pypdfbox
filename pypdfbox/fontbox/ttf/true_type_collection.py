@@ -74,7 +74,7 @@ class TrueTypeCollection:
     :class:`TTFDataStream`.
     """
 
-    def __init__(  # noqa: PLR0912 — dispatch tree mirrors upstream's three constructors
+    def __init__(
         self,
         source: TTFDataStream
         | RandomAccessRead
@@ -332,9 +332,9 @@ class TrueTypeCollection:
         # Library-first: lean on fontTools to do the directory slicing.
         # We need the raw TTC bytes — re-materialise them from the
         # underlying data stream so we don't fight the abstract reader.
-        import io as _io  # noqa: PLC0415
+        import io as _io
 
-        from fontTools.ttLib import TTFont  # type: ignore[import-untyped]  # noqa: PLC0415
+        from fontTools.ttLib import TTFont  # type: ignore[import-untyped]
 
         ttc_bytes = self._stream.get_original_data()
         # Upstream FontBox treats the 4-byte TTC version purely as a DSIG

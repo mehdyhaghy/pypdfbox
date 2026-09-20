@@ -49,7 +49,7 @@ def test_wave513_scrub_acroform_keeps_non_signature_fields() -> None:
     doc.get_document_catalog().get_cos_object().set_item(_ACROFORM, acroform)
 
     try:
-        Splitter()._scrub_acroform(doc)  # noqa: SLF001
+        Splitter()._scrub_acroform(doc)
 
         assert not acroform.contains_key(_SIG_FLAGS)
         kept_fields = acroform.get_dictionary_object(_FIELDS)
@@ -71,7 +71,7 @@ def test_wave513_scrub_acroform_removes_empty_signature_only_form() -> None:
     doc.get_document_catalog().get_cos_object().set_item(_ACROFORM, acroform)
 
     try:
-        Splitter()._scrub_acroform(doc)  # noqa: SLF001
+        Splitter()._scrub_acroform(doc)
 
         assert not doc.get_document_catalog().get_cos_object().contains_key(_ACROFORM)
     finally:
@@ -84,13 +84,13 @@ def test_wave513_fix_destinations_nulls_target_outside_chunk() -> None:
     source_pages = list(source.get_pages())
     dest = _dest_array(source_pages[1].get_cos_object())
     splitter = Splitter()
-    splitter._dest_to_fix = [(dest, source_pages[0].get_cos_object())]  # noqa: SLF001
-    splitter._page_dict_map = {  # noqa: SLF001
+    splitter._dest_to_fix = [(dest, source_pages[0].get_cos_object())]
+    splitter._page_dict_map = {
         id(source_pages[0].get_cos_object()): chunk.get_page(0).get_cos_object()
     }
 
     try:
-        splitter._fix_destinations(chunk)  # noqa: SLF001
+        splitter._fix_destinations(chunk)
 
         assert dest.get(0) is COSNull.NULL
     finally:
@@ -110,7 +110,7 @@ def test_wave513_process_annotations_drops_widget_parent_on_clone() -> None:
     annots.add(widget)
     imported.get_cos_object().set_item(_ANNOTS, annots)
 
-    Splitter()._process_annotations(source_page, imported)  # noqa: SLF001
+    Splitter()._process_annotations(source_page, imported)
 
     cloned_annots = imported.get_cos_object().get_dictionary_object(_ANNOTS)
     assert isinstance(cloned_annots, COSArray)
@@ -125,7 +125,7 @@ def test_wave513_process_page_removes_beads_from_imported_page() -> None:
     source = _make_doc(1)
     source.get_page(0).get_cos_object().set_item(_B, COSArray())
     splitter = Splitter()
-    splitter._source_document = source  # noqa: SLF001
+    splitter._source_document = source
 
     try:
         splitter.process_page(source.get_page(0))
@@ -133,6 +133,6 @@ def test_wave513_process_page_removes_beads_from_imported_page() -> None:
         imported = splitter.get_destination_document().get_page(0)
         assert not imported.get_cos_object().contains_key(_B)
     finally:
-        for chunk in splitter._destination_documents:  # noqa: SLF001
+        for chunk in splitter._destination_documents:
             chunk.close()
         source.close()

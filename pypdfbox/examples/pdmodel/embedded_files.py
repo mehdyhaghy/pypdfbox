@@ -21,7 +21,7 @@ class EmbeddedFiles:
         from pypdfbox.examples.pdmodel._font_helpers import (
             make_standard14_type1_font,
         )
-        from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (  # noqa: E501
+        from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (
             PDComplexFileSpecification,
         )
         from pypdfbox.pdmodel.common.filespecification.pd_embedded_file import (

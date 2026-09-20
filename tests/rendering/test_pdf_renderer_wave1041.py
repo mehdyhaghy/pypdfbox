@@ -17,7 +17,7 @@ def _raise_existing_handler(
 
 def test_wave1031_exposed_prior_handler_raises() -> None:
     with pytest.raises(AssertionError, match="prior handler should be restored"):
-        wave1031._raise_prior_handler_restored(None, object(), [])  # noqa: SLF001
+        wave1031._raise_prior_handler_restored(None, object(), [])
 
 
 def test_wave1031_restores_existing_dispatch_handler(

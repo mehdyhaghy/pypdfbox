@@ -193,9 +193,9 @@ class PDCalRGB(PDColorSpace):
             # calibration, return the components verbatim.
             return (a, b, c)
         # Clamp
-        a = 0.0 if a < 0.0 else (1.0 if a > 1.0 else a)
-        b = 0.0 if b < 0.0 else (1.0 if b > 1.0 else b)
-        c = 0.0 if c < 0.0 else (1.0 if c > 1.0 else c)
+        a = 0.0 if a < 0.0 else (min(a, 1.0))
+        b = 0.0 if b < 0.0 else (min(b, 1.0))
+        c = 0.0 if c < 0.0 else (min(c, 1.0))
         gammas = self.get_gamma()
         g_r = float(gammas[0]) if len(gammas) >= 1 else 1.0
         g_g = float(gammas[1]) if len(gammas) >= 2 else 1.0

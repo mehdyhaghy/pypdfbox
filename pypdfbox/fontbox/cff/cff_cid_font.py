@@ -221,7 +221,7 @@ class CFFCIDFont(CFFFont):
 
     # PDFBox-named per-FD width overrides (upstream override)
 
-    def get_default_width_x(self, gid: int = -1) -> float:  # noqa: D401
+    def get_default_width_x(self, gid: int = -1) -> float:
         """Per-GID defaultWidthX override. Upstream
         ``CFFCIDFont.getDefaultWidthX(int gid)`` reads the right
         Private DICT through /FDSelect; the no-arg parent form returns
@@ -233,7 +233,7 @@ class CFFCIDFont(CFFFont):
             return super().get_default_width_x()
         return self.get_default_width_x_for_gid(gid)
 
-    def get_nominal_width_x(self, gid: int = -1) -> float:  # noqa: D401
+    def get_nominal_width_x(self, gid: int = -1) -> float:
         """Per-GID nominalWidthX override (mirror of
         :meth:`get_default_width_x`)."""
         if gid < 0:
@@ -347,7 +347,7 @@ class CFFCIDFont(CFFFont):
             return 0.0
         return super().get_width(name)
 
-    def get_type2_char_string(self, cid_or_gid: int) -> Any:  # noqa: D401
+    def get_type2_char_string(self, cid_or_gid: int) -> Any:
         """PDFBox: ``CFFCIDFont.getType2CharString(int cid)`` — wraps
         the GID resolved from the CID into a :class:`Type2CharString`.
 
@@ -394,7 +394,7 @@ class CFFCIDFont(CFFFont):
                 return gid
         return 0
 
-    def is_cid_font(self) -> bool:  # noqa: D401 — overrides base
+    def is_cid_font(self) -> bool:
         """A :class:`CFFCIDFont` is, by definition, a CIDKeyed font."""
         return True
 

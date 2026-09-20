@@ -210,7 +210,7 @@ class BitmapScanline:
             src_byte = (~self.bitmap.get_byte(src_byte_idx)) & 0xFF
             src_byte_idx += 1
             remaining = self.bitmap.get_width() - x
-            bits = 8 if remaining > 8 else remaining
+            bits = min(remaining, 8)
             for bit_position in range(bits - 1, -1, -1):
                 if ((src_byte >> bit_position) & 0x1) != 0:
                     self.line_buffer[x] = 255
@@ -248,7 +248,7 @@ class BitmapScanline:
                     weight_index += 1
                     src_index += 1
                 t = _arith_shift_right(total, post_shift0)
-                dst_buffer[dst_index] = 0 if t < 0 else (255 if t > 255 else t)
+                dst_buffer[dst_index] = 0 if t < 0 else (min(t, 255))
                 dst_index += 1
         else:
             for tab in range(dst_length):
@@ -278,7 +278,7 @@ class BitmapScanline:
         src_buffer = self.line_buffer
         for b in range(len(src_buffer)):
             pixel = _arith_shift_right(_int32(src_buffer[b] + half), shift0)
-            src_buffer[b] = 0 if pixel < 0 else (255 if pixel > 255 else pixel)
+            src_buffer[b] = 0 if pixel < 0 else (min(pixel, 255))
 
     def store(self, x: int, y: int) -> None:
         self.raster.set_samples(x, y, self.length, self.line_buffer)

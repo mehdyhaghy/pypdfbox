@@ -185,7 +185,7 @@ def test_output_is_range_clipped() -> None:
         samples=[0, 255, 0],
         order=3,
     )
-    for k in range(0, 101):
+    for k in range(101):
         x = k / 100.0
         out = fn.eval([x])[0]
         assert 0.0 <= out <= 255.0, f"x={x} produced out-of-range {out}"

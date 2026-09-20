@@ -17,6 +17,6 @@ def test_search_node_unwraps_xref_entry() -> None:
     inner.set_item("X", COSInteger.get(99))
     cos_obj = COSObject(20, 0, resolved=inner)
     xe = XrefEntry(0, COSObjectKey(20, 0), 100, cos_obj)
-    out = TreeStatus._search_node(xe, "X")  # noqa: SLF001
+    out = TreeStatus._search_node(xe, "X")
     assert out is not None
     assert out.get_value().int_value() == 99

@@ -8,20 +8,20 @@ def _make_path_pen() -> Any:
     the simple list-of-tuples format used elsewhere in pypdfbox
     (mirrors ``cff_font._make_path_pen``).
     """
-    from fontTools.pens.basePen import BasePen  # type: ignore[import-untyped]  # noqa: PLC0415
+    from fontTools.pens.basePen import BasePen  # type: ignore[import-untyped]
 
     class _PathPen(BasePen):  # type: ignore[misc]
         def __init__(self) -> None:
             super().__init__(glyphSet=None)
             self.commands: list[tuple[Any, ...]] = []
 
-        def _moveTo(self, pt: tuple[float, float]) -> None:
+        def _moveTo(self, pt: tuple[float, float]) -> None:  # noqa: N802 (fontTools BasePen hook)
             self.commands.append(("moveto", float(pt[0]), float(pt[1])))
 
-        def _lineTo(self, pt: tuple[float, float]) -> None:
+        def _lineTo(self, pt: tuple[float, float]) -> None:  # noqa: N802 (fontTools BasePen hook)
             self.commands.append(("lineto", float(pt[0]), float(pt[1])))
 
-        def _curveToOne(
+        def _curveToOne(  # noqa: N802 (fontTools BasePen hook)
             self,
             pt1: tuple[float, float],
             pt2: tuple[float, float],
@@ -39,7 +39,7 @@ def _make_path_pen() -> Any:
                 )
             )
 
-        def _closePath(self) -> None:
+        def _closePath(self) -> None:  # noqa: N802 (fontTools BasePen hook)
             self.commands.append(("closepath",))
 
     return _PathPen()
@@ -58,9 +58,9 @@ class _Type2Private:
     """
 
     def __init__(self, nominal_width_x: float, default_width_x: float) -> None:
-        self.nominalWidthX = nominal_width_x  # noqa: N815 - fontTools attr name
-        self.defaultWidthX = default_width_x  # noqa: N815 - fontTools attr name
-        self.Subrs: list[Any] = []  # noqa: N815 - fontTools attr name
+        self.nominalWidthX = nominal_width_x
+        self.defaultWidthX = default_width_x
+        self.Subrs: list[Any] = []
 
 
 class Type2CharString:
@@ -126,7 +126,7 @@ class Type2CharString:
         # build / inspect a Type 1 sequence buffer.
         self._type1_sequence: list[Any] = []
 
-        from fontTools.misc import psCharStrings  # type: ignore[import-untyped]  # noqa: PLC0415
+        from fontTools.misc import psCharStrings  # type: ignore[import-untyped]
 
         if isinstance(sequence, psCharStrings.T2CharString):
             self._t2 = sequence
@@ -209,7 +209,7 @@ class Type2CharString:
         """
         if self._cached_width is not None:
             return self._cached_width
-        from fontTools.misc import psCharStrings  # noqa: PLC0415
+        from fontTools.misc import psCharStrings
 
         # The width extractor needs access to local + global subrs to
         # follow callsubr / callgsubr in the prologue. fontTools
@@ -227,7 +227,7 @@ class Type2CharString:
         )
         try:
             extractor.execute(self._t2)
-        except Exception:  # noqa: BLE001
+        except Exception:
             self._cached_width = self._default_width_x
             return self._cached_width
         self._cached_width = float(extractor.width)
@@ -252,7 +252,7 @@ class Type2CharString:
         pen = _make_path_pen()
         try:
             self._t2.draw(pen)
-        except Exception:  # noqa: BLE001
+        except Exception:
             self._cached_path = []
             return []
         self._cached_path = list(pen.commands)

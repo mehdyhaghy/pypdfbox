@@ -186,7 +186,7 @@ def test_rectlinear_measure_array_to_number_formats_raises_on_non_dict_entry() -
     arr.add(COSName.get_pdf_name("skip"))
     arr.add(COSDictionary())
     with pytest.raises(TypeError):
-        PDRectlinearMeasureDictionary._array_to_number_formats(arr)  # noqa: SLF001
+        PDRectlinearMeasureDictionary._array_to_number_formats(arr)
 
 
 # ----------------------------------------------------------------------
@@ -590,7 +590,7 @@ def test_fdf_document_close_source_close_attr_non_callable() -> None:
         close = "not callable"  # non-callable attribute
 
     fdf = FDFDocument()
-    fdf._fdf_source = _Src()  # noqa: SLF001
+    fdf._fdf_source = _Src()
     fdf.close()  # Should run cleanly through 297 False arm.
 
 
@@ -752,7 +752,7 @@ def test_pd_device_n_to_rgb_no_spot_color_cache_no_attributes() -> None:
         # Pre-populate _spot_color_spaces so the False arm of "not self._spot_color_spaces"
         # fires immediately.
         with contextlib.suppress(AttributeError):
-            cs._spot_color_spaces = ["non-empty"]  # noqa: SLF001
+            cs._spot_color_spaces = ["non-empty"]
 
 
 # ----------------------------------------------------------------------
@@ -953,7 +953,7 @@ def test_pd_complex_file_specification_clear_embedded_no_ef_dict() -> None:
 
     fs = PDComplexFileSpecification()
     # No /EF on the dict.
-    fs._clear_embedded(COSName.get_pdf_name("F"))  # noqa: SLF001
+    fs._clear_embedded(COSName.get_pdf_name("F"))
 
 
 # ----------------------------------------------------------------------

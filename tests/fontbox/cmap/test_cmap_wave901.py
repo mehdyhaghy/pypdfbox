@@ -5,7 +5,7 @@ from pypdfbox.fontbox.cmap import CMap
 
 def test_wave901_use_cmap_raises_child_max_code_length() -> None:
     parent = CMap("parent")
-    parent._max_code_length = 4  # noqa: SLF001 - isolate use_cmap fallback guard
+    parent._max_code_length = 4
 
     child = CMap("child")
     child.add_codespace_range(b"\x20\x00", b"\x20\xff")
@@ -21,7 +21,7 @@ def test_wave901_use_cmap_raises_child_max_code_length() -> None:
 
 def test_wave901_use_cmap_lowers_child_min_code_length() -> None:
     parent = CMap("parent")
-    parent._min_code_length = 1  # noqa: SLF001 - isolate use_cmap fallback guard
+    parent._min_code_length = 1
 
     child = CMap("child")
     child.add_codespace_range(b"\x20\x00", b"\x20\xff")

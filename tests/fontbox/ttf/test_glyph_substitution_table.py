@@ -102,7 +102,7 @@ def test_get_gsub_returns_none_when_absent(monkeypatch: pytest.MonkeyPatch) -> N
     inner = ttf._tt
     original_contains = inner.__contains__
 
-    def fake_contains(self: object, key: str) -> bool:  # noqa: ARG001
+    def fake_contains(self: object, key: str) -> bool:
         if key == "GSUB":
             return False
         return original_contains(key)

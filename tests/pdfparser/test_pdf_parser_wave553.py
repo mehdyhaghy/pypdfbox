@@ -91,11 +91,11 @@ def test_wave553_find_startxref_offset_reports_missing_marker_in_small_window() 
 def test_wave553_parse_pdf_header_sets_version_and_returns_boolean() -> None:
     parser = PDFParser(RandomAccessReadBuffer(b"noise\n%PDF-2.0\n"))
     doc = COSDocument()
-    parser._document = doc  # noqa: SLF001
+    parser._document = doc
 
     try:
         assert parser.parse_pdf_header()
-        assert parser._version == 2.0  # noqa: SLF001
+        assert parser._version == 2.0
         assert not PDFParser(RandomAccessReadBuffer(b"not a pdf")).parse_pdf_header()
     finally:
         doc.close()

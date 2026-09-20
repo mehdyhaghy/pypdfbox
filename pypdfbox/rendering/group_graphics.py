@@ -317,7 +317,7 @@ class GroupGraphics:
         if callable(getter):
             try:
                 text = str(getter())
-            except Exception:  # noqa: BLE001
+            except Exception:
                 text = ""
         if not text:
             text = str(g)
@@ -435,7 +435,7 @@ class GroupGraphics:
 
     def rotate(self, *args: Any) -> None:
         """Rotate the transform. ``rotate(theta)`` or ``rotate(theta, x, y)``."""
-        import math  # noqa: PLC0415
+        import math
 
         if not args:
             return
@@ -596,7 +596,7 @@ class GroupGraphics:
             return Image.alpha_composite(backdrop, source)
         # Defer to the renderer's full blend implementation so the group
         # composite-back uses the same §11.3.5 formulas as per-paint blends.
-        from pypdfbox.rendering.pdf_renderer import PDFRenderer  # noqa: PLC0415
+        from pypdfbox.rendering.pdf_renderer import PDFRenderer
 
         return PDFRenderer._blend(source, backdrop, blend_mode)
 

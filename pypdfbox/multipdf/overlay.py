@@ -421,15 +421,15 @@ class Overlay:
             from .pdf_clone_utility import PDFCloneUtility
 
             return PDFCloneUtility(document)
-        except Exception:  # noqa: BLE001 — fallback path
+        except Exception:
             class _DeepCopyCloner:
                 def __init__(self, dest: PDDocument) -> None:
                     self._dest = dest
 
                 def clone_for_new_document(self, base: COSBase) -> COSBase:
                     return cast(
-                        COSBase,
-                        self._dest._deep_copy_cos(base, set()),  # noqa: SLF001
+                        "COSBase",
+                        self._dest._deep_copy_cos(base, set()),
                     )
 
             return _DeepCopyCloner(document)
@@ -705,7 +705,7 @@ class Overlay:
             return f"{sign}0.0"
         # Shortest significant-digit string that round-trips to this float32.
         digits = None
-        for prec in range(0, 17):
+        for prec in range(17):
             candidate = f"{abs(fv):.{prec}e}"
             if struct.unpack("f", struct.pack("f", float(candidate)))[0] == abs(fv):
                 digits = candidate

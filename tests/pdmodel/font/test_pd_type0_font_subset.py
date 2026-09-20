@@ -177,7 +177,7 @@ def test_subset_clears_accumulated_codepoints(liberation_bytes: bytes) -> None:
     parent = _build_type0(liberation_bytes)
     parent.add_to_subset(ord("A"))
     parent.subset()
-    assert parent._subset_codepoints == set()  # noqa: SLF001
+    assert parent._subset_codepoints == set()
 
 
 # ---------- error cases --------------------------------------------------

@@ -49,7 +49,7 @@ class _StubInnerTT:
         self._glyph_set = _StubGlyphSet(draw_callable)
         self._glyph_order = [".notdef", "A", "B"]
 
-    def getGlyphName(self, gid: int) -> str:  # noqa: N802 — fontTools name
+    def getGlyphName(self, gid: int) -> str:
         if 0 <= gid < len(self._glyph_order):
             return self._glyph_order[gid]
         return ".notdef"
@@ -227,7 +227,7 @@ def test_get_path_from_outlines_returns_none_on_draw_exception() -> None:
 
 def test_get_path_from_outlines_returns_none_when_glyph_set_raises() -> None:
     class _BrokenTT:
-        def getGlyphName(self, _gid: int) -> str:  # noqa: N802
+        def getGlyphName(self, _gid: int) -> str:
             raise RuntimeError("no glyph names")
 
         def getGlyphSet(self) -> Any:  # noqa: N802

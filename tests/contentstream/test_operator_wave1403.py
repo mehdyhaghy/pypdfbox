@@ -21,11 +21,11 @@ def test_get_operator_inner_check_finds_concurrently_inserted_entry() -> None:
     """Closes 86->89: simulate a concurrent insert occurring between the two
     cache reads so the inner ``if cached is None`` is False."""
     name = "__wave1403_race_op__"
-    saved_cache = dict(Operator._operators)  # noqa: SLF001
-    saved_lock = Operator._operators_lock  # noqa: SLF001
+    saved_cache = dict(Operator._operators)
+    saved_lock = Operator._operators_lock
 
     # Ensure the outer (line 81) read returns None.
-    Operator._operators.pop(name, None)  # noqa: SLF001
+    Operator._operators.pop(name, None)
 
     sentinel = Operator(name)
 
@@ -33,18 +33,18 @@ def test_get_operator_inner_check_finds_concurrently_inserted_entry() -> None:
         def __enter__(self) -> _InsertingLock:
             # Mimic another thread winning the race: populate the cache
             # before the inner re-read at line 85.
-            Operator._operators[name] = sentinel  # noqa: SLF001
+            Operator._operators[name] = sentinel
             return self
 
         def __exit__(self, *exc: object) -> None:
             return None
 
-    Operator._operators_lock = _InsertingLock()  # type: ignore[assignment]  # noqa: SLF001
+    Operator._operators_lock = _InsertingLock()  # type: ignore[assignment]
     try:
         result = Operator.get_operator(name)
         # The inner check found the concurrently-inserted instance.
         assert result is sentinel
     finally:
-        Operator._operators_lock = saved_lock  # noqa: SLF001
-        Operator._operators.clear()  # noqa: SLF001
-        Operator._operators.update(saved_cache)  # noqa: SLF001
+        Operator._operators_lock = saved_lock
+        Operator._operators.clear()
+        Operator._operators.update(saved_cache)

@@ -53,7 +53,7 @@ def test_wave1201_wave1200_tracer_records_matching_target() -> None:
         f_locals = {"target": target}
 
     assert inner_tracers
-    assert inner_tracers[0](cast(FrameType, MatchingFrame()), "line", None) is (
+    assert inner_tracers[0](cast("FrameType", MatchingFrame()), "line", None) is (
         inner_tracers[0]
     )
     closure = dict(

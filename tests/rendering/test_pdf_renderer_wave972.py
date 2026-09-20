@@ -20,11 +20,11 @@ def test_wave966_restores_previous_handler_after_calling_local_handler(
     caplog: Any,
 ) -> None:
     def call_current_handler(_caplog: Any) -> None:
-        handler = wave966.wave531.renderer_mod._DISPATCH["W531"]  # noqa: SLF001
+        handler = wave966.wave531.renderer_mod._DISPATCH["W531"]
         handler(None, object(), [])
 
-    original = wave966.wave531.renderer_mod._DISPATCH.get("W531")  # noqa: SLF001
-    wave966.wave531.renderer_mod._DISPATCH["W531"] = _raise_restored_sentinel  # noqa: SLF001
+    original = wave966.wave531.renderer_mod._DISPATCH.get("W531")
+    wave966.wave531.renderer_mod._DISPATCH["W531"] = _raise_restored_sentinel
     monkeypatch.setattr(
         wave966.wave531,
         "test_process_operator_logs_and_swallows_handler_value_error",
@@ -34,9 +34,9 @@ def test_wave966_restores_previous_handler_after_calling_local_handler(
         with pytest.raises(AssertionError, match="should be restored"):
             wave966.test_wave531_dispatch_test_restores_existing_handler(caplog)
 
-        assert wave966.wave531.renderer_mod._DISPATCH["W531"] is _raise_restored_sentinel  # noqa: SLF001
+        assert wave966.wave531.renderer_mod._DISPATCH["W531"] is _raise_restored_sentinel
     finally:
         if original is None:
-            wave966.wave531.renderer_mod._DISPATCH.pop("W531", None)  # noqa: SLF001
+            wave966.wave531.renderer_mod._DISPATCH.pop("W531", None)
         else:
-            wave966.wave531.renderer_mod._DISPATCH["W531"] = original  # noqa: SLF001
+            wave966.wave531.renderer_mod._DISPATCH["W531"] = original

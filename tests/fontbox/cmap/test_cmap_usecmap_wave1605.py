@@ -66,15 +66,15 @@ def test_use_cmap_does_not_mutate_the_used_cmap() -> None:
     used = CMap("used")
     used.add_cid_mapping(b"\x41", 100)
     used.add_cid_range(b"\x50", b"\x5f", 200)
-    used_ranges = list(used._code_to_cid_ranges)  # noqa: SLF001
+    used_ranges = list(used._code_to_cid_ranges)
 
     cmap = CMap("importer")
     cmap.use_cmap(used)
     cmap.add_cid_mapping(b"\x41", 300)
     cmap.add_cid_range(b"\x50", b"\x5f", 400)
 
-    assert used._code_to_cid[1] == {0x41: 100}  # noqa: SLF001
-    assert used._code_to_cid_ranges == used_ranges  # noqa: SLF001
+    assert used._code_to_cid[1] == {0x41: 100}
+    assert used._code_to_cid_ranges == used_ranges
     assert used.to_cid_with_length(0x41, 1) == 100
     assert used.to_cid_with_length(0x55, 1) == 205
     assert cmap.to_cid_with_length(0x41, 1) == 300
@@ -91,9 +91,9 @@ def test_importer_does_not_copy_the_parents_cid_state() -> None:
 
     # No merge: the importer's own containers stay empty, yet it reports (and
     # resolves) CID mappings through the parent.
-    assert cmap._code_to_cid == {}  # noqa: SLF001
-    assert cmap._code_to_cid_ranges == []  # noqa: SLF001
-    assert cmap._parent_cmaps == [used]  # noqa: SLF001
+    assert cmap._code_to_cid == {}
+    assert cmap._code_to_cid_ranges == []
+    assert cmap._parent_cmaps == [used]
     assert cmap.has_cid_mappings() is True
     assert cmap.has_cid_mapping() is True
     assert cmap.to_cid_with_length(0x41, 1) == 100
@@ -160,9 +160,9 @@ def test_parsed_identity_v_resolves_only_through_its_parent() -> None:
 
     assert cmap.get_name() == "Identity-V"
     assert cmap.get_wmode() == 1
-    assert cmap._code_to_cid == {}  # noqa: SLF001
-    assert cmap._code_to_cid_ranges == []  # noqa: SLF001
-    assert [p.get_name() for p in cmap._parent_cmaps] == ["Identity-H"]  # noqa: SLF001
+    assert cmap._code_to_cid == {}
+    assert cmap._code_to_cid_ranges == []
+    assert [p.get_name() for p in cmap._parent_cmaps] == ["Identity-H"]
 
     assert cmap.has_cid_mappings() is True
     assert cmap.to_cid_bytes(b"\x00\x41") == 65

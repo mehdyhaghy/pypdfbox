@@ -221,8 +221,8 @@ def test_set_true_type_font_invalidates_cmap_and_gid_caches() -> None:
     """Replacing the injected program must not keep cmap-derived state
     from the old program."""
     font = PDTrueTypeFont()
-    first_ttf = cast(TrueTypeFont, _TrueTypeFontStub(_CMapStub({65: 1})))
-    second_ttf = cast(TrueTypeFont, _TrueTypeFontStub(_CMapStub({65: 2})))
+    first_ttf = cast("TrueTypeFont", _TrueTypeFontStub(_CMapStub({65: 1})))
+    second_ttf = cast("TrueTypeFont", _TrueTypeFontStub(_CMapStub({65: 2})))
 
     first_cmap = font._get_unicode_cmap(first_ttf)
     assert first_cmap is not None
@@ -396,7 +396,7 @@ def test_code_to_gid_symbolic_tries_private_use_ranges(start_range: int) -> None
     font.set_font_descriptor(fd)
     cmap = _CMapStub({start_range + ord("A"): 42})
 
-    gid = font._code_to_gid(ord("A"), cast(TrueTypeFont, _TrueTypeFontStub(cmap)))
+    gid = font._code_to_gid(ord("A"), cast("TrueTypeFont", _TrueTypeFontStub(cmap)))
 
     assert gid == 42
 
@@ -406,7 +406,7 @@ def test_code_to_gid_nonsymbolic_does_not_probe_private_use_ranges() -> None:
     font.set_font_descriptor(PDFontDescriptor())
     cmap = _CMapStub({PDTrueTypeFont.START_RANGE_F000 + ord("A"): 42})
 
-    gid = font._code_to_gid(ord("A"), cast(TrueTypeFont, _TrueTypeFontStub(cmap)))
+    gid = font._code_to_gid(ord("A"), cast("TrueTypeFont", _TrueTypeFontStub(cmap)))
 
     assert gid == 0
 

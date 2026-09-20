@@ -24,7 +24,7 @@ def test_wrapped_fdselect_malformed_format_and_value_fall_back_to_default() -> N
 
 def test_format0_malformed_fd_entry_falls_back_to_default() -> None:
     select = Format0FDSelect([1])
-    select._fds = ["bad"]  # type: ignore[list-item]  # noqa: SLF001
+    select._fds = ["bad"]  # type: ignore[list-item]
 
     assert select.get_fd_index(0) == 0
     assert select.get_fd_index(1) == 0

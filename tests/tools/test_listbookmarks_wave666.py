@@ -93,7 +93,7 @@ class _BookmarkRoot:
 
 def test_wave666_resolve_page_number_returns_none_for_unresolved_page_dest() -> None:
     assert (
-        listbookmarks._resolve_page_number(  # noqa: SLF001
+        listbookmarks._resolve_page_number(
             object(),
             _UnresolvedPageDestination(),
         )
@@ -103,7 +103,7 @@ def test_wave666_resolve_page_number_returns_none_for_unresolved_page_dest() -> 
 
 def test_wave666_resolve_page_number_returns_none_for_unresolved_named_dest() -> None:
     assert (
-        listbookmarks._resolve_page_number(  # noqa: SLF001
+        listbookmarks._resolve_page_number(
             _Document(resolved_named_destination=object()),
             PDNamedDestination("chapter"),
         )
@@ -112,7 +112,7 @@ def test_wave666_resolve_page_number_returns_none_for_unresolved_named_dest() ->
 
 
 def test_wave666_describe_item_reports_goto_page_destination() -> None:
-    page_number, info = listbookmarks._describe_item(  # noqa: SLF001
+    page_number, info = listbookmarks._describe_item(
         _Document(),
         _Item(action=_GoTo(_ResolvedPageDestination())),
     )
@@ -122,7 +122,7 @@ def test_wave666_describe_item_reports_goto_page_destination() -> None:
 
 
 def test_wave666_describe_item_keeps_dest_page_when_action_also_resolves() -> None:
-    page_number, info = listbookmarks._describe_item(  # noqa: SLF001
+    page_number, info = listbookmarks._describe_item(
         _Document(),
         _Item(
             destination=_ResolvedPageDestination(),
@@ -135,7 +135,7 @@ def test_wave666_describe_item_keeps_dest_page_when_action_also_resolves() -> No
 
 
 def test_wave666_describe_item_reports_goto_non_page_destination() -> None:
-    page_number, info = listbookmarks._describe_item(  # noqa: SLF001
+    page_number, info = listbookmarks._describe_item(
         _Document(),
         _Item(action=_GoTo(_OtherDestination())),
     )
@@ -147,7 +147,7 @@ def test_wave666_describe_item_reports_goto_non_page_destination() -> None:
 def test_wave666_print_flat_writes_title_without_page_for_unresolved_item() -> None:
     out = io.StringIO()
 
-    listbookmarks._print_flat(  # noqa: SLF001
+    listbookmarks._print_flat(
         _Document(),
         _BookmarkRoot(_Item(title="Untargeted")),
         out,

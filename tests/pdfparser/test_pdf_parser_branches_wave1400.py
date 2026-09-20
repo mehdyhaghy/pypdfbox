@@ -44,14 +44,14 @@ def test_initial_parse_without_cos_parser_skips_set_initial_parse_done() -> None
     Closes branch (243 → 222)."""
     p = _bare_parser()
     # Stub the resolver with a trailer whose /Root is a COSDictionary.
-    p._resolver = XrefTrailerResolver()  # noqa: SLF001
-    p._resolver.begin_section(0)  # noqa: SLF001
+    p._resolver = XrefTrailerResolver()
+    p._resolver.begin_section(0)
     root = COSDictionary()
     root.set_item(COSName.TYPE, COSName.CATALOG)
     trailer = COSDictionary()
     trailer.set_item(COSName.ROOT, root)
-    p._resolver.set_trailer(trailer)  # noqa: SLF001
-    p._cos_parser = None  # noqa: SLF001 - simulate pre-parse state
+    p._resolver.set_trailer(trailer)
+    p._cos_parser = None
 
     # Must not raise — even with cos_parser None.
     p.initial_parse()
@@ -60,12 +60,12 @@ def test_initial_parse_without_cos_parser_skips_set_initial_parse_done() -> None
 def test_initial_parse_missing_root_raises() -> None:
     """``/Root`` is not a COSDictionary → raises PDFParseError."""
     p = _bare_parser()
-    p._resolver = XrefTrailerResolver()  # noqa: SLF001
-    p._resolver.begin_section(0)  # noqa: SLF001
+    p._resolver = XrefTrailerResolver()
+    p._resolver.begin_section(0)
     trailer = COSDictionary()
     # /Root set to a string — not a dictionary.
     trailer.set_item(COSName.ROOT, COSString("oops"))
-    p._resolver.set_trailer(trailer)  # noqa: SLF001
+    p._resolver.set_trailer(trailer)
     with pytest.raises(PDFParseError):
         p.initial_parse()
 
@@ -73,7 +73,7 @@ def test_initial_parse_missing_root_raises() -> None:
 def test_initial_parse_missing_trailer_raises() -> None:
     """No trailer at all → PDFParseError before /Root is checked."""
     p = _bare_parser()
-    p._resolver = XrefTrailerResolver()  # noqa: SLF001
+    p._resolver = XrefTrailerResolver()
     with pytest.raises(PDFParseError):
         p.initial_parse()
 
@@ -102,13 +102,13 @@ def test_detect_linearization_with_h_array_too_short_skips_hint_slurp() -> None:
     linearization dict is still recorded but no hint_table_bytes."""
     p = PDFParser(RandomAccessReadBuffer(_make_lin_payload(h_entry="[100]")))
     # _detect_linearization is called inline by parse; run it directly.
-    p._document = COSDocument()  # noqa: SLF001
+    p._document = COSDocument()
     from pypdfbox.pdfparser.cos_parser import COSParser
 
-    p._cos_parser = COSParser(p._src, document=p._document)  # noqa: SLF001
+    p._cos_parser = COSParser(p._src, document=p._document)
     p._src.seek(0)  # rewind past any prior scan
     p.parse_header()
-    p._detect_linearization()  # noqa: SLF001
+    p._detect_linearization()
     assert p.linearization_dict is not None
     assert p.hint_table_bytes is None
 
@@ -117,13 +117,13 @@ def test_detect_linearization_with_h_array_non_numeric_skips_slurp() -> None:
     """/H[0] is not a number → branch (649 → 667)."""
     payload = _make_lin_payload(h_entry="[/Bogus 200]")
     p = PDFParser(RandomAccessReadBuffer(payload))
-    p._document = COSDocument()  # noqa: SLF001
+    p._document = COSDocument()
     from pypdfbox.pdfparser.cos_parser import COSParser
 
-    p._cos_parser = COSParser(p._src, document=p._document)  # noqa: SLF001
+    p._cos_parser = COSParser(p._src, document=p._document)
     p._src.seek(0)
     p.parse_header()
-    p._detect_linearization()  # noqa: SLF001
+    p._detect_linearization()
     assert p.linearization_dict is not None
     assert p.hint_table_bytes is None
 
@@ -133,13 +133,13 @@ def test_detect_linearization_with_h_offset_out_of_bounds_skips_slurp() -> None:
     check rejects the slurp without raising."""
     payload = _make_lin_payload(h_entry="[999999999 100]")
     p = PDFParser(RandomAccessReadBuffer(payload))
-    p._document = COSDocument()  # noqa: SLF001
+    p._document = COSDocument()
     from pypdfbox.pdfparser.cos_parser import COSParser
 
-    p._cos_parser = COSParser(p._src, document=p._document)  # noqa: SLF001
+    p._cos_parser = COSParser(p._src, document=p._document)
     p._src.seek(0)
     p.parse_header()
-    p._detect_linearization()  # noqa: SLF001
+    p._detect_linearization()
     assert p.linearization_dict is not None
     assert p.hint_table_bytes is None
 
@@ -149,13 +149,13 @@ def test_detect_linearization_with_valid_h_slurps_bytes() -> None:
     populates hint_table_bytes (exercises the 'taken' branch)."""
     payload = _make_lin_payload(h_entry="[5 10]")  # offset=5, length=10 - in bounds
     p = PDFParser(RandomAccessReadBuffer(payload))
-    p._document = COSDocument()  # noqa: SLF001
+    p._document = COSDocument()
     from pypdfbox.pdfparser.cos_parser import COSParser
 
-    p._cos_parser = COSParser(p._src, document=p._document)  # noqa: SLF001
+    p._cos_parser = COSParser(p._src, document=p._document)
     p._src.seek(0)
     p.parse_header()
-    p._detect_linearization()  # noqa: SLF001
+    p._detect_linearization()
     assert p.linearization_dict is not None
     assert p.hint_table_bytes is not None
     assert len(p.hint_table_bytes) == 10
@@ -174,37 +174,37 @@ def test_consume_eol_after_stream_keyword_at_eof_no_rewind() -> None:
     p = PDFParser(RandomAccessReadBuffer(b""))
     # _src is at position 0, length 0 — read returns EOF.
     # Should not raise.
-    p._consume_eol_after_stream_keyword()  # noqa: SLF001
-    assert p._src.get_position() == 0  # noqa: SLF001
+    p._consume_eol_after_stream_keyword()
+    assert p._src.get_position() == 0
 
 
 def test_consume_eol_after_stream_keyword_with_garbage_byte_rewinds() -> None:
     """Positive control: non-EOL non-EOF byte triggers the rewind path."""
     p = PDFParser(RandomAccessReadBuffer(b"X"))
-    p._consume_eol_after_stream_keyword()  # noqa: SLF001
+    p._consume_eol_after_stream_keyword()
     # 'X' was read then rewound — position back at 0.
-    assert p._src.get_position() == 0  # noqa: SLF001
+    assert p._src.get_position() == 0
 
 
 def test_consume_eol_after_stream_keyword_consumes_crlf() -> None:
     """CRLF consumed as a unit."""
     p = PDFParser(RandomAccessReadBuffer(b"\r\nbody"))
-    p._consume_eol_after_stream_keyword()  # noqa: SLF001
-    assert p._src.get_position() == 2  # noqa: SLF001
+    p._consume_eol_after_stream_keyword()
+    assert p._src.get_position() == 2
 
 
 def test_consume_eol_after_stream_keyword_consumes_lf_only() -> None:
     """LF alone consumed."""
     p = PDFParser(RandomAccessReadBuffer(b"\nbody"))
-    p._consume_eol_after_stream_keyword()  # noqa: SLF001
-    assert p._src.get_position() == 1  # noqa: SLF001
+    p._consume_eol_after_stream_keyword()
+    assert p._src.get_position() == 1
 
 
 def test_consume_eol_after_stream_keyword_consumes_lone_cr() -> None:
     """Lone CR (no LF) consumed (PDFBox quirk)."""
     p = PDFParser(RandomAccessReadBuffer(b"\rbody"))
-    p._consume_eol_after_stream_keyword()  # noqa: SLF001
-    assert p._src.get_position() == 1  # noqa: SLF001
+    p._consume_eol_after_stream_keyword()
+    assert p._src.get_position() == 1
 
 
 # ----------------------------------------------------------------------
@@ -235,4 +235,4 @@ def test_parse_xref_chain_non_integer_prev_stops_chain() -> None:
     # Must not raise — the non-integer /Prev is silently ignored.
     p.parse()
     # Trailer is loaded; /Prev was a name and didn't blow up the chain.
-    assert p._document is not None  # noqa: SLF001
+    assert p._document is not None

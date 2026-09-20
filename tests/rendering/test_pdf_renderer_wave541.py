@@ -24,16 +24,16 @@ def _make_doc(width: float = 6.0, height: float = 6.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (3, 3)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -58,12 +58,12 @@ def test_render_image_resets_per_render_font_warning_caches(
 ) -> None:
     doc, _page = _make_doc()
     renderer = PDFRenderer(doc)
-    renderer._warned_standard14_fonts.add(123)  # noqa: SLF001
-    renderer._font_program_cache[456] = object()  # noqa: SLF001
+    renderer._warned_standard14_fonts.add(123)
+    renderer._font_program_cache[456] = object()
 
     def _capture_reset(_page: PDPage) -> None:
-        assert renderer._warned_standard14_fonts == set()  # noqa: SLF001
-        assert renderer._font_program_cache == {}  # noqa: SLF001
+        assert renderer._warned_standard14_fonts == set()
+        assert renderer._font_program_cache == {}
 
     try:
         monkeypatch.setattr(renderer, "process_page", _capture_reset)
@@ -97,14 +97,14 @@ def test_extgstate_accessor_failures_leave_transparency_defaults(
     doc, renderer = _prepared_renderer()
     try:
         caplog.set_level("DEBUG", logger="pypdfbox.rendering.pdf_renderer")
-        renderer._resources = _Resources()  # noqa: SLF001
+        renderer._resources = _Resources()
 
         renderer.process_operator("gs", [COSName.get_pdf_name("GS0")])
 
-        assert renderer._gs.blend_mode is None  # noqa: SLF001
-        assert renderer._gs.soft_mask is None  # noqa: SLF001
-        assert renderer._gs.stroke_alpha == 1.0  # noqa: SLF001
-        assert renderer._gs.fill_alpha == 1.0  # noqa: SLF001
+        assert renderer._gs.blend_mode is None
+        assert renderer._gs.soft_mask is None
+        assert renderer._gs.stroke_alpha == 1.0
+        assert renderer._gs.fill_alpha == 1.0
         assert "cannot resolve ExtGState /SMask on GS0: smask unavailable" in caplog.text
     finally:
         _finish(renderer)

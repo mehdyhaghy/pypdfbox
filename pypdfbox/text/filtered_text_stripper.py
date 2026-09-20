@@ -143,7 +143,7 @@ class AngleCollector(PDFTextStripper):
 
     def __contains__(self, angle: object) -> bool:
         try:
-            return ((int(cast(Any, angle)) + 360) % 360) in self._angles
+            return ((int(cast("Any", angle)) + 360) % 360) in self._angles
         except (TypeError, ValueError):
             return False
 

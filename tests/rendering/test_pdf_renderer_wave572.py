@@ -21,16 +21,16 @@ def _make_doc(width: float = 5.0, height: float = 5.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (5, 5)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -44,8 +44,8 @@ def test_paste_image_routes_active_blend_with_transformed_bbox_and_alpha(
     calls: list[tuple[Image.Image, Image.Image | None, tuple[int, int, int, int]]] = []
     doc, renderer = _prepared_renderer((6, 6))
     try:
-        renderer._gs.blend_mode = _BlendMode()  # noqa: SLF001
-        renderer._gs.ctm = (2.0, 0.0, 0.0, 3.0, 1.0, 1.0)  # noqa: SLF001
+        renderer._gs.blend_mode = _BlendMode()
+        renderer._gs.ctm = (2.0, 0.0, 0.0, 3.0, 1.0, 1.0)
 
         def _capture_blend(
             flipped_rgb: Image.Image,
@@ -55,14 +55,14 @@ def test_paste_image_routes_active_blend_with_transformed_bbox_and_alpha(
             blend_mode: object,
         ) -> None:
             assert clip_mask is None
-            assert blend_mode is renderer._gs.blend_mode  # noqa: SLF001
+            assert blend_mode is renderer._gs.blend_mode
             calls.append((flipped_rgb.copy(), alpha.copy() if alpha else None, bbox))
 
         monkeypatch.setattr(renderer, "_paste_image_with_blend", _capture_blend)
 
         source = Image.new("RGBA", (1, 2), (10, 20, 30, 40))
         source.putpixel((0, 1), (90, 80, 70, 160))
-        renderer._paste_image(source)  # noqa: SLF001
+        renderer._paste_image(source)
 
         assert len(calls) == 1
         staged_rgb, alpha, bbox = calls[0]
@@ -101,10 +101,10 @@ def test_show_inline_image_returns_without_live_canvas_or_decoded_image(
         calls: list[object] = []
         monkeypatch.setattr(renderer, "_paste_image", lambda image: calls.append(image))
 
-        renderer._draw = None  # noqa: SLF001
+        renderer._draw = None
         renderer.show_inline_image(_InlineImage())
-        renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-        renderer._draw.setantialias(True)  # noqa: SLF001
+        renderer._draw = aggdraw.Draw(renderer._image)
+        renderer._draw.setantialias(True)
         renderer.show_inline_image(_InlineImage())
 
         assert calls == []
@@ -120,7 +120,7 @@ def test_decode_image_xobject_returns_none_for_non_stream_cos_object() -> None:
 
     doc, renderer = _prepared_renderer()
     try:
-        assert renderer._decode_image_xobject(_ImageXObject()) is None  # noqa: SLF001
+        assert renderer._decode_image_xobject(_ImageXObject()) is None
     finally:
         _finish(renderer)
         doc.close()
@@ -145,7 +145,7 @@ def test_code_to_gid_falls_back_to_unicode_cmap_when_font_methods_fail(
 
     caplog.set_level("DEBUG", logger="pypdfbox.rendering.pdf_renderer")
 
-    assert PDFRenderer._code_to_gid(_Font(), 65, _TTF()) == 123  # noqa: SLF001
+    assert PDFRenderer._code_to_gid(_Font(), 65, _TTF()) == 123
     assert "code_to_gid failed for 65: gid boom" in caplog.text
 
 
@@ -158,7 +158,7 @@ def test_maybe_warn_standard14_only_logs_once(
     installs. Force the "no substitute" path by patching
     :meth:`Standard14Fonts.get_substitute_ttf` so we can exercise the
     once-per-font de-dup contract."""
-    from pypdfbox.pdmodel.font import standard14_fonts as s14  # noqa: PLC0415
+    from pypdfbox.pdmodel.font import standard14_fonts as s14
 
     class _StubFont:
         def get_name(self) -> str:
@@ -173,8 +173,8 @@ def test_maybe_warn_standard14_only_logs_once(
         caplog.set_level("DEBUG", logger="pypdfbox.rendering.pdf_renderer")
 
         # Placeholder branch fires once per font, never per glyph.
-        renderer._maybe_warn_standard14(stub_font)  # noqa: SLF001
-        renderer._maybe_warn_standard14(stub_font)  # noqa: SLF001
+        renderer._maybe_warn_standard14(stub_font)
+        renderer._maybe_warn_standard14(stub_font)
         assert caplog.text.count("Helvetica is a Standard 14 font") == 1
     finally:
         _finish(renderer)
@@ -198,7 +198,7 @@ def test_maybe_warn_standard14_silent_when_substitute_available(
     try:
         caplog.set_level("DEBUG", logger="pypdfbox.rendering.pdf_renderer")
         for name in ("Helvetica", "Symbol", "ZapfDingbats", "Courier"):
-            renderer._maybe_warn_standard14(_Font(name))  # noqa: SLF001
+            renderer._maybe_warn_standard14(_Font(name))
             assert f"{name} is a Standard 14 font" not in caplog.text
     finally:
         _finish(renderer)

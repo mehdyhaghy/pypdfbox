@@ -229,13 +229,13 @@ class PDFTextStripperByArea(PDFTextStripper):
         # y-up user-frame half-open parity is unaffected.
         try:
             self._page_rotation = int(page.get_rotation()) % 360
-        except Exception:  # noqa: BLE001 — defensive: bad /Rotate
+        except Exception:
             self._page_rotation = 0
         try:
             crop = page.get_crop_box()
             self._page_width = float(crop.get_width())
             self._page_height = float(crop.get_height())
-        except Exception:  # noqa: BLE001 — defensive: missing/odd CropBox
+        except Exception:
             self._page_width = 0.0
             self._page_height = 0.0
         self._cmap_cache = {}
@@ -640,7 +640,7 @@ def _java_hashmap_capacity(count: int) -> int:
     return capacity
 
 
-def _hashmap_order(keys) -> list[str]:  # noqa: ANN001 - keys is a str iterable
+def _hashmap_order(keys) -> list[str]:
     """Return ``keys`` in ``java.util.HashMap`` iteration order.
 
     HashMap iterates buckets ``0 .. capacity-1``; within a bucket, entries are
@@ -680,7 +680,7 @@ def _normalize_rect(
         typing for forward-compat with PDRectangle subclasses).
     """
     # Local import to break the pdmodel ↔ text cycle at module-load time.
-    from pypdfbox.pdmodel import PDRectangle  # noqa: PLC0415
+    from pypdfbox.pdmodel import PDRectangle
 
     if isinstance(rect, PDRectangle):
         return (

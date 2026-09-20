@@ -14,7 +14,7 @@ from pypdfbox.cos import (
 from .pd_simple_font import PDSimpleFont
 
 if TYPE_CHECKING:
-    from pypdfbox.pdmodel.pd_rectangle import PDRectangle  # noqa: F401
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
     from pypdfbox.pdmodel.pd_resources import PDResources
 
     from .encoding.encoding import Encoding
@@ -121,7 +121,7 @@ class PDType3Font(PDSimpleFont):
             return None
         # Local import to break the file-level cycle (pd_type3_char_proc
         # imports PDType3Font for typing).
-        from .pd_type3_char_proc import PDType3CharProc  # noqa: PLC0415
+        from .pd_type3_char_proc import PDType3CharProc
 
         return PDType3CharProc(self, stream)
 
@@ -458,7 +458,7 @@ class PDType3Font(PDSimpleFont):
 
     # ---------- font-program escape hatches (Type 3 has no font program) ----------
 
-    def get_font_box_font(self) -> Any:  # noqa: ANN401  (mirrors upstream FontBoxFont return)
+    def get_font_box_font(self) -> Any:
         """Type 3 fonts do not carry a FontBox font program.
 
         Mirrors upstream ``PDType3Font.getFontBoxFont()`` which throws
@@ -468,7 +468,7 @@ class PDType3Font(PDSimpleFont):
         """
         raise NotImplementedError("not supported for Type 3 fonts")
 
-    def get_path(self, name: str) -> Any:  # noqa: ANN401  (upstream returns GeneralPath)
+    def get_path(self, name: str) -> Any:
         """Type 3 fonts do not expose vector paths by glyph name.
 
         Mirrors upstream ``PDType3Font.getPath(String)`` which throws
@@ -543,12 +543,12 @@ class PDType3Font(PDSimpleFont):
             return self._encoding_typed
         raw = self.get_encoding()
         if isinstance(raw, COSName):
-            from .encoding.encoding import Encoding  # noqa: PLC0415
+            from .encoding.encoding import Encoding
 
             self._encoding_typed = Encoding.get_instance(raw)
         elif isinstance(raw, COSDictionary):
             from .encoding.dictionary_encoding import (
-                DictionaryEncoding,  # noqa: PLC0415
+                DictionaryEncoding,
             )
 
             # No-base form (font_encoding only): base == None, so codes
@@ -575,7 +575,7 @@ class PDType3Font(PDSimpleFont):
         self.get_encoding_typed()
         self.get_glyph_list()
 
-    def read_encoding_from_font(self) -> Any:  # noqa: ANN401  (upstream returns Encoding)
+    def read_encoding_from_font(self) -> Any:
         """Type 3 fonts do not have a built-in encoding.
 
         Mirrors upstream protected ``PDType3Font.readEncodingFromFont()``
@@ -643,7 +643,7 @@ class PDType3Font(PDSimpleFont):
         if char_procs is None:
             return rect
 
-        from .pd_type3_char_proc import PDType3CharProc  # noqa: PLC0415
+        from .pd_type3_char_proc import PDType3CharProc
 
         llx = rect.get_lower_left_x()
         lly = rect.get_lower_left_y()

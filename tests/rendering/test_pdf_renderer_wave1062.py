@@ -27,7 +27,7 @@ def test_wave551_make_doc_removes_existing_page_before_adding_new_page(
     doc = _DocumentWithExistingPage()
     monkeypatch.setattr(wave551, "PDDocument", lambda: doc)
 
-    made_doc, page = wave551._make_doc(width=3.0, height=4.0)  # noqa: SLF001
+    made_doc, page = wave551._make_doc(width=3.0, height=4.0)
 
     assert made_doc is doc
     assert doc.removed_indexes == [0]

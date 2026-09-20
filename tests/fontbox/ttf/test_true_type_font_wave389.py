@@ -20,7 +20,7 @@ class _FakeTTFont:
     def __getitem__(self, tag: str) -> object:
         return self._tables[tag]
 
-    def getGlyphOrder(self) -> list[str]:  # noqa: N802 - fontTools API
+    def getGlyphOrder(self) -> list[str]:
         return list(self._glyph_order)
 
 
@@ -31,36 +31,36 @@ def _font(
     raw: bytes = b"abcdef",
 ) -> TrueTypeFont:
     font = object.__new__(TrueTypeFont)
-    font._tt = tt or _FakeTTFont()  # noqa: SLF001
-    font._raw_bytes = raw  # noqa: SLF001
-    font._table_map = table_map if table_map is not None else {}  # noqa: SLF001
-    font._head = None  # noqa: SLF001
-    font._hhea = None  # noqa: SLF001
-    font._maxp = None  # noqa: SLF001
-    font._hmtx = None  # noqa: SLF001
-    font._vhea = None  # noqa: SLF001
-    font._vmtx = None  # noqa: SLF001
-    font._cmap_subtable = None  # noqa: SLF001
-    font._cmap_resolved = False  # noqa: SLF001
-    font._advance_widths = None  # noqa: SLF001
-    font._glyph_table = None  # noqa: SLF001
-    font._dsig = None  # noqa: SLF001
-    font._dsig_resolved = False  # noqa: SLF001
-    font._kern = None  # noqa: SLF001
-    font._kern_resolved = False  # noqa: SLF001
-    font._gsub = None  # noqa: SLF001
-    font._gsub_resolved = False  # noqa: SLF001
-    font._gpos = None  # noqa: SLF001
-    font._gpos_resolved = False  # noqa: SLF001
-    font._naming = None  # noqa: SLF001
-    font._naming_resolved = False  # noqa: SLF001
-    font._post = None  # noqa: SLF001
-    font._post_resolved = False  # noqa: SLF001
-    font._os2 = None  # noqa: SLF001
-    font._os2_resolved = False  # noqa: SLF001
-    font._loca = None  # noqa: SLF001
-    font._loca_resolved = False  # noqa: SLF001
-    font._closed = False  # noqa: SLF001
+    font._tt = tt or _FakeTTFont()
+    font._raw_bytes = raw
+    font._table_map = table_map if table_map is not None else {}
+    font._head = None
+    font._hhea = None
+    font._maxp = None
+    font._hmtx = None
+    font._vhea = None
+    font._vmtx = None
+    font._cmap_subtable = None
+    font._cmap_resolved = False
+    font._advance_widths = None
+    font._glyph_table = None
+    font._dsig = None
+    font._dsig_resolved = False
+    font._kern = None
+    font._kern_resolved = False
+    font._gsub = None
+    font._gsub_resolved = False
+    font._gpos = None
+    font._gpos_resolved = False
+    font._naming = None
+    font._naming_resolved = False
+    font._post = None
+    font._post_resolved = False
+    font._os2 = None
+    font._os2_resolved = False
+    font._loca = None
+    font._loca_resolved = False
+    font._closed = False
     return font
 
 
@@ -258,5 +258,5 @@ def test_wave389_fixed_point_and_font_matrix_zero_units_branch() -> None:
     font = _font()
     font.get_units_per_em = lambda: 0  # type: ignore[method-assign]
 
-    assert TrueTypeFont._fixed_16_16(0x00018000) == 1.5  # noqa: SLF001
+    assert TrueTypeFont._fixed_16_16(0x00018000) == 1.5
     assert font.get_font_matrix() == [0.001, 0.0, 0.0, 0.001, 0.0, 0.0]

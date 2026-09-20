@@ -115,8 +115,8 @@ def test_glyph_substitution_table_default_script_returns_no_data() -> None:
     # Build an empty table — gsub_table populated (so it doesn't take the
     # outer None branch) but with no scripts.
     table = GlyphSubstitutionTable.__new__(GlyphSubstitutionTable)
-    table._gsub_table = object()  # sentinel — anything truthy works  # noqa: SLF001
-    table._script_tags = []  # noqa: SLF001
+    table._gsub_table = object()  # sentinel — anything truthy works
+    table._script_tags = []
     # Call: script_tag=None -> _pick_default_script_tag walks Language
     # preference list, none match because _script_tags is empty; the
     # final ``return self._script_tags[0] if self._script_tags else None``
@@ -135,9 +135,9 @@ def test_glyph_substitution_table_default_script_falls_back_to_first(
     )
 
     table = GlyphSubstitutionTable.__new__(GlyphSubstitutionTable)
-    table._gsub_table = object()  # noqa: SLF001
-    table._script_tags = ["zzzz"]  # not in any Language.script_names  # noqa: SLF001
-    picked = table._pick_default_script_tag()  # noqa: SLF001
+    table._gsub_table = object()
+    table._script_tags = ["zzzz"]  # not in any Language.script_names
+    picked = table._pick_default_script_tag()
     assert picked == "zzzz"
 
 
@@ -244,7 +244,7 @@ def test_pdf_text2_html_write_paragraph_end_routes_through_sink() -> None:
 
     p = PDFText2HTML()
     # Prime the font state so ``clear()`` returns non-empty markup.
-    p._font_state.open("b")  # noqa: SLF001
+    p._font_state.open("b")
 
     captured: list[str] = []
 
@@ -291,7 +291,7 @@ def test_cos_writer_placeholder_byterange_with_none_integer_is_skipped() -> None
     indirect.set_object(sig_dict)
 
     writer = COSWriter.__new__(COSWriter)
-    writer._incremental_input = None  # noqa: SLF001
+    writer._incremental_input = None
     # Stub to_cos_number_integer_list so it returns a list with a None
     # — this fires the ``any(i is None for i in ints): continue`` arm.
     with patch.object(
@@ -299,7 +299,7 @@ def test_cos_writer_placeholder_byterange_with_none_integer_is_skipped() -> None
     ):
         # Must not raise — the ``None`` integer takes the ``continue``
         # branch before reaching the placeholder-detection raise.
-        writer._reject_signed_with_byterange_placeholder(cos_doc)  # noqa: SLF001
+        writer._reject_signed_with_byterange_placeholder(cos_doc)
 
 
 # ---------- PDShadingType7 decode-None branch ----------
@@ -354,4 +354,4 @@ def test_non_seekable_available_returns_zero_when_no_introspection() -> None:
 
     stream = NonSeekableRandomAccessReadInputStream(_BareReadable())
     # Neither ``available`` nor ``getbuffer`` is present -> final return 0.
-    assert stream._available_on_underlying() == 0  # noqa: SLF001
+    assert stream._available_on_underlying() == 0

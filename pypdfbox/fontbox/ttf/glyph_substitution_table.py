@@ -146,7 +146,7 @@ class GlyphSubstitutionTable(TTFTable):
         self._feature_tags = list(seen_features.keys())
         self.initialized = True
 
-    def read(self, ttf: TrueTypeFont, data: TTFDataStream) -> None:  # noqa: ARG002
+    def read(self, ttf: TrueTypeFont, data: TTFDataStream) -> None:
         """Stand-in for the upstream ``read`` slot.
 
         We don't decode GSUB from the raw byte stream — fontTools owns
@@ -607,8 +607,8 @@ class GlyphSubstitutionTable(TTFTable):
         encodes, which is left to the per-script :class:`GsubWorker`
         implementations.
         """
-        from .gsub.gsub_data import GsubData  # noqa: PLC0415
-        from .model.language import Language  # noqa: PLC0415
+        from .gsub.gsub_data import GsubData
+        from .model.language import Language
 
         if self._gsub_table is None:
             return GsubData.NO_DATA_FOUND if script_tag is None else None
@@ -629,7 +629,7 @@ class GlyphSubstitutionTable(TTFTable):
     def _pick_default_script_tag(self) -> str | None:
         """Pick the default script tag using the upstream preference order."""
         # Late import to keep cyclic deps tidy.
-        from .model.language import Language  # noqa: PLC0415
+        from .model.language import Language
 
         for language in Language:
             for tag in language.get_script_names():
@@ -646,7 +646,7 @@ class GlyphSubstitutionTable(TTFTable):
         Walks the ScriptList → LangSys → FeatureRecord chain and records
         every supported feature tag with a placeholder substitution map.
         """
-        from .gsub.gsub_data import GsubData  # noqa: PLC0415
+        from .gsub.gsub_data import GsubData
 
         feature_list: dict[str, dict[tuple[int, ...], tuple[int, ...]]] = {}
         if self._gsub_table is not None:
@@ -696,7 +696,7 @@ class GlyphSubstitutionTable(TTFTable):
         # Late import to keep the top-of-file lean and avoid bootstrap
         # ordering issues when ``OpenTypeScript`` itself depends on this
         # module's downstream consumers.
-        from .open_type_script import OpenTypeScript  # noqa: PLC0415
+        from .open_type_script import OpenTypeScript
 
         if not tags:
             if self._last_used_supported_script is not None:

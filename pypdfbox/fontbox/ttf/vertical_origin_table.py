@@ -42,7 +42,7 @@ class VerticalOriginTable(TTFTable):
         self._default_vert_origin_y: int = 0
         self._origins: dict[int, int] = {}
 
-    def read(self, ttf: TrueTypeFont, data: TTFDataStream) -> None:  # noqa: ARG002
+    def read(self, ttf: TrueTypeFont, data: TTFDataStream) -> None:
         """Mirror ``read(TrueTypeFont, TTFDataStream)``
         (VerticalOriginTable.java L62-75)."""
         self._version = data.read_32_fixed()

@@ -50,7 +50,7 @@ class ASCIIPane(tk.Text):
 
     # ----------------------------------------------------------- listeners
 
-    def hex_model_changed(self, event: HexModelChangedEvent) -> None:  # noqa: ARG002
+    def hex_model_changed(self, event: HexModelChangedEvent) -> None:
         self.paint_component()
 
     # ------------------------------------------------------------------ API

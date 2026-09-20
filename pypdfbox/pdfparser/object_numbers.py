@@ -21,7 +21,7 @@ class ObjectNumbers(Iterator[int]):
     """
 
     def __init__(self, index_array: COSArray) -> None:
-        from pypdfbox.cos.cos_integer import COSInteger  # noqa: PLC0415
+        from pypdfbox.cos.cos_integer import COSInteger
 
         pair_count = len(index_array) // 2
         if pair_count == 0:
@@ -64,7 +64,7 @@ class ObjectNumbers(Iterator[int]):
             or self._current_number < self._current_end
         )
 
-    def next(self) -> int:  # noqa: A003 — upstream method name
+    def next(self) -> int:
         """Alias for :meth:`next_value` matching the upstream Java
         ``Iterator.next()`` method name."""
         return self.next_value()

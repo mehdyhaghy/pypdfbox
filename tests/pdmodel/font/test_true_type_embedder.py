@@ -14,7 +14,7 @@ from pypdfbox.pdmodel.font.true_type_embedder import TrueTypeEmbedder
 
 class _FakeOS2:
     def __init__(self, fs_type: int) -> None:
-        self.fsType = fs_type  # noqa: N815 - mirror fontTools attribute name
+        self.fsType = fs_type
 
 
 class _FakeTTF:

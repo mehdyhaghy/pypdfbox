@@ -70,7 +70,7 @@ def test_process_color_skips_when_pattern_is_not_tiling() -> None:
         """An abstract pattern that is NOT a PDTilingPattern."""
 
     class _PDPatternStub(PDPattern):
-        def get_pattern(self, color: Any) -> Any:  # noqa: ARG002
+        def get_pattern(self, color: Any) -> Any:
             return _NonTilingPattern()
 
     class _Color:

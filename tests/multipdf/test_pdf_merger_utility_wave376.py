@@ -55,7 +55,7 @@ def test_wave376_open_source_rejects_text_stream_payload() -> None:
             return "not bytes"
 
     with pytest.raises(TypeError, match=r"read\(\) must return bytes"):
-        PDFMergerUtility._open_source(TextStream())  # noqa: SLF001
+        PDFMergerUtility._open_source(TextStream())
 
 
 def test_wave376_append_document_rejects_closed_source() -> None:
@@ -167,7 +167,7 @@ def test_wave376_update_struct_parent_entries_leaves_negative_sentinels() -> Non
     annots.add(COSName.get_pdf_name("NonDictionaryEntry"))
     page_dict.set_item(_ANNOTS, annots)
 
-    PDFMergerUtility._update_struct_parent_entries(page_dict, 10)  # noqa: SLF001
+    PDFMergerUtility._update_struct_parent_entries(page_dict, 10)
 
     assert page_dict.get_dictionary_object(_STRUCT_PARENTS).int_value() == -1
     assert annot.get_dictionary_object(_STRUCT_PARENT).int_value() == -1

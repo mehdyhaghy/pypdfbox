@@ -139,8 +139,8 @@ def test_pdfbox_5485_page_extractor_round_trip() -> None:
     # Local imports keep the pdmodel/multipdf layers off the top-level
     # import graph for tests that don't need them — important because
     # the COSWriter parity tests above run against bare COSDocuments.
-    from pypdfbox.multipdf import PageExtractor  # noqa: PLC0415
-    from pypdfbox.pdmodel import PDDocument  # noqa: PLC0415
+    from pypdfbox.multipdf import PageExtractor
+    from pypdfbox.pdmodel import PDDocument
 
     fixture = _FIXTURES / "PDFBOX-3110-poems-beads.pdf"
     with PDDocument.load(fixture) as source_doc:
@@ -190,12 +190,12 @@ def test_pdfbox_6036_compression_pool_handles_long_outline_chain() -> None:
     """
     # Local imports keep the pdmodel + writer/compress layers off the
     # top-level import graph for the bare-COSDocument tests above.
-    from pypdfbox.pdfwriter.compress import (  # noqa: PLC0415
+    from pypdfbox.pdfwriter.compress import (
         CompressParameters,
         COSWriterCompressionPool,
     )
-    from pypdfbox.pdmodel import PDDocument  # noqa: PLC0415
-    from pypdfbox.pdmodel.interactive.documentnavigation.outline import (  # noqa: PLC0415
+    from pypdfbox.pdmodel import PDDocument
+    from pypdfbox.pdmodel.interactive.documentnavigation.outline import (
         PDDocumentOutline,
         PDOutlineItem,
     )

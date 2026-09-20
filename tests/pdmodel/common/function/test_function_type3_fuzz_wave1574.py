@@ -99,7 +99,7 @@ def _spec_eval(
     """
     d0, d1 = domain
     # non-normalising clamp
-    x = d0 if x < d0 else (d1 if x > d1 else x)
+    x = d0 if x < d0 else (min(x, d1))
     if len(coeffs) == 1:
         enc_lo, enc_hi = encode[0], encode[1]
         ex = _interp(x, d0, d1, enc_lo, enc_hi)

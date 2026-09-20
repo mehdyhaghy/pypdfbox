@@ -31,7 +31,7 @@ class Type5ShadingPaint(ShadingPaint):
         ``Type5ShadingContext`` — shared with Type 4 in pypdfbox via
         :class:`GouraudShadingContext`."""
         _ = (user_bounds, hints)
-        from .gouraud_shading_context import GouraudShadingContext  # noqa: PLC0415
+        from .gouraud_shading_context import GouraudShadingContext
 
         ctx = GouraudShadingContext(self.shading, cm, xform, self.matrix)
         try:

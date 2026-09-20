@@ -54,4 +54,4 @@ def test_existing_key_for_returns_none_when_cos_object_actual_is_none() -> None:
     writer = COSWriter(sink)
     # Not registered → existing lookup returns None; the COSObject
     # branch enters but ``actual is None``, so we fall through.
-    assert writer._lookup_existing_key(obj) is None  # noqa: SLF001
+    assert writer._lookup_existing_key(obj) is None

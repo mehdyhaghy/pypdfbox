@@ -325,7 +325,7 @@ class AppearanceGeneratorHelper:
         font_size: float,
     ) -> None:
         """Stub for upstream's listbox-highlight emitter (lines 770–809)."""
-        return None
+        return
 
     def insert_generated_listbox_appearance(
         self,

@@ -118,5 +118,5 @@ def test_wave540_word_break_uses_font_size_fallback_when_previous_width_is_zero(
     close = TextPosition(text="close", x=37.9, y=20.0, font_size=8.0)
     far = TextPosition(text="far", x=50.1, y=20.0, font_size=8.0)
 
-    assert stripper._is_word_break(close, prev) is False  # noqa: SLF001
-    assert stripper._is_word_break(far, prev) is True  # noqa: SLF001
+    assert stripper._is_word_break(close, prev) is False
+    assert stripper._is_word_break(far, prev) is True

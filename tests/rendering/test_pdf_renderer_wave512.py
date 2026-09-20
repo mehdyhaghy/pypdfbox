@@ -20,16 +20,16 @@ def _make_doc(width: float = 6.0, height: float = 6.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (6, 6)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -39,17 +39,17 @@ def test_paste_image_multiplies_source_alpha_with_clip_mask() -> None:
     try:
         clip = Image.new("L", (5, 5), 0)
         clip.paste(255, (2, 2, 3, 3))
-        renderer._gs.clip_mask = clip  # noqa: SLF001
-        renderer._gs.ctm = (1.0, 0.0, 0.0, 1.0, 2.0, 2.0)  # noqa: SLF001
+        renderer._gs.clip_mask = clip
+        renderer._gs.ctm = (1.0, 0.0, 0.0, 1.0, 2.0, 2.0)
 
         source = Image.new("RGBA", (1, 1), (255, 0, 0, 128))
-        renderer._paste_image(source)  # noqa: SLF001
+        renderer._paste_image(source)
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((1, 2)) == (255, 255, 255)  # noqa: SLF001
-        assert renderer._image.getpixel((2, 2)) == (255, 127, 127)  # noqa: SLF001
-        assert renderer._image.getpixel((3, 2)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.getpixel((1, 2)) == (255, 255, 255)
+        assert renderer._image.getpixel((2, 2)) == (255, 127, 127)
+        assert renderer._image.getpixel((3, 2)) == (255, 255, 255)
     finally:
         doc.close()
 
@@ -74,13 +74,13 @@ def test_render_form_xobject_restores_resources_when_stream_is_not_cosstream() -
     doc, renderer = _prepared_renderer()
     previous_resources = object()
     try:
-        renderer._resources = previous_resources  # noqa: SLF001
-        renderer._gs.ctm = (2.0, 0.0, 0.0, 2.0, 0.0, 0.0)  # noqa: SLF001
+        renderer._resources = previous_resources
+        renderer._gs.ctm = (2.0, 0.0, 0.0, 2.0, 0.0, 0.0)
 
-        renderer._render_form_xobject(_Form())  # noqa: SLF001
+        renderer._render_form_xobject(_Form())
 
-        assert renderer._resources is previous_resources  # noqa: SLF001
-        assert renderer._gs.ctm == (2.0, 0.0, 0.0, 2.0, 0.0, 0.0)  # noqa: SLF001
+        assert renderer._resources is previous_resources
+        assert renderer._gs.ctm == (2.0, 0.0, 0.0, 2.0, 0.0, 0.0)
     finally:
         _finish(renderer)
         doc.close()
@@ -112,9 +112,9 @@ def test_render_tiling_cell_restores_resources_when_pattern_has_none() -> None:
     doc, renderer = _prepared_renderer()
     previous_resources = object()
     try:
-        renderer._resources = previous_resources  # noqa: SLF001
+        renderer._resources = previous_resources
 
-        tile = renderer._render_tiling_cell(  # noqa: SLF001
+        tile = renderer._render_tiling_cell(
             _Pattern(),
             bbox=_BBox(),
             tile_size=(2, 2),
@@ -127,7 +127,7 @@ def test_render_tiling_cell_restores_resources_when_pattern_has_none() -> None:
         # page background.
         assert tile.mode == "RGBA"
         assert tile.getpixel((0, 0)) == (0, 0, 0, 0)
-        assert renderer._resources is previous_resources  # noqa: SLF001
+        assert renderer._resources is previous_resources
     finally:
         _finish(renderer)
         doc.close()
@@ -138,7 +138,7 @@ def test_fill_aggdraw_path_with_clip_refreshes_draw_and_preserves_outside() -> N
     try:
         clip = Image.new("L", (4, 4), 0)
         clip.paste(255, (1, 1, 3, 3))
-        renderer._gs.clip_mask = clip  # noqa: SLF001
+        renderer._gs.clip_mask = clip
 
         path = aggdraw.Path()
         path.moveto(0.0, 0.0)
@@ -147,16 +147,16 @@ def test_fill_aggdraw_path_with_clip_refreshes_draw_and_preserves_outside() -> N
         path.lineto(0.0, 4.0)
         path.close()
 
-        renderer._fill_aggdraw_path(  # noqa: SLF001
+        renderer._fill_aggdraw_path(
             path,
             (1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
             (0, 0, 255),
         )
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)  # noqa: SLF001
-        assert renderer._image.getpixel((2, 2)) == (0, 0, 255)  # noqa: SLF001
-        assert renderer._draw is not None  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)
+        assert renderer._image.getpixel((2, 2)) == (0, 0, 255)
+        assert renderer._draw is not None
     finally:
         doc.close()

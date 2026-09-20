@@ -588,7 +588,7 @@ def test_reader_bottom_panel_mouse_clicked_safe_with_no_dialog(tk_root) -> None:
     from pypdfbox.debugger.ui.reader_bottom_panel import ReaderBottomPanel
 
     # Clear any singleton state from sibling tests.
-    LogDialog._instance = None  # noqa: SLF001 — explicit test-only reset
+    LogDialog._instance = None
     panel = ReaderBottomPanel(tk_root)
     panel.init()
     # Without a LogDialog the click handler should bail safely.

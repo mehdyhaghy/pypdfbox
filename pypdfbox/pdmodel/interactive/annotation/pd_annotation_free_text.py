@@ -398,13 +398,13 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
-            return None
+            return
         from .handlers.pd_free_text_appearance_handler import (
             PDFreeTextAppearanceHandler,
         )
 
         PDFreeTextAppearanceHandler(self, document).generate_appearance_streams()
-        return None
+        return
 
 
 __all__ = ["PDAnnotationFreeText"]

@@ -69,7 +69,7 @@ class _CosLessColorSpace(PDColorSpace):
     """A color space whose ``get_cos_object`` returns ``None``. Used to
     exercise the ``set_alternate_color_space`` TypeError branch."""
 
-    def __init__(self) -> None:  # noqa: D401 - test fixture
+    def __init__(self) -> None:
         # Skip super().__init__ to keep _array unset.
         pass
 
@@ -93,7 +93,7 @@ class _CosLessFunction:
     """A duck-typed PDFunction substitute whose ``get_cos_object`` returns
     ``None`` — used to verify ``set_tint_transform``'s TypeError branch."""
 
-    def get_cos_object(self):  # noqa: D401 - test fixture
+    def get_cos_object(self):
         return None
 
 
@@ -146,8 +146,8 @@ def test_to_rgb_caches_results() -> None:
     second = cs.to_rgb([0.5])
     assert first == second
     # Cache populated after first call.
-    assert cs._to_rgb_map is not None  # noqa: SLF001
-    assert 127 in cs._to_rgb_map  # noqa: SLF001
+    assert cs._to_rgb_map is not None
+    assert 127 in cs._to_rgb_map
 
 
 def test_to_rgb_returns_none_when_no_alternate() -> None:
@@ -425,22 +425,22 @@ def test_get_default_decode_is_zero_one() -> None:
 def test_get_colorant_name_returns_none_for_non_name_entry() -> None:
     cs = PDSeparation()
     # Stuff a non-COSName at the colorant index.
-    cs._array.set(1, COSDictionary())  # noqa: SLF001
+    cs._array.set(1, COSDictionary())
     assert cs.get_colorant_name() is None
 
 
 def test_get_array_object_returns_none_when_out_of_range() -> None:
     cs = PDSeparation()
     # Default array has 4 slots (0..3). Index 99 -> None.
-    assert cs._get_array_object(99) is None  # noqa: SLF001
+    assert cs._get_array_object(99) is None
 
 
 def test_ensure_array_size_grows_with_placeholders() -> None:
     cs = PDSeparation()
-    cs._ensure_array_size(10)  # noqa: SLF001
-    assert cs._array.size() >= 10  # noqa: SLF001
+    cs._ensure_array_size(10)
+    assert cs._array.size() >= 10
     # Newly-added entries are empty COSName placeholders.
-    assert isinstance(cs._array.get_object(7), COSName)  # noqa: SLF001
+    assert isinstance(cs._array.get_object(7), COSName)
 
 
 def test_get_initial_color_is_full_tint() -> None:

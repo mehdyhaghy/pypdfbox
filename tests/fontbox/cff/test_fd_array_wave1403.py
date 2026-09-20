@@ -14,7 +14,7 @@ from pypdfbox.fontbox.cff.fd_array import FDArray
 class _FontNoNameNonDictRaw:
     """Font DICT with no ``FontName`` and a non-dict ``rawDict``."""
 
-    rawDict = None  # noqa: N815 — fontTools attribute name
+    rawDict = None
 
 
 def test_get_font_name_non_dict_raw_returns_empty() -> None:

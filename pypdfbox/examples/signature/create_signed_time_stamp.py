@@ -83,6 +83,6 @@ class CreateSignedTimeStamp(SignatureInterface):
         try:
             validation = ValidationTimeStamp(self._tsa_url)
             return validation.get_time_stamp_token(content)
-        except Exception:  # noqa: BLE001 - mirror upstream lenient logging
+        except Exception:
             LOG.error("Hashing-Algorithm not found for TimeStamping", exc_info=True)
             return b""

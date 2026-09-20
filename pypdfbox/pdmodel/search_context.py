@@ -22,7 +22,7 @@ class SearchContext:
 
     def __init__(self, page: PDPage | COSDictionary) -> None:
         # Local import to avoid a cycle (PDPage imports pdmodel).
-        from .pd_page import PDPage as _PDPage  # noqa: PLC0415
+        from .pd_page import PDPage as _PDPage
 
         if isinstance(page, _PDPage):
             self.searched: COSDictionary = page.get_cos_object()

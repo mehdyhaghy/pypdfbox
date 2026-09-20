@@ -132,7 +132,7 @@ def test_main_end_to_end_writes_valid_pdf(
     assert out.exists()
     blob = out.read_bytes()
     assert blob[:4] == b"%PDF"
-    assert blob.endswith(b"%%EOF") or blob.endswith(b"%%EOF\n")
+    assert blob.endswith((b"%%EOF", b"%%EOF\n"))
     # Round-trip parse — confirms the saved PDF is well-formed.
     with Loader.load_pdf(out) as cos_doc:
         doc = PDDocument(cos_doc)

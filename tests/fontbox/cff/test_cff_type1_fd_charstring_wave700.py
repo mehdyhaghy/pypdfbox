@@ -9,21 +9,21 @@ from pypdfbox.fontbox.cff.type1_char_string import Type1CharString
 
 def test_wave700_type1_local_subrs_private_none_returns_empty() -> None:
     class _Top:
-        Private = None  # noqa: N815
+        Private = None
 
     font = CFFType1Font()
-    font._top = _Top()  # noqa: SLF001
+    font._top = _Top()
 
     assert font.get_local_subr_index() == []
 
 
 def test_wave700_type1_unknown_predefined_encoding_falls_back_to_notdef() -> None:
     class _Top:
-        Encoding = "UnexpectedEncoding"  # noqa: N815
-        rawDict: dict[str, Any] = {}  # noqa: N815
+        Encoding = "UnexpectedEncoding"
+        rawDict: dict[str, Any] = {}
 
     font = CFFType1Font()
-    font._top = _Top()  # noqa: SLF001
+    font._top = _Top()
 
     assert font.code_to_name(65) == ".notdef"
     assert font.name_to_code("A") == -1
@@ -46,11 +46,11 @@ def test_wave700_type1_custom_encoding_bad_lookup_shapes_are_safe() -> None:
             raise TypeError
 
     class _Top:
-        Encoding: Any = _Mapping()  # noqa: N815
-        rawDict: dict[str, Any] = {}  # noqa: N815
+        Encoding: Any = _Mapping()
+        rawDict: dict[str, Any] = {}
 
     font = CFFType1Font()
-    font._top = _Top()  # noqa: SLF001
+    font._top = _Top()
 
     assert font.code_to_name(65) == ".notdef"
 
@@ -74,8 +74,8 @@ def test_wave700_fd_array_len_type_error_reports_empty() -> None:
 
 def test_wave700_fd_array_private_widths_missing_private_dict() -> None:
     class _Font:
-        rawDict: dict[str, Any] = {}  # noqa: N815
-        Private = None  # noqa: N815
+        rawDict: dict[str, Any] = {}
+        Private = None
 
     arr = FDArray.from_fonttools([_Font()])
 
@@ -104,8 +104,8 @@ def test_wave700_fd_array_repr_includes_size() -> None:
 
 def test_wave700_type1_charstring_width_uses_cached_path_width() -> None:
     cs = Type1CharString(None, "F", "A", None)
-    cs._cached_path = [("moveto", 1.0, 2.0)]  # noqa: SLF001
-    cs._t1.width = 321.0  # noqa: SLF001
+    cs._cached_path = [("moveto", 1.0, 2.0)]
+    cs._t1.width = 321.0
 
     assert cs.get_width() == 321.0
 

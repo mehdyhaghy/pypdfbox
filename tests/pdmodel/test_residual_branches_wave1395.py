@@ -108,29 +108,29 @@ def test_pd_button_accepts_string_index_when_export_values_present() -> None:
     from pypdfbox.pdmodel.interactive.form import PDAcroForm
     from pypdfbox.pdmodel.interactive.form.pd_button import PDButton
 
-    _AP = COSName.get_pdf_name("AP")
-    _N = COSName.get_pdf_name("N")
-    _KIDS = COSName.get_pdf_name("Kids")
-    _OPT = COSName.get_pdf_name("Opt")
+    ap_name = COSName.get_pdf_name("AP")
+    n_name = COSName.get_pdf_name("N")
+    kids_name = COSName.get_pdf_name("Kids")
+    opt_name = COSName.get_pdf_name("Opt")
 
     # Widget with on-state "Yes" so on_values is non-empty.
     normal = COSDictionary()
     normal.set_item(COSName.get_pdf_name("Yes"), COSDictionary())
     ap = COSDictionary()
-    ap.set_item(_N, normal)
+    ap.set_item(n_name, normal)
     widget = PDAnnotationWidget()
-    widget.get_cos_object().set_item(_AP, ap)
+    widget.get_cos_object().set_item(ap_name, ap)
 
     form = PDAcroForm()
     button = PDButton(form)
     kids = COSArray()
     kids.add(widget.get_cos_object())
-    button.get_cos_object().set_item(_KIDS, kids)
+    button.get_cos_object().set_item(kids_name, kids)
     # /Opt with two export values
     opt = COSArray()
     opt.add(COSString("first"))
     opt.add(COSString("second"))
-    button.get_cos_object().set_item(_OPT, opt)
+    button.get_cos_object().set_item(opt_name, opt)
     # Verify export_values populated.
     assert button.get_export_values() == ["first", "second"]
 
@@ -175,7 +175,7 @@ def test_pd_combo_box_edit_mode_returns_empty_indices_for_free_text() -> None:
     assert field.is_edit()
 
     # Free-typed value not in /Opt — must return empty list, not raise.
-    result = field._selected_option_indices_for_values(["gamma"])  # noqa: SLF001
+    result = field._selected_option_indices_for_values(["gamma"])
     assert result == []
 
 
@@ -283,7 +283,7 @@ def test_cos_array_list_remove_all_rejects_filtered_view() -> None:
     # Filtered: actual_list size != cos_array size, so _is_filtered is
     # auto-set by the (actual_list, cos_array) overload.
     lst = COSArrayList([1, 2], cos)
-    assert lst._is_filtered is True  # noqa: SLF001
+    assert lst._is_filtered is True
 
     with pytest.raises(NotImplementedError, match="filtered List"):
         lst.remove_all([1])

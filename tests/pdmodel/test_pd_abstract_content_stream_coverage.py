@@ -38,7 +38,7 @@ class _FakeResources:
         self.added_props: list[Any] = []
         self.added_ext: list[Any] = []
 
-    def add(self, value: Any) -> COSName:  # noqa: D401
+    def add(self, value: Any) -> COSName:
         self.added.append(value)
         return COSName.get_pdf_name(f"R{len(self.added)}")
 

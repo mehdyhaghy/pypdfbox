@@ -53,7 +53,7 @@ def test_wave818_format12_logs_character_beyond_ucs4_defensively(
     subtable = CmapSubtable()
     caplog.set_level(logging.WARNING, logger="pypdfbox.fontbox.ttf.cmap_subtable")
 
-    subtable._process_subtype_12(_Format12Data(), num_glyphs=10)  # type: ignore[arg-type]  # noqa: SLF001
+    subtable._process_subtype_12(_Format12Data(), num_glyphs=10)  # type: ignore[arg-type]
 
     assert "Format 12 cmap contains character beyond UCS-4" in caplog.text
 

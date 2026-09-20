@@ -60,10 +60,10 @@ class _TTInner:
             raise KeyError(key)
         return {".notdef": type("_Box", (), {"yMin": -10, "yMax": 50})()}
 
-    def getGlyphOrder(self) -> list[str]:  # noqa: N802
+    def getGlyphOrder(self) -> list[str]:
         return [".notdef"]
 
-    def getGlyphName(self, gid: int) -> str:  # noqa: N802
+    def getGlyphName(self, gid: int) -> str:
         assert gid == 0
         return ".notdef"
 
@@ -112,7 +112,7 @@ def test_type0_invalid_font_file3_is_cached_as_damaged() -> None:
     assert font.get_cff_font() is None
     assert font.get_cff_font() is None
     assert font.is_damaged() is True
-    assert font._cff is False  # noqa: SLF001
+    assert font._cff is False
 
 
 def test_type2_cid_to_gid_map_ignores_trailing_odd_byte_and_reloads() -> None:
@@ -141,7 +141,7 @@ def test_type2_invalid_embedded_program_fallback_is_damaged() -> None:
     assert font.is_embedded() is True
     assert font.get_true_type_font() is None
     assert font.is_damaged() is True
-    assert font._ttf is False  # noqa: SLF001
+    assert font._ttf is False
 
 
 def test_type2_embedded_notdef_path_is_drawn_and_scaled() -> None:

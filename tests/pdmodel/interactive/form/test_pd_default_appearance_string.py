@@ -97,7 +97,7 @@ def test_unknown_font_falls_back_to_helvetica() -> None:
     substitute Standard-14 Helvetica instead of raising. Diverges from
     upstream (recorded in ``CHANGES.md``) so fields with broken /DA
     strings still render."""
-    from pypdfbox.pdmodel.font import PDType1Font  # noqa: PLC0415
+    from pypdfbox.pdmodel.font import PDType1Font
 
     res = PDResources()
     da = PDDefaultAppearanceString(COSString("/Missing 12 Tf"), res)
@@ -112,7 +112,7 @@ def test_unknown_font_named_helvetica_falls_back_via_canonical() -> None:
     fall back to the canonical font (``Helvetica``) rather than the
     generic default — matches the spirit of PDFBOX-2661's "special
     mapping" idea."""
-    from pypdfbox.pdmodel.font import PDType1Font  # noqa: PLC0415
+    from pypdfbox.pdmodel.font import PDType1Font
 
     res = PDResources()
     da = PDDefaultAppearanceString(COSString("/Helv 12 Tf"), res)
@@ -332,7 +332,7 @@ def test_copy_needed_resources_carries_color_space() -> None:
     stream's /Resources. Pypdfbox extension over upstream's
     ``// todo: other kinds of resource…`` placeholder.
     """
-    from pypdfbox.cos import COSArray  # noqa: PLC0415
+    from pypdfbox.cos import COSArray
 
     res, _ = _resources_with_font()
     # Register a DeviceN-style named colour space under /MyCs.

@@ -36,10 +36,10 @@ def test_wave1234_wave1214_trace_helper_branches(monkeypatch: pytest.MonkeyPatch
             f_locals = {"_MalformedLength": _MalformedLength}
 
         assert installed_trace is not None
-        assert installed_trace(cast(FrameType, NonmatchingFrame()), "line", None) is (
+        assert installed_trace(cast("FrameType", NonmatchingFrame()), "line", None) is (
             installed_trace
         )
-        assert installed_trace(cast(FrameType, MatchingFrame()), "line", None) is None
+        assert installed_trace(cast("FrameType", MatchingFrame()), "line", None) is None
 
     monkeypatch.setattr(wave1214.sys, "settrace", fake_settrace)
     monkeypatch.setattr(

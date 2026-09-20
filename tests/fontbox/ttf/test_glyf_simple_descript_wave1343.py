@@ -146,9 +146,9 @@ def test_from_glyph_with_zero_contours_short_circuits() -> None:
     without invoking ``getCoordinates`` (line 188)."""
 
     class _RaisingGlyph:
-        numberOfContours = 0  # noqa: N815  fontTools attribute name
+        numberOfContours = 0
 
-        def getCoordinates(self, _table):  # noqa: N802  fontTools API name
+        def getCoordinates(self, _table):
             raise AssertionError("getCoordinates must not be called for n==0")
 
     d = GlyfSimpleDescript.from_glyph(_RaisingGlyph(), glyf_table=None)

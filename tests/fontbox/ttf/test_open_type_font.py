@@ -29,7 +29,7 @@ FIXTURE_TTF = (
 
 
 def _make_t2_empty():
-    from fontTools.misc.psCharStrings import T2CharString  # noqa: PLC0415
+    from fontTools.misc.psCharStrings import T2CharString
 
     cs = T2CharString()
     cs.program = ["endchar"]
@@ -39,7 +39,7 @@ def _make_t2_empty():
 def _synth_otf_name_keyed() -> bytes:
     """Build a minimal name-keyed CFF (Type 1-flavoured) OpenType font."""
     try:
-        from fontTools.fontBuilder import FontBuilder  # noqa: PLC0415
+        from fontTools.fontBuilder import FontBuilder
     except ImportError:
         pytest.skip("fontTools FontBuilder not available")
 
@@ -54,7 +54,7 @@ def _synth_otf_name_keyed() -> bytes:
         charStringsDict=cs,
         privateDict={},
     )
-    fb.setupHorizontalMetrics({name: (500, 0) for name in glyph_order})
+    fb.setupHorizontalMetrics(dict.fromkeys(glyph_order, (500, 0)))
     fb.setupHorizontalHeader(ascent=800, descent=-200)
     fb.setupNameTable({"familyName": "NK", "styleName": "Regular"})
     fb.setupOS2(sTypoAscender=800, usWinAscent=800, usWinDescent=200)

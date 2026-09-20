@@ -60,7 +60,7 @@ def test_pd_document_protect_accepts_public_key_policy() -> None:
     policy = PublicKeyProtectionPolicy()
     with PDDocument() as pd:
         pd.protect(policy)
-        assert pd._protection_policy is policy  # noqa: SLF001
+        assert pd._protection_policy is policy
 
 
 def test_pd_document_protect_rejects_unknown_policy_with_typeerror() -> None:
@@ -76,7 +76,7 @@ def test_cos_writer_stage_encryption_routes_public_key_policy() -> None:
     handler. Mirrors the standard-policy branch already covered upstream."""
     try:
         cert, _key = _build_self_signed_rsa()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pytest.skip("cert generation too heavy in this environment")
 
     policy = PublicKeyProtectionPolicy()

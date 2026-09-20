@@ -63,7 +63,7 @@ class PrintTextColors(PDFTextStripper):
         gs = None
         try:
             gs = self.get_graphics_state()
-        except Exception:  # noqa: BLE001
+        except Exception:
             gs = None
         stroking_color = getattr(gs, "get_stroking_color", lambda: None)() if gs else None
         non_stroking_color = getattr(gs, "get_non_stroking_color", lambda: None)() if gs else None

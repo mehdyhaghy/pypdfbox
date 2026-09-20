@@ -35,13 +35,13 @@ def test_copy_document_information_swallows_source_fetch_failure() -> None:
     """A source whose ``get_document_information`` itself raises is tolerated
     (the helper logs at debug and returns without touching the target)."""
     extractor = _extractor()
-    extractor._source_document = SimpleNamespace(  # noqa: SLF001
+    extractor._source_document = SimpleNamespace(
         get_document_information=_raise(RuntimeError("source info exploded")),
     )
     target = PDDocument()
     try:
         # Must not propagate; an extracted doc without /Info is still well-formed.
-        extractor._copy_document_information(target)  # noqa: SLF001
+        extractor._copy_document_information(target)
     finally:
         target.close()
 
@@ -50,12 +50,12 @@ def test_copy_viewer_preferences_swallows_catalog_fetch_failure() -> None:
     """A source whose ``get_document_catalog`` raises is tolerated — the helper
     returns before ever touching the target catalog."""
     extractor = _extractor()
-    extractor._source_document = SimpleNamespace(  # noqa: SLF001
+    extractor._source_document = SimpleNamespace(
         get_document_catalog=_raise(RuntimeError("source catalog exploded")),
     )
     target = PDDocument()
     try:
-        extractor._copy_viewer_preferences(target)  # noqa: SLF001
+        extractor._copy_viewer_preferences(target)
     finally:
         target.close()
 
@@ -69,11 +69,11 @@ def test_copy_viewer_preferences_no_op_when_source_prefs_absent() -> None:
         set_viewer_preferences=lambda prefs: set_calls.append(prefs)
     )
     extractor = _extractor()
-    extractor._source_document = SimpleNamespace(  # noqa: SLF001
+    extractor._source_document = SimpleNamespace(
         get_document_catalog=lambda: source_catalog,
     )
     target = SimpleNamespace(get_document_catalog=lambda: target_catalog)
 
-    extractor._copy_viewer_preferences(target)  # type: ignore[arg-type]  # noqa: SLF001
+    extractor._copy_viewer_preferences(target)  # type: ignore[arg-type]
 
     assert set_calls == []

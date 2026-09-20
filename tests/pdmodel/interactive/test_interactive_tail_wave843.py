@@ -66,7 +66,7 @@ def test_wave843_action_raw_and_malformed_entries_cover_tail_branches(
 
     def create_none(value: Any) -> None:
         assert isinstance(value, COSDictionary)
-        return None
+        return
 
     monkeypatch.setattr(
         "pypdfbox.pdmodel.common.filespecification.pd_file_specification."

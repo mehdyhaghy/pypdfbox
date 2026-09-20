@@ -88,7 +88,7 @@ def test_outline_count_update_ignores_self_referencing_parent() -> None:
     item.set_open_count(2)
     item.get_cos_object().set_item(_PARENT, item.get_cos_object())
 
-    item._update_parent_open_count(3)  # noqa: SLF001
+    item._update_parent_open_count(3)
 
     assert item.get_open_count() == 2
 

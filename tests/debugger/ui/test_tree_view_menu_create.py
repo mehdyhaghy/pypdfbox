@@ -37,5 +37,5 @@ def test_create_tree_view_menu_entries_match_labels(tk_root: tk.Tk) -> None:
 
 def test_create_tree_view_menu_private_alias_still_works(tk_root: tk.Tk) -> None:
     menu = TreeViewMenu.get_instance(master=tk_root)
-    rebuilt = menu._create_tree_view_menu()  # noqa: SLF001 - back-compat alias
+    rebuilt = menu._create_tree_view_menu()
     assert isinstance(rebuilt, tk.Menu)

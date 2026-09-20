@@ -17,7 +17,7 @@ from pypdfbox.pdmodel.pd_document import PDDocument
 
 
 @contextlib.contextmanager
-def _open_doc(infile, password):  # noqa: ANN001
+def _open_doc(infile, password):
     """Open ``infile`` and yield a :class:`PDDocument`.
 
     See :func:`pypdfbox.tools.extract_text._open_doc` for the rationale —

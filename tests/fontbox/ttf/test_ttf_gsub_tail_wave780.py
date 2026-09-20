@@ -100,11 +100,11 @@ def test_gsub_lookup_subtable_collection_getters() -> None:
 
 def test_gpos_pair_format2_skips_missing_class2_records() -> None:
     table = GlyphPositioningTable()
-    table._glyph_order = ["A", "V"]  # noqa: SLF001
-    table._glyph_name_to_gid = {"A": 0, "V": 1}  # noqa: SLF001
+    table._glyph_order = ["A", "V"]
+    table._glyph_name_to_gid = {"A": 0, "V": 1}
     pairs: dict[tuple[int, int], int] = {}
 
-    table._absorb_pair_format2(  # noqa: SLF001
+    table._absorb_pair_format2(
         SimpleNamespace(
             Coverage=SimpleNamespace(glyphs=["A"]),
             ClassDef1=SimpleNamespace(classDefs={}),
@@ -121,7 +121,7 @@ def test_gsub_substitution_skips_invalid_feature_indices(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     table = GlyphSubstitutionTable()
-    table._gsub_table = SimpleNamespace(  # noqa: SLF001
+    table._gsub_table = SimpleNamespace(
         FeatureList=SimpleNamespace(
             FeatureRecord=[
                 SimpleNamespace(
@@ -138,8 +138,8 @@ def test_gsub_substitution_skips_invalid_feature_indices(
             ]
         ),
     )
-    table._glyph_order = ["a", "a.alt"]  # noqa: SLF001
-    table._glyph_name_to_gid = {"a": 0, "a.alt": 1}  # noqa: SLF001
+    table._glyph_order = ["a", "a.alt"]
+    table._glyph_name_to_gid = {"a": 0, "a.alt": 1}
     monkeypatch.setattr(table, "_select_script_tag", lambda _tags: "latn")
     monkeypatch.setattr(
         table,
@@ -153,6 +153,6 @@ def test_gsub_substitution_skips_invalid_feature_indices(
 def test_cmap_format2_normalizes_negative_modulo_result() -> None:
     subtable = CmapSubtable()
 
-    subtable._process_subtype_2(_Format2Data(), num_glyphs=65536)  # type: ignore[arg-type]  # noqa: SLF001
+    subtable._process_subtype_2(_Format2Data(), num_glyphs=65536)  # type: ignore[arg-type]
 
     assert subtable.get_glyph_id(0) == 65535

@@ -50,7 +50,7 @@ def test_resource_key_for_color_space_walks_populated_dict_no_match() -> None:
         # cos differs from ``other_cos`` so the loop walks every entry
         # without matching, then ``_resources.add`` allocates a new slot.
         device_n = PDDeviceN()
-        key = cs._resource_key_for_color_space(device_n)  # noqa: SLF001
+        key = cs._resource_key_for_color_space(device_n)
     # Newly allocated key — distinct from the pre-existing CsExisting.
     assert isinstance(key, COSName)
     assert key.get_name() != "CsExisting"
@@ -74,7 +74,7 @@ def test_resource_key_for_property_list_walks_populated_dict_no_match() -> None:
         # A brand new PDPropertyList with its own COS — distinct from
         # the pre-populated entry.
         new_prop = PDPropertyList()
-        key = cs._resource_key_for_property_list(new_prop)  # noqa: SLF001
+        key = cs._resource_key_for_property_list(new_prop)
     assert isinstance(key, COSName)
     assert key.get_name() != "MCExisting"
 

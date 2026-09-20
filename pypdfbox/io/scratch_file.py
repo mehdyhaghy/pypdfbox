@@ -397,7 +397,7 @@ class ScratchFile:
         this is a no-op kept for parity-named call sites.
         """
         # Intentional no-op: lazy data structures self-initialise.
-        return None
+        return
 
     def init_pages(self) -> None:
         """Public-named alias for :meth:`_init_pages`.
@@ -423,7 +423,7 @@ class ScratchFile:
         no-op.
         """
         # Intentional no-op: _allocate_new_page() grows storage on demand.
-        return None
+        return
 
     def enlarge(self) -> None:
         """Public-named alias for :meth:`_enlarge`.
@@ -488,7 +488,7 @@ class ScratchFile:
             )
             _register_for_deletion(path)
             try:
-                self._tmp = path.open("r+b")  # noqa: SIM115
+                self._tmp = path.open("r+b")
             except OSError:
                 with contextlib.suppress(OSError):
                     path.unlink()

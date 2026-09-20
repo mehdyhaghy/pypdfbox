@@ -28,7 +28,7 @@ class _TagMap(dict[str, Any]):
 
 
 class _NameTable:
-    def getDebugName(self, _name_id: int) -> None:  # noqa: N802 - fontTools API
+    def getDebugName(self, _name_id: int) -> None:
         return None
 
 
@@ -39,7 +39,7 @@ class _FakeTTFont:
     def __getitem__(self, tag: str) -> object:
         return self._tables[tag]
 
-    def getGlyphOrder(self) -> list[str]:  # noqa: N802 - fontTools API
+    def getGlyphOrder(self) -> list[str]:
         return [".notdef", "A"]
 
 
@@ -65,36 +65,36 @@ def test_check_tables_reports_missing_required_tables() -> None:
     parser = TTFParser()
 
     with pytest.raises(OSError, match=r"\['cmap'\]"):
-        parser._check_tables(_MissingRequiredTableFont())  # noqa: SLF001
+        parser._check_tables(_MissingRequiredTableFont())
 
 
 def test_embedded_otf_check_tables_returns_after_shared_check() -> None:
     parser = OTFParser(is_embedded=True)
 
-    parser._check_tables(_MissingRequiredTableFont())  # noqa: SLF001
+    parser._check_tables(_MissingRequiredTableFont())
 
 
 def test_horizontal_metrics_returns_none_without_horizontal_header() -> None:
     font = object.__new__(TrueTypeFont)
-    font._hmtx = None  # noqa: SLF001
-    font._hhea = None  # noqa: SLF001
-    font._tt = _TagMap({"hmtx": SimpleNamespace(metrics={})})  # noqa: SLF001
+    font._hmtx = None
+    font._hhea = None
+    font._tt = _TagMap({"hmtx": SimpleNamespace(metrics={})})
 
     assert font.get_horizontal_metrics() is None
 
 
 def test_name_string_returns_none_when_name_record_missing() -> None:
     font = object.__new__(TrueTypeFont)
-    font._tt = _TagMap({"name": _NameTable()})  # noqa: SLF001
+    font._tt = _TagMap({"name": _NameTable()})
 
-    assert font._get_name_string(6) is None  # noqa: SLF001
+    assert font._get_name_string(6) is None
 
 
 def test_os2_windows_decodes_byte_vendor_id() -> None:
     font = object.__new__(TrueTypeFont)
-    font._os2_resolved = False  # noqa: SLF001
-    font._os2 = None  # noqa: SLF001
-    font._tt = _TagMap(  # noqa: SLF001
+    font._os2_resolved = False
+    font._os2 = None
+    font._tt = _TagMap(
         {
             "OS/2": SimpleNamespace(
                 version=0,

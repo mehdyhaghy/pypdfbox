@@ -236,7 +236,7 @@ def test_dedup_page_resources_with_no_resources_is_noop() -> None:
     util = PDFMergerUtility()
     page = COSDictionary()  # no /Resources at all
     cache: dict[bytes, object] = {}
-    util._dedup_page_resources(page, cache)  # noqa: SLF001
+    util._dedup_page_resources(page, cache)
     assert cache == {}
 
 
@@ -245,7 +245,7 @@ def test_dedup_page_resources_skips_non_dict_resource_container() -> None:
     page = COSDictionary()
     page.set_item(_RESOURCES, COSArray())  # wrong type
     cache: dict[bytes, object] = {}
-    util._dedup_page_resources(page, cache)  # noqa: SLF001
+    util._dedup_page_resources(page, cache)
     assert cache == {}
 
 
@@ -256,7 +256,7 @@ def test_dedup_page_resources_skips_non_dict_subcategory() -> None:
     resources.set_item(_FONT, COSArray())  # /Font is *not* a dict — skip
     page.set_item(_RESOURCES, resources)
     cache: dict[bytes, object] = {}
-    util._dedup_page_resources(page, cache)  # noqa: SLF001
+    util._dedup_page_resources(page, cache)
     assert cache == {}
 
 
@@ -270,7 +270,7 @@ def test_dedup_page_resources_skips_none_entry() -> None:
     resources.set_item(_FONT, fonts)
     page.set_item(_RESOURCES, resources)
     cache: dict[bytes, object] = {}
-    util._dedup_page_resources(page, cache)  # noqa: SLF001
+    util._dedup_page_resources(page, cache)
     assert cache == {}
 
 
@@ -288,7 +288,7 @@ def test_dedup_page_resources_skips_un_hashable_entry() -> None:
     resources.set_item(_FONT, fonts)
     page.set_item(_RESOURCES, resources)
     cache: dict[bytes, object] = {}
-    util._dedup_page_resources(page, cache)  # noqa: SLF001
+    util._dedup_page_resources(page, cache)
     assert cache == {}
 
 
@@ -321,11 +321,11 @@ def test_dedup_page_resources_populates_cache_then_collapses_duplicates() -> Non
     page_b.set_item(_RESOURCES, res_b)
 
     cache: dict[bytes, object] = {}
-    util._dedup_page_resources(page_a, cache)  # noqa: SLF001
+    util._dedup_page_resources(page_a, cache)
     assert len(cache) == 1
     # After the second page is folded in, /F1 must point at the
     # first page's font instance.
-    util._dedup_page_resources(page_b, cache)  # noqa: SLF001
+    util._dedup_page_resources(page_b, cache)
     assert fmap_b.get_dictionary_object(_F1) is f_a
 
 
@@ -426,11 +426,11 @@ def test_optimize_mode_dynamic_xfa_raises_oserror(tmp_path: Path) -> None:
             pass
 
     monkey = _FakeSourceDoc()
-    util._sources = [monkey]  # noqa: SLF001 — direct list bypass
+    util._sources = [monkey]
     util.set_destination_file_name(str(tmp_path / "out.pdf"))
 
     # Patch _open_source to return our fake without touching disk.
-    util._open_source = lambda src: (src, False)  # type: ignore[method-assign]  # noqa: SLF001
+    util._open_source = lambda src: (src, False)  # type: ignore[method-assign]
     with pytest.raises(OSError, match="dynamic XFA"):
         util.merge_documents()
 
@@ -457,7 +457,7 @@ def test_optimize_mode_source_close_failure_is_logged(
     # Force the source.close() to raise — _LOG.exception fires.
     original_open = util._open_source
 
-    def _flaky_open(src):  # noqa: ANN001
+    def _flaky_open(src):
         d, owns = original_open(src)
 
         class _Flaky:
@@ -469,7 +469,7 @@ def test_optimize_mode_source_close_failure_is_logged(
 
         return _Flaky(), True
 
-    util._open_source = _flaky_open  # type: ignore[method-assign]  # noqa: SLF001
+    util._open_source = _flaky_open  # type: ignore[method-assign]
     with caplog.at_level(logging.ERROR, logger="pypdfbox.multipdf.pdf_merger_utility"):
         util.merge_documents()
     assert "error closing source PDDocument" in caplog.text
@@ -499,7 +499,7 @@ def test_legacy_merge_destination_close_error_logged(
 
     from pypdfbox.pdmodel import pd_document as _pdm
 
-    def _always_flaky(self):  # noqa: ANN001
+    def _always_flaky(self):
         raise RuntimeError("flaky close")
 
     monkeypatch.setattr(_pdm.PDDocument, "close", _always_flaky)

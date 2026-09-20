@@ -44,7 +44,7 @@ class UpdateFieldOnDocumentOpen:
                 PDActionJavaScript,
             )
         except ImportError:
-            PDActionJavaScript = None  # type: ignore[assignment]
+            PDActionJavaScript = None  # type: ignore[assignment]  # noqa: N806 (import fallback)
 
         java_script = (
             "var now = util.printd('yyyy-mm-dd', new Date());"

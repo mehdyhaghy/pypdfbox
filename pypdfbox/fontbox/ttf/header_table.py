@@ -43,7 +43,7 @@ class HeaderTable(TTFTable):
 
     def read_headers(
         self,
-        ttf: TrueTypeFont,  # noqa: ARG002
+        ttf: TrueTypeFont,
         data: TTFDataStream,
         out_headers: FontHeaders,
     ) -> None:

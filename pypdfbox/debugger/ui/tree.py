@@ -381,4 +381,4 @@ def _read_stream_partial(stream: COSStream, stop_index: int) -> bytes:
 
 
 # Backwards-compat sentinel referenced by COSObject.get_key in the renderer.
-_ = COSObject  # noqa: B015 - keep the import alive for type checkers
+_ = COSObject

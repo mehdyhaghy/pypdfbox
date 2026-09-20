@@ -67,7 +67,7 @@ def test_passed_rotation_selects_adjusted_layout() -> None:
     overlay.set_adjust_rotation(True)
     overlay.load_pd_fs()
 
-    layout = overlay._get_layout_page(1, 1, 90)  # noqa: SLF001
+    layout = overlay._get_layout_page(1, 1, 90)
     assert layout is not None
     # 90° rotation swaps into the adjusted overlay layout (rotation applied).
     assert layout.overlay_rotation == (0 - 90 + 360) % 360
@@ -82,8 +82,8 @@ def test_passed_zero_rotation_keeps_default_layout() -> None:
     overlay.set_adjust_rotation(True)
     overlay.load_pd_fs()
 
-    layout = overlay._get_layout_page(1, 1, 0)  # noqa: SLF001
-    assert layout is overlay._default_overlay_page  # noqa: SLF001
+    layout = overlay._get_layout_page(1, 1, 0)
+    assert layout is overlay._default_overlay_page
 
 
 def test_public_delegate_two_arg_signature_falls_back_to_index() -> None:

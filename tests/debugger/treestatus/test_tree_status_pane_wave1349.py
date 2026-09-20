@@ -51,8 +51,8 @@ def test_text_input_with_locatable_path_selects_and_focuses_item(tk_root: tk.Tk)
 
     # Type a path that resolves successfully; the override returns the
     # synthetic item id.
-    pane._status_var.set("Foo")  # type: ignore[attr-defined]  # noqa: SLF001
-    pane._on_text_input(None)  # type: ignore[arg-type]  # noqa: SLF001
+    pane._status_var.set("Foo")  # type: ignore[attr-defined]
+    pane._on_text_input(None)  # type: ignore[arg-type]
 
     # selection_set + focus_set ran → tree state reflects the change.
     assert tree.selection() == ("iid_target",)

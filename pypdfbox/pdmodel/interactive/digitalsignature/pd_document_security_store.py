@@ -338,7 +338,7 @@ class PDDocumentSecurityStore:
         if isinstance(signature_or_key, str):
             return signature_or_key.upper()
         if isinstance(signature_or_key, (bytes, bytearray, memoryview)):
-            digest = hashlib.sha1(bytes(signature_or_key))  # noqa: S324
+            digest = hashlib.sha1(bytes(signature_or_key))
             return digest.hexdigest().upper()
         # Import lazily — pd_signature pulls in COS / typing surfaces we
         # already loaded above but the runtime cycle is avoided here.
@@ -351,7 +351,7 @@ class PDDocumentSecurityStore:
                     "VRI key: signature has no /Contents — sign the document "
                     "first or pass an explicit key"
                 )
-            digest = hashlib.sha1(bytes(contents))  # noqa: S324
+            digest = hashlib.sha1(bytes(contents))
             return digest.hexdigest().upper()
         raise TypeError(
             "VRI key: expected PDSignature / str / bytes, got "

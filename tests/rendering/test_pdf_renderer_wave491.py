@@ -24,16 +24,16 @@ def _make_doc(width: float = 8.0, height: float = 8.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (8, 8)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -52,7 +52,7 @@ def test_pattern_color_operators_resolve_trailing_name_after_tints() -> None:
     patterns = {"PFill": fill_pattern, "PStroke": stroke_pattern}
     doc, renderer = _prepared_renderer()
     try:
-        renderer._resources = _Resources()  # noqa: SLF001
+        renderer._resources = _Resources()
 
         renderer.process_operator(
             "scn",
@@ -63,9 +63,9 @@ def test_pattern_color_operators_resolve_trailing_name_after_tints() -> None:
             [COSFloat(0.5), COSFloat(0.75), COSName.get_pdf_name("PStroke")],
         )
 
-        assert renderer._gs.fill_pattern is fill_pattern  # noqa: SLF001
-        assert renderer._gs.stroke_pattern is stroke_pattern  # noqa: SLF001
-        assert renderer._resources.names == ["PFill", "PStroke"]  # noqa: SLF001
+        assert renderer._gs.fill_pattern is fill_pattern
+        assert renderer._gs.stroke_pattern is stroke_pattern
+        assert renderer._resources.names == ["PFill", "PStroke"]
     finally:
         _finish(renderer)
         doc.close()
@@ -81,7 +81,7 @@ def test_shading_fill_dispatches_resolved_resource(monkeypatch: Any) -> None:
     calls: list[tuple[object, object | None]] = []
     doc, renderer = _prepared_renderer()
     try:
-        renderer._resources = _Resources()  # noqa: SLF001
+        renderer._resources = _Resources()
 
         def _paint_shading(shading_arg: object, *, region_mask: object | None) -> None:
             calls.append((shading_arg, region_mask))
@@ -127,17 +127,17 @@ def test_extgstate_normal_blend_resets_mode_and_preserves_missing_alpha() -> Non
     soft_mask = object()
     doc, renderer = _prepared_renderer()
     try:
-        renderer._resources = _Resources()  # noqa: SLF001
-        renderer._gs.blend_mode = BlendMode.MULTIPLY  # noqa: SLF001
-        renderer._gs.stroke_alpha = 0.25  # noqa: SLF001
-        renderer._gs.fill_alpha = 0.75  # noqa: SLF001
+        renderer._resources = _Resources()
+        renderer._gs.blend_mode = BlendMode.MULTIPLY
+        renderer._gs.stroke_alpha = 0.25
+        renderer._gs.fill_alpha = 0.75
 
         renderer.process_operator("gs", [COSName.get_pdf_name("GS1")])
 
-        assert renderer._gs.blend_mode is None  # noqa: SLF001
-        assert renderer._gs.soft_mask is soft_mask  # noqa: SLF001
-        assert renderer._gs.stroke_alpha == 0.25  # noqa: SLF001
-        assert renderer._gs.fill_alpha == 0.75  # noqa: SLF001
+        assert renderer._gs.blend_mode is None
+        assert renderer._gs.soft_mask is soft_mask
+        assert renderer._gs.stroke_alpha == 0.25
+        assert renderer._gs.fill_alpha == 0.75
     finally:
         _finish(renderer)
         doc.close()
@@ -157,12 +157,12 @@ def test_resolve_font_does_not_cache_factory_miss(monkeypatch: Any) -> None:
     resources = _Resources()
     doc, renderer = _prepared_renderer()
     try:
-        renderer._resources = resources  # noqa: SLF001
+        renderer._resources = resources
         monkeypatch.setattr(PDFontFactory, "create_font", lambda _font_dict: None)
         font_name = COSName.get_pdf_name("FNone")
 
-        assert renderer._resolve_font(font_name) is None  # noqa: SLF001
-        assert renderer._resolve_font(font_name) is None  # noqa: SLF001
+        assert renderer._resolve_font(font_name) is None
+        assert renderer._resolve_font(font_name) is None
         assert resources.calls == 2
     finally:
         _finish(renderer)

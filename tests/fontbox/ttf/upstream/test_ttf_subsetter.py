@@ -66,7 +66,7 @@ def dejavu_sans_mono() -> TrueTypeFont:
 
 
 def _ttlib(buf: bytes):
-    import fontTools.ttLib as ttLib  # noqa: PLC0415
+    from fontTools import ttLib
 
     return ttLib.TTFont(io.BytesIO(buf))
 
@@ -123,7 +123,7 @@ def test_non_empty_subset(liberation_sans: TrueTypeFont) -> None:
     assert _name_to_gid(tt, ".notdef") == 0
     assert _name_to_gid(tt, "a") == 1
     # Advance width must survive subsetting unchanged.
-    full_metrics = liberation_sans._tt["hmtx"].metrics  # noqa: SLF001
+    full_metrics = liberation_sans._tt["hmtx"].metrics
     assert tt["hmtx"].metrics["a"][0] == full_metrics["a"][0]
 
 

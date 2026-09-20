@@ -232,7 +232,7 @@ def test_decoder_close_suppresses_inner_close_failure() -> None:
     class _BadCloser(io.BytesIO):
         _raised = False
 
-        def close(self) -> None:  # noqa: D401 — test stub
+        def close(self) -> None:
             # Only raise on the first close call (the wrapper's). Subsequent
             # finalizer-driven closes must succeed to avoid an unraisable
             # warning at GC time.

@@ -90,10 +90,10 @@ class _FakeTTInner:
     def __getitem__(self, key: str) -> Any:
         return self._tables[key]
 
-    def getGlyphOrder(self) -> list[str]:  # noqa: N802
+    def getGlyphOrder(self) -> list[str]:
         return self._glyph_order
 
-    def getGlyphName(self, gid: int) -> str:  # noqa: N802
+    def getGlyphName(self, gid: int) -> str:
         return self._glyph_order[gid]
 
     def getGlyphSet(self) -> dict[str, _FakeGlyph]:  # noqa: N802
@@ -219,7 +219,7 @@ def test_type2_no_program_parse_is_cached_as_not_damaged() -> None:
 
     assert font.get_true_type_font() is None
     assert font.get_true_type_font() is None
-    assert font._ttf is False  # noqa: SLF001
+    assert font._ttf is False
     assert font.is_embedded() is False
     assert font.is_damaged() is False
 

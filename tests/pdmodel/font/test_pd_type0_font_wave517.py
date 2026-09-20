@@ -128,7 +128,7 @@ def test_wave517_embedded_ttf_unicode_fallback_maps_gid_to_codepoint(
     assert font.to_unicode(0x42) == "B"
 
     monkeypatch.setattr(descendant, "code_to_gid", lambda _cid: 0)
-    assert font._unicode_from_embedded_cmap(0x42) is None  # noqa: SLF001
+    assert font._unicode_from_embedded_cmap(0x42) is None
 
 
 def test_wave517_subset_embeds_bytes_tags_basefont_and_clears_cache(
@@ -156,7 +156,7 @@ def test_wave517_subset_embeds_bytes_tags_basefont_and_clears_cache(
             return {}
 
     descendant = PDCIDFontType2(COSDictionary())
-    descendant._ttf = object()  # noqa: SLF001
+    descendant._ttf = object()
     monkeypatch.setattr(descendant, "get_true_type_font", lambda: descendant._ttf)
     monkeypatch.setattr(ttf_module, "TTFSubsetter", Subsetter)
     monkeypatch.setattr(
@@ -174,8 +174,8 @@ def test_wave517_subset_embeds_bytes_tags_basefont_and_clears_cache(
     assert calls["prefix"] == "ABCDEF"
     assert calls["embed"] == (descendant, b"subset-bytes", "ABCDEF")
     assert font.get_base_font() == "ABCDEF+BasePS"
-    assert descendant._ttf is None  # noqa: SLF001
-    assert font._collect_subset_codepoints(None, None) == set()  # noqa: SLF001
+    assert descendant._ttf is None
+    assert font._collect_subset_codepoints(None, None) == set()
 
 
 def test_wave517_read_font_bytes_accepts_path_and_decode_delegates(
@@ -185,7 +185,7 @@ def test_wave517_read_font_bytes_accepts_path_and_decode_delegates(
     path = tmp_path / "font.bin"
     path.write_bytes(b"path-bytes")
 
-    assert type0_module._read_font_bytes(path) == b"path-bytes"  # noqa: SLF001
+    assert type0_module._read_font_bytes(path) == b"path-bytes"
 
     font = PDType0Font()
     monkeypatch.setattr(font, "read_code", lambda data, offset: (data[offset], 1))

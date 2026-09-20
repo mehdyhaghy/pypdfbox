@@ -693,7 +693,7 @@ class BlendMode:
 
 def _register(name: str) -> BlendMode:
     instance = BlendMode(name)
-    BlendMode._BY_NAME[name] = instance  # noqa: SLF001 - module-private setup
+    BlendMode._BY_NAME[name] = instance
     return instance
 
 

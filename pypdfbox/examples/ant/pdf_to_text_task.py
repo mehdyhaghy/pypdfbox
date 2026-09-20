@@ -80,9 +80,9 @@ class PDFToTextTask:
         """
         # Local import to defer the heavy pdmodel/text pull-in until the
         # task actually runs; keeps ``PDFToTextTask()`` cheap.
-        from pypdfbox.loader import Loader  # noqa: PLC0415
-        from pypdfbox.pdmodel import PDDocument  # noqa: PLC0415
-        from pypdfbox.text import PDFTextStripper  # noqa: PLC0415
+        from pypdfbox.loader import Loader
+        from pypdfbox.pdmodel import PDDocument
+        from pypdfbox.text import PDFTextStripper
 
         logger.info("PDFToTextTask executing")
 

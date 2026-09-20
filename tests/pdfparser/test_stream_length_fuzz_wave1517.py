@@ -277,7 +277,7 @@ def _dec(stream: COSStream) -> str:
                     break
                 total += len(chunk)
             return str(total)
-    except Exception:  # noqa: BLE001 — mirror probe dec=ERR
+    except Exception:
         return "ERR"
 
 
@@ -286,7 +286,7 @@ def _project(pdf_path: Path) -> str:
     document = None
     try:
         document = Loader.load_pdf(str(pdf_path))
-    except Exception as exc:  # noqa: BLE001 — mirror probe LOAD:<Exc>
+    except Exception as exc:
         return "LOAD:" + type(exc).__name__
     try:
         obj = document.get_object_from_pool(COSObjectKey(1, 0))
@@ -294,7 +294,7 @@ def _project(pdf_path: Path) -> str:
             return "ABSENT"
         try:
             resolved = obj.get_object()
-        except Exception as exc:  # noqa: BLE001 — mirror probe ERR:<Exc>
+        except Exception as exc:
             return "ERR:" + type(exc).__name__
         if resolved is None or isinstance(resolved, COSNull):
             return "null"

@@ -148,11 +148,11 @@ _CLASS_NAMES_BY_OP: dict[str, str] = {
 }
 
 _MODULE_BY_OP: dict[str, str] = (
-    {n: ".arithmetic_operators" for n in _ARITHMETIC_NAMES}
-    | {n: ".bitwise_operators" for n in _BITWISE_NAMES}
-    | {n: ".relational_operators" for n in _RELATIONAL_NAMES}
-    | {n: ".conditional_operators" for n in _CONDITIONAL_NAMES}
-    | {n: ".stack_operators" for n in _STACK_NAMES}
+    dict.fromkeys(_ARITHMETIC_NAMES, ".arithmetic_operators")
+    | dict.fromkeys(_BITWISE_NAMES, ".bitwise_operators")
+    | dict.fromkeys(_RELATIONAL_NAMES, ".relational_operators")
+    | dict.fromkeys(_CONDITIONAL_NAMES, ".conditional_operators")
+    | dict.fromkeys(_STACK_NAMES, ".stack_operators")
 )
 
 

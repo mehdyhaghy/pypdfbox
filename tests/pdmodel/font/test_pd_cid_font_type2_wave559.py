@@ -14,7 +14,7 @@ class _MissingGlyphTable:
     def __contains__(self, key: str) -> bool:
         return key in {"glyf", "head"}
 
-    def getGlyphOrder(self) -> list[str]:  # noqa: N802 - fontTools API
+    def getGlyphOrder(self) -> list[str]:
         return [".notdef", "A"]
 
     def __getitem__(self, key: str) -> Any:

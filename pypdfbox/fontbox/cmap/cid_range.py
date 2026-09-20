@@ -69,7 +69,7 @@ class CIDRange:
             return self._unicode + (code - self._from)
         return -1
 
-    def map(  # noqa: A003 — mirror upstream method name; collides with builtin
+    def map(
         self,
         code_or_bytes: int | bytes | bytearray | memoryview,
         length: int | None = None,

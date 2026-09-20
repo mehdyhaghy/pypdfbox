@@ -3,13 +3,15 @@ from __future__ import annotations
 import pytest
 
 from pypdfbox.pdmodel.encryption import AccessPermission
-from pypdfbox.pdmodel.encryption.access_permission import AccessPermission as AP
+from pypdfbox.pdmodel.encryption.access_permission import (
+    AccessPermission as AccessPermissionFromModule,
+)
 
 # ---------- construction ----------
 
 
 def test_default_constructor_grants_full_access() -> None:
-    p = AP()
+    p = AccessPermissionFromModule()
     assert p.is_owner_permission()
     assert p.can_print()
     assert p.can_modify()
@@ -29,21 +31,21 @@ def test_constructor_explicit_int_stored_verbatim() -> None:
     ``-4``), matching ``new AccessPermission(-1)`` in PDFBox (oracle-proven,
     wave 1537). The decoded permission SET is identical for both — every
     defined bit is on — only the raw stored int differs."""
-    assert AP(-1).get_permission_bytes() == -1
-    assert AP().get_permission_bytes() == -4
+    assert AccessPermissionFromModule(-1).get_permission_bytes() == -1
+    assert AccessPermissionFromModule().get_permission_bytes() == -4
     # Identical predicate view despite the different stored int.
     for explicit, default in zip(
         (
-            AP(-1).can_print(),
-            AP(-1).can_modify(),
-            AP(-1).can_extract_content(),
-            AP(-1).is_owner_permission(),
+            AccessPermissionFromModule(-1).can_print(),
+            AccessPermissionFromModule(-1).can_modify(),
+            AccessPermissionFromModule(-1).can_extract_content(),
+            AccessPermissionFromModule(-1).is_owner_permission(),
         ),
         (
-            AP().can_print(),
-            AP().can_modify(),
-            AP().can_extract_content(),
-            AP().is_owner_permission(),
+            AccessPermissionFromModule().can_print(),
+            AccessPermissionFromModule().can_modify(),
+            AccessPermissionFromModule().can_extract_content(),
+            AccessPermissionFromModule().is_owner_permission(),
         ),
         strict=True,
     ):
@@ -51,7 +53,7 @@ def test_constructor_explicit_int_stored_verbatim() -> None:
 
 
 def test_constructor_zero_revokes_all_defined_bits() -> None:
-    p = AP(0)
+    p = AccessPermissionFromModule(0)
     assert not p.can_print()
     assert not p.can_modify()
     assert not p.can_extract_content()
@@ -65,20 +67,20 @@ def test_constructor_zero_revokes_all_defined_bits() -> None:
 
 def test_constructor_decodes_individual_bit() -> None:
     # Only bit 3 (printable) set
-    p = AP(1 << 2)
+    p = AccessPermissionFromModule(1 << 2)
     assert p.can_print()
     assert not p.can_modify()
     assert not p.can_extract_content()
 
 
 def test_get_instance_returns_owner_perms() -> None:
-    p = AP.get_instance()
+    p = AccessPermissionFromModule.get_instance()
     assert p.is_owner_permission()
-    assert isinstance(p, AP)
+    assert isinstance(p, AccessPermissionFromModule)
 
 
 def test_get_owner_access_permission_returns_owner_perms() -> None:
-    p = AP.get_owner_access_permission()
+    p = AccessPermissionFromModule.get_owner_access_permission()
     assert p.is_owner_permission()
 
 
@@ -103,7 +105,7 @@ def test_bit_positions_match_spec(
     bit_pos: int, getter_name: str, setter_name: str
 ) -> None:
     """Setter on a fresh-zero instance flips exactly the spec-mandated bit."""
-    p = AP(0)
+    p = AccessPermissionFromModule(0)
     expected_mask = 1 << (bit_pos - 1)
 
     getattr(p, setter_name)(True)
@@ -116,21 +118,21 @@ def test_bit_positions_match_spec(
 
 
 def test_bit_position_constants() -> None:
-    assert AP.BIT_PRINTABLE == 3
-    assert AP.BIT_MODIFIABLE == 4
-    assert AP.BIT_EXTRACTABLE == 5
-    assert AP.BIT_MODIFIABLE_ANNOTATIONS == 6
-    assert AP.BIT_FILL_FORMS == 9
-    assert AP.BIT_EXTRACTABLE_FOR_ACCESSIBILITY == 10
-    assert AP.BIT_ASSEMBLE_DOCUMENT == 11
-    assert AP.BIT_PRINT_DEGRADED == 12
+    assert AccessPermissionFromModule.BIT_PRINTABLE == 3
+    assert AccessPermissionFromModule.BIT_MODIFIABLE == 4
+    assert AccessPermissionFromModule.BIT_EXTRACTABLE == 5
+    assert AccessPermissionFromModule.BIT_MODIFIABLE_ANNOTATIONS == 6
+    assert AccessPermissionFromModule.BIT_FILL_FORMS == 9
+    assert AccessPermissionFromModule.BIT_EXTRACTABLE_FOR_ACCESSIBILITY == 10
+    assert AccessPermissionFromModule.BIT_ASSEMBLE_DOCUMENT == 11
+    assert AccessPermissionFromModule.BIT_PRINT_DEGRADED == 12
 
 
 # ---------- read-only freezing ----------
 
 
 def test_set_read_only_blocks_subsequent_setters() -> None:
-    p = AP(0)
+    p = AccessPermissionFromModule(0)
     p.set_read_only()
     assert p.is_read_only()
 
@@ -151,7 +153,7 @@ def test_set_read_only_blocks_subsequent_setters() -> None:
 
 
 def test_read_only_default_false() -> None:
-    p = AP()
+    p = AccessPermissionFromModule()
     assert not p.is_read_only()
 
 
@@ -159,7 +161,7 @@ def test_read_only_default_false() -> None:
 
 
 def test_is_owner_permission_requires_every_defined_bit() -> None:
-    p = AP()
+    p = AccessPermissionFromModule()
     assert p.is_owner_permission()
     p.set_can_modify(False)
     assert not p.is_owner_permission()
@@ -169,18 +171,18 @@ def test_is_owner_permission_requires_every_defined_bit() -> None:
 
 
 def test_get_permission_bytes_round_trips() -> None:
-    p = AP(0)
+    p = AccessPermissionFromModule(0)
     p.set_can_print(True)
     p.set_can_modify(True)
     out = p.get_permission_bytes()
-    decoded = AP(out)
+    decoded = AccessPermissionFromModule(out)
     assert decoded.can_print()
     assert decoded.can_modify()
     assert not decoded.can_extract_content()
 
 
 def test_get_permission_bits_as_int_alias() -> None:
-    p = AP(0xABCD)
+    p = AccessPermissionFromModule(0xABCD)
     assert p.get_permission_bits_as_int() == p.get_permission_bytes() == 0xABCD
 
 
@@ -188,14 +190,14 @@ def test_default_permissions_value_is_negated_three() -> None:
     """Upstream spec: ``DEFAULT_PERMISSIONS = ~3`` (all defined bits set,
     bits 1 and 2 cleared in the spec sense; in two's complement Python
     sees this as ``-4``)."""
-    assert AP().get_permission_bytes() == ~3 == -4
+    assert AccessPermissionFromModule().get_permission_bytes() == ~3 == -4
 
 
 # ---------- per-bit independence ----------
 
 
 def test_setting_one_bit_does_not_disturb_others() -> None:
-    p = AP(0)
+    p = AccessPermissionFromModule(0)
     p.set_can_print(True)
     p.set_can_assemble_document(True)
     p.set_can_print(False)
@@ -207,7 +209,7 @@ def test_setting_one_bit_does_not_disturb_others() -> None:
 
 
 def test_reexport_from_package() -> None:
-    assert AccessPermission is AP
+    assert AccessPermission is AccessPermissionFromModule
 
 
 # ---------- byte-array constructor (from_bytes) ----------
@@ -217,13 +219,13 @@ def test_from_bytes_decodes_big_endian_signed_int() -> None:
     """Mirrors upstream ``AccessPermission(byte[] b)`` — bytes are MSB-first
     and the resulting int is signed (so a leading 0xFF stays negative)."""
     # ~3 == 0xFFFFFFFC, big-endian signed → bytes [0xFF, 0xFF, 0xFF, 0xFC].
-    p = AP.from_bytes(b"\xff\xff\xff\xfc")
+    p = AccessPermissionFromModule.from_bytes(b"\xff\xff\xff\xfc")
     assert p.get_permission_bytes() == ~3
     assert p.is_owner_permission()
 
 
 def test_from_bytes_zeroed_buffer_revokes_everything() -> None:
-    p = AP.from_bytes(b"\x00\x00\x00\x00")
+    p = AccessPermissionFromModule.from_bytes(b"\x00\x00\x00\x00")
     assert p.get_permission_bytes() == 0
     assert not p.can_print()
     assert not p.is_owner_permission()
@@ -231,12 +233,12 @@ def test_from_bytes_zeroed_buffer_revokes_everything() -> None:
 
 def test_from_bytes_short_buffer_raises() -> None:
     with pytest.raises(ValueError):
-        AP.from_bytes(b"\x00\x00\x00")
+        AccessPermissionFromModule.from_bytes(b"\x00\x00\x00")
 
 
 def test_from_bytes_only_print_bit() -> None:
     # Only bit 3 (printable) set → 0x00000004
-    p = AP.from_bytes(b"\x00\x00\x00\x04")
+    p = AccessPermissionFromModule.from_bytes(b"\x00\x00\x00\x04")
     assert p.can_print()
     assert not p.can_modify()
 
@@ -250,7 +252,7 @@ def test_get_permission_bytes_for_public_key_sets_bit_1_clears_7_8_and_high() ->
     Starting from owner perms (-4 = 0xFFFFFFFC), the result must end up
     equal to 0xFFD & ~0x60 == 0xF9D (bits 1, 3, 4, 5, 6, 9, 10, 11, 12 set).
     """
-    p = AP()  # owner / -4
+    p = AccessPermissionFromModule()  # owner / -4
     out = p.get_permission_bytes_for_public_key()
     expected = (1 << 0) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5) \
         | (1 << 8) | (1 << 9) | (1 << 10) | (1 << 11)
@@ -260,7 +262,7 @@ def test_get_permission_bytes_for_public_key_sets_bit_1_clears_7_8_and_high() ->
 
 
 def test_get_permission_bytes_for_public_key_from_zero() -> None:
-    p = AP(0)
+    p = AccessPermissionFromModule(0)
     out = p.get_permission_bytes_for_public_key()
     # Only bit 1 is set; bits 7, 8, and 13..32 are all already zero.
     assert out == 1
@@ -269,7 +271,7 @@ def test_get_permission_bytes_for_public_key_from_zero() -> None:
 def test_get_permission_bytes_for_public_key_clears_high_bits() -> None:
     # 0xFFFFFFFE — every bit except bit 1 (1-based) set. The helper must
     # reinstate bit 1, clear bits 7 and 8, and clear everything above bit 12.
-    p = AP(-2)
+    p = AccessPermissionFromModule(-2)
     out = p.get_permission_bytes_for_public_key()
     # Bits remaining: 1..6, 9..12 → 0x0F3F.
     assert out == 0x0F3F
@@ -279,11 +281,11 @@ def test_get_permission_bytes_for_public_key_clears_high_bits() -> None:
 
 
 def test_has_any_revision3_permission_set_owner() -> None:
-    assert AP().has_any_revision3_permission_set()
+    assert AccessPermissionFromModule().has_any_revision3_permission_set()
 
 
 def test_has_any_revision3_permission_set_zero() -> None:
-    assert not AP(0).has_any_revision3_permission_set()
+    assert not AccessPermissionFromModule(0).has_any_revision3_permission_set()
 
 
 @pytest.mark.parametrize(
@@ -296,7 +298,7 @@ def test_has_any_revision3_permission_set_zero() -> None:
     ],
 )
 def test_has_any_revision3_permission_set_each_r3_bit(setter: str) -> None:
-    p = AP(0)
+    p = AccessPermissionFromModule(0)
     getattr(p, setter)(True)
     assert p.has_any_revision3_permission_set()
 
@@ -311,6 +313,6 @@ def test_has_any_revision3_permission_set_each_r3_bit(setter: str) -> None:
     ],
 )
 def test_has_any_revision3_permission_set_ignores_r2_bits(setter: str) -> None:
-    p = AP(0)
+    p = AccessPermissionFromModule(0)
     getattr(p, setter)(True)
     assert not p.has_any_revision3_permission_set()

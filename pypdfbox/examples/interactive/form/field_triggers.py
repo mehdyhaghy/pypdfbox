@@ -49,13 +49,14 @@ class FieldTriggers:
                 PDActionJavaScript,
             )
         except ImportError:
-            PDActionJavaScript = None  # type: ignore[assignment]
+            PDActionJavaScript = None  # type: ignore[assignment]  # noqa: N806 (import fallback)
         try:
             from pypdfbox.pdmodel.interactive.action.pd_annotation_additional_actions import (
                 PDAnnotationAdditionalActions,
             )
         except ImportError:
-            PDAnnotationAdditionalActions = None  # type: ignore[assignment]
+            # N806: the import fallback has to rebind the imported class name.
+            PDAnnotationAdditionalActions = None  # type: ignore[assignment]  # noqa: N806
 
         with PDDocument.load(src) as document:
             acro_form = document.get_document_catalog().get_acro_form()

@@ -93,21 +93,21 @@ def test_code_to_gid_falls_back_to_mac_roman_when_win_unicode_misses(
     monkeypatch.setattr(font, "is_symbolic", lambda: False)
     monkeypatch.setattr(font, "get_encoding_typed", lambda: WinAnsiEncoding.INSTANCE)
     # Skip the extract_cmap_table path entirely - install fakes by hand.
-    font._cmap_initialized = True  # noqa: SLF001
+    font._cmap_initialized = True
     # Win-Unicode subtable that does NOT carry "A" → returns 0.
-    font._cmap_win_unicode = _platform_view(  # noqa: SLF001
+    font._cmap_win_unicode = _platform_view(
         {0xFFFD: "uniFFFD"}, ["uniFFFD"]
     )
     # Mac-Roman platform view that DOES — "A" maps via MacOSRomanEncoding
     # at byte 0x41, gid 7 in our fake glyph_order.
-    font._cmap_win_symbol = None  # noqa: SLF001
-    font._cmap_mac_roman = _platform_view(  # noqa: SLF001
+    font._cmap_win_symbol = None
+    font._cmap_mac_roman = _platform_view(
         {0x41: "A"}, [".notdef", "g1", "g2", "g3", "g4", "g5", "g6", "A"]
     )
     ttf = font.get_true_type_font()
     assert ttf is not None
     # ord("A") under WinAnsi → name "A". WinUnicode misses, mac_roman hits.
-    gid = font._code_to_gid(ord("A"), ttf)  # noqa: SLF001
+    gid = font._code_to_gid(ord("A"), ttf)
     assert gid == 7
 
 
@@ -119,16 +119,16 @@ def test_code_to_gid_mac_roman_returns_zero_when_name_unmappable(
     font = _font_with_embedded_ttf()
     monkeypatch.setattr(font, "is_symbolic", lambda: False)
     monkeypatch.setattr(font, "get_encoding_typed", lambda: WinAnsiEncoding.INSTANCE)
-    font._cmap_initialized = True  # noqa: SLF001
-    font._cmap_win_unicode = _platform_view({}, [])  # noqa: SLF001
-    font._cmap_win_symbol = None  # noqa: SLF001
+    font._cmap_initialized = True
+    font._cmap_win_unicode = _platform_view({}, [])
+    font._cmap_win_symbol = None
     # Map a code WinAnsi resolves to a name MacOSRomanEncoding lacks
     # (e.g. "Euro" is in WinAnsi but not Mac-Roman).
-    font._cmap_mac_roman = _platform_view({}, [".notdef"])  # noqa: SLF001
+    font._cmap_mac_roman = _platform_view({}, [".notdef"])
     ttf = font.get_true_type_font()
     assert ttf is not None
     # WinAnsi 0x80 → "Euro" (Mac-Roman has no Euro code).
-    gid = font._code_to_gid(0x80, ttf)  # noqa: SLF001
+    gid = font._code_to_gid(0x80, ttf)
     # name_to_gid("Euro") may or may not succeed; we just need the
     # mac-roman ``if mac_code is not None`` branch to take the False arm.
     assert isinstance(gid, int)
@@ -146,18 +146,18 @@ def test_code_to_gid_symbolic_with_winansi_encoding_uses_glyph_name(
     monkeypatch.setattr(font, "is_symbolic", lambda: True)
     # Set up resolved encoding so the symbolic branch takes the
     # ``isinstance(encoding, (WinAnsiEncoding, MacRomanEncoding))`` arm.
-    font._encoding_typed = WinAnsiEncoding.INSTANCE  # noqa: SLF001
-    font._encoding_resolved = True  # noqa: SLF001
-    font._cmap_initialized = True  # noqa: SLF001
+    font._encoding_typed = WinAnsiEncoding.INSTANCE
+    font._encoding_resolved = True
+    font._cmap_initialized = True
     # Win-Unicode subtable carries "A" at U+0041.
-    font._cmap_win_unicode = _platform_view(  # noqa: SLF001
+    font._cmap_win_unicode = _platform_view(
         {0x41: "A"}, [".notdef", "A"]
     )
-    font._cmap_win_symbol = None  # noqa: SLF001
-    font._cmap_mac_roman = None  # noqa: SLF001
+    font._cmap_win_symbol = None
+    font._cmap_mac_roman = None
     ttf = font.get_true_type_font()
     assert ttf is not None
-    gid = font._code_to_gid(ord("A"), ttf)  # noqa: SLF001
+    gid = font._code_to_gid(ord("A"), ttf)
     assert gid == 1
 
 
@@ -168,19 +168,19 @@ def test_code_to_gid_symbolic_with_pua_shifted_symbol_table(
     shifts (F000 / F100 / F200) when direct lookup misses."""
     font = _font_with_embedded_ttf(symbolic=True)
     monkeypatch.setattr(font, "is_symbolic", lambda: True)
-    font._encoding_typed = None  # noqa: SLF001
-    font._encoding_resolved = True  # noqa: SLF001
-    font._cmap_initialized = True  # noqa: SLF001
-    font._cmap_win_unicode = None  # noqa: SLF001
+    font._encoding_typed = None
+    font._encoding_resolved = True
+    font._cmap_initialized = True
+    font._cmap_win_unicode = None
     # Win-Symbol PUA shift at F0+code → glyph 3.
-    font._cmap_win_symbol = _platform_view(  # noqa: SLF001
+    font._cmap_win_symbol = _platform_view(
         {0xF041: "A"}, [".notdef", "g1", "g2", "A"]
     )
-    font._cmap_mac_roman = None  # noqa: SLF001
+    font._cmap_mac_roman = None
     ttf = font.get_true_type_font()
     assert ttf is not None
     # Code 0x41 → direct miss → PUA-shifted hit at F041.
-    gid = font._code_to_gid(0x41, ttf)  # noqa: SLF001
+    gid = font._code_to_gid(0x41, ttf)
     assert gid == 3
 
 
@@ -200,18 +200,18 @@ def test_code_to_gid_symbolic_with_winansi_encoding_returns_zero_for_notdef(
 
     font = _font_with_embedded_ttf(symbolic=True)
     monkeypatch.setattr(font, "is_symbolic", lambda: True)
-    font._encoding_typed = _PartialWinAnsi()  # noqa: SLF001
-    font._encoding_resolved = True  # noqa: SLF001
-    font._cmap_initialized = True  # noqa: SLF001
-    font._cmap_win_unicode = _platform_view(  # noqa: SLF001
+    font._encoding_typed = _PartialWinAnsi()
+    font._encoding_resolved = True
+    font._cmap_initialized = True
+    font._cmap_win_unicode = _platform_view(
         {0x41: "A"}, [".notdef", "A"]
     )
-    font._cmap_win_symbol = None  # noqa: SLF001
-    font._cmap_mac_roman = None  # noqa: SLF001
+    font._cmap_win_symbol = None
+    font._cmap_mac_roman = None
     ttf = font.get_true_type_font()
     assert ttf is not None
     # Code 0x99 → encoding returns ".notdef" → returns 0 (line 676).
-    gid = font._code_to_gid(0x99, ttf)  # noqa: SLF001
+    gid = font._code_to_gid(0x99, ttf)
     assert gid == 0
 
 
@@ -230,21 +230,21 @@ def test_code_to_gid_symbolic_with_winansi_encoding_no_unicode_for_name(
         def get_name(self, _code: int) -> str:
             return "totallyMadeUpName"
 
-    font._encoding_typed = _FakeEnc()  # noqa: SLF001
-    font._encoding_resolved = True  # noqa: SLF001
-    font._cmap_initialized = True  # noqa: SLF001
-    font._cmap_win_unicode = _platform_view(  # noqa: SLF001
+    font._encoding_typed = _FakeEnc()
+    font._encoding_resolved = True
+    font._cmap_initialized = True
+    font._cmap_win_unicode = _platform_view(
         {0x41: "A"}, [".notdef", "A"]
     )
     # Symbol cmap fallback at code 0x41 returns gid 5.
-    font._cmap_win_symbol = _platform_view(  # noqa: SLF001
+    font._cmap_win_symbol = _platform_view(
         {0x41: "X"},
         [".notdef", "g1", "g2", "g3", "g4", "X"],
     )
-    font._cmap_mac_roman = None  # noqa: SLF001
+    font._cmap_mac_roman = None
     ttf = font.get_true_type_font()
     assert ttf is not None
-    gid = font._code_to_gid(0x41, ttf)  # noqa: SLF001
+    gid = font._code_to_gid(0x41, ttf)
     assert gid == 5
 
 
@@ -256,18 +256,18 @@ def test_code_to_gid_symbolic_no_encoding_uses_direct_cmap_lookup(
     path."""
     font = _font_with_embedded_ttf(symbolic=True)
     monkeypatch.setattr(font, "is_symbolic", lambda: True)
-    font._encoding_typed = None  # noqa: SLF001
-    font._encoding_resolved = True  # noqa: SLF001
-    font._cmap_initialized = True  # noqa: SLF001
+    font._encoding_typed = None
+    font._encoding_resolved = True
+    font._cmap_initialized = True
     # Win-Unicode subtable mapping code 0x41 directly.
-    font._cmap_win_unicode = _platform_view(  # noqa: SLF001
+    font._cmap_win_unicode = _platform_view(
         {0x41: "A"}, [".notdef", "A"]
     )
-    font._cmap_win_symbol = None  # noqa: SLF001
-    font._cmap_mac_roman = None  # noqa: SLF001
+    font._cmap_win_symbol = None
+    font._cmap_mac_roman = None
     ttf = font.get_true_type_font()
     assert ttf is not None
-    gid = font._code_to_gid(0x41, ttf)  # noqa: SLF001
+    gid = font._code_to_gid(0x41, ttf)
     assert gid == 1
 
 
@@ -278,18 +278,18 @@ def test_code_to_gid_symbolic_pua_f100_fallback(
     look up miss."""
     font = _font_with_embedded_ttf(symbolic=True)
     monkeypatch.setattr(font, "is_symbolic", lambda: True)
-    font._encoding_typed = None  # noqa: SLF001
-    font._encoding_resolved = True  # noqa: SLF001
-    font._cmap_initialized = True  # noqa: SLF001
-    font._cmap_win_unicode = None  # noqa: SLF001
+    font._encoding_typed = None
+    font._encoding_resolved = True
+    font._cmap_initialized = True
+    font._cmap_win_unicode = None
     # Only F100+code (0xF141) is mapped; F000+code is not.
-    font._cmap_win_symbol = _platform_view(  # noqa: SLF001
+    font._cmap_win_symbol = _platform_view(
         {0xF141: "A"}, [".notdef", "g1", "A"]
     )
-    font._cmap_mac_roman = None  # noqa: SLF001
+    font._cmap_mac_roman = None
     ttf = font.get_true_type_font()
     assert ttf is not None
-    gid = font._code_to_gid(0x41, ttf)  # noqa: SLF001
+    gid = font._code_to_gid(0x41, ttf)
     assert gid == 2
 
 
@@ -299,18 +299,18 @@ def test_code_to_gid_symbolic_pua_f200_fallback(
     """Line 697 — F200 PUA shift path fires as the third fallback."""
     font = _font_with_embedded_ttf(symbolic=True)
     monkeypatch.setattr(font, "is_symbolic", lambda: True)
-    font._encoding_typed = None  # noqa: SLF001
-    font._encoding_resolved = True  # noqa: SLF001
-    font._cmap_initialized = True  # noqa: SLF001
-    font._cmap_win_unicode = None  # noqa: SLF001
+    font._encoding_typed = None
+    font._encoding_resolved = True
+    font._cmap_initialized = True
+    font._cmap_win_unicode = None
     # Only F200+code (0xF241) is mapped.
-    font._cmap_win_symbol = _platform_view(  # noqa: SLF001
+    font._cmap_win_symbol = _platform_view(
         {0xF241: "A"}, [".notdef", "g1", "g2", "A"]
     )
-    font._cmap_mac_roman = None  # noqa: SLF001
+    font._cmap_mac_roman = None
     ttf = font.get_true_type_font()
     assert ttf is not None
-    gid = font._code_to_gid(0x41, ttf)  # noqa: SLF001
+    gid = font._code_to_gid(0x41, ttf)
     assert gid == 3
 
 
@@ -321,17 +321,17 @@ def test_code_to_gid_symbolic_skips_pua_for_code_above_ff(
     entirely; falls straight through to the mac-roman lookup."""
     font = _font_with_embedded_ttf(symbolic=True)
     monkeypatch.setattr(font, "is_symbolic", lambda: True)
-    font._encoding_typed = None  # noqa: SLF001
-    font._encoding_resolved = True  # noqa: SLF001
-    font._cmap_initialized = True  # noqa: SLF001
-    font._cmap_win_unicode = None  # noqa: SLF001
-    font._cmap_win_symbol = _platform_view({}, [])  # noqa: SLF001
-    font._cmap_mac_roman = _platform_view(  # noqa: SLF001
+    font._encoding_typed = None
+    font._encoding_resolved = True
+    font._cmap_initialized = True
+    font._cmap_win_unicode = None
+    font._cmap_win_symbol = _platform_view({}, [])
+    font._cmap_mac_roman = _platform_view(
         {0x100: "wide"}, [".notdef", "wide"]
     )
     ttf = font.get_true_type_font()
     assert ttf is not None
-    gid = font._code_to_gid(0x100, ttf)  # noqa: SLF001
+    gid = font._code_to_gid(0x100, ttf)
     assert gid == 1
 
 
@@ -343,14 +343,14 @@ def test_code_to_gid_falls_back_to_name_to_gid_when_cmaps_miss(
     font = _font_with_embedded_ttf()
     monkeypatch.setattr(font, "is_symbolic", lambda: False)
     monkeypatch.setattr(font, "get_encoding_typed", lambda: WinAnsiEncoding.INSTANCE)
-    font._cmap_initialized = True  # noqa: SLF001
-    font._cmap_win_unicode = _platform_view({}, [])  # noqa: SLF001
-    font._cmap_win_symbol = None  # noqa: SLF001
-    font._cmap_mac_roman = _platform_view({}, [])  # noqa: SLF001
+    font._cmap_initialized = True
+    font._cmap_win_unicode = _platform_view({}, [])
+    font._cmap_win_symbol = None
+    font._cmap_mac_roman = _platform_view({}, [])
     ttf = font.get_true_type_font()
     assert ttf is not None
     monkeypatch.setattr(ttf, "name_to_gid", lambda _name: 42)
-    gid = font._code_to_gid(ord("A"), ttf)  # noqa: SLF001
+    gid = font._code_to_gid(ord("A"), ttf)
     assert gid == 42
 
 
@@ -362,10 +362,10 @@ def test_code_to_gid_name_to_gid_exception_returns_zero(
     font = _font_with_embedded_ttf()
     monkeypatch.setattr(font, "is_symbolic", lambda: False)
     monkeypatch.setattr(font, "get_encoding_typed", lambda: WinAnsiEncoding.INSTANCE)
-    font._cmap_initialized = True  # noqa: SLF001
-    font._cmap_win_unicode = _platform_view({}, [])  # noqa: SLF001
-    font._cmap_win_symbol = None  # noqa: SLF001
-    font._cmap_mac_roman = _platform_view({}, [])  # noqa: SLF001
+    font._cmap_initialized = True
+    font._cmap_win_unicode = _platform_view({}, [])
+    font._cmap_win_symbol = None
+    font._cmap_mac_roman = _platform_view({}, [])
     ttf = font.get_true_type_font()
     assert ttf is not None
 
@@ -373,7 +373,7 @@ def test_code_to_gid_name_to_gid_exception_returns_zero(
         raise RuntimeError("boom")
 
     monkeypatch.setattr(ttf, "name_to_gid", _raise)
-    gid = font._code_to_gid(ord("A"), ttf)  # noqa: SLF001
+    gid = font._code_to_gid(ord("A"), ttf)
     assert gid == 0
 
 
@@ -385,19 +385,19 @@ def test_code_to_gid_via_unicode_subtable_encoding_drives_lookup(
     GlyphList Unicode + the Unicode cmap subtable."""
     font = _font_with_embedded_ttf()
     monkeypatch.setattr(font, "is_symbolic", lambda: False)
-    font._encoding_typed = WinAnsiEncoding.INSTANCE  # noqa: SLF001
-    font._encoding_resolved = True  # noqa: SLF001
+    font._encoding_typed = WinAnsiEncoding.INSTANCE
+    font._encoding_resolved = True
     # Stub the cmap subtable so the helper finds 0x41 → gid 17.
-    font._cmap_resolved = True  # noqa: SLF001
+    font._cmap_resolved = True
 
     class _FakeCmap:
         def get_glyph_id(self, code: int) -> int:
             return 17 if code == 0x41 else 0
 
-    font._cmap_subtable = _FakeCmap()  # noqa: SLF001
+    font._cmap_subtable = _FakeCmap()
     ttf = font.get_true_type_font()
     assert ttf is not None
-    gid = font._code_to_gid_via_unicode_subtable(ord("A"), ttf)  # noqa: SLF001
+    gid = font._code_to_gid_via_unicode_subtable(ord("A"), ttf)
     assert gid == 17
 
 
@@ -408,18 +408,18 @@ def test_code_to_gid_via_unicode_subtable_symbolic_pua_loop(
     / F200) when both encoding-driven and direct lookups miss."""
     font = _font_with_embedded_ttf(symbolic=True)
     monkeypatch.setattr(font, "is_symbolic", lambda: True)
-    font._encoding_typed = None  # noqa: SLF001
-    font._encoding_resolved = True  # noqa: SLF001
-    font._cmap_resolved = True  # noqa: SLF001
+    font._encoding_typed = None
+    font._encoding_resolved = True
+    font._cmap_resolved = True
 
     class _PuaCmap:
         def get_glyph_id(self, code: int) -> int:
             return 7 if code == 0xF041 else 0
 
-    font._cmap_subtable = _PuaCmap()  # noqa: SLF001
+    font._cmap_subtable = _PuaCmap()
     ttf = font.get_true_type_font()
     assert ttf is not None
-    gid = font._code_to_gid_via_unicode_subtable(0x41, ttf)  # noqa: SLF001
+    gid = font._code_to_gid_via_unicode_subtable(0x41, ttf)
     assert gid == 7
 
 
@@ -430,17 +430,17 @@ def test_code_to_gid_symbolic_falls_through_to_mac_roman_when_others_miss(
     fires when both the WinUnicode + WinSymbol arms returned 0."""
     font = _font_with_embedded_ttf(symbolic=True)
     monkeypatch.setattr(font, "is_symbolic", lambda: True)
-    font._encoding_typed = None  # noqa: SLF001
-    font._encoding_resolved = True  # noqa: SLF001
-    font._cmap_initialized = True  # noqa: SLF001
-    font._cmap_win_unicode = None  # noqa: SLF001
-    font._cmap_win_symbol = None  # noqa: SLF001
-    font._cmap_mac_roman = _platform_view(  # noqa: SLF001
+    font._encoding_typed = None
+    font._encoding_resolved = True
+    font._cmap_initialized = True
+    font._cmap_win_unicode = None
+    font._cmap_win_symbol = None
+    font._cmap_mac_roman = _platform_view(
         {0x41: "A"}, [".notdef", "A"]
     )
     ttf = font.get_true_type_font()
     assert ttf is not None
-    gid = font._code_to_gid(0x41, ttf)  # noqa: SLF001
+    gid = font._code_to_gid(0x41, ttf)
     assert gid == 1
 
 

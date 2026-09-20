@@ -98,7 +98,7 @@ def test_resolve_arabic_paragraph_autodetected() -> None:
 def test_resolve_mixed_ltr_rtl_assigns_distinct_levels() -> None:
     # "abc OLLEH" — "OLLEH" is a fake "Hebrew" word in caps; use real
     # Hebrew here to get bidi class R.
-    text = "abc אבג"  # noqa: RUF001
+    text = "abc אבג"
     levels = BidiResolver().resolve(text)
     # First 4 chars (abc + space) at level 0; last 3 chars (Hebrew) at
     # level 1.
@@ -115,12 +115,12 @@ def test_resolve_mixed_ltr_rtl_assigns_distinct_levels() -> None:
 
 
 def test_reorder_mixed_paragraph_reverses_rtl_run_only() -> None:
-    text = "abc אבג"  # noqa: RUF001
+    text = "abc אבג"
     levels = BidiResolver().resolve(text)
     visual = reorder_visually(text, levels)
     # The RTL run should be reversed; the LTR run stays put.
     assert visual.startswith("abc ")
-    rtl_in = "אבג"  # noqa: RUF001
+    rtl_in = "אבג"
     assert visual.endswith(rtl_in[::-1])
 
 
@@ -158,7 +158,7 @@ def test_resolve_W7_EN_after_L_becomes_L() -> None:
 def test_resolve_RTL_paragraph_with_LTR_run_and_numbers() -> None:
     # Hebrew + spaces + Latin/digits — the Latin/digits stay in LTR
     # order within the visual reordered output.
-    text = "אבג 12 abc"  # noqa: RUF001
+    text = "אבג 12 abc"
     levels = BidiResolver().resolve(text)
     visual = reorder_visually(text, levels)
     # "12 abc" should appear in its source order somewhere in the visual
@@ -173,7 +173,7 @@ def test_resolve_RTL_paragraph_with_LTR_run_and_numbers() -> None:
 
 
 def test_resolve_trailing_whitespace_resets_to_paragraph_level() -> None:
-    text = "אבג   "  # noqa: RUF001  -- Hebrew + 3 spaces
+    text = "אבג   "
     levels = BidiResolver().resolve(text)
     # Trailing whitespace levels reset to paragraph level (1 here).
     # Hebrew levels remain odd, trailing ws becomes odd too (paragraph
@@ -259,7 +259,7 @@ def test_handle_direction_pure_arabic_reverses() -> None:
 
 def test_handle_direction_mixed_paragraph_keeps_LTR_run_in_source_order() -> None:
     stripper = PDFTextStripper()
-    text = "abc אבג"  # noqa: RUF001
+    text = "abc אבג"
     out = stripper.handle_direction(text)
     # "abc" must still appear in source order in the visual output.
     assert "abc" in out
@@ -283,14 +283,14 @@ def test_handle_direction_LTR_with_arabic_numerals_unchanged() -> None:
 def test_handle_direction_applies_bracket_mirroring_in_rtl_run() -> None:
     stripper = PDFTextStripper()
     # "(abc)" inside a fully RTL paragraph — the brackets should mirror.
-    text = "א(ב)ג"  # noqa: RUF001
+    text = "א(ב)ג"
     out = stripper.handle_direction(text)
     # When the entire string is at level 1 and we apply L4, '(' should
     # be mirrored to ')' and vice-versa during reordering.
     # Source order:  א ( ב ) ג   (5 chars)
     # Reversed:      ג ) ב ( א
     # After L4 on level-1 chars: ג ( ב ) א
-    assert out == "ג(ב)א"  # noqa: RUF001
+    assert out == "ג(ב)א"
 
 
 # ---------- BidiSample.pdf.txt fixture parity ----------------------------

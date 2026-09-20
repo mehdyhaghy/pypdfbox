@@ -158,7 +158,7 @@ class FSFontInfo(FontInfo):
         """
         try:
             return self.read_true_type_font(post_script_name, file)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
 
     def read_true_type_font(self, post_script_name: str, file: Path) -> Any | None:
@@ -191,7 +191,7 @@ class FSFontInfo(FontInfo):
         """
         try:
             return self.read_true_type_font(post_script_name, file)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
 
     def get_type1_font(self, post_script_name: str, file: Path) -> Any | None:
@@ -205,7 +205,7 @@ class FSFontInfo(FontInfo):
             return None
         try:
             return T1Font(str(file))
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
 
     def _load_font(self) -> Any | None:
@@ -223,7 +223,7 @@ class FSFontInfo(FontInfo):
                 return self._load_truetype()
             if self._format is FontFormat.PFB:
                 return self._load_type1()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         return None
 
@@ -237,7 +237,7 @@ class FSFontInfo(FontInfo):
         if name.endswith((".ttc", ".otc")):
             try:
                 ttc = TTCollection(str(self._file))
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return None
             for font in ttc.fonts:
                 try:
@@ -250,7 +250,7 @@ class FSFontInfo(FontInfo):
             return None
         try:
             return TTFont(str(self._file))
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
 
     def _load_type1(self) -> Any | None:
@@ -261,7 +261,7 @@ class FSFontInfo(FontInfo):
             return None
         try:
             return T1Font(str(self._file))
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
 
     def to_string(self) -> str:

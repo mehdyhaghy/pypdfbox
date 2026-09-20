@@ -6,7 +6,7 @@ from tests.pdmodel.common.function import test_pd_function_type4_wave443 as wave
 
 
 def test_wave916_make_helper_populates_range_array() -> None:
-    fn = wave443._make(  # noqa: SLF001
+    fn = wave443._make(
         "{ 2 mul }",
         domain=[0.0, 10.0],
         rng=[0.0, 6.0],

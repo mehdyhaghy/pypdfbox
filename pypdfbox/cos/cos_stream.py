@@ -72,7 +72,7 @@ class _EncodingOutputStream(io.BytesIO):
             self._committed = True
             # Local import to avoid a hard cos→filter dependency at
             # module import time (filter imports COSDictionary etc.).
-            from pypdfbox.filter import FilterFactory  # noqa: PLC0415
+            from pypdfbox.filter import FilterFactory
 
             data = self.getvalue()
             # PDF filter chain reads left-to-right when *decoding*; when
@@ -439,7 +439,7 @@ class COSStream(COSDictionary):
         ):
             try:
                 head = bytes(self.get_raw_data()[:9])
-            except Exception:  # noqa: BLE001 — defensive; fall through to decrypt
+            except Exception:
                 head = b""
             if head == b"<?xpacket":
                 _LOG.warning(
@@ -515,7 +515,7 @@ class COSStream(COSDictionary):
             return self.create_raw_input_stream()
 
         # Local import to keep cos free of a static filter dep.
-        from pypdfbox.filter import FilterFactory  # noqa: PLC0415
+        from pypdfbox.filter import FilterFactory
 
         stop_set = _coerce_stop_filter_names(stop_filters)
 
@@ -604,7 +604,7 @@ class COSStream(COSDictionary):
         ``createRawInputStream`` precondition that upstream enforces
         through ``createView`` when no filters are present."""
         # Local import to keep cos free of a static io dep at module-load.
-        from pypdfbox.io import RandomAccessReadBuffer  # noqa: PLC0415
+        from pypdfbox.io import RandomAccessReadBuffer
 
         if self._buffer is None:
             raise OSError("stream has no data")
@@ -757,7 +757,7 @@ class COSStream(COSDictionary):
         swallow-and-log behavior."""
         # Local import to avoid a static cycle (COSString lives next door
         # but importing eagerly would tighten module-load ordering).
-        from .cos_string import COSString  # noqa: PLC0415
+        from .cos_string import COSString
 
         try:
             with self.create_input_stream() as src:

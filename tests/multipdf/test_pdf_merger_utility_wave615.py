@@ -110,7 +110,7 @@ def test_wave615_merge_acro_form_installs_source_form_when_destination_missing()
     source_form.get_cos_object().set_string(COSName.get_pdf_name("NeedAppearances"), "yes")
     dest_catalog = _CatalogWithForm(None)
 
-    PDFMergerUtility()._merge_acro_form(  # noqa: SLF001
+    PDFMergerUtility()._merge_acro_form(
         _IdentityCloner(),  # type: ignore[arg-type]
         dest_catalog,
         _CatalogWithForm(source_form),
@@ -123,7 +123,7 @@ def test_wave615_merge_acro_form_installs_source_form_when_destination_missing()
 
 def test_wave615_merge_acro_form_reraises_errors_unless_ignored() -> None:
     with pytest.raises(OSError, match="cannot inspect"):
-        PDFMergerUtility()._merge_acro_form(  # noqa: SLF001
+        PDFMergerUtility()._merge_acro_form(
             _IdentityCloner(),  # type: ignore[arg-type]
             _BrokenCatalog(),
             _Catalog(),
@@ -138,7 +138,7 @@ def test_wave615_legacy_dests_are_installed_then_merged() -> None:
     dest_catalog = _Catalog()
 
     util = PDFMergerUtility()
-    util._merge_names(_IdentityCloner(), src_catalog, dest_catalog)  # noqa: SLF001
+    util._merge_names(_IdentityCloner(), src_catalog, dest_catalog)
 
     installed = dest_catalog.get_cos_object().get_dictionary_object(_DESTS)
     assert installed is src_dests
@@ -148,7 +148,7 @@ def test_wave615_legacy_dests_are_installed_then_merged() -> None:
     second_source = _Catalog()
     second_source.get_cos_object().set_item(_DESTS, more_dests)
 
-    util._merge_names(_IdentityCloner(), second_source, dest_catalog)  # noqa: SLF001
+    util._merge_names(_IdentityCloner(), second_source, dest_catalog)
 
     assert src_dests.get_string(COSName.get_pdf_name("B")) == "bravo"
 
@@ -165,7 +165,7 @@ def test_wave615_output_intents_install_and_append() -> None:
     dest_catalog = _Catalog()
 
     util = PDFMergerUtility()
-    util._merge_output_intents(_IdentityCloner(), src_catalog, dest_catalog)  # noqa: SLF001
+    util._merge_output_intents(_IdentityCloner(), src_catalog, dest_catalog)
 
     installed = dest_catalog.get_cos_object().get_dictionary_object(_OUTPUT_INTENTS)
     assert isinstance(installed, COSArray)
@@ -179,14 +179,14 @@ def test_wave615_output_intents_install_and_append() -> None:
     second_source = _Catalog()
     second_source.get_cos_object().set_item(_OUTPUT_INTENTS, second)
 
-    util._merge_output_intents(_IdentityCloner(), second_source, dest_catalog)  # noqa: SLF001
+    util._merge_output_intents(_IdentityCloner(), second_source, dest_catalog)
 
     assert installed.size() == 2
     assert installed.get_object(1) is second_intent
 
     # Merging a source whose identifier already exists in the destination
     # is deduped (PDFBOX-6173 net shape).
-    util._merge_output_intents(_IdentityCloner(), src_catalog, dest_catalog)  # noqa: SLF001
+    util._merge_output_intents(_IdentityCloner(), src_catalog, dest_catalog)
     assert installed.size() == 2
 
 
@@ -197,7 +197,7 @@ def test_wave615_open_action_is_first_source_wins() -> None:
     dest_catalog = _Catalog()
 
     util = PDFMergerUtility()
-    util._merge_open_action(_IdentityCloner(), src_catalog, dest_catalog)  # noqa: SLF001
+    util._merge_open_action(_IdentityCloner(), src_catalog, dest_catalog)
 
     assert dest_catalog.get_cos_object().get_dictionary_object(_OPEN_ACTION) is source_action
 
@@ -205,20 +205,20 @@ def test_wave615_open_action_is_first_source_wins() -> None:
     other_source = _Catalog()
     other_source.get_cos_object().set_item(_OPEN_ACTION, other_action)
 
-    util._merge_open_action(_IdentityCloner(), other_source, dest_catalog)  # noqa: SLF001
+    util._merge_open_action(_IdentityCloner(), other_source, dest_catalog)
 
     assert dest_catalog.get_cos_object().get_dictionary_object(_OPEN_ACTION) is source_action
 
 
 def test_wave615_strip_struct_parent_from_annotations_is_defensive() -> None:
     page = COSDictionary()
-    PDFMergerUtility._strip_struct_parent_from_annots(page)  # noqa: SLF001
+    PDFMergerUtility._strip_struct_parent_from_annots(page)
 
     annot = COSDictionary()
     annot.set_item(_STRUCT_PARENT, COSInteger.get(5))
     page.set_item(COSName.get_pdf_name("Annots"), COSArray([annot, COSString("skip")]))
 
-    PDFMergerUtility._strip_struct_parent_from_annots(page)  # noqa: SLF001
+    PDFMergerUtility._strip_struct_parent_from_annots(page)
 
     assert annot.get_dictionary_object(_STRUCT_PARENT) is None
 
@@ -262,7 +262,7 @@ def test_wave615_merge_id_tree_drops_duplicates_and_wraps_cos_dictionaries(
     dest_root = _StructRoot(_Tree(names={"same": COSDictionary()}))
 
     with caplog.at_level(logging.WARNING, logger="pypdfbox.multipdf.pdf_merger_utility"):
-        PDFMergerUtility()._merge_id_tree(  # noqa: SLF001
+        PDFMergerUtility()._merge_id_tree(
             _IdentityCloner(),  # type: ignore[arg-type]
             src_root,
             dest_root,

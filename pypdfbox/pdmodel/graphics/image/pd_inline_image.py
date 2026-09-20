@@ -254,7 +254,7 @@ class PDInlineImage:
             return self.create_color_space(cs)
         if self.is_stencil():
             # Stencil-mask color space must be gray; it is often missing.
-            from pypdfbox.pdmodel.graphics.color import PDDeviceGray  # noqa: PLC0415
+            from pypdfbox.pdmodel.graphics.color import PDDeviceGray
 
             return PDDeviceGray.INSTANCE
         # An image without a color space is always broken.
@@ -583,7 +583,7 @@ class PDInlineImage:
         Stencil masks, multi-component 16-bit samples and other non-device
         colour models remain rendering-cluster work and return ``None``.
         """
-        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (
             decode_pdimage_to_pil,
         )
 

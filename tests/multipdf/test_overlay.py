@@ -226,10 +226,10 @@ def test_overlay_position_enum_round_trip() -> None:
     assert len({Position.FOREGROUND, Position.BACKGROUND}) == 2
     overlay = Overlay()
     overlay.set_overlay_position(Position.FOREGROUND)
-    actual: Position = overlay._position  # noqa: SLF001
+    actual: Position = overlay._position
     assert actual is Position.FOREGROUND
     overlay.set_overlay_position(Position.BACKGROUND)
-    actual = overlay._position  # noqa: SLF001
+    actual = overlay._position
     assert actual is Position.BACKGROUND
 
 
@@ -272,7 +272,7 @@ def test_overlay_context_manager_closes_file_loaded_documents(
         overlay.set_input_file(str(base_path))
         overlay.set_default_overlay_file(str(overlay_path))
         result = overlay.overlay({})
-        loaded_overlay = overlay._default_overlay_document  # noqa: SLF001
+        loaded_overlay = overlay._default_overlay_document
         assert loaded_overlay is not None
         assert not result.is_closed()
         assert not loaded_overlay.is_closed()
@@ -467,18 +467,18 @@ def test_overlay_combined_content_handles_array_of_streams() -> None:
 
 def test_overlay_set_adjust_rotation_toggles_flag() -> None:
     overlay = Overlay()
-    assert overlay._adjust_rotation is False  # noqa: SLF001
+    assert overlay._adjust_rotation is False
     overlay.set_adjust_rotation(True)
-    assert overlay._adjust_rotation is True  # noqa: SLF001
+    assert overlay._adjust_rotation is True
     overlay.set_adjust_rotation(False)
-    assert overlay._adjust_rotation is False  # noqa: SLF001
+    assert overlay._adjust_rotation is False
 
 
 def test_overlay_float_to_string_strips_trailing_zeros() -> None:
     """The internal ``_float_to_string`` must keep ``.0`` for integer-valued
     floats and strip trailing zeros otherwise — this matches upstream's
     BigDecimal-based formatter and keeps content streams compact."""
-    f = Overlay._float_to_string  # noqa: SLF001
+    f = Overlay._float_to_string
     assert f(0.0) == "0.0"
     assert f(1.0) == "1.0"
     assert f(1.5) == "1.5"
@@ -494,7 +494,7 @@ def test_overlay_unknown_position_raises() -> None:
     overlay = Overlay()
     overlay.set_input_pdf(base)
     overlay.set_default_overlay_pdf(_build_overlay_doc())
-    overlay._position = "BAD"  # type: ignore[assignment]  # noqa: SLF001
+    overlay._position = "BAD"  # type: ignore[assignment]
     with pytest.raises(OSError, match="Unknown type of position"):
         overlay.overlay({})
 
@@ -530,9 +530,9 @@ def test_overlay_close_clears_specific_page_layout() -> None:
     overlay = Overlay()
     overlay.set_input_pdf(base)
     overlay.overlay_documents({1: _build_overlay_doc()})
-    assert overlay._specific_page_overlay_layout  # noqa: SLF001
+    assert overlay._specific_page_overlay_layout
     overlay.close()
-    assert not overlay._specific_page_overlay_layout  # noqa: SLF001
+    assert not overlay._specific_page_overlay_layout
 
 
 def test_overlay_returns_input_document_identity() -> None:
@@ -625,7 +625,7 @@ def test_overlay_form_bbox_uses_create_retranslated_rectangle() -> None:
     bbox = form_stream.get_dictionary_object(COSName.get_pdf_name("BBox"))
     assert isinstance(bbox, COSArray)
     # Retranslated: (0, 0, width, height) where width=200, height=200.
-    floats = [cast(Any, bbox.get(i)).float_value() for i in range(4)]
+    floats = [cast("Any", bbox.get(i)).float_value() for i in range(4)]
     assert floats == [0.0, 0.0, 200.0, 200.0]
 
 
@@ -698,7 +698,7 @@ def test_default_overlay_file_overrides_default_overlay_pdf(tmp_path: Path) -> N
 
     # The default-overlay layout should be derived from a_path (100x100),
     # not b_doc (300x300). Inspect the cached _LayoutPage's media box.
-    layout = overlay._default_overlay_page  # noqa: SLF001
+    layout = overlay._default_overlay_page
     assert layout is not None
     assert layout.overlay_media_box.get_width() == 100.0
     assert layout.overlay_media_box.get_height() == 100.0
@@ -735,10 +735,10 @@ def test_first_last_odd_even_overlay_file_overrides_pdf(tmp_path: Path) -> None:
     # Each slot's cached layout MUST reflect the small (50x50) file, not
     # the staged big (500x500) PDF.
     for layout in (
-        overlay._first_page_overlay_page,  # noqa: SLF001
-        overlay._last_page_overlay_page,  # noqa: SLF001
-        overlay._odd_page_overlay_page,  # noqa: SLF001
-        overlay._even_page_overlay_page,  # noqa: SLF001
+        overlay._first_page_overlay_page,
+        overlay._last_page_overlay_page,
+        overlay._odd_page_overlay_page,
+        overlay._even_page_overlay_page,
     ):
         assert layout is not None
         assert layout.overlay_media_box.get_width() == 50.0
@@ -767,8 +767,8 @@ def test_all_pages_overlay_file_overrides_pdf(tmp_path: Path) -> None:
 
     # The all-pages overlay layout map should only have the single page
     # from the small file (size 1), not 2 from the big in-memory PDF.
-    assert overlay._number_of_overlay_pages == 1  # noqa: SLF001
-    layout = overlay._specific_page_overlay_layout[0]  # noqa: SLF001
+    assert overlay._number_of_overlay_pages == 1
+    layout = overlay._specific_page_overlay_layout[0]
     assert layout.overlay_media_box.get_width() == 50.0
 
 
@@ -793,7 +793,7 @@ def test_overlay_public_float2_string_matches_internal() -> None:
     """``Overlay.float2_string`` is a public mirror of upstream's
     ``float2String``; semantics must match the internal helper exactly."""
     for v in (0.0, 1.5, -3.25, 100.0, 0.1):
-        assert Overlay.float2_string(v) == Overlay._float_to_string(v)  # noqa: SLF001
+        assert Overlay.float2_string(v) == Overlay._float_to_string(v)
 
 
 def test_overlay_public_create_content_stream_list_handles_array_and_indirect() -> None:

@@ -39,7 +39,7 @@ def test_ttf_glyph_path_for_gid_returns_empty_when_draw_raises() -> None:
         def getGlyphSet(self) -> Any:  # noqa: N802 — fontTools name
             return _GlyphSet()
 
-        def getGlyphName(self, _gid: int) -> str:  # noqa: N802 — fontTools name
+        def getGlyphName(self, _gid: int) -> str:
             return "A"
 
     class _StubTTF:

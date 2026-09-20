@@ -28,7 +28,7 @@ def test_make_doc_removes_preexisting_page_before_adding_fresh_page(
 ) -> None:
     monkeypatch.setattr(wave401, "PDDocument", _DocWithExistingPage)
 
-    doc, page = wave401._make_doc(12.0, 13.0)  # noqa: SLF001
+    doc, page = wave401._make_doc(12.0, 13.0)
 
     assert isinstance(doc, _DocWithExistingPage)
     assert doc.removed_indices == [0]

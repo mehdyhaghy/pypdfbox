@@ -57,7 +57,7 @@ class _FakeT1Program(Type1Font):
     def get_encoding(self) -> dict[int, str]:
         return self._encoding_override
 
-    def get_path(self, name: str) -> list:  # type: ignore[override]  # noqa: ARG002
+    def get_path(self, name: str) -> list:  # type: ignore[override]
         return []
 
 
@@ -72,9 +72,9 @@ def test_get_type1_font_returns_none_when_descriptor_lacks_font_file() -> None:
     # Attach a descriptor with no /FontFile.
     descriptor = PDFontDescriptor()
     font.set_font_descriptor(descriptor)
-    assert font._get_type1_font() is None  # noqa: SLF001
+    assert font._get_type1_font() is None
     # Cached sentinel — subsequent call hits the fast path.
-    assert font._get_type1_font() is None  # noqa: SLF001
+    assert font._get_type1_font() is None
 
 
 # ---------- get_glyph_width: Standard-14 typed-encoding path -------------

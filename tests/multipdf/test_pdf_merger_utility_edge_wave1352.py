@@ -85,7 +85,7 @@ def test_hash_cos_indirect_reference_to_none_resolves_clean() -> None:
     indirect, line 46 handles the ``None``)."""
     indirect = COSObject(7, 0, resolved=None)
     # Force is_dereferenced=True so get_object returns None without loader.
-    indirect._dereferenced = True  # noqa: SLF001
+    indirect._dereferenced = True
     h = hashlib.sha256()
     _hash_cos(indirect, h, set())
     # The indirect-then-null path must agree byte-for-byte with the

@@ -28,16 +28,16 @@ def _prepared_renderer(
 ) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -76,7 +76,7 @@ def test_to_float_uses_direct_value_fallback_when_cosnumber_does_not_match(
 
     monkeypatch.setattr(pdf_renderer, "COSNumber", _NotCOSNumber)
 
-    assert pdf_renderer._to_float(COSInteger.get(11)) == 11.0  # noqa: SLF001
+    assert pdf_renderer._to_float(COSInteger.get(11)) == 11.0
 
 
 def test_radial_shading_skips_negative_radius_candidate_then_uses_next_root() -> None:
@@ -98,7 +98,7 @@ def test_radial_shading_skips_negative_radius_candidate_then_uses_next_root() ->
 
     doc, renderer = _prepared_renderer(size=(1, 1))
     try:
-        renderer._device_ctm = (  # noqa: SLF001
+        renderer._device_ctm = (
             1.0,
             0.0,
             0.0,
@@ -107,14 +107,14 @@ def test_radial_shading_skips_negative_radius_candidate_then_uses_next_root() ->
             0.0,
         )
 
-        renderer._paint_radial_shading(  # noqa: SLF001
+        renderer._paint_radial_shading(
             _Radial(),
             region_mask=Image.new("L", (1, 1), 255),
         )
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((0, 0)) == (255, 0, 0)  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.getpixel((0, 0)) == (255, 0, 0)
     finally:
         doc.close()
 
@@ -160,17 +160,17 @@ def test_function_shading_cosarray_failed_channel_skips_pixel(
 
     doc, renderer = _prepared_renderer(size=(1, 1))
     try:
-        renderer._paint_function_shading(  # noqa: SLF001
+        renderer._paint_function_shading(
             _FunctionShading(),
             region_mask=Image.new("L", (1, 1), 255),
         )
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
+        assert renderer._image is not None
         # Wave 1598: a failing channel function aborts the whole pixel's
         # evaluation (upstream PDShading.evalFunction propagates the
         # IOException; Type1ShadingContext.getRaster skips the pixel), so
         # the white canvas is preserved instead of a partial channel fill.
-        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)
     finally:
         doc.close()

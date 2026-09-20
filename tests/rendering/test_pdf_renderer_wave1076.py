@@ -17,7 +17,7 @@ def test_wave461_make_doc_removes_existing_factory_page(
 
     monkeypatch.setattr(wave461, "PDDocument", document_with_existing_page)
 
-    doc, page = wave461._make_doc(5.0, 7.0)  # noqa: SLF001
+    doc, page = wave461._make_doc(5.0, 7.0)
     try:
         assert doc.get_number_of_pages() == 1
         media_box = page.get_media_box()

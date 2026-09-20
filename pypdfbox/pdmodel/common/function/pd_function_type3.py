@@ -224,7 +224,7 @@ class PDFunctionType3(PDFunction):
             )
         return (float(lo.float_value()), float(hi.float_value()))
 
-    def eval(self, input: list[float]) -> list[float]:  # noqa: A002 - upstream parameter name
+    def eval(self, input: list[float]) -> list[float]:
         """Stitching evaluation per PDF 32000-1 §7.10.4.
 
         Faithful port of upstream ``PDFunctionType3.eval(float[])``:

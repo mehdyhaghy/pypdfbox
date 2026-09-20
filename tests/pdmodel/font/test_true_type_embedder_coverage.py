@@ -31,9 +31,9 @@ from pypdfbox.cos import COSDictionary, COSName
 if not hasattr(COSName, "BASE_FONT"):
     COSName.BASE_FONT = COSName.get_pdf_name("BaseFont")  # type: ignore[attr-defined]
 
-from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor  # noqa: E402
-from pypdfbox.pdmodel.font.true_type_embedder import TrueTypeEmbedder  # noqa: E402
-from pypdfbox.pdmodel.pd_document import PDDocument  # noqa: E402
+from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
+from pypdfbox.pdmodel.font.true_type_embedder import TrueTypeEmbedder
+from pypdfbox.pdmodel.pd_document import PDDocument
 
 _LIBERATION_TTF = (
     Path(__file__).resolve().parents[3]

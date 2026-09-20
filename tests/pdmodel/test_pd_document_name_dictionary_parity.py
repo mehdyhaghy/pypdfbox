@@ -327,7 +327,7 @@ def test_set_renditions_none_clears_entry() -> None:
 def test_pd_document_name_dictionary_exported_from_pdmodel() -> None:
     """Mirrors upstream ``org.apache.pdfbox.pdmodel.PDDocumentNameDictionary``
     package placement — importable from the ``pypdfbox.pdmodel`` namespace."""
-    import pypdfbox.pdmodel as pdmodel
+    from pypdfbox import pdmodel
 
     assert pdmodel.PDDocumentNameDictionary is PDDocumentNameDictionary
     assert "PDDocumentNameDictionary" in pdmodel.__all__
@@ -337,7 +337,7 @@ def test_pd_document_name_destination_dictionary_exported_from_pdmodel() -> None
     """Mirrors upstream
     ``org.apache.pdfbox.pdmodel.PDDocumentNameDestinationDictionary``
     package placement — importable from the ``pypdfbox.pdmodel`` namespace."""
-    import pypdfbox.pdmodel as pdmodel
+    from pypdfbox import pdmodel
     from pypdfbox.pdmodel.pd_document_name_destination_dictionary import (
         PDDocumentNameDestinationDictionary,
     )

@@ -87,3 +87,20 @@ def test_apply_window_icon_never_raises_on_a_hostile_window() -> None:
             raise tk.TclError("no")
 
     assert apply_window_icon(_Hostile()) is False
+
+
+def test_photo_sizes_are_largest_first() -> None:
+    """The dock takes the FIRST image as primary.
+
+    Ascending order made 16x16 primary, so macOS upscaled a 16px bitmap to
+    dock size and the icon rendered blurred. Pin the ordering so that
+    regression cannot come back silently.
+    """
+    assert list(_PHOTO_SIZES) == sorted(_PHOTO_SIZES, reverse=True)
+    assert _PHOTO_SIZES[0] == 512
+
+
+def test_every_declared_photo_size_ships() -> None:
+    directory = icon_dir()
+    missing = [s for s in _PHOTO_SIZES if not (directory / f"pypdfbox-{s}.png").is_file()]
+    assert not missing, f"declared but not shipped: {missing}"

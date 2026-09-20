@@ -53,16 +53,16 @@ class OcspHelper:
     def get_ocsp_url(self) -> str:
         return self._ocsp_url
 
-    def get_basic_ocsp_resp(self):  # noqa: ANN201
+    def get_basic_ocsp_resp(self):
         """Return the BasicOCSPResp portion (upstream private)."""
         return self._response_ocsp
 
-    def check_ocsp_signature(self, responder_cert) -> None:  # noqa: ANN001
+    def check_ocsp_signature(self, responder_cert) -> None:
         """Verify the OCSP responder signature (upstream private)."""
         if self._response_ocsp is None:
             raise OcspException("No OCSP response captured")
 
-    def check_responder_cert(self, responder_cert) -> None:  # noqa: ANN001
+    def check_responder_cert(self, responder_cert) -> None:
         """Sanity-check that ``responder_cert`` may sign OCSP (upstream private)."""
 
     def check_nonce(self, request_nonce: bytes | None) -> None:
@@ -74,7 +74,7 @@ class OcspHelper:
         ):
             raise OcspException("OCSP nonce mismatch")
 
-    def check_certificate_id(self, cert_id) -> None:  # noqa: ANN001
+    def check_certificate_id(self, cert_id) -> None:
         """Confirm the CertID in the OCSP response refers to our cert (upstream private)."""
 
     def get_ocsp_resp_status(self, resp: ocsp.OCSPResponse) -> str:
@@ -105,7 +105,7 @@ class OcspHelper:
         """Verify a full OCSP response (upstream 162)."""
         self.verify_resp_status(ocsp_response)
 
-    def get_key_hash_from_cert_holder(self, cert_holder) -> bytes:  # noqa: ANN001
+    def get_key_hash_from_cert_holder(self, cert_holder) -> bytes:
         """Return the SHA-1 hash of a certificate's public key (upstream 253)."""
         from cryptography.hazmat.primitives import serialization
 
@@ -117,15 +117,15 @@ class OcspHelper:
 
         return hashlib.sha1(pub, usedforsecurity=False).digest()
 
-    def find_responder_certificate_by_key_hash(self, basic_response, key_hash: bytes):  # noqa: ANN001, ANN201
+    def find_responder_certificate_by_key_hash(self, basic_response, key_hash: bytes):
         """Find the responder cert by key hash (upstream 277)."""
-        return None
+        return
 
-    def find_responder_certificate_by_name(self, basic_response, name):  # noqa: ANN001, ANN201
+    def find_responder_certificate_by_name(self, basic_response, name):
         """Find the responder cert by X.500 name (upstream 324)."""
-        return None
+        return
 
-    def check_ocsp_response_fresh(self, single_resp) -> None:  # noqa: ANN001
+    def check_ocsp_response_fresh(self, single_resp) -> None:
         """Reject stale OCSP responses (upstream 360)."""
 
     def perform_request(self, url_string: str) -> bytes:
@@ -149,7 +149,7 @@ class OcspHelper:
         builder = builder.add_certificate(
             self._cert_to_check,
             self._issuer_certificate,
-            hashes.SHA1(),  # noqa: S303 - matches upstream SHA-1 CertID
+            hashes.SHA1(),
         )
         # Best effort nonce; cryptography exposes add_extension on builder.
         import os

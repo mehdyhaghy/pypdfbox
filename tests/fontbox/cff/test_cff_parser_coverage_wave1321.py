@@ -117,10 +117,10 @@ def test_parse_rejects_synthetic_base_font() -> None:
     class _StubFontSet:
         fontNames = ["Synthetic"]
 
-        def decompile(self, *args: Any, **kwargs: Any) -> None:  # noqa: ARG002
+        def decompile(self, *args: Any, **kwargs: Any) -> None:
             return None
 
-        def __getitem__(self, name: str) -> Any:  # noqa: ARG002
+        def __getitem__(self, name: str) -> Any:
             class _Top:
                 rawDict = {"SyntheticBase": 1}
 
@@ -140,7 +140,7 @@ def test_parse_rejects_empty_name_index() -> None:
     class _StubFontSet:
         fontNames: list[str] = []
 
-        def decompile(self, *args: Any, **kwargs: Any) -> None:  # noqa: ARG002
+        def decompile(self, *args: Any, **kwargs: Any) -> None:
             return None
 
     with patch(
@@ -359,7 +359,7 @@ def test_read_real_number_propagates_value_error_as_oserror() -> None:
     # overrides it for the duration of the test).
     import pypdfbox.fontbox.cff.cff_parser as cff_parser_module
 
-    def _boom(*args: Any, **kwargs: Any) -> float:  # noqa: ARG001
+    def _boom(*args: Any, **kwargs: Any) -> float:
         msg = "boom"
         raise ValueError(msg)
 
@@ -736,7 +736,7 @@ def test_parse_type1_dicts_reads_embedded_encoding_for_nonzero_id() -> None:
 
     # Charset stub: parser only calls ``get_sid_for_gid`` on it.
     class _Charset:
-        def get_sid_for_gid(self, gid: int) -> int:  # noqa: ARG002
+        def get_sid_for_gid(self, gid: int) -> int:
             return 1  # "space"
 
     inp = DataInputByteArray(payload)

@@ -108,9 +108,9 @@ def test_pdfbox5742() -> None:
     placeholder both still pick it up."""
     # Local imports keep the pdmodel/multipdf layers off the top-level
     # import graph for the bare-COS parity tests above.
-    from pypdfbox import PDDocument, PDPage  # noqa: PLC0415
-    from pypdfbox.cos import COSDictionary, COSName  # noqa: PLC0415
-    from pypdfbox.multipdf import Splitter  # noqa: PLC0415
+    from pypdfbox import PDDocument, PDPage
+    from pypdfbox.cos import COSDictionary, COSName
+    from pypdfbox.multipdf import Splitter
 
     # Build a 2-page document where both pages share a single common
     # resources COSDictionary instance. That's the exact shape

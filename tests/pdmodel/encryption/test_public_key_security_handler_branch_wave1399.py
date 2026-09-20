@@ -80,7 +80,7 @@ def test_prepare_for_decryption_pkcs7_returns_none_continues_loop(
 
     sequence: list[bytes | None] = [None, b"\xAA" * 20 + b"\x00\x00\x00\x10"]
 
-    def _patched_pkcs7_decrypt_der(blob, _cert, _key, options=None):  # noqa: ARG001
+    def _patched_pkcs7_decrypt_der(blob, _cert, _key, options=None):
         return sequence.pop(0)
 
     monkeypatch.setattr(

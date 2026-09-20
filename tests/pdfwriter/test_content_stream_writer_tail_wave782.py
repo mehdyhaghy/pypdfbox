@@ -32,7 +32,7 @@ def test_wave782_inline_image_skips_value_less_parameter() -> None:
     inline = Operator.get_operator(OperatorName.BEGIN_INLINE_IMAGE)
     params = COSDictionary()
     params.set_int("W", 2)
-    params._items[COSName.get_pdf_name("DropMe")] = None  # noqa: SLF001
+    params._items[COSName.get_pdf_name("DropMe")] = None
     inline.set_image_parameters(params)
     inline.set_image_data(b"\x01\x02")
 
@@ -54,7 +54,7 @@ def test_wave782_array_none_entry_writes_null_operand() -> None:
 def test_wave782_dictionary_value_less_entry_is_omitted() -> None:
     dictionary = COSDictionary()
     dictionary.set_string("Keep", "yes")
-    dictionary._items[COSName.get_pdf_name("Drop")] = None  # noqa: SLF001
+    dictionary._items[COSName.get_pdf_name("Drop")] = None
 
     sink = io.BytesIO()
     ContentStreamWriter(sink).write_token(dictionary)

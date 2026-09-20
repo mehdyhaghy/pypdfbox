@@ -77,7 +77,7 @@ def test_apply_prefix_skips_record_with_empty_to_unicode() -> None:
     ``toUnicode()`` is empty (line 364) — we must too."""
     rec = _Rec(6, "")  # nameID 6 (PostScript name), empty body
     tt = {"name": _NameTable([rec])}
-    TTFSubsetter._apply_prefix(tt, "ABCDEF")  # noqa: SLF001
+    TTFSubsetter._apply_prefix(tt, "ABCDEF")
     assert rec.string is None  # untouched
 
 
@@ -86,20 +86,20 @@ def test_apply_prefix_skips_already_tagged_record() -> None:
     ``+`` is already-tagged — leave it alone."""
     rec = _Rec(6, "XYZABC+SomeFont")
     tt = {"name": _NameTable([rec])}
-    TTFSubsetter._apply_prefix(tt, "ABCDEF")  # noqa: SLF001
+    TTFSubsetter._apply_prefix(tt, "ABCDEF")
     assert rec.string is None
 
 
 def test_apply_prefix_skips_non_postscript_records() -> None:
     rec = _Rec(4, "FullName")  # nameID 4 — not the PS name
     tt = {"name": _NameTable([rec])}
-    TTFSubsetter._apply_prefix(tt, "ABCDEF")  # noqa: SLF001
+    TTFSubsetter._apply_prefix(tt, "ABCDEF")
     assert rec.string is None
 
 
 def test_apply_prefix_returns_when_no_name_table() -> None:
     """No ``name`` table in the subset -> return immediately."""
-    TTFSubsetter._apply_prefix({}, "ABCDEF")  # noqa: SLF001
+    TTFSubsetter._apply_prefix({}, "ABCDEF")
 
 
 # ----------------------------------------------------------------------
@@ -280,7 +280,7 @@ def test_build_subset_font_applies_prefix_and_invisible(
     sub.set_prefix("ABCDEF")
     sub.add(ord("A"))
     sub.force_invisible(ord("A"))  # registers in _invisible_unicodes
-    tt = sub._build_subset_font()  # noqa: SLF001
+    tt = sub._build_subset_font()
     # The PostScript name should now be tagged.
     name_table = tt["name"]
     for record in name_table.names:
@@ -303,7 +303,7 @@ def test_encoded_table_returns_none_for_keep_tables_miss(
     return None at the top of ``_encoded_table`` (the gate above 681)."""
     sub = TTFSubsetter(liberation_sans, tables=["head"])
     sub.add(ord("A"))
-    assert sub._encoded_table("name") is None  # noqa: SLF001
+    assert sub._encoded_table("name") is None
 
 
 def test_encoded_table_returns_none_for_table_not_in_subset(
@@ -316,7 +316,7 @@ def test_encoded_table_returns_none_for_table_not_in_subset(
     sub.add(ord("A"))
     # ``DSIG`` is in ``options.drop_tables``; the resulting subset has no
     # DSIG table, so ``_encoded_table('DSIG')`` should return None.
-    assert sub._encoded_table("DSIG") is None  # noqa: SLF001
+    assert sub._encoded_table("DSIG") is None
 
 
 def test_encoded_table_returns_none_when_reader_lacks_tag(
@@ -325,7 +325,7 @@ def test_encoded_table_returns_none_when_reader_lacks_tag(
     """Edge: ``tag in tt`` but the save/reload reader doesn't expose it —
     coerce the branch by intercepting ``_encoded_table`` mid-way to
     replace the reader's ``tables`` map (covers line 693)."""
-    import fontTools.ttLib as ttLib
+    from fontTools import ttLib
 
     original_init = ttLib.TTFont.__init__
     call_count = {"n": 0}
@@ -359,4 +359,4 @@ def test_encoded_table_returns_none_when_reader_lacks_tag(
     monkeypatch.setattr(ttLib.TTFont, "__getattribute__", _patched_get)
     sub = TTFSubsetter(liberation_sans)
     sub.add(ord("A"))
-    assert sub._encoded_table("name") is None  # noqa: SLF001
+    assert sub._encoded_table("name") is None

@@ -96,7 +96,7 @@ class CreateRadioButtons:
                 page.get_annotations().append(widget)
             try:
                 radio_button.set_widgets(widgets)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 radio_button.get_widgets().extend(widgets)
 
             acro_form.set_fields([*acro_form.get_fields(), radio_button])
@@ -128,7 +128,7 @@ class CreateRadioButtons:
         appearance stream lands with the rendering / appearance cluster
         (PRD §6.13)."""
         _ = (document, widget, on)
-        return None
+        return
 
     @staticmethod
     def draw_circle(

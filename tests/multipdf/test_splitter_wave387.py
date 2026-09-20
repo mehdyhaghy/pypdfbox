@@ -111,13 +111,13 @@ def test_wave387_stage_link_destination_removes_bad_direct_destination() -> None
             self.destination_cleared = value is None
 
     splitter = Splitter()
-    splitter._current_page_number = 4  # noqa: SLF001
+    splitter._current_page_number = 4
     link = BadDestinationLink()
 
-    splitter._stage_link_destination(link, COSDictionary())  # noqa: SLF001
+    splitter._stage_link_destination(link, COSDictionary())
 
     assert link.destination_cleared
-    assert splitter._dest_to_fix == []  # noqa: SLF001
+    assert splitter._dest_to_fix == []
 
 
 def test_wave387_stage_link_destination_removes_bad_goto_action() -> None:
@@ -141,10 +141,10 @@ def test_wave387_stage_link_destination_removes_bad_goto_action() -> None:
     link = LinkWithBadAction()
     splitter = Splitter()
 
-    splitter._stage_link_destination(link, COSDictionary())  # noqa: SLF001
+    splitter._stage_link_destination(link, COSDictionary())
 
     assert link.action is None
-    assert splitter._dest_to_fix == []  # noqa: SLF001
+    assert splitter._dest_to_fix == []
 
 
 def test_wave387_named_destinations_are_left_untouched() -> None:
@@ -152,12 +152,12 @@ def test_wave387_named_destinations_are_left_untouched() -> None:
     link.set_destination(COSName.get_pdf_name("ChapterOne"))
     splitter = Splitter()
 
-    splitter._stage_link_destination(link, COSDictionary())  # noqa: SLF001
+    splitter._stage_link_destination(link, COSDictionary())
 
     assert link.get_cos_object().get_dictionary_object(_DEST) == COSName.get_pdf_name(
         "ChapterOne"
     )
-    assert splitter._dest_to_fix == []  # noqa: SLF001
+    assert splitter._dest_to_fix == []
 
 
 def test_wave387_goto_action_destination_gets_shallow_cloned() -> None:
@@ -168,9 +168,9 @@ def test_wave387_goto_action_destination_gets_shallow_cloned() -> None:
     link.set_action(action)
     splitter = Splitter()
 
-    splitter._stage_link_destination(link, COSDictionary())  # noqa: SLF001
+    splitter._stage_link_destination(link, COSDictionary())
 
-    staged = splitter._dest_to_fix  # noqa: SLF001
+    staged = splitter._dest_to_fix
     assert len(staged) == 1
     cloned_action = link.get_cos_object().get_dictionary_object(_A)
     assert isinstance(cloned_action, COSDictionary)
@@ -190,13 +190,13 @@ def test_wave387_fix_destinations_skips_missing_hosts_and_non_page_targets() -> 
     integer_target_dest.add(COSName.get_pdf_name("Fit"))
 
     splitter = Splitter()
-    splitter._dest_to_fix = [  # noqa: SLF001
+    splitter._dest_to_fix = [
         (missing_host_dest, COSDictionary()),
         (integer_target_dest, host),
     ]
-    splitter._page_dict_map = {id(host): chunk.get_page(0).get_cos_object()}  # noqa: SLF001
+    splitter._page_dict_map = {id(host): chunk.get_page(0).get_cos_object()}
 
-    splitter._fix_destinations(chunk)  # noqa: SLF001
+    splitter._fix_destinations(chunk)
 
     assert missing_host_dest.get_object(0) is not COSNull.NULL
     assert integer_target_dest.get_object(0).int_value() == 0
@@ -210,7 +210,7 @@ def test_wave387_signature_widget_detects_byte_range_value() -> None:
     signature_value.set_item(_BYTE_RANGE, COSArray())
     widget.set_item(_V, signature_value)
 
-    assert Splitter._is_signature_widget(widget)  # noqa: SLF001
+    assert Splitter._is_signature_widget(widget)
 
 
 def test_wave387_signature_widget_non_sig_parent_stops_parent_walk() -> None:
@@ -220,7 +220,7 @@ def test_wave387_signature_widget_non_sig_parent_stops_parent_walk() -> None:
     parent.set_item(_FT, COSName.get_pdf_name("Tx"))
     widget.set_item(_PARENT, parent)
 
-    assert not Splitter._is_signature_widget(widget)  # noqa: SLF001
+    assert not Splitter._is_signature_widget(widget)
 
 
 def test_wave387_cosobject_and_array_struct_helpers_preserve_holes() -> None:
@@ -230,16 +230,16 @@ def test_wave387_cosobject_and_array_struct_helpers_preserve_holes() -> None:
     child.set_item(_S, COSName.get_pdf_name("P"))
     wrapped = COSObject(10, resolved=child)
 
-    cloned = splitter._k_create_clone(wrapped, parent, parent, object())  # noqa: SLF001
+    cloned = splitter._k_create_clone(wrapped, parent, parent, object())
     assert isinstance(cloned, COSDictionary)
-    assert splitter._k_create_clone(COSInteger.get(3), parent, parent, object()).int_value() == 3  # noqa: SLF001,E501
-    assert splitter._has_mcids(COSInteger.get(0))  # noqa: SLF001
+    assert splitter._k_create_clone(COSInteger.get(3), parent, parent, object()).int_value() == 3
+    assert splitter._has_mcids(COSInteger.get(0))
 
     parent_tree_value = COSArray()
     parent_tree_value.add(child)
     parent_tree_value.add(COSDictionary())
     dst_numbers: dict[int, Any] = {}
-    splitter._clone_tree_element({5: parent_tree_value}, dst_numbers, 5)  # noqa: SLF001
+    splitter._clone_tree_element({5: parent_tree_value}, dst_numbers, 5)
 
     cloned_array = dst_numbers[5]
     assert isinstance(cloned_array, COSArray)
@@ -260,7 +260,7 @@ def test_wave387_orphan_annotation_without_page_annots_is_removed(
     dst.set_item(_OBJ, src_obj)
 
     with caplog.at_level(logging.WARNING, logger="pypdfbox.multipdf.splitter"):
-        splitter._remove_possible_orphan_annotation(  # noqa: SLF001
+        splitter._remove_possible_orphan_annotation(
             src_obj, src_dict, None, dst
         )
 
@@ -315,9 +315,9 @@ def test_wave387_number_and_id_tree_walkers_recurse_and_swallow_bad_nodes() -> N
     number_value = COSDictionary()
     id_value = COSDictionary()
 
-    assert Splitter._get_number_tree_as_map(Parent(NumberLeaf(number_value))) == {  # noqa: SLF001
+    assert Splitter._get_number_tree_as_map(Parent(NumberLeaf(number_value))) == {
         2: number_value
     }
-    assert Splitter._get_id_tree_as_map(Parent(IdLeaf(id_value))) == {  # noqa: SLF001
+    assert Splitter._get_id_tree_as_map(Parent(IdLeaf(id_value))) == {
         "id": id_value
     }

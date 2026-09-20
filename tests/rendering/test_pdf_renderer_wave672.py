@@ -28,16 +28,16 @@ def _prepared_renderer(
 ) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -45,10 +45,10 @@ def _finish(renderer: PDFRenderer) -> None:
 def test_do_operator_ignores_valid_name_without_canvas() -> None:
     doc, renderer = _prepared_renderer()
     try:
-        renderer._draw = None  # noqa: SLF001
-        renderer._image = None  # noqa: SLF001
+        renderer._draw = None
+        renderer._image = None
 
-        renderer._op_do(None, [COSName.get_pdf_name("Im1")])  # noqa: SLF001
+        renderer._op_do(None, [COSName.get_pdf_name("Im1")])
     finally:
         doc.close()
 
@@ -67,21 +67,21 @@ def test_transparency_group_get_group_failure_still_uses_blend_mode(
             return True
 
     def paint_group(_form: Any) -> None:
-        assert renderer._image is not None  # noqa: SLF001
-        renderer._image.paste((128, 0, 0, 255), (0, 0, 1, 1))  # noqa: SLF001
-        renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-        renderer._draw.setantialias(True)  # noqa: SLF001
+        assert renderer._image is not None
+        renderer._image.paste((128, 0, 0, 255), (0, 0, 1, 1))
+        renderer._draw = aggdraw.Draw(renderer._image)
+        renderer._draw.setantialias(True)
 
     doc, renderer = _prepared_renderer(size=(1, 1))
     try:
-        renderer._gs.blend_mode = _MultiplyMode()  # noqa: SLF001
+        renderer._gs.blend_mode = _MultiplyMode()
         monkeypatch.setattr(renderer, "_render_form_xobject", paint_group)
 
-        renderer._render_transparency_group(_Form())  # noqa: SLF001
+        renderer._render_transparency_group(_Form())
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((0, 0)) == (128, 0, 0)  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.getpixel((0, 0)) == (128, 0, 0)
     finally:
         doc.close()
 
@@ -102,8 +102,8 @@ def test_resolve_font_program_caches_embedded_ttf(
 
         monkeypatch.setattr(renderer, "_get_ttf_glyph_set", get_ttf_glyph_set)
 
-        assert renderer._resolve_font_program(font) is program  # noqa: SLF001
-        assert renderer._resolve_font_program(font) is program  # noqa: SLF001
+        assert renderer._resolve_font_program(font) is program
+        assert renderer._resolve_font_program(font) is program
         assert calls == 1
     finally:
         _finish(renderer)
@@ -129,7 +129,7 @@ def test_resolve_font_program_returns_embedded_type1_program(
         monkeypatch.setattr(renderer, "_get_ttf_glyph_set", lambda _font: (None, None))
         monkeypatch.setattr(type1_module, "PDType1Font", _FakeType1Font)
 
-        assert renderer._resolve_font_program(font) is program  # noqa: SLF001
+        assert renderer._resolve_font_program(font) is program
     finally:
         _finish(renderer)
         doc.close()
@@ -155,7 +155,7 @@ def test_draw_glyph_uses_ttf_program_advance_when_pdf_width_missing(
 
     doc, renderer = _prepared_renderer()
     try:
-        renderer._gs.text_font_size = 12.0  # noqa: SLF001
+        renderer._gs.text_font_size = 12.0
         ttf = _TTF()
         glyph_set = {"gid4": _Glyph()}
         monkeypatch.setattr(
@@ -165,7 +165,7 @@ def test_draw_glyph_uses_ttf_program_advance_when_pdf_width_missing(
         )
         monkeypatch.setattr(renderer, "_font_width_units", lambda _font, _code: 0.0)
 
-        advance = renderer._draw_glyph(  # noqa: SLF001
+        advance = renderer._draw_glyph(
             object(),
             65,
             ttf,
@@ -187,9 +187,9 @@ def test_maybe_warn_standard14_ignores_font_name_failures() -> None:
     try:
         font = _BrokenFont()
 
-        renderer._maybe_warn_standard14(font)  # noqa: SLF001
+        renderer._maybe_warn_standard14(font)
 
-        assert id(font) not in renderer._warned_standard14_fonts  # noqa: SLF001
+        assert id(font) not in renderer._warned_standard14_fonts
     finally:
         _finish(renderer)
         doc.close()

@@ -372,9 +372,9 @@ def test_decrypt_run_in_place_invalid_password_branch(
     # line 191 will block unless we set owner permission. Patch
     # ``is_owner_permission`` so we hit the in-place branch instead.
     from pypdfbox.pdmodel.encryption.access_permission import (
-        AccessPermission as _AP,
+        AccessPermission,
     )
-    monkeypatch.setattr(_AP, "is_owner_permission", lambda self: True)
+    monkeypatch.setattr(AccessPermission, "is_owner_permission", lambda self: True)
 
     rc = cli.run_cli(["decrypt", "-i", str(src)])
     assert rc == 1

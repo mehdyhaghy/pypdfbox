@@ -35,7 +35,7 @@ def _stub_type1_program(extra: dict | None = None) -> Type1Font:
             self.width = width
             self._commands = commands
 
-        def draw(self, pen) -> None:  # noqa: ANN001 — pen protocol
+        def draw(self, pen) -> None:
             for cmd in self._commands:
                 if cmd[0] == "moveTo":
                     pen.moveTo(cmd[1])

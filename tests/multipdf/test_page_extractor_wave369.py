@@ -82,7 +82,7 @@ def test_wave369_copy_document_information_ignores_target_rejection() -> None:
     target = _RejectingInfoTarget()
     extractor = PageExtractor(_InfoSource(info), 1, 1)  # type: ignore[arg-type]
 
-    extractor._copy_document_information(target)  # type: ignore[arg-type]  # noqa: SLF001
+    extractor._copy_document_information(target)  # type: ignore[arg-type]
 
     assert target.seen_info is info
 

@@ -57,7 +57,7 @@ def test_initialize_skips_structured_class_without_namespace(
     tm = TypeMapping(metadata)
     # Sanity: the no-namespace class did not contaminate the
     # namespace-keyed lookup.
-    for ns_list in tm._structured_namespaces2.values():  # noqa: SLF001
+    for ns_list in tm._structured_namespaces2.values():
         assert "NoNs" not in ns_list
 
 
@@ -79,9 +79,9 @@ def test_get_specified_property_type_multi_struct_parent_match(
     desc_b.add_new_property(
         "field_b", PropertyType(type="Integer", card=Cardinality.Simple)
     )
-    mapping._structured_namespaces2[ns] = ["TypeA", "TypeB"]  # noqa: SLF001
-    mapping._structured_mappings["TypeA"] = desc_a  # noqa: SLF001
-    mapping._structured_mappings["TypeB"] = desc_b  # noqa: SLF001
+    mapping._structured_namespaces2[ns] = ["TypeA", "TypeB"]
+    mapping._structured_mappings["TypeA"] = desc_a
+    mapping._structured_mappings["TypeB"] = desc_b
 
     # Parent match: even if local_part wouldn't normally resolve, the
     # parent_type_name overrides.
@@ -107,9 +107,9 @@ def test_get_specified_property_type_multi_struct_local_part_match(
     desc_b.add_new_property(
         "field_b", PropertyType(type="Integer", card=Cardinality.Simple)
     )
-    mapping._structured_namespaces2[ns] = ["TypeA", "TypeB"]  # noqa: SLF001
-    mapping._structured_mappings["TypeA"] = desc_a  # noqa: SLF001
-    mapping._structured_mappings["TypeB"] = desc_b  # noqa: SLF001
+    mapping._structured_namespaces2[ns] = ["TypeA", "TypeB"]
+    mapping._structured_mappings["TypeA"] = desc_a
+    mapping._structured_mappings["TypeB"] = desc_b
 
     # No parent match; field_b lives on TypeB so the result picks TypeB.
     result = mapping.get_specified_property_type((ns, "field_b"))
@@ -125,9 +125,9 @@ def test_get_specified_property_type_multi_struct_no_match_returns_none(
     ns = "http://example.com/multi-struct-none/"
     desc_a = PropertiesDescription()
     desc_b = PropertiesDescription()
-    mapping._structured_namespaces2[ns] = ["TypeA", "TypeB"]  # noqa: SLF001
-    mapping._structured_mappings["TypeA"] = desc_a  # noqa: SLF001
-    mapping._structured_mappings["TypeB"] = desc_b  # noqa: SLF001
+    mapping._structured_namespaces2[ns] = ["TypeA", "TypeB"]
+    mapping._structured_mappings["TypeA"] = desc_a
+    mapping._structured_mappings["TypeB"] = desc_b
 
     assert (
         mapping.get_specified_property_type((ns, "nothing-here")) is None

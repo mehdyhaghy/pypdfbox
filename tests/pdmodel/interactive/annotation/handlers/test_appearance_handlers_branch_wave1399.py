@@ -118,9 +118,9 @@ def test_free_text_extract_font_details_da_tf_with_non_name_first_arg() -> None:
     handler = PDFreeTextAppearanceHandler(annotation)
     handler.extract_font_details(annotation)
     # First arg ignored — font_name remains the default Helv.
-    assert handler._font_name == handler.DEFAULT_FONT_NAME  # noqa: SLF001
+    assert handler._font_name == handler.DEFAULT_FONT_NAME
     # Second arg accepted — font_size becomes 12.0.
-    assert handler._font_size == 12.0  # noqa: SLF001
+    assert handler._font_size == 12.0
 
 
 def test_free_text_extract_font_details_da_tf_with_non_number_second_arg() -> None:
@@ -131,9 +131,9 @@ def test_free_text_extract_font_details_da_tf_with_non_number_second_arg() -> No
     annotation.set_default_appearance("/Helv /Bogus Tf")
     handler = PDFreeTextAppearanceHandler(annotation)
     handler.extract_font_details(annotation)
-    assert handler._font_name == COSName.get_pdf_name("Helv")  # noqa: SLF001
+    assert handler._font_name == COSName.get_pdf_name("Helv")
     # Default size retained because COSName is not a COSNumber.
-    assert handler._font_size == handler.DEFAULT_FONT_SIZE  # noqa: SLF001
+    assert handler._font_size == handler.DEFAULT_FONT_SIZE
 
 
 def test_free_text_callout_with_normal_stream_none_in_grow_block() -> None:
@@ -985,7 +985,7 @@ def test_file_attachment_handler_with_normal_stream_none() -> None:
         PDAnnotationFileAttachment,
     )
 
-    PDFileAttachmentAppearanceHandler = (
+    file_attachment_handler_cls = (
         _file_handler_mod.PDFileAttachmentAppearanceHandler
     )
 
@@ -993,7 +993,7 @@ def test_file_attachment_handler_with_normal_stream_none() -> None:
     annotation.set_rectangle(PDRectangle(0.0, 0.0, 24.0, 24.0))
     annotation.set_color([0.0, 0.0, 0.0])
     annotation.get_normal_appearance_stream = lambda: None  # type: ignore[method-assign]
-    PDFileAttachmentAppearanceHandler(annotation).generate_normal_appearance()
+    file_attachment_handler_cls(annotation).generate_normal_appearance()
     assert annotation.get_appearance_dictionary() is not None
 
 

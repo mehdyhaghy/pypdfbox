@@ -21,7 +21,7 @@ def test_wave944_emit_ignoring_space_glyphs_keeps_chunk_offsets_and_total_advanc
     state.font_name = "F0"
     positions: list[TextPosition] = []
 
-    stripper._emit_ignoring_space_glyphs(  # noqa: SLF001
+    stripper._emit_ignoring_space_glyphs(
         " A  BC ",
         state,
         positions,
@@ -52,10 +52,10 @@ def test_wave944_decode_show_text_prefers_cmap_before_simple_font_decode() -> No
             return {65: "from-cmap"}.get(code)
 
     stripper = PDFTextStripper()
-    stripper._active_cmap = cast(Any, FakeCMap())  # noqa: SLF001
-    stripper._active_font = ExplodingFont()  # noqa: SLF001
+    stripper._active_cmap = cast("Any", FakeCMap())
+    stripper._active_font = ExplodingFont()
 
-    assert stripper._decode_show_text(b"A") == "from-cmap"  # noqa: SLF001
+    assert stripper._decode_show_text(b"A") == "from-cmap"
 
 
 def test_wave944_word_break_uses_flipped_axis_previous_width() -> None:
@@ -65,6 +65,6 @@ def test_wave944_word_break_uses_flipped_axis_previous_width() -> None:
     close = TextPosition(text="close", x=104.1, y=27.9, font_size=8.0)
     far = TextPosition(text="far", x=104.1, y=28.1, font_size=8.0)
 
-    assert stripper._is_line_break(close, prev) is True  # noqa: SLF001
-    assert stripper._is_word_break(close, prev) is False  # noqa: SLF001
-    assert stripper._is_word_break(far, prev) is True  # noqa: SLF001
+    assert stripper._is_line_break(close, prev) is True
+    assert stripper._is_word_break(close, prev) is False
+    assert stripper._is_word_break(far, prev) is True

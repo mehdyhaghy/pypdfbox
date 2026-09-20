@@ -28,7 +28,7 @@ def _make_one_page_doc() -> PDDocument:
 
 def test_start_rendering_is_public_alias_of_underscore(tk_root: tk.Tk) -> None:
     """``_start_rendering`` should be the underscore back-compat alias."""
-    assert PagePane._start_rendering is PagePane.start_rendering  # noqa: SLF001
+    assert PagePane._start_rendering is PagePane.start_rendering
 
 
 def test_start_rendering_places_image_on_canvas(tk_root: tk.Tk) -> None:
@@ -40,7 +40,7 @@ def test_start_rendering_places_image_on_canvas(tk_root: tk.Tk) -> None:
         # Re-invoke the public method directly — it should be idempotent
         # (clearing the canvas tag and creating a new image item).
         pane.start_rendering()
-        canvas = pane._canvas  # noqa: SLF001
+        canvas = pane._canvas
         assert canvas is not None
         items = canvas.find_withtag("rendered_page")
         assert items, "expected a rendered page image after start_rendering()"

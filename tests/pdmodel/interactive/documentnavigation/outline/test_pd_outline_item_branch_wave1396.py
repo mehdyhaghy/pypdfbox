@@ -59,7 +59,7 @@ def test_resolve_named_destination_returns_none_when_get_named_not_callable() ->
     class NotADestination:
         pass
 
-    result = PDOutlineItem._resolve_named_destination(  # noqa: SLF001
+    result = PDOutlineItem._resolve_named_destination(
         fake, NotADestination(),  # type: ignore[arg-type]
     )
     assert result is None
@@ -76,7 +76,7 @@ def test_resolve_named_destination_returns_none_when_name_not_string() -> None:
         def get_named_destination(self) -> int:
             return 42
 
-    result = PDOutlineItem._resolve_named_destination(  # noqa: SLF001
+    result = PDOutlineItem._resolve_named_destination(
         fake, WeirdNamed(),  # type: ignore[arg-type]
     )
     assert result is None
@@ -91,7 +91,7 @@ def test_resolve_named_destination_skips_names_when_dests_not_callable() -> None
         get_dests = None  # not callable
 
     fake = _FakeDocument(_FakeCatalog(names=FakeNames()))
-    result = PDOutlineItem._resolve_named_destination(  # noqa: SLF001
+    result = PDOutlineItem._resolve_named_destination(
         fake, PDNamedDestination("missing"),  # type: ignore[arg-type]
     )
     assert result is None
@@ -107,7 +107,7 @@ def test_resolve_named_destination_skips_names_when_tree_is_none() -> None:
             return None
 
     fake = _FakeDocument(_FakeCatalog(names=FakeNames()))
-    result = PDOutlineItem._resolve_named_destination(  # noqa: SLF001
+    result = PDOutlineItem._resolve_named_destination(
         fake, PDNamedDestination("missing"),  # type: ignore[arg-type]
     )
     assert result is None
@@ -126,7 +126,7 @@ def test_resolve_named_destination_skips_names_when_get_value_not_callable() -> 
             return FakeTree()
 
     fake = _FakeDocument(_FakeCatalog(names=FakeNames()))
-    result = PDOutlineItem._resolve_named_destination(  # noqa: SLF001
+    result = PDOutlineItem._resolve_named_destination(
         fake, PDNamedDestination("missing"),  # type: ignore[arg-type]
     )
     assert result is None
@@ -146,7 +146,7 @@ def test_resolve_named_destination_skips_names_when_entry_missing() -> None:
             return FakeTree()
 
     fake = _FakeDocument(_FakeCatalog(names=FakeNames()))
-    result = PDOutlineItem._resolve_named_destination(  # noqa: SLF001
+    result = PDOutlineItem._resolve_named_destination(
         fake, PDNamedDestination("missing"),  # type: ignore[arg-type]
     )
     assert result is None
@@ -167,7 +167,7 @@ def test_resolve_named_destination_skips_names_when_resolved_is_none() -> None:
             return FakeTree()
 
     fake = _FakeDocument(_FakeCatalog(names=FakeNames()))
-    result = PDOutlineItem._resolve_named_destination(  # noqa: SLF001
+    result = PDOutlineItem._resolve_named_destination(
         fake, PDNamedDestination("missing"),  # type: ignore[arg-type]
     )
     assert result is None
@@ -179,7 +179,7 @@ def test_resolve_named_destination_returns_none_when_no_names_and_no_dests() -> 
     Closes the False arm of ``dests is not None`` (line 492->513).
     """
     fake = _FakeDocument(_FakeCatalog())
-    result = PDOutlineItem._resolve_named_destination(  # noqa: SLF001
+    result = PDOutlineItem._resolve_named_destination(
         fake, PDNamedDestination("ghost"),  # type: ignore[arg-type]
     )
     assert result is None
@@ -206,7 +206,7 @@ def test_resolve_named_destination_legacy_dests_no_get_value_uses_cos_path() -> 
                 return dests_dict
 
         fake = _FakeDocument(_FakeCatalog(dests=FakeDests()))
-        resolved = PDOutlineItem._resolve_named_destination(  # noqa: SLF001
+        resolved = PDOutlineItem._resolve_named_destination(
             fake, PDNamedDestination("ch1"),  # type: ignore[arg-type]
         )
         assert resolved is not None
@@ -226,7 +226,7 @@ def test_resolve_named_destination_legacy_dests_entry_none_falls_to_cos_lookup()
             return None
 
     fake = _FakeDocument(_FakeCatalog(dests=FakeDests()))
-    result = PDOutlineItem._resolve_named_destination(  # noqa: SLF001
+    result = PDOutlineItem._resolve_named_destination(
         fake, PDNamedDestination("missing"),  # type: ignore[arg-type]
     )
     assert result is None
@@ -244,7 +244,7 @@ def test_resolve_named_destination_legacy_dests_entry_remains_none() -> None:
             return empty
 
     fake = _FakeDocument(_FakeCatalog(dests=FakeDests()))
-    result = PDOutlineItem._resolve_named_destination(  # noqa: SLF001
+    result = PDOutlineItem._resolve_named_destination(
         fake, PDNamedDestination("missing"),  # type: ignore[arg-type]
     )
     assert result is None
@@ -263,7 +263,7 @@ def test_resolve_named_destination_legacy_dests_entry_is_dict_without_inner_d() 
             return wrapper
 
     fake = _FakeDocument(_FakeCatalog(dests=FakeDests()))
-    result = PDOutlineItem._resolve_named_destination(  # noqa: SLF001
+    result = PDOutlineItem._resolve_named_destination(
         fake, PDNamedDestination("ch1"),  # type: ignore[arg-type]
     )
     # Coercion fails because there's no usable /D — but the False arm
@@ -281,5 +281,5 @@ def test_coerce_named_destination_entry_dict_without_inner_d() -> None:
     # recognised destination so create() will raise OSError, returning None.
     bare = COSDictionary()
     bare.set_item(COSName.get_pdf_name("Other"), COSInteger(1))
-    result = PDOutlineItem._coerce_named_destination_entry(bare)  # noqa: SLF001
+    result = PDOutlineItem._coerce_named_destination_entry(bare)
     assert result is None

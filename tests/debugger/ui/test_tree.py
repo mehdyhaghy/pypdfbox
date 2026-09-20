@@ -163,7 +163,7 @@ def test_unwrap_array_entry_returns_value() -> None:
     inner = COSStream()
     ae = ArrayEntry()
     ae.set_value(inner)
-    assert Tree._unwrap(ae) is inner  # noqa: SLF001
+    assert Tree._unwrap(ae) is inner
 
 
 def test_unwrap_xref_entry_returns_object() -> None:
@@ -172,12 +172,12 @@ def test_unwrap_xref_entry_returns_object() -> None:
     inner = COSStream()
     cos_obj = COSObject(7, 0, resolved=inner)
     xe = XrefEntry(0, COSObjectKey(7, 0), 100, cos_obj)
-    assert Tree._unwrap(xe) is inner  # noqa: SLF001
+    assert Tree._unwrap(xe) is inner
 
 
 def test_unwrap_passthrough_for_other_types() -> None:
     sentinel = object()
-    assert Tree._unwrap(sentinel) is sentinel  # noqa: SLF001
+    assert Tree._unwrap(sentinel) is sentinel
 
 
 def test_get_file_extension_pfb_for_fontfile() -> None:
@@ -185,7 +185,7 @@ def test_get_file_extension_pfb_for_fontfile() -> None:
     entry = MapEntry()
     entry.set_key(COSName.get_pdf_name("FontFile"))
     entry.set_value(stream)
-    assert Tree._get_file_extension(stream, entry) == "pfb"  # noqa: SLF001
+    assert Tree._get_file_extension(stream, entry) == "pfb"
 
 
 def test_get_file_extension_ttf_for_fontfile2() -> None:
@@ -193,7 +193,7 @@ def test_get_file_extension_ttf_for_fontfile2() -> None:
     entry = MapEntry()
     entry.set_key(COSName.get_pdf_name("FontFile2"))
     entry.set_value(stream)
-    assert Tree._get_file_extension(stream, entry) == "ttf"  # noqa: SLF001
+    assert Tree._get_file_extension(stream, entry) == "ttf"
 
 
 def test_get_file_extension_cff_for_fontfile3_default() -> None:
@@ -201,7 +201,7 @@ def test_get_file_extension_cff_for_fontfile3_default() -> None:
     entry = MapEntry()
     entry.set_key(COSName.get_pdf_name("FontFile3"))
     entry.set_value(stream)
-    assert Tree._get_file_extension(stream, entry) == "cff"  # noqa: SLF001
+    assert Tree._get_file_extension(stream, entry) == "cff"
 
 
 def test_get_file_extension_otf_for_fontfile3_opentype() -> None:
@@ -210,7 +210,7 @@ def test_get_file_extension_otf_for_fontfile3_opentype() -> None:
     entry = MapEntry()
     entry.set_key(COSName.get_pdf_name("FontFile3"))
     entry.set_value(stream)
-    assert Tree._get_file_extension(stream, entry) == "otf"  # noqa: SLF001
+    assert Tree._get_file_extension(stream, entry) == "otf"
 
 
 def test_get_file_extension_none_for_other_names() -> None:
@@ -218,7 +218,7 @@ def test_get_file_extension_none_for_other_names() -> None:
     entry = MapEntry()
     entry.set_key(COSName.get_pdf_name("Other"))
     entry.set_value(stream)
-    assert Tree._get_file_extension(stream, entry) is None  # noqa: SLF001
+    assert Tree._get_file_extension(stream, entry) is None
 
 
 def test_get_file_extension_array_entry_uses_index() -> None:
@@ -227,7 +227,7 @@ def test_get_file_extension_array_entry_uses_index() -> None:
     ae.set_index(2)
     ae.set_value(stream)
     # Index "2" doesn't match any FontFile* name → None.
-    assert Tree._get_file_extension(stream, ae) is None  # noqa: SLF001
+    assert Tree._get_file_extension(stream, ae) is None
 
 
 def test_filter_for_extension_recognised() -> None:
@@ -243,7 +243,7 @@ def test_filter_for_extension_unknown() -> None:
 def test_get_filters_for_stream_single_name() -> None:
     stream = COSStream()
     stream.set_item("Filter", COSName.FLATE_DECODE)
-    assert Tree._get_filters_for_stream(stream) == ["FlateDecode"]  # noqa: SLF001
+    assert Tree._get_filters_for_stream(stream) == ["FlateDecode"]
 
 
 def test_get_filters_for_stream_array() -> None:
@@ -252,7 +252,7 @@ def test_get_filters_for_stream_array() -> None:
     chain.add(COSName.get_pdf_name("ASCIIHexDecode"))
     chain.add(COSName.get_pdf_name("FlateDecode"))
     stream.set_item("Filter", chain)
-    assert Tree._get_filters_for_stream(stream) == [  # noqa: SLF001
+    assert Tree._get_filters_for_stream(stream) == [
         "ASCIIHexDecode",
         "FlateDecode",
     ]
@@ -260,7 +260,7 @@ def test_get_filters_for_stream_array() -> None:
 
 def test_get_filters_for_stream_no_filters() -> None:
     stream = COSStream()
-    assert Tree._get_filters_for_stream(stream) == []  # noqa: SLF001
+    assert Tree._get_filters_for_stream(stream) == []
 
 
 def test_build_menu_items_includes_partial_decode_for_two_filters(
@@ -317,7 +317,7 @@ def test_compute_tree_path_walks_parents(tk_root: tk.Tk) -> None:
     b_iid = tree.insert(a_iid, "end", text="B")
     tree.register_node(a_iid, a)
     tree.register_node(b_iid, b)
-    path = tree._compute_tree_path(b_iid)  # noqa: SLF001
+    path = tree._compute_tree_path(b_iid)
     assert path == (a, b)
 
 

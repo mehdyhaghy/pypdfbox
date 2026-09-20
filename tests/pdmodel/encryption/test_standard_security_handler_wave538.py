@@ -159,11 +159,11 @@ def test_wave538_only_identity_leaves_bytes_unchanged() -> None:
     handler.set_encryption_key(b"k" * 16)
     payload = b"plain payload"
 
-    assert handler._dispatch_encrypt("Identity", payload, 7, 0) is payload  # noqa: SLF001
+    assert handler._dispatch_encrypt("Identity", payload, 7, 0) is payload
     for cfm in ("None", "UnknownCFM"):
-        enc = handler._dispatch_encrypt(cfm, payload, 7, 0)  # noqa: SLF001
+        enc = handler._dispatch_encrypt(cfm, payload, 7, 0)
         assert enc != payload
-        assert handler._dispatch_decrypt(cfm, enc, 7, 0) == payload  # noqa: SLF001
+        assert handler._dispatch_decrypt(cfm, enc, 7, 0) == payload
 
 
 def test_wave538_revision_number_from_version_uses_policy_permissions() -> None:

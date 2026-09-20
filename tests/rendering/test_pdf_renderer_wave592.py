@@ -23,16 +23,16 @@ def _make_doc(width: float = 4.0, height: float = 4.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (4, 4)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -65,7 +65,7 @@ def test_decode_image_xobject_ignores_non_image_helper_result_and_uses_raw_rgb()
 
     doc, renderer = _prepared_renderer()
     try:
-        image = renderer._decode_image_xobject(_ImageXObject())  # noqa: SLF001
+        image = renderer._decode_image_xobject(_ImageXObject())
 
         assert image is not None
         assert image.mode == "RGB"
@@ -107,17 +107,17 @@ def test_render_tiling_cell_rejects_non_stream_and_degenerate_bbox() -> None:
     stream.set_raw_data(b"0 0 m\n")
     doc, renderer = _prepared_renderer()
     try:
-        assert renderer._render_tiling_cell(  # noqa: SLF001
+        assert renderer._render_tiling_cell(
             _Pattern(object()),
             bbox=_BBox(1.0, 1.0),
             tile_size=(2, 2),
         ) is None
-        assert renderer._render_tiling_cell(  # noqa: SLF001
+        assert renderer._render_tiling_cell(
             _Pattern(stream),
             bbox=_BBox(0.0, 1.0),
             tile_size=(2, 2),
         ) is None
-        assert renderer._render_tiling_cell(  # noqa: SLF001
+        assert renderer._render_tiling_cell(
             _Pattern(stream),
             bbox=_BBox(1.0, -1.0),
             tile_size=(2, 2),
@@ -143,7 +143,7 @@ def test_build_transfer_lookup_clamps_function_outputs(
 
     monkeypatch.setattr(PDFunction, "create", staticmethod(lambda _tr: _Function()))
 
-    lookup = PDFRenderer._build_transfer_lookup(object())  # noqa: SLF001
+    lookup = PDFRenderer._build_transfer_lookup(object())
 
     assert lookup is not None
     assert lookup[0] == 0
@@ -165,7 +165,7 @@ def test_soft_mask_backdrop_rgb_pads_short_rgb_arrays() -> None:
 
     doc, renderer = _prepared_renderer()
     try:
-        assert renderer._soft_mask_backdrop_rgb(_SoftMask()) == (64, 191, 0)  # noqa: SLF001
+        assert renderer._soft_mask_backdrop_rgb(_SoftMask()) == (64, 191, 0)
     finally:
         _finish(renderer)
         doc.close()
@@ -182,5 +182,5 @@ def test_build_transfer_lookup_returns_none_when_function_eval_fails(
 
     monkeypatch.setattr(PDFunction, "create", staticmethod(lambda _tr: _Function()))
 
-    assert PDFRenderer._build_transfer_lookup(COSName.get_pdf_name("TR0")) is None  # noqa: SLF001
+    assert PDFRenderer._build_transfer_lookup(COSName.get_pdf_name("TR0")) is None
 

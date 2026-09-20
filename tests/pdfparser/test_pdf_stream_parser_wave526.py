@@ -139,14 +139,14 @@ def test_wave526_id_at_eof_returns_empty_payload() -> None:
 def test_wave526_following_binary_data_rejects_candidate_ei() -> None:
     parser = _parser(b"\x80")
 
-    assert parser._has_no_following_bin_data() is False  # noqa: SLF001
+    assert parser._has_no_following_bin_data() is False
     assert parser.get_position() == 0
 
 
 def test_wave526_long_ascii_token_after_ei_is_treated_as_binary_payload() -> None:
     parser = _parser(b"abcdefghiJ")
 
-    assert parser._has_no_following_bin_data() is False  # noqa: SLF001
+    assert parser._has_no_following_bin_data() is False
     assert parser.get_position() == 0
 
 

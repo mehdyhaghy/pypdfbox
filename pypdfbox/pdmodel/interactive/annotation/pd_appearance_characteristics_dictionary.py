@@ -25,7 +25,7 @@ _TP: COSName = COSName.get_pdf_name("TP")
 
 def _to_form(stream: COSStream) -> PDFormXObject:
     # Local import to avoid a top-level cycle through the graphics module.
-    from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (  # noqa: PLC0415
+    from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (
         PDFormXObject,
     )
 
@@ -61,17 +61,17 @@ def _read_color(dictionary: COSDictionary, key: COSName) -> PDColor | None:
     if not isinstance(value, COSArray):
         return None
     # Local imports avoid a top-level cycle through the colour module.
-    from pypdfbox.pdmodel.graphics.color.pd_color import PDColor  # noqa: PLC0415
-    from pypdfbox.pdmodel.graphics.color.pd_color_space import (  # noqa: PLC0415
+    from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
+    from pypdfbox.pdmodel.graphics.color.pd_color_space import (
         PDColorSpace,
     )
-    from pypdfbox.pdmodel.graphics.color.pd_device_cmyk import (  # noqa: PLC0415
+    from pypdfbox.pdmodel.graphics.color.pd_device_cmyk import (
         PDDeviceCMYK,
     )
-    from pypdfbox.pdmodel.graphics.color.pd_device_gray import (  # noqa: PLC0415
+    from pypdfbox.pdmodel.graphics.color.pd_device_gray import (
         PDDeviceGray,
     )
-    from pypdfbox.pdmodel.graphics.color.pd_device_rgb import (  # noqa: PLC0415
+    from pypdfbox.pdmodel.graphics.color.pd_device_rgb import (
         PDDeviceRGB,
     )
 

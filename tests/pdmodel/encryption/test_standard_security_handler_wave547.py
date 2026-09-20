@@ -18,9 +18,9 @@ def test_wave547_real_r6_dictionary_validates_user_and_owner_passwords() -> None
     file_key = bytes(range(32))
     handler = StandardSecurityHandler()
     handler.set_encryption_key(file_key)
-    handler._encrypt_metadata = False  # noqa: SLF001
+    handler._encrypt_metadata = False
 
-    o, oe, u, ue, perms = handler._build_r6_dictionary(  # noqa: SLF001
+    o, oe, u, ue, perms = handler._build_r6_dictionary(
         b"owner",
         b"user",
         DEFAULT_PERMISSIONS,
@@ -67,20 +67,20 @@ def test_wave547_extract_document_id_handles_direct_cos_document_and_bad_entries
     bad = COSDocument()
     bad.set_document_id(COSArray([COSName.get_pdf_name("NotString")]))
 
-    assert StandardSecurityHandler._extract_document_id(direct, b"default") == b"direct-id"  # noqa: SLF001
-    assert StandardSecurityHandler._extract_document_id(bad, b"default") == b"default"  # noqa: SLF001
-    assert StandardSecurityHandler._extract_document_id(object(), b"default") == b"default"  # noqa: SLF001
+    assert StandardSecurityHandler._extract_document_id(direct, b"default") == b"direct-id"
+    assert StandardSecurityHandler._extract_document_id(bad, b"default") == b"default"
+    assert StandardSecurityHandler._extract_document_id(object(), b"default") == b"default"
 
 
 def test_wave547_populate_routing_table_clears_state_for_legacy_versions() -> None:
     handler = StandardSecurityHandler()
-    handler._stream_cfm = "AESV2"  # noqa: SLF001
-    handler._string_cfm = "V2"  # noqa: SLF001
-    handler._embedded_file_cfm = "Identity"  # noqa: SLF001
+    handler._stream_cfm = "AESV2"
+    handler._string_cfm = "V2"
+    handler._embedded_file_cfm = "Identity"
     encryption = PDEncryption()
     encryption.set_v(2)
 
-    handler._populate_routing_table(encryption)  # noqa: SLF001
+    handler._populate_routing_table(encryption)
 
     assert handler.get_stream_cfm() is None
     assert handler.get_string_cfm() is None
@@ -95,10 +95,10 @@ def test_wave547_is_aes_v4_uses_crypt_filter_cfm_over_filter_name() -> None:
     std_cf.set_cfm("V2")
     encryption.set_std_crypt_filter_dictionary(std_cf)
 
-    assert StandardSecurityHandler._is_aes_v4(encryption) is False  # noqa: SLF001
+    assert StandardSecurityHandler._is_aes_v4(encryption) is False
 
     std_cf.set_cfm("AESV2")
-    assert StandardSecurityHandler._is_aes_v4(encryption) is True  # noqa: SLF001
+    assert StandardSecurityHandler._is_aes_v4(encryption) is True
 
 
 def test_wave547_aes_decrypt_helpers_match_upstream_iv_and_padding() -> None:
@@ -115,25 +115,25 @@ def test_wave547_aes_decrypt_helpers_match_upstream_iv_and_padding() -> None:
     key16 = b"k" * 16
     key32 = b"k" * 32
     iv = b"i" * 16
-    bad_block = ssh_module._aes_cbc_no_padding_encrypt(  # noqa: SLF001
+    bad_block = ssh_module._aes_cbc_no_padding_encrypt(
         key16, iv, b"not-pkcs7-paddin"  # exactly one 16-byte block
     )
 
     # Empty / IV-only → empty in both modes.
-    assert ssh_module._aes128_cbc_decrypt(key16, b"") == b""  # noqa: SLF001
-    assert ssh_module._aes128_cbc_decrypt(key16, iv) == b""  # noqa: SLF001
+    assert ssh_module._aes128_cbc_decrypt(key16, b"") == b""
+    assert ssh_module._aes128_cbc_decrypt(key16, iv) == b""
     # Partial IV (5 of 16) → raises (project-wide I/O mapping).
     with pytest.raises(OSError):
-        ssh_module._aes128_cbc_decrypt(key16, b"short")  # noqa: SLF001
+        ssh_module._aes128_cbc_decrypt(key16, b"short")
     # AESV2 (strict) bad padding → raises.
     with pytest.raises(OSError):
-        ssh_module._aes128_cbc_decrypt(key16, iv + bad_block)  # noqa: SLF001
+        ssh_module._aes128_cbc_decrypt(key16, iv + bad_block)
     # AESV3 (tolerant) single bad block → final block dropped → empty.
-    bad_block32 = ssh_module._aes_cbc_no_padding_encrypt(  # noqa: SLF001
+    bad_block32 = ssh_module._aes_cbc_no_padding_encrypt(
         key32, iv, b"not-pkcs7-paddin"
     )
     assert (
-        ssh_module._aes128_cbc_decrypt(key32, iv + bad_block32) == b""  # noqa: SLF001
+        ssh_module._aes128_cbc_decrypt(key32, iv + bad_block32) == b""
     )
 
 
@@ -156,7 +156,7 @@ def test_wave547_r6_dictionary_uses_existing_key_and_random_salts(
     handler = StandardSecurityHandler()
     handler.set_encryption_key(b"f" * 32)
 
-    o, _oe, u, _ue, perms = handler._build_r6_dictionary(  # noqa: SLF001
+    o, _oe, u, _ue, perms = handler._build_r6_dictionary(
         b"owner",
         b"user",
         DEFAULT_PERMISSIONS,
@@ -166,7 +166,7 @@ def test_wave547_r6_dictionary_uses_existing_key_and_random_salts(
     assert u[40:48] == b"user-ks!"
     assert o[32:40] == b"ownr-vs!"
     assert o[40:48] == b"ownr-ks!"
-    assert StandardSecurityHandler._validate_perms_r5_r6(  # noqa: SLF001
+    assert StandardSecurityHandler._validate_perms_r5_r6(
         b"f" * 32,
         perms,
         DEFAULT_PERMISSIONS,

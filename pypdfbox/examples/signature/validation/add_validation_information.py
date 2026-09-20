@@ -60,9 +60,9 @@ class AddValidationInformation:
         of ``clazz``; otherwise constructs a fresh ``clazz``, marks it as
         needing to be written, and stores it under ``parent[key]``.
         """
-        from pypdfbox.cos.cos_name import COSName as _N
+        from pypdfbox.cos.cos_name import COSName
 
-        cos_key = key if isinstance(key, _N) else _N.get_pdf_name(key)
+        cos_key = key if isinstance(key, COSName) else COSName.get_pdf_name(key)
         existing = parent.get_dictionary_object(cos_key)
         if existing is not None and isinstance(existing, clazz):
             return existing
@@ -87,36 +87,36 @@ class AddValidationInformation:
 
     def create_base_dictionary(self) -> object:
         """Build the empty DSS base dict (upstream private)."""
-        from pypdfbox.cos.cos_dictionary import COSDictionary as _D
+        from pypdfbox.cos.cos_dictionary import COSDictionary
 
-        return _D()
+        return COSDictionary()
 
     def create_vri_dictionary(self) -> object:
         """Build a /VRI entry for the DSS (upstream private)."""
-        from pypdfbox.cos.cos_dictionary import COSDictionary as _D
+        from pypdfbox.cos.cos_dictionary import COSDictionary
 
-        return _D()
+        return COSDictionary()
 
-    def do_validation(self, filename: str, output) -> None:  # noqa: ANN001
+    def do_validation(self, filename: str, output) -> None:
         """Drive the validation flow (upstream 146)."""
 
-    def add_revocation_data(self, cert_info) -> None:  # noqa: ANN001
+    def add_revocation_data(self, cert_info) -> None:
         """Top-level revocation harvest (upstream 249)."""
 
-    def fetch_ocsp_data(self, cert_info) -> bool:  # noqa: ANN001
+    def fetch_ocsp_data(self, cert_info) -> bool:
         """Fetch OCSP data, returns True on success (upstream 321)."""
         return False
 
-    def fetch_crl_data(self, cert_info) -> None:  # noqa: ANN001
+    def fetch_crl_data(self, cert_info) -> None:
         """Fetch CRL data (upstream 346)."""
 
-    def update_vri(self, cert_info, vri) -> None:  # noqa: ANN001
+    def update_vri(self, cert_info, vri) -> None:
         """Populate the VRI block for one signature (upstream 520)."""
 
     def add_all_certs_to_cert_array(self) -> None:
         """Add every cert from the collector into the /Certs array (upstream 572)."""
 
-    def write_data_to_stream(self, data: bytes):  # noqa: ANN201
+    def write_data_to_stream(self, data: bytes):
         """Wrap ``data`` in a COSStream (upstream 599)."""
         from pypdfbox.cos.cos_stream import COSStream
 
@@ -125,7 +125,7 @@ class AddValidationInformation:
             out.write(data)
         return stream
 
-    def add_extensions(self, catalog) -> None:  # noqa: ANN001
+    def add_extensions(self, catalog) -> None:
         """Set the catalog ``/Extensions`` dict for PAdES (upstream 615)."""
 
     def validate_signature(

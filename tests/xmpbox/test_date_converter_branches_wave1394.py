@@ -146,7 +146,7 @@ def test_locale_handler_returns_none_when_set_fields_raises(
     defensive ``except`` clause."""
     from types import SimpleNamespace
 
-    import pypdfbox.util.date_util as date_util
+    from pypdfbox.util import date_util
 
     def _fake_parse(text, fmt, locale="en"):
         # Return an object that looks like a parsed date but with an
@@ -170,7 +170,7 @@ def test_locale_split_at_tz_handler_returns_none_when_set_fields_raises(
     reach the calendar build, then ``set_fields`` rejects the year."""
     from types import SimpleNamespace
 
-    import pypdfbox.util.date_util as date_util
+    from pypdfbox.util import date_util
 
     def _fake_parse(text, fmt, locale="en"):
         # Always succeed for any prefix/post text — we just need to
@@ -198,7 +198,7 @@ def test_locale_split_at_tz_handler_continues_when_tail_empty(
     ``None, 0``."""
     from types import SimpleNamespace
 
-    import pypdfbox.util.date_util as date_util
+    from pypdfbox.util import date_util
 
     def _fake_parse(text, fmt, locale="en"):
         # pre_fmt accepts the full text; post_fmt rejects everything
@@ -224,7 +224,7 @@ def test_locale_split_at_tz_handler_continues_when_tz_or_year_part_empty(
     empty (no whitespace separating them)."""
     from types import SimpleNamespace
 
-    import pypdfbox.util.date_util as date_util
+    from pypdfbox.util import date_util
 
     def _fake_parse(text, fmt, locale="en"):
         # pre_fmt accepts "Mon Jan 01 00:00:00" (the first 19 chars);
@@ -254,7 +254,7 @@ def test_locale_split_at_tz_handler_continues_when_post_parse_fails(
     parse returns ``None``."""
     from types import SimpleNamespace
 
-    import pypdfbox.util.date_util as date_util
+    from pypdfbox.util import date_util
 
     def _fake_parse(text, fmt, locale="en"):
         # pre_fmt always succeeds; post_fmt always fails.

@@ -21,16 +21,16 @@ def _make_doc(width: float = 8.0, height: float = 8.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (8, 8)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -45,22 +45,22 @@ def _float_array(values: list[float]) -> COSArray:
 def test_knockout_dispatch_restores_snapshot_only_for_top_level_paint() -> None:
     doc, renderer = _prepared_renderer((2, 2))
     try:
-        renderer._knockout_active = True  # noqa: SLF001
-        renderer._knockout_snapshot = Image.new("RGB", (2, 2), (10, 20, 30))  # noqa: SLF001
+        renderer._knockout_active = True
+        renderer._knockout_snapshot = Image.new("RGB", (2, 2), (10, 20, 30))
 
-        renderer._image.paste((200, 0, 0), (0, 0, 2, 2))  # noqa: SLF001
-        renderer._knockout_form_depth = 0  # noqa: SLF001
+        renderer._image.paste((200, 0, 0), (0, 0, 2, 2))
+        renderer._knockout_form_depth = 0
         renderer.process_operator("f", [])
         _finish(renderer)
-        assert renderer._image.getpixel((0, 0)) == (10, 20, 30)  # noqa: SLF001
+        assert renderer._image.getpixel((0, 0)) == (10, 20, 30)
 
-        renderer._image.paste((200, 0, 0), (0, 0, 2, 2))  # noqa: SLF001
-        renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-        renderer._draw.setantialias(True)  # noqa: SLF001
-        renderer._knockout_form_depth = 1  # noqa: SLF001
+        renderer._image.paste((200, 0, 0), (0, 0, 2, 2))
+        renderer._draw = aggdraw.Draw(renderer._image)
+        renderer._draw.setantialias(True)
+        renderer._knockout_form_depth = 1
         renderer.process_operator("f", [])
         _finish(renderer)
-        assert renderer._image.getpixel((0, 0)) == (200, 0, 0)  # noqa: SLF001
+        assert renderer._image.getpixel((0, 0)) == (200, 0, 0)
     finally:
         doc.close()
 
@@ -88,7 +88,7 @@ def test_radial_shading_origin_cone_extend_ff_paints_nothing() -> None:
 
     doc, renderer = _prepared_renderer((3, 1))
     try:
-        renderer._paint_radial_shading(  # noqa: SLF001
+        renderer._paint_radial_shading(
             _Shading(),
             region_mask=Image.new("L", (3, 1), 255),
         )
@@ -99,9 +99,9 @@ def test_radial_shading_origin_cone_extend_ff_paints_nothing() -> None:
         # false] and no /Background the pixel is never painted (oracle-
         # confirmed white). The old expectation pinned pypdfbox's pre-1484
         # "valid linear root" gradient, which upstream does not compute.
-        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)  # noqa: SLF001
-        assert renderer._image.getpixel((1, 0)) == (255, 255, 255)  # noqa: SLF001
-        assert renderer._image.getpixel((2, 0)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)
+        assert renderer._image.getpixel((1, 0)) == (255, 255, 255)
+        assert renderer._image.getpixel((2, 0)) == (255, 255, 255)
     finally:
         doc.close()
 
@@ -126,7 +126,7 @@ def test_evaluate_shading_rgb_normalizes_cos_function_then_cmyk() -> None:
         original_create = PDFunction.create
         PDFunction.create = staticmethod(lambda _obj: _Function())  # type: ignore[method-assign]
         try:
-            assert renderer._evaluate_shading_rgb(_Shading(), 0.25) == (0.5, 0.0, 0.5)  # noqa: E501, SLF001
+            assert renderer._evaluate_shading_rgb(_Shading(), 0.25) == (0.5, 0.0, 0.5)
         finally:
             PDFunction.create = original_create  # type: ignore[method-assign]
     finally:
@@ -137,13 +137,13 @@ def test_evaluate_shading_rgb_normalizes_cos_function_then_cmyk() -> None:
 def test_paint_with_empty_path_consumes_pending_clip_and_preserves_path() -> None:
     doc, renderer = _prepared_renderer()
     try:
-        renderer._pending_clip = "W*"  # noqa: SLF001
+        renderer._pending_clip = "W*"
 
-        renderer._paint(stroke=True, fill=True, even_odd=True)  # noqa: SLF001
+        renderer._paint(stroke=True, fill=True, even_odd=True)
 
-        assert renderer._pending_clip is None  # noqa: SLF001
-        assert renderer._subpaths == []  # noqa: SLF001
-        assert renderer._current_subpath is None  # noqa: SLF001
+        assert renderer._pending_clip is None
+        assert renderer._subpaths == []
+        assert renderer._current_subpath is None
     finally:
         _finish(renderer)
         doc.close()

@@ -35,7 +35,7 @@ def test_wave614_read_stream_body_resolves_loaded_indirect_length() -> None:
     stream = COSStream()
     stream.set_item("Length", length_ref)
 
-    parser._read_stream_body(stream)  # noqa: SLF001
+    parser._read_stream_body(stream)
 
     assert stream.get_raw_data() == b"ABC"
 
@@ -49,7 +49,7 @@ def test_wave614_decode_xref_stream_registers_free_and_compressed_entries() -> N
     index.add(COSInteger.get(2))
     stream.set_item("Index", index)
 
-    parser._decode_xref_stream_entries(stream)  # noqa: SLF001
+    parser._decode_xref_stream_entries(stream)
 
     table = parser.get_xref_trailer_resolver().get_xref_table()
     free = table[COSObjectKey(3, 2)]
@@ -65,12 +65,12 @@ def test_wave614_decode_xref_stream_registers_free_and_compressed_entries() -> N
 def test_wave614_handle_xref_stream_requires_stream_keyword() -> None:
     parser = _parser(b"9 0 obj\n<< /Type /XRef /Size 0 /W [1 1 1] >>\nendobj")
     doc = COSDocument()
-    parser._document = doc  # noqa: SLF001
-    parser._cos_parser = COSParser(parser._src, document=doc)  # noqa: SLF001
+    parser._document = doc
+    parser._cos_parser = COSParser(parser._src, document=doc)
 
     try:
         with pytest.raises(PDFParseError, match="missing 'stream' keyword"):
-            parser._handle_xref_stream_at(0)  # noqa: SLF001
+            parser._handle_xref_stream_at(0)
     finally:
         doc.close()
 
@@ -85,11 +85,11 @@ def test_wave614_load_indirect_object_rejects_mismatched_header_numbers() -> Non
     # ``pass`` here, which was a divergence.
     parser = _parser(b"2 0 obj\n/Name\nendobj")
     doc = COSDocument()
-    parser._document = doc  # noqa: SLF001
-    parser._cos_parser = COSParser(parser._src, document=doc)  # noqa: SLF001
+    parser._document = doc
+    parser._cos_parser = COSParser(parser._src, document=doc)
 
     try:
         with pytest.raises(PDFParseError, match="points to wrong object"):
-            parser._load_indirect_object_at(0, COSObject(1, 0))  # noqa: SLF001
+            parser._load_indirect_object_at(0, COSObject(1, 0))
     finally:
         doc.close()

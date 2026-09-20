@@ -106,7 +106,7 @@ def test_encrypted_xref_stream_does_not_double_decrypt() -> None:
     parser.parse()
     # Pull every uncompressed entry — those are the ones whose offset is
     # a literal file byte position.
-    for key, entry in parser._resolver.get_xref_table().items():  # noqa: SLF001
+    for key, entry in parser._resolver.get_xref_table().items():
         if entry.compressed_index >= 0 and entry.type.name != "COMPRESSED":
             offset = entry.offset
             window = pdf[offset : offset + 32]

@@ -28,7 +28,7 @@ def test_format0_repr_empty_array_renders_empty_brackets() -> None:
 
 def test_format0_repr_coerces_through_int_for_robustness() -> None:
     select = Format0FDSelect([1, 2])
-    select._fds = [True, False]  # type: ignore[list-item]  # noqa: SLF001
+    select._fds = [True, False]  # type: ignore[list-item]
 
     assert repr(select) == "Format0FDSelect[fds=[1, 0]]"
 

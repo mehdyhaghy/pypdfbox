@@ -63,13 +63,13 @@ def test_parse_from_memoryview(ttf_bytes: bytes) -> None:
     assert isinstance(font, TrueTypeFont)
 
 
-def test_parse_from_path_str(ttf_bytes: bytes) -> None:  # noqa: ARG001 — fixture skip-gates
+def test_parse_from_path_str(ttf_bytes: bytes) -> None:
     parser = TTFParser()
     font = parser.parse(str(FIXTURE))
     assert font.get_units_per_em() > 0
 
 
-def test_parse_from_pathlike(ttf_bytes: bytes) -> None:  # noqa: ARG001
+def test_parse_from_pathlike(ttf_bytes: bytes) -> None:
     parser = TTFParser()
     font = parser.parse(FIXTURE)  # Path is os.PathLike
     assert font.has_table("head")
@@ -180,7 +180,7 @@ def test_parse_embedded_tolerates_partial_table_set() -> None:
     by checking that the subsequent ``parse`` call inherits embedded
     semantics (the flag is now True)."""
     parser = TTFParser()
-    parser._is_embedded = True  # noqa: SLF001 — same end state as parse_embedded
+    parser._is_embedded = True
     # Embedded parsers must not blow up on a normal full font either.
     font = parser.parse(FIXTURE)
     assert font.has_table("head")
@@ -199,7 +199,7 @@ def test_allow_cff_default_false() -> None:
 def test_allow_cff_true_in_otf_subclass() -> None:
     """``OTFParser`` overrides the hook to allow CFF (``OTTO``)
     streams. Mirrors upstream ``OTFParser.allowCFF()``."""
-    from pypdfbox.fontbox.ttf import OTFParser  # noqa: PLC0415
+    from pypdfbox.fontbox.ttf import OTFParser
 
     parser = OTFParser()
     assert parser.allow_cff() is True
@@ -209,7 +209,7 @@ def test_allow_cff_underscored_alias_still_works() -> None:
     """Earlier waves shipped ``_allow_cff``; the underscored alias must
     keep forwarding to :meth:`allow_cff` for back-compat."""
     parser = TTFParser()
-    assert parser._allow_cff() is False  # noqa: SLF001
+    assert parser._allow_cff() is False
 
 
 # ---------- read_table hook (upstream readTable(String)) ------------------
@@ -227,7 +227,7 @@ def test_read_table_underscored_alias_still_works() -> None:
     """The pre-promotion ``_read_table`` spelling forwards to the
     public name."""
     parser = TTFParser()
-    table = parser._read_table("zzzz")  # noqa: SLF001
+    table = parser._read_table("zzzz")
     assert isinstance(table, TTFTable)
 
 
@@ -249,7 +249,7 @@ def test_new_font_returns_truetypefont(ttf_bytes: bytes) -> None:
 def test_new_font_underscored_alias_still_works(ttf_bytes: bytes) -> None:
     parser = TTFParser()
     stream = MemoryTTFDataStream(ttf_bytes)
-    font = parser._new_font(stream)  # noqa: SLF001
+    font = parser._new_font(stream)
     assert isinstance(font, TrueTypeFont)
 
 
@@ -341,7 +341,7 @@ def test_parse_table_headers_populates_summary(ttf_bytes: bytes) -> None:
     assert headers.is_open_type_post_script() is False
 
 
-def test_parse_table_headers_from_path(ttf_bytes: bytes) -> None:  # noqa: ARG001
+def test_parse_table_headers_from_path(ttf_bytes: bytes) -> None:
     parser = TTFParser()
     headers = parser.parse_table_headers(FIXTURE)
     assert headers.get_error() is None

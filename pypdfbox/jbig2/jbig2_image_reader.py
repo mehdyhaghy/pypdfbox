@@ -113,7 +113,7 @@ class JBIG2ImageReader:
 
     def get_stream_metadata(self) -> None:
         """Mirror ``getStreamMetadata`` — this plugin records none."""
-        return None
+        return
 
     def get_globals(self) -> JBIG2Globals | None:
         """Mirror ``getGlobals`` — the document's decoded global segments."""

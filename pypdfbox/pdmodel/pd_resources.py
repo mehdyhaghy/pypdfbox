@@ -259,10 +259,10 @@ class PDResources:
         ``PDXObject.createXObject`` for /Subtype dispatch."""
         # Local imports keep cluster boundaries explicit and avoid an
         # import cycle (graphics → common → pd_stream → cos).
-        from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (
             PDFormXObject,
         )
-        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (
             PDImageXObject,
         )
 
@@ -330,10 +330,10 @@ class PDResources:
         kind (1-based), returns an existing key when the same COS object is
         already present."""
         # Local imports — cluster boundary, see ``get_x_object``.
-        from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (
             PDFormXObject,
         )
-        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (
             PDImageXObject,
         )
 
@@ -368,7 +368,7 @@ class PDResources:
         handles indirect entries; direct entries use this wrapper's
         name-keyed direct-font cache, matching upstream.
         """
-        from pypdfbox.pdmodel.font import PDFontFactory  # noqa: PLC0415
+        from pypdfbox.pdmodel.font import PDFontFactory
 
         raw, base = self._lookup_raw_and_resolved(_FONT, name)
         if not isinstance(base, COSDictionary):
@@ -450,7 +450,7 @@ class PDResources:
     def _get_color_space(
         self, name: COSName, was_default: bool = False
     ) -> PDColorSpace | None:
-        from pypdfbox.pdmodel.graphics.color import PDColorSpace  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.color import PDColorSpace
 
         raw, base = self._lookup_raw_and_resolved(_COLOR_SPACE, name)
         cache = self._cache()
@@ -486,19 +486,19 @@ class PDResources:
         pypdfbox keeps this branch here (rather than in ``PDColorSpace.create``)
         so the bare ``PDColorSpace.create(name)`` factory stays permissive for
         callers outside the resource-dictionary lookup."""
-        from pypdfbox.pdmodel.graphics.color.pd_device_cmyk import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.color.pd_device_cmyk import (
             PDDeviceCMYK,
         )
-        from pypdfbox.pdmodel.graphics.color.pd_device_gray import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.color.pd_device_gray import (
             PDDeviceGray,
         )
-        from pypdfbox.pdmodel.graphics.color.pd_device_rgb import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.color.pd_device_rgb import (
             PDDeviceRGB,
         )
-        from pypdfbox.pdmodel.graphics.color.pd_pattern import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.color.pd_pattern import (
             PDPattern,
         )
-        from pypdfbox.pdmodel.missing_resource_exception import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.missing_resource_exception import (
             MissingResourceException,
         )
 
@@ -613,7 +613,7 @@ class PDResources:
         """Return the typed ``PDAbstractPattern`` for ``name`` (a
         ``PDTilingPattern`` or ``PDShadingPattern``), or ``None`` when the
         entry is missing or not a dictionary."""
-        from pypdfbox.pdmodel.graphics.pattern import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.pattern import (
             PDAbstractPattern,
         )
 
@@ -637,7 +637,7 @@ class PDResources:
         """Return the typed ``PDShading`` for ``name`` (one of
         ``PDShadingType1``..``PDShadingType7``), or ``None`` when the entry
         is absent."""
-        from pypdfbox.pdmodel.graphics.shading import PDShading  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.shading import PDShading
 
         key = _to_cos_name(name)
         raw, base = self._lookup_raw_and_resolved(_SHADING, key)
@@ -656,7 +656,7 @@ class PDResources:
     def get_ext_gstate(self, name: COSName) -> PDExtendedGraphicsState | None:
         """Return the typed ``PDExtendedGraphicsState`` for ``name``, or
         ``None`` when the entry is absent or not a dictionary."""
-        from pypdfbox.pdmodel.graphics.state import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.state import (
             PDExtendedGraphicsState,
         )
 
@@ -680,7 +680,7 @@ class PDResources:
     def get_property_list(self, name: COSName) -> PDPropertyList | None:
         """Return the typed ``PDPropertyList`` (OCG / OCMD) for ``name``, or
         ``None`` when the entry is absent or not a dictionary."""
-        from pypdfbox.pdmodel.graphics.pd_property_list import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.pd_property_list import (
             PDPropertyList,
         )
 
@@ -820,15 +820,15 @@ class PDResources:
 
     @staticmethod
     def _category_for_resource(value: Any) -> COSName:
-        from pypdfbox.pdmodel.font import PDFont  # noqa: PLC0415
-        from pypdfbox.pdmodel.graphics.color import PDColorSpace  # noqa: PLC0415
-        from pypdfbox.pdmodel.graphics.pattern import PDAbstractPattern  # noqa: PLC0415
-        from pypdfbox.pdmodel.graphics.pd_property_list import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.font import PDFont
+        from pypdfbox.pdmodel.graphics.color import PDColorSpace
+        from pypdfbox.pdmodel.graphics.pattern import PDAbstractPattern
+        from pypdfbox.pdmodel.graphics.pd_property_list import (
             PDPropertyList,
         )
-        from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject  # noqa: PLC0415
-        from pypdfbox.pdmodel.graphics.shading import PDShading  # noqa: PLC0415
-        from pypdfbox.pdmodel.graphics.state import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
+        from pypdfbox.pdmodel.graphics.shading import PDShading
+        from pypdfbox.pdmodel.graphics.state import (
             PDExtendedGraphicsState,
         )
 
@@ -853,10 +853,10 @@ class PDResources:
         category: COSName, value: COSBase, original_value: Any = None
     ) -> str:
         if category is _X_OBJECT:
-            from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (
                 PDFormXObject,
             )
-            from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (
                 PDImageXObject,
             )
 
@@ -885,7 +885,7 @@ class PDResources:
             # Upstream PDResources.add(PDPropertyList) routes
             # PDOptionalContentGroup to prefix "oc" and falls back to "Prop"
             # for other property-list flavours.
-            from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_group import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_group import (
                 PDOptionalContentGroup,
             )
 
@@ -933,7 +933,7 @@ class PDResources:
         cache is shared across pages with potentially different defaults
         (PDFBOX-2370 / PDFBOX-3484)."""
         # Local import — keeps the cluster boundary explicit.
-        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (
             PDImageXObject,
         )
 

@@ -63,7 +63,7 @@ def parse_pkcs7_certificates(blob: bytes) -> list[_CertSummary]:
 
     try:
         certs = pkcs7.load_der_pkcs7_certificates(trimmed)
-    except Exception as exc:  # noqa: BLE001 — propagate as a single error entry
+    except Exception as exc:
         err = _CertSummary()
         err.errors.append(f"failed to parse PKCS#7: {exc}")
         return [err]
@@ -72,15 +72,15 @@ def parse_pkcs7_certificates(blob: bytes) -> list[_CertSummary]:
         summary = _CertSummary()
         try:
             summary.subject = cert.subject.rfc4514_string()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             summary.errors.append(f"subject: {exc}")
         try:
             summary.issuer = cert.issuer.rfc4514_string()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             summary.errors.append(f"issuer: {exc}")
         try:
             summary.serial_number = format(int(cert.serial_number), "x")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             summary.errors.append(f"serial: {exc}")
         try:
             summary.not_before = _utc_string(
@@ -91,7 +91,7 @@ def parse_pkcs7_certificates(blob: bytes) -> list[_CertSummary]:
                 getattr(cert, "not_valid_after_utc", None)
                 or cert.not_valid_after
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             summary.errors.append(f"validity: {exc}")
         summaries.append(summary)
     return summaries
@@ -181,7 +181,7 @@ class SignaturePane:
 
         try:
             body = self.get_text_string(cos_string)
-        except Exception as exc:  # noqa: BLE001 — surface but never crash widget
+        except Exception as exc:
             body = f"<failed to dump signature: {exc}>"
         text.insert("1.0", body)
         text.configure(state="disabled")

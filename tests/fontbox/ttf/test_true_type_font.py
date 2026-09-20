@@ -220,18 +220,18 @@ class _FakeFontToolsTTFont:
             raise KeyError(tag)
         return self._cmap_table
 
-    def getGlyphOrder(self) -> list[str]:  # noqa: N802 - fontTools API
+    def getGlyphOrder(self) -> list[str]:
         return list(self._glyph_order)
 
 
 def _fake_ttf_with_cmaps(subtables: list[_FakeFontToolsCmapSubtable]) -> TrueTypeFont:
     font = object.__new__(TrueTypeFont)
-    font._tt = _FakeFontToolsTTFont(  # noqa: SLF001
+    font._tt = _FakeFontToolsTTFont(
         _FakeFontToolsCmapTable(subtables),
         [".notdef", "A", "B"],
     )
-    font._cmap_subtable = None  # noqa: SLF001
-    font._cmap_resolved = False  # noqa: SLF001
+    font._cmap_subtable = None
+    font._cmap_resolved = False
     return font
 
 
@@ -420,7 +420,7 @@ def test_context_manager_closes() -> None:
     with TrueTypeFont.from_bytes(FIXTURE.read_bytes()) as font:
         assert font.get_units_per_em() > 0
     # ``__exit__`` invokes ``close``.
-    assert font._closed is True  # noqa: SLF001
+    assert font._closed is True
 
 
 # ---------- get_advance_height ------------------------------------------
@@ -548,27 +548,27 @@ def test_set_version_records_value() -> None:
 
 def test_parse_uni_name_decodes_basic_codepoint() -> None:
     # ``uni0041`` = 'A'.
-    assert TrueTypeFont._parse_uni_name("uni0041") == 0x41  # noqa: SLF001
+    assert TrueTypeFont._parse_uni_name("uni0041") == 0x41
 
 
 def test_parse_uni_name_rejects_short_form() -> None:
-    assert TrueTypeFont._parse_uni_name("uni04") == -1  # noqa: SLF001
-    assert TrueTypeFont._parse_uni_name("uni") == -1  # noqa: SLF001
+    assert TrueTypeFont._parse_uni_name("uni04") == -1
+    assert TrueTypeFont._parse_uni_name("uni") == -1
 
 
 def test_parse_uni_name_rejects_non_hex() -> None:
-    assert TrueTypeFont._parse_uni_name("uniZZZZ") == -1  # noqa: SLF001
+    assert TrueTypeFont._parse_uni_name("uniZZZZ") == -1
 
 
 def test_parse_uni_name_skips_surrogate_area() -> None:
     # 0xD800-0xDFFF are surrogate codepoints — upstream skips them.
-    assert TrueTypeFont._parse_uni_name("uniD800") == -1  # noqa: SLF001
-    assert TrueTypeFont._parse_uni_name("uniDFFF") == -1  # noqa: SLF001
+    assert TrueTypeFont._parse_uni_name("uniD800") == -1
+    assert TrueTypeFont._parse_uni_name("uniDFFF") == -1
 
 
 def test_parse_uni_name_rejects_non_uni_prefix() -> None:
-    assert TrueTypeFont._parse_uni_name("foo0041") == -1  # noqa: SLF001
-    assert TrueTypeFont._parse_uni_name("") == -1  # noqa: SLF001
+    assert TrueTypeFont._parse_uni_name("foo0041") == -1
+    assert TrueTypeFont._parse_uni_name("") == -1
 
 
 # ---------- name_to_gid post-table fallback ------------------------------
@@ -692,13 +692,13 @@ def test_read_post_script_names_warms_lookup_cache(
     warmer — calling it once must populate ``_post_script_names``.
     """
     f = TrueTypeFont.from_bytes(FIXTURE.read_bytes())
-    assert f._post_script_names is None  # noqa: SLF001
+    assert f._post_script_names is None
     f.read_post_script_names()
-    assert f._post_script_names is not None  # noqa: SLF001
+    assert f._post_script_names is not None
     # Idempotent — calling a second time leaves the cache untouched.
-    cache_before = f._post_script_names  # noqa: SLF001
+    cache_before = f._post_script_names
     f.read_post_script_names()
-    assert f._post_script_names is cache_before  # noqa: SLF001
+    assert f._post_script_names is cache_before
 
 
 def test_get_unicode_cmap_impl_strict_matches_subtable(

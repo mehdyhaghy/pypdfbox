@@ -31,16 +31,16 @@ def _prepared_renderer(
 ) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -86,19 +86,19 @@ def test_function_shading_ignores_missing_canvas_bad_domain_and_singular_ctm() -
     try:
         mask = Image.new("L", (6, 6), 255)
 
-        renderer._image = None  # noqa: SLF001
-        renderer._paint_function_shading(  # noqa: SLF001
+        renderer._image = None
+        renderer._paint_function_shading(
             _FunctionShading(domain=_Domain(0.0, 1.0, 0.0, 1.0)),
             region_mask=mask,
         )
 
-        renderer._image = Image.new("RGB", (6, 6), (255, 255, 255))  # noqa: SLF001
-        renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-        renderer._paint_function_shading(  # noqa: SLF001
+        renderer._image = Image.new("RGB", (6, 6), (255, 255, 255))
+        renderer._draw = aggdraw.Draw(renderer._image)
+        renderer._paint_function_shading(
             _FunctionShading(domain=_Domain(1.0, 0.0, 0.0, 1.0)),
             region_mask=mask,
         )
-        renderer._paint_function_shading(  # noqa: SLF001
+        renderer._paint_function_shading(
             _FunctionShading(
                 domain=_Domain(0.0, 1.0, 0.0, 1.0),
                 matrix=_Matrix(1.0, 2.0, 2.0, 4.0, 0.0, 0.0),
@@ -106,14 +106,14 @@ def test_function_shading_ignores_missing_canvas_bad_domain_and_singular_ctm() -
             region_mask=mask,
         )
 
-        renderer._device_ctm = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)  # noqa: SLF001
-        renderer._paint_function_shading(  # noqa: SLF001
+        renderer._device_ctm = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        renderer._paint_function_shading(
             _FunctionShading(domain=_Domain(0.0, 1.0, 0.0, 1.0)),
             region_mask=mask,
         )
 
         _finish(renderer)
-        assert renderer._image.getpixel((3, 3)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image.getpixel((3, 3)) == (255, 255, 255)
     finally:
         doc.close()
 
@@ -136,9 +136,9 @@ def test_resolve_font_program_handles_mapper_failure_and_caches_none(
         monkeypatch.setattr(FontMappers, "instance", raise_instance)
         font = Font()
 
-        assert renderer._resolve_font_program(font) is None  # noqa: SLF001
-        assert id(font) in renderer._font_program_cache  # noqa: SLF001
-        assert renderer._resolve_font_program(font) is None  # noqa: SLF001
+        assert renderer._resolve_font_program(font) is None
+        assert id(font) in renderer._font_program_cache
+        assert renderer._resolve_font_program(font) is None
     finally:
         _finish(renderer)
         doc.close()
@@ -168,7 +168,7 @@ def test_draw_glyph_type1_path_failures_and_placeholder_width_fallback(
                 )
             ),
         )
-        assert renderer._draw_glyph(  # noqa: SLF001
+        assert renderer._draw_glyph(
             Type1LikeFont(),
             65,
             None,
@@ -188,7 +188,7 @@ def test_draw_glyph_type1_path_failures_and_placeholder_width_fallback(
         monkeypatch.setattr(renderer, "_resolve_font_program", lambda _font: None)
         monkeypatch.setattr(renderer, "_maybe_warn_standard14", lambda _font: None)
 
-        assert renderer._draw_glyph(WidthlessFont(), 65, None, None) == 500.0  # noqa: SLF001
+        assert renderer._draw_glyph(WidthlessFont(), 65, None, None) == 500.0
     finally:
         _finish(renderer)
         doc.close()
@@ -197,13 +197,13 @@ def test_draw_glyph_type1_path_failures_and_placeholder_width_fallback(
 def test_placeholder_and_pen_empty_paths_are_noops() -> None:
     doc, renderer = _prepared_renderer()
     try:
-        renderer._draw = None  # noqa: SLF001
-        renderer._draw_placeholder_box(  # noqa: SLF001
+        renderer._draw = None
+        renderer._draw_placeholder_box(
             (1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
             500.0,
         )
 
-        assert PDFRenderer._build_aggdraw_path_from_commands(  # noqa: SLF001
+        assert PDFRenderer._build_aggdraw_path_from_commands(
             [("moveto", 10.0, 20.0)],
             scale=1.0,
         ) is None

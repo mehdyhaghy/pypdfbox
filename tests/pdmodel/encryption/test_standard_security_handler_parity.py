@@ -477,7 +477,7 @@ def test_compute_encrypted_key_full_form_dispatches_to_rev6() -> None:
     import os as _os
 
     handler.set_encryption_key(_os.urandom(32))
-    o, oe, u, ue, _perms = handler._build_r6_dictionary(  # noqa: SLF001
+    o, oe, u, ue, _perms = handler._build_r6_dictionary(
         b"owner", b"user", -3904
     )
 
@@ -501,22 +501,22 @@ def test_get_document_id_bytes_handles_cos_array_or_bytes() -> None:
 
     # bytes input pass-through
     assert (
-        StandardSecurityHandler._get_document_id_bytes(b"abc")  # noqa: SLF001
+        StandardSecurityHandler._get_document_id_bytes(b"abc")
         == b"abc"
     )
     # None / empty
-    assert StandardSecurityHandler._get_document_id_bytes(None) == b""  # noqa: SLF001
+    assert StandardSecurityHandler._get_document_id_bytes(None) == b""
 
     # COSArray with COSString[0] returns its raw bytes
     arr = COSArray()
     arr.add(COSString(b"\x01\x02\x03"))
     assert (
-        StandardSecurityHandler._get_document_id_bytes(arr)  # noqa: SLF001
+        StandardSecurityHandler._get_document_id_bytes(arr)
         == b"\x01\x02\x03"
     )
     # Empty COSArray returns b"" (matches Java L309's ``new byte[0]``).
     empty = COSArray()
-    assert StandardSecurityHandler._get_document_id_bytes(empty) == b""  # noqa: SLF001
+    assert StandardSecurityHandler._get_document_id_bytes(empty) == b""
 
 
 def test_validate_perms_warns_on_corrupted_perms_block(
@@ -535,7 +535,7 @@ def test_validate_perms_warns_on_corrupted_perms_block(
     handler.set_aes(True)
     handler.set_encryption_key(_os.urandom(32))
 
-    _o, _oe, _u, _ue, perms = handler._build_r6_dictionary(  # noqa: SLF001
+    _o, _oe, _u, _ue, perms = handler._build_r6_dictionary(
         b"owner", b"user", -3904
     )
     encryption = PDEncryption()

@@ -12,7 +12,7 @@ class _Strings:
 
 
 class _FontSet:
-    fontNames = ["Wave425Base"]  # noqa: N815
+    fontNames = ["Wave425Base"]
     strings = _Strings()
 
 
@@ -55,8 +55,8 @@ class _BrokenDrawable:
 
 def _font() -> CFFFont:
     font = CFFFont()
-    font._fontset = _FontSet()  # noqa: SLF001
-    font._top = _Top(  # noqa: SLF001
+    font._fontset = _FontSet()
+    font._top = _Top(
         _CharStrings(
             {
                 ".notdef": object(),
@@ -89,7 +89,7 @@ def test_wave425_standard_sid_boundaries_and_missing_string_table() -> None:
     assert CFFFont.is_standard_sid(CFFFont.NUM_STANDARD_STRINGS) is False
 
     font = CFFFont()
-    font._fontset = object()  # noqa: SLF001
+    font._fontset = object()
     assert font.get_string(CFFFont.NUM_STANDARD_STRINGS) == ""
 
 
@@ -121,24 +121,24 @@ def test_wave425_get_width_returns_zero_when_extractor_rejects_stub_charstring()
     font = _font()
 
     assert font.get_width("customGlyph") == 0.0
-    assert "customGlyph" not in font._widths  # noqa: SLF001
+    assert "customGlyph" not in font._widths
     assert font.get_width("missing") == 0.0
 
 
 def test_wave425_copy_base_state_makes_independent_mutable_snapshots() -> None:
     base = _font()
-    base._font_matrix = [0.002, 0.0, 0.0, 0.002, 0.0, 0.0]  # noqa: SLF001
-    base._units_per_em = 500  # noqa: SLF001
-    base._widths = {"A": 123.0}  # noqa: SLF001
-    base._data = b"cff"  # noqa: SLF001
+    base._font_matrix = [0.002, 0.0, 0.0, 0.002, 0.0, 0.0]
+    base._units_per_em = 500
+    base._widths = {"A": 123.0}
+    base._data = b"cff"
     base.add_value_to_top_dict("Synthetic", 7)
     base.set_name("CopiedName")
 
     copied = CFFFont()
-    copied._copy_base_state_from(base)  # noqa: SLF001
+    copied._copy_base_state_from(base)
 
-    base._font_matrix.append(1.0)  # noqa: SLF001
-    base._widths["A"] = 999.0  # noqa: SLF001
+    base._font_matrix.append(1.0)
+    base._widths["A"] = 999.0
     base.add_value_to_top_dict("Synthetic", 8)
     assert copied.get_font_matrix() == [0.002, 0.0, 0.0, 0.002, 0.0, 0.0]
     assert copied.units_per_em == 500

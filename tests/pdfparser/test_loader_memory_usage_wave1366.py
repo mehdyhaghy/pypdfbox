@@ -37,7 +37,7 @@ def _page_count_via_pddoc(cos) -> int:
     """Wrap a ``COSDocument`` in a non-owning ``PDDocument`` to read the
     page count without closing the COSDocument out from under the caller."""
     pd = PDDocument(cos)
-    pd._owns_document = False  # noqa: SLF001 — keep cos alive for caller
+    pd._owns_document = False
     return pd.get_number_of_pages()
 
 
@@ -59,7 +59,7 @@ def test_main_memory_only_setting_attaches_scratch() -> None:
     setting = MemoryUsageSetting.setup_main_memory_only()
     cos = Loader.load_pdf(_small_pdf_bytes(), None, setting)
     try:
-        assert cos._owns_scratch is True  # noqa: SLF001
+        assert cos._owns_scratch is True
         assert _page_count_via_pddoc(cos) == 2
     finally:
         cos.close()
@@ -72,7 +72,7 @@ def test_temp_file_only_setting_loads_and_closes(tmp_path: Path) -> None:
     setting = MemoryUsageSetting.setup_temp_file_only().set_temp_dir(tmp_path)
     cos = Loader.load_pdf(_small_pdf_bytes(), None, setting)
     try:
-        assert cos._owns_scratch is True  # noqa: SLF001
+        assert cos._owns_scratch is True
         assert _page_count_via_pddoc(cos) == 2
     finally:
         cos.close()
@@ -84,7 +84,7 @@ def test_mixed_setting_with_small_threshold() -> None:
     setting = MemoryUsageSetting.setup_mixed(max_main_memory_bytes=128)
     cos = Loader.load_pdf(_small_pdf_bytes(), None, setting)
     try:
-        assert cos._owns_scratch is True  # noqa: SLF001
+        assert cos._owns_scratch is True
         assert _page_count_via_pddoc(cos) == 2
     finally:
         cos.close()

@@ -22,7 +22,7 @@ from pypdfbox.cos import COSArray, COSName
 from pypdfbox.pdmodel.graphics.optionalcontent import (
     PDOptionalContentGroup,
 )
-from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_membership_dictionary import (  # noqa: E501
+from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_membership_dictionary import (
     MembershipDictionaryVisibilityPolicy,
     PDOptionalContentMembershipDictionary,
 )

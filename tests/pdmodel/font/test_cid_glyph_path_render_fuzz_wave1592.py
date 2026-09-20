@@ -103,7 +103,7 @@ def _synth_ttf_bytes(upem: int = 1000) -> bytes:
     fb.setupGlyphOrder(_GLYPH_ORDER)
     fb.setupCharacterMap({})
     fb.setupGlyf(_glyphs(upem))
-    fb.setupHorizontalMetrics({n: (upem, 0) for n in _GLYPH_ORDER})
+    fb.setupHorizontalMetrics(dict.fromkeys(_GLYPH_ORDER, (upem, 0)))
     fb.setupHorizontalHeader(ascent=int(0.8 * upem), descent=int(-0.2 * upem))
     fb.setupNameTable(
         {"familyName": "CIDT2", "styleName": "Regular", "psName": "CIDT2"}
@@ -184,7 +184,7 @@ def _synth_otf_cff_bytes() -> bytes:
         charStringsDict=cs_dict,
         privateDict={},
     )
-    fb.setupHorizontalMetrics({n: (500, 0) for n in order})
+    fb.setupHorizontalMetrics(dict.fromkeys(order, (500, 0)))
     fb.setupHorizontalHeader(ascent=800, descent=-200)
     fb.setupOS2()
     fb.setupNameTable({"familyName": "OtfCff", "styleName": "Regular"})

@@ -282,7 +282,7 @@ def test_main_closes_document_even_when_run_raises(
     closed: dict[str, bool] = {"value": False}
 
     class _BrokenPage:
-        def get_annotations(self) -> list:  # noqa: ANN001 - example stub
+        def get_annotations(self) -> list:
             raise RuntimeError("broken page")
 
     class _StubDoc:

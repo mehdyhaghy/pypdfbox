@@ -27,16 +27,16 @@ def _prepared_renderer(
 ) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -58,10 +58,10 @@ class _Box:
 def test_to_float_and_rgb_even_odd_fill_fallback_paths() -> None:
     doc, renderer = _prepared_renderer(size=(3, 3))
     try:
-        assert _to_float(object()) == 0.0  # noqa: SLF001
+        assert _to_float(object()) == 0.0
 
-        renderer._gs.fill_rgb = (90, 30, 10)  # noqa: SLF001
-        renderer._subpaths = [  # noqa: SLF001
+        renderer._gs.fill_rgb = (90, 30, 10)
+        renderer._subpaths = [
             [
                 ("M", 0.0, 0.0),
                 ("L", 2.0, 0.0),
@@ -70,11 +70,11 @@ def test_to_float_and_rgb_even_odd_fill_fallback_paths() -> None:
             ],
         ]
 
-        renderer._fill_even_odd_via_pil()  # noqa: SLF001
+        renderer._fill_even_odd_via_pil()
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((1, 1)) == (90, 30, 10)  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.getpixel((1, 1)) == (90, 30, 10)
     finally:
         doc.close()
 
@@ -82,20 +82,20 @@ def test_to_float_and_rgb_even_odd_fill_fallback_paths() -> None:
 def test_pending_clip_skips_degenerate_even_odd_and_nonzero_paths() -> None:
     doc, renderer = _prepared_renderer(size=(3, 3))
     try:
-        renderer._subpaths = [[("M", 0.0, 0.0), ("L", 1.0, 0.0)]]  # noqa: SLF001
-        renderer._pending_clip = "W*"  # noqa: SLF001
+        renderer._subpaths = [[("M", 0.0, 0.0), ("L", 1.0, 0.0)]]
+        renderer._pending_clip = "W*"
 
-        renderer._apply_pending_clip(default_even_odd=True)  # noqa: SLF001
-        assert renderer._gs.clip_mask is not None  # noqa: SLF001
-        assert renderer._gs.clip_mask.getbbox() is None  # noqa: SLF001
+        renderer._apply_pending_clip(default_even_odd=True)
+        assert renderer._gs.clip_mask is not None
+        assert renderer._gs.clip_mask.getbbox() is None
 
-        renderer._gs.clip_mask = None  # noqa: SLF001
-        renderer._subpaths = [[("M", 0.0, 0.0), ("L", 1.0, 0.0)]]  # noqa: SLF001
-        renderer._pending_clip = "W"  # noqa: SLF001
+        renderer._gs.clip_mask = None
+        renderer._subpaths = [[("M", 0.0, 0.0), ("L", 1.0, 0.0)]]
+        renderer._pending_clip = "W"
 
-        renderer._apply_pending_clip(default_even_odd=False)  # noqa: SLF001
-        assert renderer._gs.clip_mask is not None  # noqa: SLF001
-        assert renderer._gs.clip_mask.getbbox() is None  # noqa: SLF001
+        renderer._apply_pending_clip(default_even_odd=False)
+        assert renderer._gs.clip_mask is not None
+        assert renderer._gs.clip_mask.getbbox() is None
     finally:
         _finish(renderer)
         doc.close()
@@ -118,10 +118,10 @@ def test_render_tiling_cell_restores_state_when_resources_lookup_fails(
     doc, renderer = _prepared_renderer()
     try:
         original_resources = object()
-        renderer._resources = original_resources  # noqa: SLF001
+        renderer._resources = original_resources
         monkeypatch.setattr(renderer, "_process_form_bytes", lambda _data: None)
 
-        tile = renderer._render_tiling_cell(  # noqa: SLF001
+        tile = renderer._render_tiling_cell(
             _Pattern(),
             bbox=_Box(),
             tile_size=(2, 2),
@@ -129,7 +129,7 @@ def test_render_tiling_cell_restores_state_when_resources_lookup_fails(
 
         assert tile is not None
         assert tile.size == (2, 2)
-        assert renderer._resources is original_resources  # noqa: SLF001
+        assert renderer._resources is original_resources
     finally:
         _finish(renderer)
         doc.close()
@@ -148,24 +148,24 @@ def test_shading_and_tiling_noops_preserve_canvas(monkeypatch: Any) -> None:
 
     doc, renderer = _prepared_renderer(size=(2, 2))
     try:
-        before = renderer._image.copy()  # noqa: SLF001
-        renderer._paint_tiling_pattern(_Pattern(), region_mask=None)  # noqa: SLF001
+        before = renderer._image.copy()
+        renderer._paint_tiling_pattern(_Pattern(), region_mask=None)
 
-        renderer._image = None  # noqa: SLF001
-        renderer._paint_shading(object(), region_mask=None)  # noqa: SLF001
+        renderer._image = None
+        renderer._paint_shading(object(), region_mask=None)
 
-        renderer._image = before.copy()  # noqa: SLF001
-        renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
+        renderer._image = before.copy()
+        renderer._draw = aggdraw.Draw(renderer._image)
         monkeypatch.setattr(renderer, "_evaluate_shading_rgb", lambda *_args: None)
 
-        renderer._paint_shading(  # noqa: SLF001
+        renderer._paint_shading(
             object(),
             region_mask=Image.new("L", (2, 2), 255),
         )
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.tobytes() == before.tobytes()  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.tobytes() == before.tobytes()
     finally:
         doc.close()
 
@@ -183,7 +183,7 @@ def test_do_image_ignores_soft_mask_lookup_failure(monkeypatch: Any) -> None:
     doc, renderer = _prepared_renderer(size=(1, 1))
     try:
         image_xobject = PDImageXObject(COSStream())
-        renderer._resources = _Resources(image_xobject)  # noqa: SLF001
+        renderer._resources = _Resources(image_xobject)
         monkeypatch.setattr(
             renderer,
             "_decode_image_xobject",
@@ -201,10 +201,10 @@ def test_do_image_ignores_soft_mask_lookup_failure(monkeypatch: Any) -> None:
         monkeypatch.setattr(
             renderer,
             "_paste_image",
-            lambda img, interpolate=True: pasted.append(img),  # noqa: ARG005
+            lambda img, interpolate=True: pasted.append(img),
         )
 
-        renderer._op_do(None, [COSName.get_pdf_name("Im0")])  # noqa: SLF001
+        renderer._op_do(None, [COSName.get_pdf_name("Im0")])
 
         assert len(pasted) == 1
         assert pasted[0].getpixel((0, 0)) == (10, 20, 30)

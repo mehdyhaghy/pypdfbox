@@ -5,7 +5,7 @@ from tests.pdfparser import test_cos_parser_wave515 as wave515
 
 
 def test_wave926_xref_stream_dict_helper_accepts_float_and_name_widths() -> None:
-    dictionary = wave515._xref_stream_dict([1, 2.5, "bad"])  # noqa: SLF001
+    dictionary = wave515._xref_stream_dict([1, 2.5, "bad"])
 
     widths = dictionary.get_dictionary_object("W")
 

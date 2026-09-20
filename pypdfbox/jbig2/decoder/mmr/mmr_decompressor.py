@@ -478,7 +478,7 @@ class MMRDecompressor:
                         <= current_line_bit_position
                     ):
                         reference_buffer_offset += 2
-        except Exception:  # noqa: BLE001 - mirrors upstream catch (Throwable)
+        except Exception:
             strbuf = (
                 f"whiteRun           = {white_run}\n"
                 f"code               = {code}\n"

@@ -86,7 +86,7 @@ def _format_pdf_date(value: _dt.datetime) -> str:
     # COSDictionary.setEmbeddedDate -> DateConverter.toString, which renders the
     # zone as (+|-)HH'mm' — UTC becomes +00'00', never Z (DateConverter.java
     # line 234). Reuse the shared formatter to stay 1:1.
-    from pypdfbox.pdmodel.pd_document_information import _format_pdf_date as _fmt  # noqa: PLC0415
+    from pypdfbox.pdmodel.pd_document_information import _format_pdf_date as _fmt
 
     return _fmt(value)
 

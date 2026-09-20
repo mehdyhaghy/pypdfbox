@@ -219,24 +219,24 @@ class PDSignatureField(PDTerminalField):
         """
         widgets = self.get_widgets()
         if not widgets:
-            return None
+            return
         widget = widgets[0]
         if widget is None:
-            return None
+            return
         rectangle = widget.get_rectangle()
         if rectangle is None:
-            return None
+            return
         if rectangle.get_height() == 0 and rectangle.get_width() == 0:
-            return None
+            return
         if widget.is_no_view() or widget.is_hidden():
-            return None
+            return
         _LOG.warning(
             "Appearance generation for signature fields not implemented "
             "here. You need to generate/update that manually, see the "
             "CreateVisibleSignature*.java files in the examples subproject "
             "of the PDFBox source code download (PDFBOX-3524)."
         )
-        return None
+        return
 
     def has_visible_widget(self) -> bool:
         """Predicate — return ``True`` when the first widget on this signature

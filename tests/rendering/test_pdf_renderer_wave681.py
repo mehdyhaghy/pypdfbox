@@ -28,16 +28,16 @@ def _prepared_renderer(
 ) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -130,26 +130,26 @@ def test_ext_gstate_defensive_paths_and_alpha_clamping() -> None:
 
     doc, renderer = _prepared_renderer()
     try:
-        renderer._op_set_graphics_state_parameters(None, [])  # noqa: SLF001
+        renderer._op_set_graphics_state_parameters(None, [])
 
         resources = _Resources()
-        renderer._resources = resources  # noqa: SLF001
+        renderer._resources = resources
         name = COSName.get_pdf_name("GS0")
-        renderer._op_set_graphics_state_parameters(None, [name])  # noqa: SLF001
+        renderer._op_set_graphics_state_parameters(None, [name])
 
         resources.raise_lookup = False
         resources.return_none = True
-        renderer._op_set_graphics_state_parameters(None, [name])  # noqa: SLF001
+        renderer._op_set_graphics_state_parameters(None, [name])
 
         resources.return_none = False
-        renderer._gs.stroke_alpha = 0.5  # noqa: SLF001
-        renderer._gs.fill_alpha = 0.5  # noqa: SLF001
-        renderer._op_set_graphics_state_parameters(None, [name])  # noqa: SLF001
+        renderer._gs.stroke_alpha = 0.5
+        renderer._gs.fill_alpha = 0.5
+        renderer._op_set_graphics_state_parameters(None, [name])
 
-        assert renderer._gs.blend_mode is None  # noqa: SLF001
-        assert renderer._gs.soft_mask is None  # noqa: SLF001
-        assert renderer._gs.stroke_alpha == 0.0  # noqa: SLF001
-        assert renderer._gs.fill_alpha == 1.0  # noqa: SLF001
+        assert renderer._gs.blend_mode is None
+        assert renderer._gs.soft_mask is None
+        assert renderer._gs.stroke_alpha == 0.0
+        assert renderer._gs.fill_alpha == 1.0
     finally:
         _finish(renderer)
         doc.close()
@@ -158,10 +158,10 @@ def test_ext_gstate_defensive_paths_and_alpha_clamping() -> None:
 def test_even_odd_fill_skips_degenerate_subpaths_and_paints_rgba() -> None:
     doc, renderer = _prepared_renderer(size=(3, 3))
     try:
-        renderer._image = Image.new("RGBA", (3, 3), (0, 0, 0, 0))  # noqa: SLF001
-        renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-        renderer._gs.fill_rgb = (10, 20, 30)  # noqa: SLF001
-        renderer._subpaths = [  # noqa: SLF001
+        renderer._image = Image.new("RGBA", (3, 3), (0, 0, 0, 0))
+        renderer._draw = aggdraw.Draw(renderer._image)
+        renderer._gs.fill_rgb = (10, 20, 30)
+        renderer._subpaths = [
             [("M", 0.0, 0.0), ("L", 1.0, 0.0)],
             [
                 ("M", 0.0, 0.0),
@@ -171,11 +171,11 @@ def test_even_odd_fill_skips_degenerate_subpaths_and_paints_rgba() -> None:
             ],
         ]
 
-        renderer._fill_even_odd_via_pil()  # noqa: SLF001
+        renderer._fill_even_odd_via_pil()
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((1, 1)) == (10, 20, 30, 255)  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.getpixel((1, 1)) == (10, 20, 30, 255)
     finally:
         doc.close()
 
@@ -186,16 +186,16 @@ def test_tiling_pattern_early_returns_and_cell_failures(
     doc, renderer = _prepared_renderer()
     try:
         mask = Image.new("L", (4, 4), 255)
-        renderer._image = None  # noqa: SLF001
-        renderer._paint_tiling_pattern(_Pattern(), region_mask=mask)  # noqa: SLF001
+        renderer._image = None
+        renderer._paint_tiling_pattern(_Pattern(), region_mask=mask)
 
-        renderer._image = Image.new("RGB", (4, 4), (255, 255, 255))  # noqa: SLF001
-        renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-        renderer._paint_tiling_pattern(  # noqa: SLF001
+        renderer._image = Image.new("RGB", (4, 4), (255, 255, 255))
+        renderer._draw = aggdraw.Draw(renderer._image)
+        renderer._paint_tiling_pattern(
             _Pattern(bbox=None),
             region_mask=mask,
         )
-        renderer._paint_tiling_pattern(  # noqa: SLF001
+        renderer._paint_tiling_pattern(
             _Pattern(bbox=_Box(width=0.0)),
             region_mask=mask,
         )
@@ -207,18 +207,18 @@ def test_tiling_pattern_early_returns_and_cell_failures(
                 RuntimeError("cell failed")
             ),
         )
-        renderer._paint_tiling_pattern(_Pattern(), region_mask=mask)  # noqa: SLF001
+        renderer._paint_tiling_pattern(_Pattern(), region_mask=mask)
 
         monkeypatch.setattr(
             renderer,
             "_render_tiling_cell",
             lambda *_args, **_kwargs: None,
         )
-        renderer._paint_tiling_pattern(_Pattern(), region_mask=mask)  # noqa: SLF001
+        renderer._paint_tiling_pattern(_Pattern(), region_mask=mask)
 
         _finish(renderer)
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((2, 2)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.getpixel((2, 2)) == (255, 255, 255)
     finally:
         doc.close()
 
@@ -233,12 +233,12 @@ def test_evaluate_shading_rgb_factory_success_and_color_space_fallback(
             "create",
             staticmethod(lambda _fn: _EvalFunction([0.25])),
         )
-        assert renderer._evaluate_shading_rgb(  # noqa: SLF001
+        assert renderer._evaluate_shading_rgb(
             _Shading(object(), COSName.get_pdf_name("DeviceGray")),
             0.5,
         ) == (0.25, 0.25, 0.25)
 
-        assert renderer._evaluate_shading_rgb(  # noqa: SLF001
+        assert renderer._evaluate_shading_rgb(
             _Shading(
                 _EvalFunction([0.25, 0.5, 0.0, 0.25]),
                 COSName.get_pdf_name("DeviceCMYK"),
@@ -246,7 +246,7 @@ def test_evaluate_shading_rgb_factory_success_and_color_space_fallback(
             0.5,
         ) == (0.5625, 0.375, 0.75)
 
-        assert renderer._evaluate_shading_rgb(  # noqa: SLF001
+        assert renderer._evaluate_shading_rgb(
             _Shading(_EvalFunction([0.5]), None),
             0.5,
         ) == (0.5, 0.5, 0.5)

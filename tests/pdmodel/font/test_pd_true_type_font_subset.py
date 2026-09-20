@@ -187,7 +187,7 @@ def test_subset_clears_accumulated_codepoints(liberation_bytes: bytes) -> None:
     font = _build_font(liberation_bytes)
     font.add_to_subset(ord("A"))
     font.subset()
-    assert font._subset_codepoints == set()  # noqa: SLF001
+    assert font._subset_codepoints == set()
 
 
 # ---------- error cases --------------------------------------------------

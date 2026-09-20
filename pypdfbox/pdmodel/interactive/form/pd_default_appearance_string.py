@@ -72,8 +72,8 @@ def _resolve_fallback_font(font_name: str) -> PDFont:
     2. Canonical Standard-14 spelling (``Helvetica``, ``Times-Roman``, …).
     3. Plain Helvetica as the last-ditch default.
     """
-    from pypdfbox.pdmodel.font import PDFontFactory  # noqa: PLC0415
-    from pypdfbox.pdmodel.font.standard14_fonts import (  # noqa: PLC0415
+    from pypdfbox.pdmodel.font import PDFontFactory
+    from pypdfbox.pdmodel.font.standard14_fonts import (
         Standard14Fonts,
     )
 
@@ -249,7 +249,7 @@ class PDDefaultAppearanceString:
             return
         if not isinstance(base1, COSNumber):
             return
-        from pypdfbox.pdmodel.font import PDFont  # noqa: PLC0415
+        from pypdfbox.pdmodel.font import PDFont
 
         font_name = base0
         # :meth:`PDResources.get_font` returns a typed :class:`PDFont` (or
@@ -386,8 +386,8 @@ class PDDefaultAppearanceString:
         emitted from a /DA snippet that uses those operators still
         resolve via the destination /Resources.
         """
-        from pypdfbox.cos import COSName  # noqa: PLC0415
-        from pypdfbox.pdmodel.pd_resources import PDResources  # noqa: PLC0415
+        from pypdfbox.cos import COSName
+        from pypdfbox.pdmodel.pd_resources import PDResources
 
         stream_resources = appearance_stream.get_resources()
         if stream_resources is None:

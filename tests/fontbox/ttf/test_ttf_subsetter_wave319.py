@@ -26,7 +26,7 @@ def liberation_sans() -> TrueTypeFont:
 def test_wave319_get_gid_map_includes_composite_components(
     liberation_sans: TrueTypeFont,
 ) -> None:
-    import fontTools.ttLib as ttLib  # type: ignore[import-untyped]  # noqa: PLC0415
+    from fontTools import ttLib  # type: ignore[import-untyped]
 
     subsetter = TTFSubsetter(liberation_sans)
     subsetter.add(0x00C1)  # Aacute, a composite glyph in the fixture.

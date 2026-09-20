@@ -90,7 +90,7 @@ def _find_code(table_number: int, value: int):
             Code(sub[0], sub[1], sub[2], len(sub) > 3)
         )
     # Assign canonical codes exactly as HuffmanTable._preprocess_codes does.
-    table._preprocess_codes(lines)  # noqa: SLF001 - intentional reuse
+    table._preprocess_codes(lines)
 
     best = None
     for c in lines:
@@ -126,7 +126,7 @@ def write_huffman_oob(bw: BitWriter, table_number: int) -> None:
 
     table = StandardTables.get_table(table_number)
     lines = [Code(s[0], s[1], s[2], len(s) > 3) for s in _TABLES[table_number - 1]]
-    table._preprocess_codes(lines)  # noqa: SLF001
+    table._preprocess_codes(lines)
     for c in lines:
         if c.range_length < 0:
             bw.write_bits(c.code, c.prefix_length)
@@ -250,7 +250,7 @@ def write_symbol_id_code_lengths(
     n_distinct = len(distinct)
     pref_len = max(1, math.ceil(math.log2(n_distinct))) if n_distinct > 1 else 1
     # run-code table: 35 entries; entry index == run-code value (the length).
-    pref_by_value = {v: pref_len for v in distinct}
+    pref_by_value = dict.fromkeys(distinct, pref_len)
     # Emit 35 nibbles.
     for i in range(35):
         bw.write_bits(pref_by_value.get(i, 0), 4)

@@ -34,7 +34,7 @@ def test_wave583_decode_xref_stream_treats_unknown_entry_type_as_free() -> None:
     body.set_item("Index", index)
     body.set_raw_data(b"\x07\x63")
 
-    parser._decode_xref_stream_entries(body)  # noqa: SLF001
+    parser._decode_xref_stream_entries(body)
 
     entry = parser.get_xref_trailer_resolver().get_xref_table()[COSObjectKey(12, 0)]
     assert entry.type is XrefType.STREAM
@@ -51,12 +51,12 @@ def test_wave583_handle_xref_stream_sets_encrypt_diagnostic_and_trailer() -> Non
     )
     parser = _parser(data)
     doc = COSDocument()
-    parser._document = doc  # noqa: SLF001
-    parser._cos_parser = COSParser(parser._src, document=doc)  # noqa: SLF001
+    parser._document = doc
+    parser._cos_parser = COSParser(parser._src, document=doc)
     parser.get_xref_trailer_resolver().begin_section(0)
 
     try:
-        parser._handle_xref_stream_at(0)  # noqa: SLF001
+        parser._handle_xref_stream_at(0)
 
         trailer = parser.get_trailer()
         assert parser.has_encrypted_xref_streams()
@@ -78,4 +78,4 @@ def test_wave583_resolve_stream_length_returns_negative_direct_length() -> None:
     stream = COSStream()
     stream.set_item("Length", COSInteger.get(-1))
 
-    assert parser._resolve_stream_length(stream) == -1  # noqa: SLF001
+    assert parser._resolve_stream_length(stream) == -1

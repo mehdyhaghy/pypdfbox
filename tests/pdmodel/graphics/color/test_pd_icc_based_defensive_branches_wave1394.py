@@ -53,13 +53,13 @@ def _make_icc_profile(
 def test_try_icc_to_rgb_returns_none_when_n_invalid() -> None:
     """``_try_icc_to_rgb`` bails when /N is outside {1, 3, 4} (line 921)."""
     cs = _make_icc_based(_make_icc_profile(), n=5)
-    assert cs._try_icc_to_rgb([0.5, 0.5, 0.5, 0.5, 0.5]) is None  # noqa: SLF001
+    assert cs._try_icc_to_rgb([0.5, 0.5, 0.5, 0.5, 0.5]) is None
 
 
 def test_try_icc_to_rgb_returns_none_when_components_too_few() -> None:
     """Components shorter than /N — defensive (line 922-923)."""
     cs = _make_icc_based(_make_icc_profile(color_space=b"RGB "), n=3)
-    assert cs._try_icc_to_rgb([0.5]) is None  # noqa: SLF001
+    assert cs._try_icc_to_rgb([0.5]) is None
 
 
 def test_try_icc_to_rgb_returns_none_when_in_mode_unresolvable() -> None:
@@ -73,8 +73,8 @@ def test_try_icc_to_rgb_returns_none_when_in_mode_unresolvable() -> None:
     def _none_mode(_profile: bytes) -> str | None:
         return None
 
-    cs._resolve_in_mode = _none_mode  # type: ignore[method-assign]  # noqa: SLF001
-    assert cs._try_icc_to_rgb([0.0, 0.0, 0.0]) is None  # noqa: SLF001
+    cs._resolve_in_mode = _none_mode  # type: ignore[method-assign]
+    assert cs._try_icc_to_rgb([0.0, 0.0, 0.0]) is None
 
 
 def test_try_icc_to_rgb_returns_none_on_pillow_apply_exception(
@@ -98,7 +98,7 @@ def test_try_icc_to_rgb_returns_none_on_pillow_apply_exception(
     monkeypatch.setattr(ImageCms, "applyTransform", _boom)
     monkeypatch.setattr(Image, "new", lambda *a, **kw: object())
 
-    assert cs._try_icc_to_rgb([0.5, 0.5, 0.5]) is None  # noqa: SLF001
+    assert cs._try_icc_to_rgb([0.5, 0.5, 0.5]) is None
 
 
 # ---------- _try_icc_to_rgb_image defensive branches ----------
@@ -107,14 +107,14 @@ def test_try_icc_to_rgb_returns_none_on_pillow_apply_exception(
 def test_try_icc_to_rgb_image_returns_none_when_n_invalid() -> None:
     """``/N`` outside {1,3,4} → ``None`` (line 983-984)."""
     cs = _make_icc_based(_make_icc_profile(), n=5)
-    assert cs._try_icc_to_rgb_image(b"\x00" * 12, 2, 2) is None  # noqa: SLF001
+    assert cs._try_icc_to_rgb_image(b"\x00" * 12, 2, 2) is None
 
 
 def test_try_icc_to_rgb_image_returns_none_when_in_mode_unresolvable() -> None:
     """``_resolve_in_mode`` returns ``None`` (line 986-987)."""
     cs = _make_icc_based(_make_icc_profile(color_space=b"RGB "), n=3)
-    cs._resolve_in_mode = lambda _profile: None  # type: ignore[method-assign]  # noqa: SLF001
-    assert cs._try_icc_to_rgb_image(b"\x00" * 12, 2, 2) is None  # noqa: SLF001
+    cs._resolve_in_mode = lambda _profile: None  # type: ignore[method-assign]
+    assert cs._try_icc_to_rgb_image(b"\x00" * 12, 2, 2) is None
 
 
 def test_try_icc_to_rgb_image_returns_none_on_pillow_apply_exception(
@@ -137,7 +137,7 @@ def test_try_icc_to_rgb_image_returns_none_on_pillow_apply_exception(
     monkeypatch.setattr(ImageCms, "applyTransform", _boom)
     monkeypatch.setattr(Image, "frombytes", lambda *a, **kw: object())
 
-    assert cs._try_icc_to_rgb_image(b"\x00" * 12, 2, 2) is None  # noqa: SLF001
+    assert cs._try_icc_to_rgb_image(b"\x00" * 12, 2, 2) is None
 
 
 def test_try_icc_to_rgb_image_returns_none_when_apply_yields_none(
@@ -155,4 +155,4 @@ def test_try_icc_to_rgb_image_returns_none_when_apply_yields_none(
     monkeypatch.setattr(cs, "_get_transform", lambda *a, **kw: fake_transform)
     monkeypatch.setattr(Image, "frombytes", lambda *a, **kw: object())
     monkeypatch.setattr(ImageCms, "applyTransform", lambda *a, **kw: None)
-    assert cs._try_icc_to_rgb_image(b"\x00" * 12, 2, 2) is None  # noqa: SLF001
+    assert cs._try_icc_to_rgb_image(b"\x00" * 12, 2, 2) is None

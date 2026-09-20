@@ -13,7 +13,7 @@ def _prior_handler(_renderer: Any, _op: object, _operands: list[object]) -> None
 
 def test_wave1061_sentinel_handler_is_exercisable() -> None:
     with pytest.raises(AssertionError, match="sentinel handler should be restored"):
-        wave1061._sentinel_handler(None, object(), [])  # noqa: SLF001
+        wave1061._sentinel_handler(None, object(), [])
 
 
 def test_wave1061_restores_non_empty_previous_handler(

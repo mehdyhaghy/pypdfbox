@@ -128,7 +128,7 @@ def test_export_fdf_omits_id_when_get_document_returns_none() -> None:
 
     form = PDAcroForm()
     # Inject a shape-compatible owner.
-    form._document = _DocShim()  # type: ignore[assignment]  # noqa: SLF001
+    form._document = _DocShim()  # type: ignore[assignment]
     fdf = form.export_fdf()
     try:
         assert fdf.get_catalog().get_fdf().get_id() is None

@@ -175,7 +175,7 @@ class StandardEncoding(Encoding):
         """Return ``COSName.STANDARD_ENCODING``. Mirrors upstream
         ``StandardEncoding.getCOSObject()``.
         """
-        from pypdfbox.cos.cos_name import COSName  # noqa: PLC0415
+        from pypdfbox.cos.cos_name import COSName
 
         return COSName.STANDARD_ENCODING
 

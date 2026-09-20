@@ -79,7 +79,7 @@ class CertificateVerifier:
             return CertificateVerificationResult(result=chain)
         except CertificateVerificationException as cvex:
             return CertificateVerificationResult(exception=cvex)
-        except Exception as ex:  # noqa: BLE001 - mirror upstream wide catch
+        except Exception as ex:
             return CertificateVerificationResult(
                 exception=CertificateVerificationException(
                     f"Error verifying the certificate: {cert.subject.rfc4514_string()}"
@@ -149,7 +149,7 @@ class CertificateVerifier:
                     cert.tbs_certificate_bytes,
                 )
             return True
-        except (InvalidSignature, Exception):  # noqa: BLE001
+        except (InvalidSignature, Exception):
             return False
 
     @staticmethod
@@ -171,7 +171,7 @@ class CertificateVerifier:
             if cert.subject != cert.issuer:
                 return False
             return CertificateVerifier._verify_signed_by(cert, cert)
-        except Exception:  # noqa: BLE001 - mirror upstream lenient catch
+        except Exception:
             LOG.debug("Couldn't get signature information - returning false", exc_info=True)
             return False
 
@@ -266,7 +266,7 @@ class CertificateVerifier:
 
     @staticmethod
     def verify_ocsp(
-        ocsp_helper,  # noqa: ANN001
+        ocsp_helper,
         additional_certs: Iterable[x509.Certificate],
     ) -> None:
         """Drive an OCSP exchange (upstream 457)."""
@@ -294,7 +294,7 @@ class CertificateVerifier:
     @staticmethod
     def _first_aia(
         cert: x509.Certificate,
-        method_oid,  # noqa: ANN001
+        method_oid,
     ) -> str | None:
         try:
             ext = cert.extensions.get_extension_for_oid(
@@ -310,7 +310,7 @@ class CertificateVerifier:
         return None
 
 
-def _sha1():  # noqa: ANN202
+def _sha1():
     from cryptography.hazmat.primitives import hashes
 
-    return hashes.SHA1()  # noqa: S303 - SHA1 used only as an issuer fingerprint id
+    return hashes.SHA1()

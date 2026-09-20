@@ -16,7 +16,7 @@ def test_hsl_clip_color_uses_luminance_when_low_denominator_zero(
         staticmethod(lambda _r, _g, _b: -0.5),
     )
 
-    assert PDFRenderer._hsl_clip_color(-0.5, 0.2, 0.4) == (  # noqa: SLF001
+    assert PDFRenderer._hsl_clip_color(-0.5, 0.2, 0.4) == (
         -0.5,
         -0.5,
         -0.5,
@@ -32,7 +32,7 @@ def test_hsl_clip_color_uses_luminance_when_high_denominator_zero(
         staticmethod(lambda _r, _g, _b: 1.5),
     )
 
-    assert PDFRenderer._hsl_clip_color(1.5, 0.1, 0.2) == (  # noqa: SLF001
+    assert PDFRenderer._hsl_clip_color(1.5, 0.1, 0.2) == (
         1.5,
         1.5,
         1.5,
@@ -62,7 +62,7 @@ def test_hsl_set_sat_guard_returns_zero_when_min_index_is_missing(
     monkeypatch.setattr(builtins, "max", fake_max)
     monkeypatch.setattr(builtins, "min", fake_min)
 
-    assert PDFRenderer._hsl_set_sat(max_marker, middle, high, 0.5) == (  # type: ignore[arg-type]  # noqa: SLF001
+    assert PDFRenderer._hsl_set_sat(max_marker, middle, high, 0.5) == (  # type: ignore[arg-type]
         0.0,
         0.0,
         0.0,
@@ -94,4 +94,4 @@ def test_aggdraw_path_pen_qcurve_handles_trailing_single_offcurve(
     pen.q_curve_to((1.0, 1.0), (2.0, 2.0))
 
     assert pen.has_segments is True
-    assert pen._last == (1.0, 1.0)  # noqa: SLF001
+    assert pen._last == (1.0, 1.0)

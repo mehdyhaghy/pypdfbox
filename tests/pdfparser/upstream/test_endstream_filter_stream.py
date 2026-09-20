@@ -85,6 +85,6 @@ def test_pdfbox_2079_embedded_file():
     parser = PDFParser(RandomAccessReadBuffer(b"payload\r\nendstream\n"))
     stream = COSStream()
 
-    parser._read_stream_body(stream)  # noqa: SLF001
+    parser._read_stream_body(stream)
 
     assert stream.get_raw_data() == b"payload"

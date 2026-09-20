@@ -46,7 +46,7 @@ def test_count_matches_upstream() -> None:
     """Upstream pre-sizes the HashMap to 42 entries."""
     ops = Operators()
     # Internal map is _operators; size matches upstream.
-    assert len(ops._operators) == 42  # noqa: SLF001
+    assert len(ops._operators) == 42
 
 
 def test_if_dispatches_proc() -> None:

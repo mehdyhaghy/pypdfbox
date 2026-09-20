@@ -198,11 +198,11 @@ class CCITTFaxDecoderStream(io.RawIOBase):
         """T.6 (G4) row dispatch; parity stub, libtiff handles G3/G4."""
         self._ensure_decoded()
 
-    def decode_run(self, tree) -> int:  # noqa: ARG002
+    def decode_run(self, tree) -> int:
         """Walk a Huffman tree for one run length; parity stub."""
         return 0
 
-    def get_next_changing_element(self, a0: int, white: bool) -> int:  # noqa: ARG002
+    def get_next_changing_element(self, a0: int, white: bool) -> int:
         """Return the next reference-row changing element after ``a0``."""
         return 0
 

@@ -269,7 +269,7 @@ def test_round_trip_minimal_text_object() -> None:
         "end_text",
     ]
     # Spot-check operands for the load-bearing handlers.
-    by_name = {name: args for name, args in engine.events}
+    by_name = dict(engine.events)
     assert by_name["set_font"] == (COSName.get_pdf_name("F1"), 12.0)
     assert by_name["move_text_position"] == (100.0, 200.0)
     assert by_name["show_text_string"] == (b"Hello",)
@@ -812,8 +812,8 @@ def test_set_line_dash_pattern_override_observes_operands() -> None:
 def _make_form_xobject(body: bytes) -> Any:
     """Construct a minimal ``PDFormXObject`` whose underlying COSStream
     carries the supplied raw bytes — used by the show_form tests below."""
-    from pypdfbox.cos import COSStream  # noqa: PLC0415
-    from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (  # noqa: PLC0415
+    from pypdfbox.cos import COSStream
+    from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (
         PDFormXObject,
     )
 
@@ -936,8 +936,8 @@ def test_show_transparency_group_routes_through_process_stream() -> None:
         def get_name(self) -> str:
             return "Tj"
 
-    from pypdfbox.cos import COSStream  # noqa: PLC0415
-    from pypdfbox.pdmodel.graphics.form.pd_transparency_group import (  # noqa: PLC0415
+    from pypdfbox.cos import COSStream
+    from pypdfbox.pdmodel.graphics.form.pd_transparency_group import (
         PDTransparencyGroup,
     )
 
@@ -963,8 +963,8 @@ def test_show_transparency_group_raises_without_current_page() -> None:
     """No current page ⇒ ``RuntimeError`` (upstream:
     ``IllegalStateException``) — matches the same fence
     ``show_form`` / ``process_transparency_group`` use."""
-    from pypdfbox.cos import COSStream  # noqa: PLC0415
-    from pypdfbox.pdmodel.graphics.form.pd_transparency_group import (  # noqa: PLC0415
+    from pypdfbox.cos import COSStream
+    from pypdfbox.pdmodel.graphics.form.pd_transparency_group import (
         PDTransparencyGroup,
     )
 

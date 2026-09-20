@@ -144,7 +144,7 @@ def test_simple_font_notdef_branch_with_stub(tk_root):
         def get_encoding_typed(self):
             return _NarrowEncoding()
 
-        def to_unicode(self, code: int) -> str | None:  # noqa: ARG002
+        def to_unicode(self, code: int) -> str | None:
             return None
 
         def get_path(self, name: str) -> list:

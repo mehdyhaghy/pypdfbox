@@ -72,7 +72,7 @@ class PDFreeTextAppearanceHandler(PDAbstractAppearanceHandler):
         self._font_size: float = self.DEFAULT_FONT_SIZE
         self._font_name: COSName = self.DEFAULT_FONT_NAME
 
-    def generate_normal_appearance(self) -> None:  # noqa: C901, PLR0915
+    def generate_normal_appearance(self) -> None:
         """Mirrors upstream ``generateNormalAppearance``
         (PDFreeTextAppearanceHandler.java:72)."""
         from ..pd_annotation_free_text import PDAnnotationFreeText
@@ -303,7 +303,7 @@ class PDFreeTextAppearanceHandler(PDAbstractAppearanceHandler):
                 # generateNormalAppearance (PDFreeTextAppearanceHandler.java:299).
                 # Adobe ignores the annotation's /Q, so no textAlign is set
                 # (the formatter defaults to LEFT).
-                from ..layout import (  # noqa: PLC0415
+                from ..layout import (
                     AppearanceStyle,
                     PlainText,
                     PlainTextFormatter,
@@ -421,7 +421,7 @@ class PDFreeTextAppearanceHandler(PDAbstractAppearanceHandler):
             parser = PDFStreamParser(
                 RandomAccessReadBuffer(default_appearance.encode("ascii", "replace"))
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None, None
 
         arguments: list[Any] = []
@@ -447,7 +447,7 @@ class PDFreeTextAppearanceHandler(PDAbstractAppearanceHandler):
                     arguments = []
                 else:
                     arguments.append(token)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return last_op, last_colors
         return last_op, last_colors
 
@@ -461,7 +461,7 @@ class PDFreeTextAppearanceHandler(PDAbstractAppearanceHandler):
             parser = PDFStreamParser(
                 RandomAccessReadBuffer(default_appearance.encode("ascii", "replace"))
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
 
         arguments: list[COSBase] = []
@@ -477,7 +477,7 @@ class PDFreeTextAppearanceHandler(PDAbstractAppearanceHandler):
                     arguments = []
                 else:
                     arguments.append(token)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return font_arguments
         return font_arguments
 
@@ -496,7 +496,7 @@ class PDFreeTextAppearanceHandler(PDAbstractAppearanceHandler):
                         if callable(font_getter):
                             try:
                                 font = font_getter(self._font_name)
-                            except Exception:  # noqa: BLE001
+                            except Exception:
                                 font = None
                             if font is not None:
                                 # PDResources.get_font preserves the raw
@@ -506,12 +506,12 @@ class PDFreeTextAppearanceHandler(PDAbstractAppearanceHandler):
                                 # wave-1484 AcroForm default fixup injects
                                 # /Helv as a direct entry, so wrap here
                                 # before handing to set_font.
-                                from pypdfbox.cos import (  # noqa: PLC0415
+                                from pypdfbox.cos import (
                                     COSDictionary,
                                 )
 
                                 if isinstance(font, COSDictionary):
-                                    from pypdfbox.pdmodel.font import (  # noqa: PLC0415
+                                    from pypdfbox.pdmodel.font import (
                                         PDFontFactory,
                                     )
 

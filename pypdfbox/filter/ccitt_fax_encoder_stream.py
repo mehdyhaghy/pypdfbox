@@ -116,15 +116,15 @@ class CCITTFaxEncoderStream(io.RawIOBase):
         """2-D MMR encode dispatch; parity stub, libtiff handles G4."""
         return
 
-    def get_next_changes(self, pos: int, white: bool) -> list[int]:  # noqa: ARG002
+    def get_next_changes(self, pos: int, white: bool) -> list[int]:
         """Return next (a1, a2) changing pixel pair on the current row."""
         return []
 
-    def get_next_ref_changes(self, a0: int, white: bool) -> list[int]:  # noqa: ARG002
+    def get_next_ref_changes(self, a0: int, white: bool) -> list[int]:
         """Return next (b1, b2) changing pixel pair on the reference row."""
         return []
 
-    def write_run(self, run_length: int, white: bool) -> None:  # noqa: ARG002
+    def write_run(self, run_length: int, white: bool) -> None:
         """Emit terminating + non-terminating codes for a run; parity stub."""
         return
 

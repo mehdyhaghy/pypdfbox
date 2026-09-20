@@ -55,7 +55,7 @@ def _make_stream(payload: bytes, *, n: int, first: int) -> COSStream:
 
 
 def test_parse_object_first_zero_skips_initial_seek(
-    patched_read_long: None,  # noqa: ARG001
+    patched_read_long: None,
 ) -> None:
     """When ``/First == 0`` the skip branch
     ``if self._first_object > 0 and current_position < self._first_object``
@@ -69,7 +69,7 @@ def test_parse_object_first_zero_skips_initial_seek(
 
 
 def test_parse_object_seeks_to_first_when_cursor_short_of_it(
-    patched_read_long: None,  # noqa: ARG001
+    patched_read_long: None,
 ) -> None:
     """When ``/First > 0`` AND the cursor (after the offset-table read)
     sits before ``/First`` — i.e., header is short and padded — the
@@ -88,7 +88,7 @@ def test_parse_object_seeks_to_first_when_cursor_short_of_it(
 
 
 def test_parse_object_no_pre_seek_when_cursor_already_at_first(
-    patched_read_long: None,  # noqa: ARG001
+    patched_read_long: None,
 ) -> None:
     """When the cursor is already at /First after the offset-table read
     (header is exactly /First bytes long), the condition
@@ -112,7 +112,7 @@ def test_parse_object_no_pre_seek_when_cursor_already_at_first(
 
 
 def test_parse_object_skip_set_direct_when_parse_returns_none(
-    patched_read_long: None,  # noqa: ARG001
+    patched_read_long: None,
 ) -> None:
     """When the body at the computed offset is *empty* — ``parse_dir_object``
     returns ``None`` and ``set_direct(False)`` is skipped.
@@ -134,7 +134,7 @@ def test_parse_object_skip_set_direct_when_parse_returns_none(
 
 
 def test_parse_all_objects_skip_set_direct_when_parse_returns_none(
-    patched_read_long: None,  # noqa: ARG001
+    patched_read_long: None,
 ) -> None:
     """When ``parse_dir_object`` returns ``None`` for an entry, the
     walker stores ``None`` in the result dict without calling

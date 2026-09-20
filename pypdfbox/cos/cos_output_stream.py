@@ -100,10 +100,10 @@ class COSOutputStream(io.RawIOBase):
 
     def _apply_filter_chain(self) -> None:
         # Local import — Filter pulls in cos modules.
-        from pypdfbox.io.random_access_input_stream import (  # noqa: PLC0415
+        from pypdfbox.io.random_access_input_stream import (
             RandomAccessInputStream,
         )
-        from pypdfbox.io.random_access_output_stream import (  # noqa: PLC0415
+        from pypdfbox.io.random_access_output_stream import (
             RandomAccessOutputStream,
         )
 

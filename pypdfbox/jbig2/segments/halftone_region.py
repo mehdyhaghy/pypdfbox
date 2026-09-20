@@ -292,7 +292,7 @@ class HalftoneRegion(Region):
         for y in range(self.h_grid_height):
             x = 0
             while x < self.h_grid_width:
-                minor_width = 8 if self.h_grid_width - x > 8 else self.h_grid_width - x
+                minor_width = min(self.h_grid_width - x, 8)
                 byte_index = gray_scale_planes[0].get_byte_index(x, y)
 
                 for minor_x in range(minor_width):

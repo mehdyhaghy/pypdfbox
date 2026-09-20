@@ -169,7 +169,7 @@ def _instrument(renderer: PDFRenderer) -> _Capture:
     cap = _Capture()
     orig = renderer._process_form_bytes
 
-    def _patched(data: bytes) -> None:  # noqa: ANN001
+    def _patched(data: bytes) -> None:
         cap.ctms.append(tuple(renderer._gs.ctm))
         cap.resources.append(renderer._resources)
         cap.ignore_color.append(renderer._type3_ignore_color)

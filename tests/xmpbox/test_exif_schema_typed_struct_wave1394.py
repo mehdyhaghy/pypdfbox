@@ -44,7 +44,7 @@ def test_oecf_getter_returns_none_when_wrong_type_stored() -> None:
     """Line 1395: stored value not an OECFType → ``None``."""
     schema = _exif()
     # Stuff a non-OECFType into the property slot directly.
-    schema._properties[ExifSchema.OECF] = "not-an-oecf-instance"  # noqa: SLF001
+    schema._properties[ExifSchema.OECF] = "not-an-oecf-instance"
     assert schema.get_oecf_property() is None
 
 
@@ -70,7 +70,7 @@ def test_spatial_frequency_response_setter_none_removes_property() -> None:
 
 def test_spatial_frequency_response_getter_wrong_type_returns_none() -> None:
     schema = _exif()
-    schema._properties[ExifSchema.SPATIAL_FREQUENCY_RESPONSE] = 42  # noqa: SLF001
+    schema._properties[ExifSchema.SPATIAL_FREQUENCY_RESPONSE] = 42
     assert schema.get_spatial_frequency_response_property() is None
 
 
@@ -96,5 +96,5 @@ def test_cfa_pattern_setter_none_removes_property() -> None:
 
 def test_cfa_pattern_getter_wrong_type_returns_none() -> None:
     schema = _exif()
-    schema._properties[ExifSchema.CFA_PATTERN] = [1, 2, 3]  # noqa: SLF001
+    schema._properties[ExifSchema.CFA_PATTERN] = [1, 2, 3]
     assert schema.get_cfa_pattern_property() is None

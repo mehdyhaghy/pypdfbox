@@ -149,10 +149,10 @@ def test_get_domain_returns_a_copy() -> None:
 # ----------------------------------------------------------------------
 def test_dispose_clears_shading_reference() -> None:
     ctx = _make_context(_FakeType1Shading())
-    assert ctx._type1_shading_type is not None  # noqa: SLF001
+    assert ctx._type1_shading_type is not None
     ctx.dispose()
     # Hits lines 33-34.
-    assert ctx._type1_shading_type is None  # noqa: SLF001
+    assert ctx._type1_shading_type is None
     # ``super().dispose`` clears the colour-model too.
     assert ctx.get_color_model() is None
 

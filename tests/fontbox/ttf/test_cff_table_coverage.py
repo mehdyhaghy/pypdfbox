@@ -56,7 +56,7 @@ def _build_minimal_cff_bytes() -> bytes:
 _BUILT_CFF: bytes | None
 try:
     _BUILT_CFF = _build_minimal_cff_bytes()
-except Exception:  # noqa: BLE001
+except Exception:
     _BUILT_CFF = None
 
 
@@ -94,7 +94,7 @@ class _StubTrueTypeFont:
             return {}
         return {CFFTable.TAG: _FakeTable()}
 
-    def get_table_bytes(self, table: object) -> bytes | None:  # noqa: ARG002
+    def get_table_bytes(self, table: object) -> bytes | None:
         return self._bytes_to_return
 
 
@@ -226,7 +226,7 @@ class _NoSubViewTTFDataStream(MemoryTTFDataStream):
     ``RandomAccessReadBuffer`` copy path.
     """
 
-    def create_sub_view(self, length: int) -> None:  # noqa: ARG002
+    def create_sub_view(self, length: int) -> None:
         return None
 
 

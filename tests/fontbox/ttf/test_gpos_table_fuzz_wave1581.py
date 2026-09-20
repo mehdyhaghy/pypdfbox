@@ -34,7 +34,7 @@ import io
 
 from fontTools.fontBuilder import FontBuilder
 from fontTools.ttLib import TTFont, newTable
-from fontTools.ttLib.tables import otTables as ot
+from fontTools.ttLib.tables import otTables
 from fontTools.ttLib.tables._g_l_y_f import Glyph
 from fontTools.ttLib.tables.otBase import ValueRecord
 
@@ -67,7 +67,7 @@ def _empty_glyf_font(glyphs: list[str]) -> FontBuilder:
         {ord("A") + i - 1: glyphs[i] for i in range(1, len(glyphs))}
     )
     fb.setupGlyf({g: Glyph() for g in glyphs})
-    fb.setupHorizontalMetrics({g: (500, 0) for g in glyphs})
+    fb.setupHorizontalMetrics(dict.fromkeys(glyphs, (500, 0)))
     fb.setupHorizontalHeader(ascent=800, descent=-200)
     fb.setupNameTable({"familyName": "T", "styleName": "R"})
     fb.setupOS2()
@@ -75,11 +75,11 @@ def _empty_glyf_font(glyphs: list[str]) -> FontBuilder:
     return fb
 
 
-def _script_list(script_tag: str = "DFLT") -> ot.ScriptList:
-    sr = ot.ScriptRecord()
+def _script_list(script_tag: str = "DFLT") -> otTables.ScriptList:
+    sr = otTables.ScriptRecord()
     sr.ScriptTag = script_tag
-    script = ot.Script()
-    lsys = ot.LangSys()
+    script = otTables.Script()
+    lsys = otTables.LangSys()
     lsys.LookupOrder = None
     lsys.ReqFeatureIndex = 0xFFFF
     lsys.FeatureIndex = [0]
@@ -88,44 +88,44 @@ def _script_list(script_tag: str = "DFLT") -> ot.ScriptList:
     script.LangSysRecord = []
     script.LangSysCount = 0
     sr.Script = script
-    sl = ot.ScriptList()
+    sl = otTables.ScriptList()
     sl.ScriptRecord = [sr]
     sl.ScriptCount = 1
     return sl
 
 
-def _feature_list(feature_tag: str = "kern") -> ot.FeatureList:
-    fr = ot.FeatureRecord()
+def _feature_list(feature_tag: str = "kern") -> otTables.FeatureList:
+    fr = otTables.FeatureRecord()
     fr.FeatureTag = feature_tag
-    feat = ot.Feature()
+    feat = otTables.Feature()
     feat.FeatureParams = None
     feat.LookupListIndex = [0]
     feat.LookupCount = 1
     fr.Feature = feat
-    fl = ot.FeatureList()
+    fl = otTables.FeatureList()
     fl.FeatureRecord = [fr]
     fl.FeatureCount = 1
     return fl
 
 
 def _gpos_with_lookup(
-    lookup: ot.Lookup,
+    lookup: otTables.Lookup,
     *,
     script_tag: str = "DFLT",
     feature_tag: str = "kern",
-) -> ot.GPOS:
-    gpos = ot.GPOS()
+) -> otTables.GPOS:
+    gpos = otTables.GPOS()
     gpos.Version = 0x00010000
     gpos.ScriptList = _script_list(script_tag)
     gpos.FeatureList = _feature_list(feature_tag)
-    ll = ot.LookupList()
+    ll = otTables.LookupList()
     ll.Lookup = [lookup]
     ll.LookupCount = 1
     gpos.LookupList = ll
     return gpos
 
 
-def _parse_with_gpos(glyphs: list[str], gpos: ot.GPOS) -> GlyphPositioningTable:
+def _parse_with_gpos(glyphs: list[str], gpos: otTables.GPOS) -> GlyphPositioningTable:
     """Serialise a font carrying ``gpos`` then parse it back through the
     real pypdfbox TTF parser so the full on-disk decode path is exercised."""
     fb = _empty_glyf_font(glyphs)
@@ -141,7 +141,7 @@ def _parse_with_gpos(glyphs: list[str], gpos: ot.GPOS) -> GlyphPositioningTable:
     return g
 
 
-def _bind_direct(glyphs: list[str], gpos: ot.GPOS) -> GlyphPositioningTable:
+def _bind_direct(glyphs: list[str], gpos: otTables.GPOS) -> GlyphPositioningTable:
     """Bind a hand-built GPOS object directly (no byte round-trip)."""
     t = GlyphPositioningTable()
     t._gpos_table = gpos
@@ -162,20 +162,20 @@ def _bind_direct(glyphs: list[str], gpos: ot.GPOS) -> GlyphPositioningTable:
 def _pair_format1_lookup(
     coverage_glyphs: list[str],
     pairs_by_first: dict[str, list[tuple[str, ValueRecord]]],
-) -> ot.Lookup:
-    pp = ot.PairPos()
+) -> otTables.Lookup:
+    pp = otTables.PairPos()
     pp.Format = 1
-    cov = ot.Coverage()
+    cov = otTables.Coverage()
     cov.glyphs = coverage_glyphs
     pp.Coverage = cov
     pp.ValueFormat1 = _VF_X_ADVANCE
     pp.ValueFormat2 = 0
     pair_sets = []
     for first in coverage_glyphs:
-        ps = ot.PairSet()
+        ps = otTables.PairSet()
         recs = []
         for second, value in pairs_by_first.get(first, []):
-            pvr = ot.PairValueRecord()
+            pvr = otTables.PairValueRecord()
             pvr.SecondGlyph = second
             pvr.Value1 = value
             pvr.Value2 = None
@@ -185,7 +185,7 @@ def _pair_format1_lookup(
         pair_sets.append(ps)
     pp.PairSet = pair_sets
     pp.PairSetCount = len(pair_sets)
-    lk = ot.Lookup()
+    lk = otTables.Lookup()
     lk.LookupType = 2
     lk.LookupFlag = 0
     lk.SubTable = [pp]
@@ -200,15 +200,15 @@ def _pair_format2_lookup(
     matrix: dict[tuple[int, int], int],
     class1_count: int,
     class2_count: int,
-) -> ot.Lookup:
-    pp = ot.PairPos()
+) -> otTables.Lookup:
+    pp = otTables.PairPos()
     pp.Format = 2
-    cov = ot.Coverage()
+    cov = otTables.Coverage()
     cov.glyphs = coverage_glyphs
     pp.Coverage = cov
-    cd1 = ot.ClassDef()
+    cd1 = otTables.ClassDef()
     cd1.classDefs = dict(class_def_1)
-    cd2 = ot.ClassDef()
+    cd2 = otTables.ClassDef()
     cd2.classDefs = dict(class_def_2)
     pp.ClassDef1 = cd1
     pp.ClassDef2 = cd2
@@ -218,17 +218,17 @@ def _pair_format2_lookup(
     pp.ValueFormat2 = 0
     c1recs = []
     for c1 in range(class1_count):
-        rec = ot.Class1Record()
+        rec = otTables.Class1Record()
         c2recs = []
         for c2 in range(class2_count):
-            cr = ot.Class2Record()
+            cr = otTables.Class2Record()
             cr.Value1 = _mk_value(XAdvance=matrix.get((c1, c2), 0))
             cr.Value2 = None
             c2recs.append(cr)
         rec.Class2Record = c2recs
         c1recs.append(rec)
     pp.Class1Record = c1recs
-    lk = ot.Lookup()
+    lk = otTables.Lookup()
     lk.LookupType = 2
     lk.LookupFlag = 0
     lk.SubTable = [pp]
@@ -293,15 +293,15 @@ def test_value_format_without_x_advance_is_zero() -> None:
     """A ValueRecord carrying only XPlacement (no XAdvance bit) yields 0."""
     glyphs = [".notdef", "A", "V"]
     gid = {n: i for i, n in enumerate(glyphs)}
-    pp = ot.PairPos()
+    pp = otTables.PairPos()
     pp.Format = 1
-    cov = ot.Coverage()
+    cov = otTables.Coverage()
     cov.glyphs = ["A"]
     pp.Coverage = cov
     pp.ValueFormat1 = _VF_X_PLACEMENT  # only placement, no advance
     pp.ValueFormat2 = 0
-    ps = ot.PairSet()
-    pvr = ot.PairValueRecord()
+    ps = otTables.PairSet()
+    pvr = otTables.PairValueRecord()
     pvr.SecondGlyph = "V"
     pvr.Value1 = _mk_value(XPlacement=99)
     pvr.Value2 = None
@@ -309,7 +309,7 @@ def test_value_format_without_x_advance_is_zero() -> None:
     ps.PairValueCount = 1
     pp.PairSet = [ps]
     pp.PairSetCount = 1
-    lk = ot.Lookup()
+    lk = otTables.Lookup()
     lk.LookupType = 2
     lk.LookupFlag = 0
     lk.SubTable = [pp]
@@ -323,15 +323,15 @@ def test_value_format_y_advance_only_is_zero() -> None:
     """Only the XAdvance component is surfaced; YAdvance alone yields 0."""
     glyphs = [".notdef", "A", "V"]
     gid = {n: i for i, n in enumerate(glyphs)}
-    pp = ot.PairPos()
+    pp = otTables.PairPos()
     pp.Format = 1
-    cov = ot.Coverage()
+    cov = otTables.Coverage()
     cov.glyphs = ["A"]
     pp.Coverage = cov
     pp.ValueFormat1 = _VF_Y_ADVANCE
     pp.ValueFormat2 = 0
-    ps = ot.PairSet()
-    pvr = ot.PairValueRecord()
+    ps = otTables.PairSet()
+    pvr = otTables.PairValueRecord()
     pvr.SecondGlyph = "V"
     pvr.Value1 = _mk_value(YAdvance=77)
     pvr.Value2 = None
@@ -339,7 +339,7 @@ def test_value_format_y_advance_only_is_zero() -> None:
     ps.PairValueCount = 1
     pp.PairSet = [ps]
     pp.PairSetCount = 1
-    lk = ot.Lookup()
+    lk = otTables.Lookup()
     lk.LookupType = 2
     lk.LookupFlag = 0
     lk.SubTable = [pp]
@@ -371,7 +371,7 @@ def test_format2_class_matrix_index_math() -> None:
     lk = _pair_format2_lookup(
         coverage_glyphs=["A", "B", "C", "D", "E"],
         class_def_1={"A": 1, "B": 1, "C": 2, "D": 2, "E": 2},
-        class_def_2={g: 1 for g in ["F", "G", "H", "I", "J"]},
+        class_def_2=dict.fromkeys(["F", "G", "H", "I", "J"], 1),
         matrix={(c1, c2): 100 * c1 + c2 for c1 in range(3) for c2 in range(2)},
         class1_count=3,
         class2_count=2,
@@ -459,13 +459,13 @@ def test_format2_out_of_range_class1_skipped() -> None:
 # --------------------------------------------------------------------------- #
 # Type 9 extension unwrap (wave-1581 real bug fix)
 # --------------------------------------------------------------------------- #
-def _extension_lookup(inner_pair_lookup: ot.Lookup, ext_target: int = 2) -> ot.Lookup:
+def _extension_lookup(inner_pair_lookup: otTables.Lookup, ext_target: int = 2) -> otTables.Lookup:
     inner_sub = inner_pair_lookup.SubTable[0]
-    ext = ot.ExtensionPos()
+    ext = otTables.ExtensionPos()
     ext.Format = 1
     ext.ExtensionLookupType = ext_target
     ext.ExtSubTable = inner_sub
-    lk = ot.Lookup()
+    lk = otTables.Lookup()
     lk.LookupType = 9
     lk.LookupFlag = 0
     lk.SubTable = [ext]
@@ -529,14 +529,14 @@ def test_single_adjustment_lookup_no_kerning() -> None:
     """A type-1 (single adjustment) lookup contributes no pair kerning."""
     glyphs = [".notdef", "A", "V"]
     gid = {n: i for i, n in enumerate(glyphs)}
-    sp = ot.SinglePos()
+    sp = otTables.SinglePos()
     sp.Format = 1
-    cov = ot.Coverage()
+    cov = otTables.Coverage()
     cov.glyphs = ["A"]
     sp.Coverage = cov
     sp.ValueFormat = _VF_X_ADVANCE
     sp.Value = _mk_value(XAdvance=100)
-    lk = ot.Lookup()
+    lk = otTables.Lookup()
     lk.LookupType = 1
     lk.LookupFlag = 0
     lk.SubTable = [sp]
@@ -551,7 +551,7 @@ def test_mark_to_base_lookup_skipped() -> None:
     """A type-4 mark-to-base lookup is skipped by the kerning builder."""
     glyphs = [".notdef", "A", "V"]
     gid = {n: i for i, n in enumerate(glyphs)}
-    lk = ot.Lookup()
+    lk = otTables.Lookup()
     lk.LookupType = 4
     lk.LookupFlag = 0
     lk.SubTable = []
@@ -564,11 +564,11 @@ def test_mark_to_base_lookup_skipped() -> None:
 def test_empty_lookup_list_no_kerning() -> None:
     glyphs = [".notdef", "A", "V"]
     gid = {n: i for i, n in enumerate(glyphs)}
-    gpos = ot.GPOS()
+    gpos = otTables.GPOS()
     gpos.Version = 0x00010000
     gpos.ScriptList = _script_list()
     gpos.FeatureList = _feature_list()
-    ll = ot.LookupList()
+    ll = otTables.LookupList()
     ll.Lookup = []
     ll.LookupCount = 0
     gpos.LookupList = ll
@@ -658,7 +658,7 @@ def test_two_pair_subtables_union() -> None:
     pp2 = _pair_format1_lookup(["A"], {"A": [("V", _mk_value(XAdvance=-99))]}).SubTable[
         0
     ]
-    lk = ot.Lookup()
+    lk = otTables.Lookup()
     lk.LookupType = 2
     lk.LookupFlag = 0
     lk.SubTable = [pp1, pp2]

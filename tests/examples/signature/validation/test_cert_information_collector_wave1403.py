@@ -59,7 +59,7 @@ def test_build_node_without_issuer_in_pool_skips_chain() -> None:
     collector = CertInformationCollector()
     # Pool contains only the leaf: the issuer (CA) is absent so
     # _find_issuer returns None → 98->102 (no cert chain attached).
-    info = collector._build_node(  # noqa: SLF001 - exercising the helper
+    info = collector._build_node(
         leaf, [leaf], signature_hash=None, depth=0,
     )
     assert info.is_self_signed() is False

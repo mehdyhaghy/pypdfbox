@@ -88,11 +88,11 @@ class PDFTreeCellRenderer:
         self,
         tree: Any,
         node_value: Any,
-        selected: bool = False,  # noqa: ARG002 - upstream signature passthrough
-        expanded: bool = False,  # noqa: ARG002
-        leaf: bool = False,  # noqa: ARG002
-        row: int = 0,  # noqa: ARG002
-        has_focus: bool = False,  # noqa: ARG002
+        selected: bool = False,
+        expanded: bool = False,
+        leaf: bool = False,
+        row: int = 0,
+        has_focus: bool = False,
     ) -> dict[str, Any]:
         """Return the per-node render dict.
 

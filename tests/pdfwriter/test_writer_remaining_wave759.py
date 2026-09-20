@@ -81,7 +81,7 @@ def test_content_stream_array_none_entry_writes_null() -> None:
 def test_content_stream_dictionary_none_value_is_skipped() -> None:
     dictionary = COSDictionary()
     dictionary.set_int("A", 1)
-    dictionary._items[COSName.get_pdf_name("Skip")] = None  # type: ignore[assignment]  # noqa: SLF001
+    dictionary._items[COSName.get_pdf_name("Skip")] = None  # type: ignore[assignment]
     sink = io.BytesIO()
 
     ContentStreamWriter(sink).write_token(dictionary)

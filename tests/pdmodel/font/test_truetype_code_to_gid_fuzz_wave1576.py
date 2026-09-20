@@ -108,7 +108,7 @@ def _synth_ttf(
     fb.setupGlyphOrder(_GLYPH_ORDER)
     fb.setupCharacterMap({})
     fb.setupGlyf(_glyphs())
-    fb.setupHorizontalMetrics({n: (600, 50) for n in _GLYPH_ORDER})
+    fb.setupHorizontalMetrics(dict.fromkeys(_GLYPH_ORDER, (600, 50)))
     fb.setupHorizontalHeader(ascent=800, descent=-200)
     fb.setupNameTable(
         {"familyName": "GidTest", "styleName": "Regular", "psName": "GidTest"}
@@ -158,7 +158,7 @@ def _make_font(
             enc_dict.set_name(COSName.get_pdf_name("BaseEncoding"), encoding)
         # Build a /Differences array: int, name, int, name, ...
         diff_arr = COSArray()
-        from pypdfbox.cos import COSInteger  # noqa: PLC0415
+        from pypdfbox.cos import COSInteger
 
         for code in sorted(differences):
             diff_arr.add(COSInteger.get(code))
@@ -249,7 +249,7 @@ def _synth_named_ttf(glyph_names: list[str], subtables: list) -> bytes:
         pen.closePath()
         pens[name] = pen.glyph()
     fb.setupGlyf(pens)
-    fb.setupHorizontalMetrics({n: (600, 50) for n in glyph_names})
+    fb.setupHorizontalMetrics(dict.fromkeys(glyph_names, (600, 50)))
     fb.setupHorizontalHeader(ascent=800, descent=-200)
     fb.setupNameTable(
         {"familyName": "NamedTest", "styleName": "Regular", "psName": "NamedTest"}

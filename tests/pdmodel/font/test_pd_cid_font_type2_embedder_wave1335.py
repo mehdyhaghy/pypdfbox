@@ -78,7 +78,7 @@ def test_constructor_vertical_uses_identity_v_encoding() -> None:
     assert dict_.get_name("Encoding") == "Identity-V"
     # The vertical branch inside _create_cid_font runs even though
     # Liberation has no vhea — it should not raise.
-    assert embedder._cid_font is not None  # noqa: SLF001
+    assert embedder._cid_font is not None
 
 
 # ---------- check_for_cid_gid_identity: maxp AttributeError fallback ------
@@ -103,7 +103,7 @@ def test_check_for_cid_gid_identity_maxp_attribute_error_returns() -> None:
                 return _Maxp()
             raise KeyError(name)
 
-    embedder._ttf = _Proxy()  # noqa: SLF001
+    embedder._ttf = _Proxy()
     # Should not raise — falls through the AttributeError except clause.
     embedder.check_for_cid_gid_identity()
 
@@ -119,7 +119,7 @@ def test_build_to_unicode_cmap_with_missing_maxp_treats_glyph_count_zero() -> No
         def __getitem__(self, name: str) -> Any:
             raise KeyError(name)
 
-    embedder._ttf = _StubTTF()  # noqa: SLF001
+    embedder._ttf = _StubTTF()
     # Even without maxp, the ToUnicode stream is still written.
     embedder.build_to_unicode_c_map(None)
     assert dict_.get_item(COSName.get_pdf_name("ToUnicode")) is not None
@@ -172,9 +172,9 @@ def test_build_widths_for_subset_skips_missing_hmtx_entries() -> None:
                 return _Head()
             return real_get(name)
 
-    embedder._ttf = _Proxy()  # noqa: SLF001
-    embedder._build_widths_for_subset({1: 1, 2: 2})  # noqa: SLF001
-    widths = embedder._cid_font.get_item(COSName.get_pdf_name("W"))  # noqa: SLF001
+    embedder._ttf = _Proxy()
+    embedder._build_widths_for_subset({1: 1, 2: 2})
+    widths = embedder._cid_font.get_item(COSName.get_pdf_name("W"))
     # No widths emitted but the key is still present (empty array).
     assert isinstance(widths, COSArray)
     assert len(widths) == 0
@@ -202,9 +202,9 @@ def test_build_widths_for_subset_skips_widths_equal_to_1000() -> None:
         def getGlyphName(self, gid: int) -> str:
             return f"gid{gid}"
 
-    embedder._ttf = _Proxy()  # noqa: SLF001
-    embedder._build_widths_for_subset({1: 1, 2: 2})  # noqa: SLF001
-    widths = embedder._cid_font.get_item(COSName.get_pdf_name("W"))  # noqa: SLF001
+    embedder._ttf = _Proxy()
+    embedder._build_widths_for_subset({1: 1, 2: 2})
+    widths = embedder._cid_font.get_item(COSName.get_pdf_name("W"))
     assert isinstance(widths, COSArray)
     assert len(widths) == 0  # everything was the default width
 
@@ -239,9 +239,9 @@ def test_build_widths_full_uses_zero_when_hmtx_lookup_raises() -> None:
         def getGlyphName(self, gid: int) -> str:
             return f"gid{gid}"
 
-    embedder._ttf = _Proxy()  # noqa: SLF001
+    embedder._ttf = _Proxy()
     cid_font = COSDictionary()
-    embedder._build_widths_full(cid_font)  # noqa: SLF001
+    embedder._build_widths_full(cid_font)
     widths = cid_font.get_item(COSName.get_pdf_name("W"))
     assert isinstance(widths, COSArray)
     # All widths zero -> SERIAL run: encodes as [0, 3, 0].
@@ -285,10 +285,10 @@ def test_build_vertical_metrics_subset_skips_when_hmtx_raises() -> None:
         def getGlyphName(self, gid: int) -> str:
             return f"gid{gid}"
 
-    embedder._ttf = _Proxy()  # noqa: SLF001
-    embedder._build_vertical_metrics_for_subset({1: 1, 2: 2})  # noqa: SLF001
+    embedder._ttf = _Proxy()
+    embedder._build_vertical_metrics_for_subset({1: 1, 2: 2})
     # /W2 set but loop body produced nothing.
-    w2 = embedder._cid_font.get_item(COSName.get_pdf_name("W2"))  # noqa: SLF001
+    w2 = embedder._cid_font.get_item(COSName.get_pdf_name("W2"))
     assert isinstance(w2, COSArray)
     assert len(w2) == 0
 
@@ -329,9 +329,9 @@ def test_build_vertical_metrics_subset_uses_zero_ymax_when_glyf_missing() -> Non
         def getGlyphName(self, gid: int) -> str:
             return f"gid{gid}"
 
-    embedder._ttf = _Proxy()  # noqa: SLF001
-    embedder._build_vertical_metrics_for_subset({1: 1, 2: 2})  # noqa: SLF001
-    w2 = embedder._cid_font.get_item(COSName.get_pdf_name("W2"))  # noqa: SLF001
+    embedder._ttf = _Proxy()
+    embedder._build_vertical_metrics_for_subset({1: 1, 2: 2})
+    w2 = embedder._cid_font.get_item(COSName.get_pdf_name("W2"))
     assert isinstance(w2, COSArray)
     # Two consecutive CIDs with non-default values -> single BRACKET pair.
     assert len(w2) >= 2
@@ -377,10 +377,10 @@ def test_build_vertical_metrics_subset_emits_non_default_block() -> None:
         def getGlyphName(self, gid: int) -> str:
             return f"gid{gid}"
 
-    embedder._ttf = _Proxy()  # noqa: SLF001
-    embedder._build_vertical_metrics_for_subset({1: 1, 3: 3})  # noqa: SLF001
+    embedder._ttf = _Proxy()
+    embedder._build_vertical_metrics_for_subset({1: 1, 3: 3})
     # Non-contiguous CIDs (1 and 3) -> two separate (cid, [...]) blocks.
-    w2 = embedder._cid_font.get_item(COSName.get_pdf_name("W2"))  # noqa: SLF001
+    w2 = embedder._cid_font.get_item(COSName.get_pdf_name("W2"))
     assert isinstance(w2, COSArray)
     assert len(w2) >= 2
 
@@ -428,9 +428,9 @@ def test_build_vertical_metrics_subset_skips_default_height_and_advance() -> Non
         def getGlyphName(self, gid: int) -> str:
             return f"gid{gid}"
 
-    embedder._ttf = _Proxy()  # noqa: SLF001
-    embedder._build_vertical_metrics_for_subset({1: 1, 2: 2})  # noqa: SLF001
-    w2 = embedder._cid_font.get_item(COSName.get_pdf_name("W2"))  # noqa: SLF001
+    embedder._ttf = _Proxy()
+    embedder._build_vertical_metrics_for_subset({1: 1, 2: 2})
+    w2 = embedder._cid_font.get_item(COSName.get_pdf_name("W2"))
     # All defaults -> empty W2.
     assert isinstance(w2, COSArray)
     assert len(w2) == 0
@@ -460,9 +460,9 @@ def test_build_vertical_metrics_full_returns_when_maxp_missing() -> None:
             # maxp KeyError -> hits the line 479-480 fallback.
             raise KeyError(name)
 
-    embedder._ttf = _Proxy()  # noqa: SLF001
+    embedder._ttf = _Proxy()
     cid_font = COSDictionary()
-    embedder._build_vertical_metrics_full(cid_font)  # noqa: SLF001
+    embedder._build_vertical_metrics_full(cid_font)
     # No /W2 written on the descendant.
     assert cid_font.get_item(COSName.get_pdf_name("W2")) is None
 
@@ -474,7 +474,7 @@ def test_get_unicode_cmap_reverse_returns_empty_when_best_cmap_none() -> None:
     embedder, _dict, _doc, _parent, _ttf = _new_embedder(embed_subset=True)
 
     class _CMap:
-        def getBestCmap(self) -> None:  # noqa: N802 - upstream API
+        def getBestCmap(self) -> None:
             return None
 
     class _Proxy:
@@ -483,8 +483,8 @@ def test_get_unicode_cmap_reverse_returns_empty_when_best_cmap_none() -> None:
                 return _CMap()
             raise KeyError(name)
 
-    embedder._ttf = _Proxy()  # noqa: SLF001
-    assert embedder._get_unicode_cmap_reverse() == {}  # noqa: SLF001
+    embedder._ttf = _Proxy()
+    assert embedder._get_unicode_cmap_reverse() == {}
 
 
 def test_get_unicode_cmap_reverse_skips_glyph_id_failures() -> None:
@@ -492,7 +492,7 @@ def test_get_unicode_cmap_reverse_skips_glyph_id_failures() -> None:
     embedder, _dict, _doc, _parent, _ttf = _new_embedder(embed_subset=True)
 
     class _CMap:
-        def getBestCmap(self) -> dict[int, str]:  # noqa: N802 - upstream API
+        def getBestCmap(self) -> dict[int, str]:
             return {65: "A", 66: "B"}
 
     class _Proxy:
@@ -504,9 +504,9 @@ def test_get_unicode_cmap_reverse_skips_glyph_id_failures() -> None:
         def getGlyphID(self, _name: str) -> int:  # noqa: N802 - upstream API
             raise AttributeError("no glyph table")
 
-    embedder._ttf = _Proxy()  # noqa: SLF001
+    embedder._ttf = _Proxy()
     # Every getGlyphID call fails -> no entries collected.
-    assert embedder._get_unicode_cmap_reverse() == {}  # noqa: SLF001
+    assert embedder._get_unicode_cmap_reverse() == {}
 
 
 # ---------- build_subset vertical leg (line 105) -------------------------

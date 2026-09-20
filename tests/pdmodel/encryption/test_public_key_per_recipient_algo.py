@@ -118,7 +118,7 @@ def two_recipients_same_perms() -> tuple[
         perms_b.set_can_print(False)
         r1, c1, k1 = _make_recipient_with(perms_a)
         r2, c2, k2 = _make_recipient_with(perms_b)
-    except Exception:  # noqa: BLE001 — cert gen too heavy on some boxes
+    except Exception:
         pytest.skip("cert generation too heavy in this environment")
     # Sanity-check that the masks really are identical going in.
     assert (
@@ -145,7 +145,7 @@ def two_recipients_different_perms() -> tuple[
         perms_b = AccessPermission()  # default: all permissions on
         r1, c1, k1 = _make_recipient_with(perms_a)
         r2, c2, k2 = _make_recipient_with(perms_b)
-    except Exception:  # noqa: BLE001
+    except Exception:
         pytest.skip("cert generation too heavy in this environment")
     assert (
         r1.get_permission().get_permission_bytes()
@@ -317,7 +317,7 @@ def test_three_recipients_yield_three_envelopes() -> None:
         r1, _c1, _k1 = _make_recipient_with(perms_locked)
         r2, _c2, _k2 = _make_recipient_with(perms_locked)
         r3, _c3, _k3 = _make_recipient_with(perms_open)
-    except Exception:  # noqa: BLE001
+    except Exception:
         pytest.skip("cert generation too heavy in this environment")
 
     policy = PublicKeyProtectionPolicy()

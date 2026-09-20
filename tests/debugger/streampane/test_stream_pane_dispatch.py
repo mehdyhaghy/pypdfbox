@@ -58,7 +58,7 @@ def test_create_header_panel_returns_frame_with_filter_dropdown(tk_root) -> None
     pane = StreamPane(
         tk_root, _content_stream(), is_content_stream=True, is_thumb=False
     )
-    filter_list = pane._stream.get_filter_list()  # noqa: SLF001
+    filter_list = pane._stream.get_filter_list()
     header = pane.create_header_panel(filter_list, Stream.DECODED)
     assert isinstance(header, ttk.Frame)
     combo = _find_combobox(header)
@@ -77,10 +77,10 @@ def test_create_header_panel_accepts_custom_action_listener(tk_root) -> None:
 
     calls: list[Any] = []
 
-    def listener(event: Any) -> None:  # noqa: ARG001
+    def listener(event: Any) -> None:
         calls.append(event)
 
-    filter_list = pane._stream.get_filter_list()  # noqa: SLF001
+    filter_list = pane._stream.get_filter_list()
     header = pane.create_header_panel(filter_list, Stream.DECODED, listener)
     combo = _find_combobox(header)
     assert combo is not None
@@ -108,14 +108,14 @@ def test_request_image_showing_pushes_image_into_raw_view(
     # (this exercises just the StreamPane dispatch, not PDImageXObject).
     sentinel_image = object()
     monkeypatch.setattr(
-        pane._stream,  # noqa: SLF001
+        pane._stream,
         "get_image",
         lambda _resources: sentinel_image,
     )
 
     captured: list[object] = []
     monkeypatch.setattr(
-        pane._raw_view,  # noqa: SLF001
+        pane._raw_view,
         "show_stream_image",
         lambda image: captured.append(image),
     )
@@ -134,7 +134,7 @@ def test_request_image_showing_noop_for_non_image_stream(
 
     called: list[object] = []
     monkeypatch.setattr(
-        pane._raw_view,  # noqa: SLF001
+        pane._raw_view,
         "show_stream_image",
         lambda image: called.append(image),
     )
@@ -158,14 +158,14 @@ def test_request_stream_text_index_zero_loads_unfiltered_bytes(
     text_calls: list[tuple] = []
     hex_calls: list[bytes] = []
     monkeypatch.setattr(
-        pane._raw_view,  # noqa: SLF001
+        pane._raw_view,
         "show_stream_text",
         lambda segments, styles, tool_tip_controller=None: text_calls.append(
             (list(segments), list(styles), tool_tip_controller)
         ),
     )
     monkeypatch.setattr(
-        pane._hex_view,  # noqa: SLF001
+        pane._hex_view,
         "change_data",
         lambda data: hex_calls.append(bytes(data)),
     )
@@ -189,14 +189,14 @@ def test_request_stream_text_string_key_decoded(tk_root, monkeypatch) -> None:
     text_calls: list[tuple] = []
     hex_calls: list[bytes] = []
     monkeypatch.setattr(
-        pane._raw_view,  # noqa: SLF001
+        pane._raw_view,
         "show_stream_text",
         lambda segments, styles, tool_tip_controller=None: text_calls.append(
             (list(segments), list(styles), tool_tip_controller)
         ),
     )
     monkeypatch.setattr(
-        pane._hex_view,  # noqa: SLF001
+        pane._hex_view,
         "change_data",
         lambda data: hex_calls.append(bytes(data)),
     )
@@ -216,7 +216,7 @@ def test_request_stream_text_out_of_range_index_is_noop(
 
     text_calls: list[tuple] = []
     monkeypatch.setattr(
-        pane._raw_view,  # noqa: SLF001
+        pane._raw_view,
         "show_stream_text",
         lambda *args, **kwargs: text_calls.append((args, kwargs)),
     )

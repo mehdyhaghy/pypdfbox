@@ -56,15 +56,15 @@ def _color_space_name(path: Path) -> str:
 
 
 def test_info_read_xmp_defensive_metadata_shapes() -> None:
-    assert info._read_xmp(_DocWithCatalog(_RaisingCatalog())) is None  # noqa: SLF001
-    assert info._read_xmp(_DocWithCatalog(_Catalog(None))) is None  # noqa: SLF001
-    assert info._read_xmp(_DocWithCatalog(_Catalog(_StringMetadata(None)))) is None  # noqa: SLF001
-    assert info._read_xmp(_DocWithCatalog(_Catalog(_StringMetadata(42)))) == "42"  # noqa: SLF001
-    assert info._read_xmp(_DocWithCatalog(_Catalog(_BrokenFallbackMetadata()))) is None  # noqa: SLF001
+    assert info._read_xmp(_DocWithCatalog(_RaisingCatalog())) is None
+    assert info._read_xmp(_DocWithCatalog(_Catalog(None))) is None
+    assert info._read_xmp(_DocWithCatalog(_Catalog(_StringMetadata(None)))) is None
+    assert info._read_xmp(_DocWithCatalog(_Catalog(_StringMetadata(42)))) == "42"
+    assert info._read_xmp(_DocWithCatalog(_Catalog(_BrokenFallbackMetadata()))) is None
 
 
 def test_info_txt_prints_non_numeric_versions(capsys: pytest.CaptureFixture[str]) -> None:
-    info._print_txt(  # noqa: SLF001
+    info._print_txt(
         {
             "file": "odd.pdf",
             "header_version": "not-a-float",
@@ -136,4 +136,4 @@ def test_imagetopdf_embeds_less_common_pillow_modes(
 
 def test_imagetopdf_parse_orientation_reports_argparse_error() -> None:
     with pytest.raises(argparse.ArgumentTypeError, match="orientation must be one of"):
-        imagetopdf._parse_orientation("sideways")  # noqa: SLF001
+        imagetopdf._parse_orientation("sideways")

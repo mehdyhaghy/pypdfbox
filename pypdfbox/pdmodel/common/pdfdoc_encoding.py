@@ -155,7 +155,7 @@ def get_char_code(character: str) -> int | None:
     return _UNI_TO_CODE.get(character)
 
 
-def set(code: int, unicode_char: str) -> None:  # noqa: A001 - mirror upstream name
+def set(code: int, unicode_char: str) -> None:
     """Register a code → Unicode mapping in the PDFDocEncoding tables.
 
     Mirrors upstream ``PDFDocEncoding.set(int code, char unicode)`` —
@@ -212,7 +212,7 @@ class PDFDocEncoding:
         return get_char_code(character)
 
     @staticmethod
-    def set(code: int, unicode_char: str) -> None:  # noqa: A003 - mirror upstream name
+    def set(code: int, unicode_char: str) -> None:
         """Register a code → Unicode mapping in the PDFDocEncoding tables.
 
         Mirrors upstream ``PDFDocEncoding.set(int, char)`` (private static

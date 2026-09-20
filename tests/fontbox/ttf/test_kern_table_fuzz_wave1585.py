@@ -249,7 +249,7 @@ def test_is_horizontal_kerning_logic(
 
 def _wrap_table(*subtables: KerningSubtable) -> KerningTable:
     table = KerningTable()
-    table._subtables = list(subtables)  # noqa: SLF001
+    table._subtables = list(subtables)
     return table
 
 

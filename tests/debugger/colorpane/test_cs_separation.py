@@ -77,23 +77,23 @@ def test_cs_separation_tint_field_valid_input_updates(tk_root) -> None:
 
 def test_cs_separation_slider_callback_updates_tint(tk_root) -> None:
     pane = CSSeparation(_separation_array(), master=tk_root)
-    pane._on_slider("75")  # noqa: SLF001
+    pane._on_slider("75")
     assert pane.tint_value == 0.75
 
 
 def test_cs_separation_slider_ignores_invalid_value(tk_root) -> None:
     pane = CSSeparation(_separation_array(), master=tk_root)
-    pane._on_slider("garbage")  # noqa: SLF001 — must not raise
+    pane._on_slider("garbage")
     assert pane.tint_value == 1.0  # unchanged
 
 
 def test_cs_separation_slider_no_op_while_syncing(tk_root) -> None:
     pane = CSSeparation(_separation_array(), master=tk_root)
-    pane._syncing = True  # noqa: SLF001
+    pane._syncing = True
     try:
-        pane._on_slider("50")  # noqa: SLF001 — should early-out
+        pane._on_slider("50")
     finally:
-        pane._syncing = False  # noqa: SLF001
+        pane._syncing = False
     assert pane.tint_value == 1.0  # unchanged
 
 
@@ -101,9 +101,9 @@ def test_cs_separation_tint_field_no_op_while_syncing(tk_root) -> None:
     pane = CSSeparation(_separation_array(), master=tk_root)
     assert pane._tint_var is not None
     pane._tint_var.set("0.25")
-    pane._syncing = True  # noqa: SLF001
+    pane._syncing = True
     try:
-        pane._on_tint_entry(None)  # noqa: SLF001
+        pane._on_tint_entry(None)
     finally:
-        pane._syncing = False  # noqa: SLF001
+        pane._syncing = False
     assert pane.tint_value == 1.0  # unchanged

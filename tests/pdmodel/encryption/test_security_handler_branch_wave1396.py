@@ -18,10 +18,10 @@ from pypdfbox.pdmodel.encryption.security_handler import SecurityHandler
 
 
 class _ConcreteHandler(SecurityHandler):
-    def prepare_for_decryption(self, encryption, document_id, decryption_material):  # noqa: ARG002
+    def prepare_for_decryption(self, encryption, document_id, decryption_material):
         return None
 
-    def prepare_document(self, document):  # noqa: ARG002
+    def prepare_document(self, document):
         return None
 
 
@@ -95,6 +95,6 @@ def test_compute_version_number_getter_not_callable_keeps_default() -> None:
         is_prefer_aes = "yes"
         is_preferred_aes = "yes"
 
-    handler._protection_policy = _Policy()  # noqa: SLF001
+    handler._protection_policy = _Policy()
     # Should not prefer AES — getter wasn't callable.
     assert handler.compute_version_number() == 2

@@ -61,12 +61,12 @@ def _reset_menus() -> Iterator[None]:
     from pypdfbox.debugger.ui.zoom_menu import ZoomMenu
 
     def _wipe() -> None:
-        ZoomMenu._reset_instance()  # noqa: SLF001
-        RotationMenu._reset_instance()  # noqa: SLF001
-        RenderDestinationMenu._reset_instance()  # noqa: SLF001
-        ViewMenu._reset_instance()  # noqa: SLF001
-        ImageTypeMenu._reset_for_testing()  # noqa: SLF001
-        TextStripperMenu._reset_for_testing()  # noqa: SLF001
+        ZoomMenu._reset_instance()
+        RotationMenu._reset_instance()
+        RenderDestinationMenu._reset_instance()
+        ViewMenu._reset_instance()
+        ImageTypeMenu._reset_for_testing()
+        TextStripperMenu._reset_for_testing()
 
     _wipe()
     try:
@@ -147,10 +147,10 @@ def test_collect_link_location_primary_import_fallback_uri_retry(
             return sentinel_action
 
         link.get_action = _get_action  # type: ignore[method-assign]
-        before = dict(pane._rect_map)  # noqa: SLF001
+        before = dict(pane._rect_map)
         pane.collect_link_location(link)
         # No /URI nor /GoTo handler available → map unchanged.
-        assert dict(pane._rect_map) == before  # noqa: SLF001
+        assert dict(pane._rect_map) == before
     finally:
         doc.close()
 
@@ -183,9 +183,9 @@ def test_collect_link_location_primary_and_uri_both_unavailable_returns(
 
         link = PDAnnotationLink()
         link.set_rectangle(PDRectangle(0.0, 0.0, 10.0, 10.0))
-        before = dict(pane._rect_map)  # noqa: SLF001
+        before = dict(pane._rect_map)
         pane.collect_link_location(link)  # must not raise
-        assert dict(pane._rect_map) == before  # noqa: SLF001
+        assert dict(pane._rect_map) == before
     finally:
         doc.close()
 
@@ -227,7 +227,7 @@ def test_start_extracting_handles_text_strip_oserror(
         # Patch the stripper class's get_text to raise OSError. Use the
         # actual class object so the import-side of the call resolves to
         # the monkeypatched method.
-        def _boom(self: Any, document: Any) -> str:  # noqa: ARG001
+        def _boom(self: Any, document: Any) -> str:
             raise OSError("simulated I/O failure")
 
         monkeypatch.setattr(
@@ -255,7 +255,7 @@ def test_render_worker_swallows_rotation_value_error(
     )
     assert _resolve_rotation() != 0
 
-    def _boom(image: Any, angle: int) -> Any:  # noqa: ARG001
+    def _boom(image: Any, angle: int) -> Any:
         raise ValueError("simulated rotation failure")
 
     monkeypatch.setattr(image_util.ImageUtil, "get_rotated_image", _boom)
@@ -274,4 +274,4 @@ def test_render_worker_swallows_rotation_value_error(
 
 
 # Silence the unused-import warning for the monkeypatch helper.
-_ = importlib  # noqa: F841
+_ = importlib

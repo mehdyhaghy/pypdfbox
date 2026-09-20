@@ -28,7 +28,7 @@ def test_font_fallback_make_doc_removes_preexisting_page(
 ) -> None:
     monkeypatch.setattr(font_fallback_tests, "PDDocument", _DocWithExistingPage)
 
-    doc, page = font_fallback_tests._make_doc(12.0, 13.0)  # noqa: SLF001
+    doc, page = font_fallback_tests._make_doc(12.0, 13.0)
 
     assert isinstance(doc, _DocWithExistingPage)
     assert doc.removed_indices == [0]

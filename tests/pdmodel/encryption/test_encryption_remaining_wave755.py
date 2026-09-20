@@ -34,7 +34,7 @@ class _BareHandler(SecurityHandler):
 
 def test_standard_encrypt_stream_uses_v4_routing_table() -> None:
     handler = StandardSecurityHandler()
-    handler._stream_cfm = "Identity"  # noqa: SLF001
+    handler._stream_cfm = "Identity"
 
     assert handler.encrypt_stream(b"plain", 7, 0) == b"plain"
 
@@ -81,7 +81,7 @@ def test_standard_extract_document_id_defaults_for_empty_id_array() -> None:
     document.set_document_id(COSArray())
 
     assert (
-        StandardSecurityHandler._extract_document_id(document, b"default")  # noqa: SLF001
+        StandardSecurityHandler._extract_document_id(document, b"default")
         == b"default"
     )
 
@@ -89,11 +89,11 @@ def test_standard_extract_document_id_defaults_for_empty_id_array() -> None:
 def test_standard_compute_key_includes_metadata_suppression_marker() -> None:
     args = (b"password", b"o" * 32, DEFAULT_PERMISSIONS, b"doc-id", 4, 16)
 
-    encrypted_metadata_key = StandardSecurityHandler._compute_encryption_key(  # noqa: SLF001
+    encrypted_metadata_key = StandardSecurityHandler._compute_encryption_key(
         *args,
         encrypt_metadata=True,
     )
-    clear_metadata_key = StandardSecurityHandler._compute_encryption_key(  # noqa: SLF001
+    clear_metadata_key = StandardSecurityHandler._compute_encryption_key(
         *args,
         encrypt_metadata=False,
     )
@@ -103,7 +103,7 @@ def test_standard_compute_key_includes_metadata_suppression_marker() -> None:
 
 def test_standard_r6_key_helpers_report_mismatches_and_short_owner_entries() -> None:
     assert (
-        StandardSecurityHandler._compute_encryption_key_r5_r6(  # noqa: SLF001
+        StandardSecurityHandler._compute_encryption_key_r5_r6(
             b"password",
             b"o" * 48,
             b"u" * 48,
@@ -115,7 +115,7 @@ def test_standard_r6_key_helpers_report_mismatches_and_short_owner_entries() -> 
         is None
     )
     assert (
-        StandardSecurityHandler._is_owner_password_r5_r6(  # noqa: SLF001
+        StandardSecurityHandler._is_owner_password_r5_r6(
             b"password",
             b"short",
             b"u" * 48,
@@ -142,7 +142,7 @@ def test_standard_r6_dictionary_creates_missing_file_key(monkeypatch) -> None:
     )
     handler = StandardSecurityHandler()
 
-    _o, _oe, _u, _ue, _perms = handler._build_r6_dictionary(  # noqa: SLF001
+    _o, _oe, _u, _ue, _perms = handler._build_r6_dictionary(
         b"owner",
         b"user",
         DEFAULT_PERMISSIONS,
@@ -181,16 +181,16 @@ def test_security_handler_aes_decrypt_matches_upstream_iv_and_padding() -> None:
 
     # Partial IV (5 of 16 bytes) → IOException upstream → OSError here.
     with pytest.raises(OSError):
-        _aes_cbc_decrypt(key, b"short")  # noqa: SLF001
+        _aes_cbc_decrypt(key, b"short")
     # Empty input → silent zero-length skip (IV read returns 0).
-    assert _aes_cbc_decrypt(key, b"") == b""  # noqa: SLF001
+    assert _aes_cbc_decrypt(key, b"") == b""
     # IV only (no ciphertext) → empty output.
-    assert _aes_cbc_decrypt(key, b"\xaa" * 16) == b""  # noqa: SLF001
+    assert _aes_cbc_decrypt(key, b"\xaa" * 16) == b""
     # IV + one bad-padding block, tolerant (AES-256) → final block dropped → empty.
-    assert _aes_cbc_decrypt(key, b"\xaa" * 32) == b""  # noqa: SLF001
+    assert _aes_cbc_decrypt(key, b"\xaa" * 32) == b""
     # Same input, strict (AES-128 per-object) → raises.
     with pytest.raises(OSError):
-        _aes_cbc_decrypt(key, b"\xaa" * 32, tolerant_padding=False)  # noqa: SLF001
+        _aes_cbc_decrypt(key, b"\xaa" * 32, tolerant_padding=False)
 
 
 def test_pd_encryption_preserves_owner_key_length_for_unknown_revision() -> None:

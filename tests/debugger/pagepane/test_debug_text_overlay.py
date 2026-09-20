@@ -221,7 +221,7 @@ def _make_stripper(
         show_glyph_bounds=show_glyph_bounds,
     )
     stripper = DebugTextStripper(overlay=overlay)
-    stripper._crop_box_height = crop_height  # noqa: SLF001
+    stripper._crop_box_height = crop_height
     return stripper, overlay, doc
 
 
@@ -238,8 +238,8 @@ def test_collect_font_bbox_rect_emits_blue_when_font_has_bbox() -> None:
             font=_StubFont(),
             width=10.0,
         )
-        stripper._collect_font_bbox_rect(tp)  # noqa: SLF001
-        rects = list(stripper._collector.rectangles)  # noqa: SLF001
+        stripper._collect_font_bbox_rect(tp)
+        rects = list(stripper._collector.rectangles)
         assert len(rects) == 1
         rect = rects[0]
         assert rect.color == "blue"
@@ -256,8 +256,8 @@ def test_collect_font_bbox_rect_skips_when_font_missing() -> None:
     stripper, _overlay, doc = _make_stripper(show_font_bbox=True)
     try:
         tp = TextPosition(text="h", x=0.0, y=0.0, font_size=12.0, font=None)
-        stripper._collect_font_bbox_rect(tp)  # noqa: SLF001
-        assert stripper._collector.rectangles == []  # noqa: SLF001
+        stripper._collect_font_bbox_rect(tp)
+        assert stripper._collector.rectangles == []
     finally:
         doc.close()
 
@@ -272,8 +272,8 @@ def test_collect_font_bbox_rect_skips_when_bbox_none() -> None:
     stripper, _overlay, doc = _make_stripper(show_font_bbox=True)
     try:
         tp = TextPosition(text="h", x=0.0, y=0.0, font_size=12.0, font=_NoBBoxFont())
-        stripper._collect_font_bbox_rect(tp)  # noqa: SLF001
-        assert stripper._collector.rectangles == []  # noqa: SLF001
+        stripper._collect_font_bbox_rect(tp)
+        assert stripper._collector.rectangles == []
     finally:
         doc.close()
 
@@ -288,8 +288,8 @@ def test_collect_font_bbox_rect_skips_when_bbox_get_raises() -> None:
     stripper, _overlay, doc = _make_stripper(show_font_bbox=True)
     try:
         tp = TextPosition(text="h", x=0.0, y=0.0, font_size=12.0, font=_BoomBBoxFont())
-        stripper._collect_font_bbox_rect(tp)  # noqa: SLF001
-        assert stripper._collector.rectangles == []  # noqa: SLF001
+        stripper._collect_font_bbox_rect(tp)
+        assert stripper._collector.rectangles == []
     finally:
         doc.close()
 
@@ -302,8 +302,8 @@ def test_collect_font_bbox_rect_skips_on_attribute_error_font() -> None:
     stripper, _overlay, doc = _make_stripper(show_font_bbox=True)
     try:
         tp = TextPosition(text="h", x=0.0, y=0.0, font_size=12.0, font=object())
-        stripper._collect_font_bbox_rect(tp)  # noqa: SLF001
-        assert stripper._collector.rectangles == []  # noqa: SLF001
+        stripper._collect_font_bbox_rect(tp)
+        assert stripper._collector.rectangles == []
     finally:
         doc.close()
 
@@ -315,8 +315,8 @@ def test_collect_text_stripper_rect_skips_on_zero_width() -> None:
     stripper, _overlay, doc = _make_stripper(show_text_stripper=True)
     try:
         tp = TextPosition(text="", x=0.0, y=0.0, font_size=12.0, width=0.0)
-        stripper._collect_text_stripper_rect(tp)  # noqa: SLF001
-        assert stripper._collector.rectangles == []  # noqa: SLF001
+        stripper._collect_text_stripper_rect(tp)
+        assert stripper._collector.rectangles == []
     finally:
         doc.close()
 
@@ -339,8 +339,8 @@ def test_collect_text_stripper_rect_skips_on_type_error() -> None:
 
     stripper, _overlay, doc = _make_stripper(show_text_stripper=True)
     try:
-        stripper._collect_text_stripper_rect(_BadTp())  # noqa: SLF001 — duck-typed
-        assert stripper._collector.rectangles == []  # noqa: SLF001
+        stripper._collect_text_stripper_rect(_BadTp())
+        assert stripper._collector.rectangles == []
     finally:
         doc.close()
 
@@ -382,7 +382,7 @@ def test_show_glyph_emits_cyan_rectangle_with_full_stub_state(monkeypatch) -> No
     stripper, _overlay, doc = _make_stripper(show_glyph_bounds=True)
     try:
         stripper.show_glyph(_Matrix(), _StubFont(), 0x68, _Disp())
-        rects = list(stripper._collector.rectangles)  # noqa: SLF001
+        rects = list(stripper._collector.rectangles)
         assert len(rects) == 1
         assert rects[0].color == "cyan"
         x0, y0, x1, y1 = rects[0].coords
@@ -397,7 +397,7 @@ def test_show_glyph_skips_when_flag_disabled(monkeypatch) -> None:
     stripper, _overlay, doc = _make_stripper(show_glyph_bounds=False)
     try:
         stripper.show_glyph(None, _StubFont(), 0, None)
-        assert stripper._collector.rectangles == []  # noqa: SLF001
+        assert stripper._collector.rectangles == []
     finally:
         doc.close()
 
@@ -407,7 +407,7 @@ def test_show_glyph_skips_when_font_none(monkeypatch) -> None:
     stripper, _overlay, doc = _make_stripper(show_glyph_bounds=True)
     try:
         stripper.show_glyph(None, None, 0, None)
-        assert stripper._collector.rectangles == []  # noqa: SLF001
+        assert stripper._collector.rectangles == []
     finally:
         doc.close()
 
@@ -422,7 +422,7 @@ def test_show_glyph_skips_when_bbox_none(monkeypatch) -> None:
     stripper, _overlay, doc = _make_stripper(show_glyph_bounds=True)
     try:
         stripper.show_glyph(None, _NoBBoxFont(), 0, None)
-        assert stripper._collector.rectangles == []  # noqa: SLF001
+        assert stripper._collector.rectangles == []
     finally:
         doc.close()
 
@@ -437,7 +437,7 @@ def test_show_glyph_swallows_bbox_oserror(monkeypatch) -> None:
     stripper, _overlay, doc = _make_stripper(show_glyph_bounds=True)
     try:
         stripper.show_glyph(None, _BoomFont(), 0, None)
-        assert stripper._collector.rectangles == []  # noqa: SLF001
+        assert stripper._collector.rectangles == []
     finally:
         doc.close()
 
@@ -448,7 +448,7 @@ def test_show_glyph_handles_missing_matrix_translate(monkeypatch) -> None:
     stripper, _overlay, doc = _make_stripper(show_glyph_bounds=True)
     try:
         stripper.show_glyph(object(), _StubFont(), 0, None)
-        rects = list(stripper._collector.rectangles)  # noqa: SLF001
+        rects = list(stripper._collector.rectangles)
         assert len(rects) == 1
         assert rects[0].color == "cyan"
     finally:
@@ -478,7 +478,7 @@ def test_show_glyph_skips_when_bbox_accessor_raises(monkeypatch) -> None:
     stripper, _overlay, doc = _make_stripper(show_glyph_bounds=True)
     try:
         stripper.show_glyph(None, _Font(), 0, None)
-        assert stripper._collector.rectangles == []  # noqa: SLF001
+        assert stripper._collector.rectangles == []
     finally:
         doc.close()
 
@@ -530,8 +530,8 @@ def test_collect_thread_beads_emits_green_rectangles() -> None:
                 _Bead(_BeadRect(80.0, 90.0, 120.0, 110.0)),
             ]
         )
-        stripper._collect_thread_beads(page)  # noqa: SLF001
-        rects = list(stripper._collector.rectangles)  # noqa: SLF001
+        stripper._collect_thread_beads(page)
+        rects = list(stripper._collector.rectangles)
         assert len(rects) == 2
         assert all(r.color == "green" for r in rects)
     finally:
@@ -541,8 +541,8 @@ def test_collect_thread_beads_emits_green_rectangles() -> None:
 def test_collect_thread_beads_swallows_attribute_error_on_page() -> None:
     stripper, _overlay, doc = _make_stripper(show_text_stripper_beads=True)
     try:
-        stripper._collect_thread_beads(object())  # noqa: SLF001
-        assert stripper._collector.rectangles == []  # noqa: SLF001
+        stripper._collect_thread_beads(object())
+        assert stripper._collector.rectangles == []
     finally:
         doc.close()
 
@@ -554,8 +554,8 @@ def test_collect_thread_beads_swallows_oserror_on_page() -> None:
 
     stripper, _overlay, doc = _make_stripper(show_text_stripper_beads=True)
     try:
-        stripper._collect_thread_beads(_OopsPage())  # noqa: SLF001
-        assert stripper._collector.rectangles == []  # noqa: SLF001
+        stripper._collect_thread_beads(_OopsPage())
+        assert stripper._collector.rectangles == []
     finally:
         doc.close()
 
@@ -572,8 +572,8 @@ def test_collect_thread_beads_skips_bead_without_rect_method() -> None:
 
     stripper, _overlay, doc = _make_stripper(show_text_stripper_beads=True)
     try:
-        stripper._collect_thread_beads(_FakePage())  # noqa: SLF001
-        assert stripper._collector.rectangles == []  # noqa: SLF001
+        stripper._collect_thread_beads(_FakePage())
+        assert stripper._collector.rectangles == []
     finally:
         doc.close()
 
@@ -602,8 +602,8 @@ def test_collect_thread_beads_skips_bead_rect_with_bad_coords() -> None:
 
     stripper, _overlay, doc = _make_stripper(show_text_stripper_beads=True)
     try:
-        stripper._collect_thread_beads(_FakePage())  # noqa: SLF001
-        assert stripper._collector.rectangles == []  # noqa: SLF001
+        stripper._collect_thread_beads(_FakePage())
+        assert stripper._collector.rectangles == []
     finally:
         doc.close()
 
@@ -646,8 +646,8 @@ def test_collect_font_bbox_rect_skips_when_get_font_raises_attribute() -> None:
 
     stripper, _overlay, doc = _make_stripper(show_font_bbox=True)
     try:
-        stripper._collect_font_bbox_rect(_NoFontTp())  # noqa: SLF001
-        assert stripper._collector.rectangles == []  # noqa: SLF001
+        stripper._collect_font_bbox_rect(_NoFontTp())
+        assert stripper._collector.rectangles == []
     finally:
         doc.close()
 
@@ -678,8 +678,8 @@ def test_collect_font_bbox_rect_skips_when_bbox_coord_raises() -> None:
     stripper, _overlay, doc = _make_stripper(show_font_bbox=True)
     try:
         tp = TextPosition(text="h", x=10.0, y=20.0, font_size=12.0, font=_Font())
-        stripper._collect_font_bbox_rect(tp)  # noqa: SLF001
-        assert stripper._collector.rectangles == []  # noqa: SLF001
+        stripper._collect_font_bbox_rect(tp)
+        assert stripper._collector.rectangles == []
     finally:
         doc.close()
 
@@ -728,7 +728,7 @@ def test_strip_page_handles_get_text_oserror(monkeypatch) -> None:
             show_glyph_bounds=False,
         )
 
-        def _boom(self, _doc):  # noqa: ANN001
+        def _boom(self, _doc):
             raise OSError("simulated")
 
         monkeypatch.setattr(mod.DebugTextStripper, "get_text", _boom)

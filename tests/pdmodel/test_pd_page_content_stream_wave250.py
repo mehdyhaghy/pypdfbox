@@ -265,7 +265,7 @@ def test_shading_fill_rejected_inside_text_block() -> None:
 
     class _DummyShading:
         def get_cos_object(self) -> object:
-            from pypdfbox.cos import COSDictionary  # noqa: PLC0415
+            from pypdfbox.cos import COSDictionary
 
             d = COSDictionary()
             d.set_int("ShadingType", 2)

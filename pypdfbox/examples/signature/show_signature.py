@@ -40,7 +40,7 @@ class ShowSignature:
 
     def check_content_value_with_file(
         self,
-        file_path,  # noqa: ANN001
+        file_path,
         byte_range: list[int],
         contents: bytes,
     ) -> None:
@@ -77,7 +77,7 @@ class ShowSignature:
         self,
         signed_content: bytes,
         contents: bytes,
-        signature,  # noqa: ANN001
+        signature,
     ) -> None:
         """Lightweight PKCS#7 verification (upstream 436)."""
         try:

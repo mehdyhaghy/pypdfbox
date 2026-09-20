@@ -62,7 +62,7 @@ def test_cmap_subtable_init_data_reads_three_fields() -> None:
     assert sub.get_platform_encoding_id() == 1
     # _sub_table_offset is private; just round-trip through init_subtable would
     # use it. Here we just sanity check via attribute.
-    assert sub._sub_table_offset == 0x1234  # noqa: SLF001
+    assert sub._sub_table_offset == 0x1234
 
 
 # ---------------------------------------------------------------------------

@@ -207,7 +207,7 @@ class PDNonTerminalField(PDField):
         copy the partial-name and the local ``/V``, then recursively export
         each child as the FDF ``/Kids`` array.
         """
-        from pypdfbox.pdmodel.fdf.fdf_field import FDFField  # noqa: PLC0415
+        from pypdfbox.pdmodel.fdf.fdf_field import FDFField
 
         fdf_field = FDFField()
         fdf_field.set_partial_field_name(self.get_partial_name())

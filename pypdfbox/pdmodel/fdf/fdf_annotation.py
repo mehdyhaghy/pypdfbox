@@ -425,7 +425,7 @@ class FDFAnnotation:
         """
         # Local imports keep the optional dependency on stdlib's xml.dom
         # confined to the call site.
-        from xml.dom.minidom import CDATASection, Element, Text  # noqa: PLC0415
+        from xml.dom.minidom import CDATASection, Element, Text
 
         parts: list[str] = []
         children = getattr(node, "childNodes", None) or []

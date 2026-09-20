@@ -102,7 +102,7 @@ def test_collect_field_locations_populates_for_acroform_field(
         page.set_annotations([widget])
         pane = PagePane(tk_root, doc, page.get_cos_object(), statuslabel=None)
         pane.init()
-        labels = list(pane._rect_map.values())  # noqa: SLF001
+        labels = list(pane._rect_map.values())
         assert any("Field name: fname" in lbl and "value: ada" in lbl for lbl in labels)
     finally:
         doc.close()
@@ -115,7 +115,7 @@ def test_collect_field_locations_empty_for_plain_page(tk_root: tk.Tk) -> None:
         page_dict = doc.get_page(0).get_cos_object()
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
-        labels = list(pane._rect_map.values())  # noqa: SLF001
+        labels = list(pane._rect_map.values())
         assert all("Field name" not in lbl for lbl in labels)
     finally:
         doc.close()
@@ -152,10 +152,10 @@ def test_collect_link_location_records_user_space_rect(
         action = PDActionURI()
         action.set_uri("https://parity.example.com")
         link.set_action(action)
-        before = dict(pane._rect_map)  # noqa: SLF001
+        before = dict(pane._rect_map)
         pane.collect_link_location(link)
         new_entries = {
-            k: v for k, v in pane._rect_map.items() if k not in before  # noqa: SLF001
+            k: v for k, v in pane._rect_map.items() if k not in before
         }
         assert len(new_entries) == 1
         (stored_rect, stored_label), = new_entries.items()
@@ -176,10 +176,10 @@ def test_collect_link_location_returns_when_rect_missing(tk_root: tk.Tk) -> None
         page_dict = doc.get_page(0).get_cos_object()
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
-        before = dict(pane._rect_map)  # noqa: SLF001
+        before = dict(pane._rect_map)
         link = PDAnnotationLink()  # no rect, no action
         pane.collect_link_location(link)
-        assert pane._rect_map == before  # noqa: SLF001
+        assert pane._rect_map == before
     finally:
         doc.close()
 
@@ -204,7 +204,7 @@ def test_collect_link_locations_counts_match(tk_root: tk.Tk, n_links: int) -> No
         pane = PagePane(tk_root, doc, page.get_cos_object(), statuslabel=None)
         pane.init()
         uri_labels = [
-            v for v in pane._rect_map.values() if v.startswith("URI: ")  # noqa: SLF001
+            v for v in pane._rect_map.values() if v.startswith("URI: ")
         ]
         assert len(uri_labels) == n_links
     finally:
@@ -225,10 +225,10 @@ def test_init_rect_map_does_not_double_map(tk_root: tk.Tk) -> None:
         _add_uri_link(page, rect=(30.0, 30.0, 50.0, 50.0), uri="https://twice.example.com")
         pane = PagePane(tk_root, doc, page.get_cos_object(), statuslabel=None)
         pane.init()
-        first_count = len(pane._rect_map)  # noqa: SLF001
+        first_count = len(pane._rect_map)
         assert first_count == 2
         pane.init_rect_map()
-        second_count = len(pane._rect_map)  # noqa: SLF001
+        second_count = len(pane._rect_map)
         assert second_count == first_count
     finally:
         doc.close()
@@ -243,12 +243,12 @@ def test_init_rect_map_refresh_picks_up_new_link(tk_root: tk.Tk) -> None:
         _add_uri_link(page, rect=(5.0, 5.0, 25.0, 25.0), uri="https://first.example.com")
         pane = PagePane(tk_root, doc, page.get_cos_object(), statuslabel=None)
         pane.init()
-        assert len(pane._rect_map) == 1  # noqa: SLF001
+        assert len(pane._rect_map) == 1
         _add_uri_link(
             page, rect=(40.0, 40.0, 55.0, 55.0), uri="https://second.example.com"
         )
         pane.init_rect_map()
-        assert len(pane._rect_map) == 2  # noqa: SLF001
+        assert len(pane._rect_map) == 2
     finally:
         doc.close()
 
@@ -267,8 +267,8 @@ def test_init_ui_smoke_widgets_exist(tk_root: tk.Tk) -> None:
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
         assert pane.get_panel() is not None
-        assert pane._page_label_widget is not None  # noqa: SLF001
-        assert pane._canvas is not None  # noqa: SLF001
+        assert pane._page_label_widget is not None
+        assert pane._canvas is not None
         # Upstream-named entry point should be invokable too.
         assert callable(pane.init_ui)
         assert callable(pane.init_rect_map)
@@ -288,7 +288,7 @@ def test_init_ui_direct_call_does_not_raise(tk_root: tk.Tk) -> None:
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         # Bypass the ``init()`` wrapper to drive the upstream method alone.
         pane.init_ui()
-        assert pane._page_label_widget is not None  # noqa: SLF001
-        assert pane._canvas is not None  # noqa: SLF001
+        assert pane._page_label_widget is not None
+        assert pane._canvas is not None
     finally:
         doc.close()

@@ -34,7 +34,7 @@ from pypdfbox.pdfparser import PDFParser
 # whole file friendly to that case.
 pytest.importorskip("pypdfbox.pdmodel.encryption.standard_security_handler")
 
-from pypdfbox.pdmodel.encryption.standard_security_handler import (  # noqa: E402
+from pypdfbox.pdmodel.encryption.standard_security_handler import (
     InvalidPasswordException,
 )
 
@@ -42,7 +42,7 @@ from pypdfbox.pdmodel.encryption.standard_security_handler import (  # noqa: E40
 # integration suite — same handler, same wire format, same /Encrypt
 # layout. Importing through the test package is fine; pytest resolves it
 # from ``tests/pdmodel/encryption``.
-from tests.pdmodel.encryption.test_encryption_integration import (  # noqa: E402
+from tests.pdmodel.encryption.test_encryption_integration import (
     _build_encrypted_document,
 )
 
@@ -173,7 +173,7 @@ def test_xref_stream_malformed_dict_raises_parse_error() -> None:
         b"startxref\n9\n%%EOF"
     )
     parser = PDFParser(RandomAccessReadBuffer(pdf))
-    from pypdfbox.pdfparser import PDFParseError  # noqa: PLC0415
+    from pypdfbox.pdfparser import PDFParseError
 
     with pytest.raises(PDFParseError):
         parser.parse()

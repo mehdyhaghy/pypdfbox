@@ -29,7 +29,7 @@ def test_type1_encoding_predicates_return_real_bools() -> None:
         Encoding = "StandardEncoding"
 
     font = CFFType1Font()
-    font._top = _Top()  # noqa: SLF001
+    font._top = _Top()
 
     assert font.is_standard_encoding() is True
     assert font.is_expert_encoding() is False
@@ -37,7 +37,7 @@ def test_type1_encoding_predicates_return_real_bools() -> None:
 
 def test_fd_array_iterates_dict_snapshots() -> None:
     class _Font:
-        rawDict = {"FontName": "Demo"}  # noqa: N815
+        rawDict = {"FontName": "Demo"}
         Private = None
 
     array = FDArray.from_fonttools([_Font()])

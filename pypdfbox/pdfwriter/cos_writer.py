@@ -824,7 +824,7 @@ class COSWriter(ICOSVisitor):
         ``/ByteRange`` placeholder + post-write splice; this writer-level
         hook exists so PDFBox-style callers don't ``AttributeError`` when
         probing for the symbol. Currently a no-op."""
-        return None
+        return
 
     # ---- upstream protected/public dispatch surface ----
     # These thin wrappers expose the strict snake_case spellings used by
@@ -1344,7 +1344,7 @@ class COSWriter(ICOSVisitor):
             # Cache the handler back on the PDDocument so subsequent
             # ``decrypt()`` / ``get_current_access_permission()`` calls see
             # an active handler immediately after save.
-            pd_document._security_handler = handler  # noqa: SLF001
+            pd_document._security_handler = handler
             self._security_handler = handler
             return
 

@@ -222,7 +222,7 @@ def test_prepare_document_round_trip_matches_decrypt_path(
     """
     try:
         cert, private_key = _build_self_signed_rsa()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pytest.skip("cert generation too heavy in this environment")
 
     permissions = AccessPermission()
@@ -438,7 +438,7 @@ def test_create_der_for_recipient_returns_der_envelope() -> None:
     """
     try:
         cert, _key = _build_self_signed_rsa()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pytest.skip("cert generation too heavy in this environment")
 
     handler = PublicKeySecurityHandler()
@@ -457,7 +457,7 @@ def test_compute_recipient_info_returns_der_envelope() -> None:
     """
     try:
         cert, _key = _build_self_signed_rsa()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pytest.skip("cert generation too heavy in this environment")
 
     handler = PublicKeySecurityHandler()
@@ -476,7 +476,7 @@ def test_compute_recipients_field_picks_aes256_for_256_bit_policy() -> None:
     """
     try:
         cert, _key = _build_self_signed_rsa()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pytest.skip("cert generation too heavy in this environment")
 
     policy = PublicKeyProtectionPolicy()

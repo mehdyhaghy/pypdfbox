@@ -64,7 +64,7 @@ class DetermineTextFitsField:
                 )
                 if resources is not None:
                     font = resources.get_font(font_name)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 font = None
             if font is None:
                 font = acro_form.get_default_resources().get_font(font_name)
@@ -79,7 +79,7 @@ class DetermineTextFitsField:
                 will_not_fit_width = (
                     font.get_string_width(will_not_fit) * font_size / 1000.0
                 )
-            except Exception:  # noqa: BLE001
+            except Exception:
                 # Some fonts (especially without embedded program) cannot
                 # measure arbitrary strings — return NaNs in that case so
                 # callers can detect the missing width.

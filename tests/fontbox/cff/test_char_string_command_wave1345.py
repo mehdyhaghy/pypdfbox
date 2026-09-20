@@ -40,7 +40,7 @@ def _type1_only_b0() -> int:
     """Return a single-byte b0 that resolves to a Type 1 operator without
     a Type 2 counterpart, so the constructed command has type1_key_word
     set but type2_key_word ``None``."""
-    for b0 in range(0, 32):
+    for b0 in range(32):
         t1 = Type1KeyWord.value_of_key(b0)
         t2 = Type2KeyWord.value_of_key(b0)
         if t1 is not None and t2 is None:

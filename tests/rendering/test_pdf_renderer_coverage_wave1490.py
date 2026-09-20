@@ -561,7 +561,7 @@ def test_apply_explicit_mask_decode_failure_returns_base() -> None:
     base = Image.new("RGB", (4, 4), (1, 2, 3))
 
     class _Boom(_StencilMask):
-        def create_input_stream(self):  # noqa: ANN001
+        def create_input_stream(self):
             raise OSError("cannot read")
 
     mask = _Boom(4, 4, b"\x00")

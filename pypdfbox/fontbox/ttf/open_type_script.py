@@ -296,7 +296,7 @@ class OpenTypeScript:
         _ensure_valid_code_point(code_point)
 
     @staticmethod
-    def parse_scripts_file(input_stream) -> None:  # noqa: ARG004
+    def parse_scripts_file(input_stream) -> None:
         """Mirror upstream's ``parseScriptsFile`` (OpenTypeScript.java L246).
 
         Upstream walks a bundled ``Scripts.txt`` Unicode data file at
@@ -307,7 +307,7 @@ class OpenTypeScript:
         # No-op: the codepoint-to-script mapping is sourced from
         # fontTools / unicodedata in this port; there is no per-call
         # parsing required.
-        return None
+        return
 
 
 __all__ = [

@@ -64,7 +64,7 @@ class _EngineWithoutShowTransparency(PDFStreamEngine):
         self._resources = resources
 
     def show_form(self, form: Any) -> None:  # type: ignore[override]
-        del form  # noqa: F841 — recorded via spy
+        del form
 
 
 _EngineWithoutShowTransparency.show_transparency_group = None  # type: ignore[assignment]

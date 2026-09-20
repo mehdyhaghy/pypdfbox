@@ -236,7 +236,7 @@ class _NonSeparableStubMode:
     def __init__(self, fn) -> None:
         self._fn = fn
 
-    def is_separable_blend_mode(self) -> bool:  # noqa: D401
+    def is_separable_blend_mode(self) -> bool:
         return False
 
     def get_blend_channel_function(self):

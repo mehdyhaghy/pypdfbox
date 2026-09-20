@@ -220,7 +220,7 @@ class FontEncodingView(ttk.Frame):
                 resized = value.resize(
                     (_CELL_WIDTH, _CELL_HEIGHT), Image.LANCZOS
                 )
-            except Exception:  # noqa: BLE001 - defensive
+            except Exception:
                 return None
             photo = ImageTk.PhotoImage(resized)
             self._photo_refs.append(photo)
@@ -282,12 +282,12 @@ class GlyphCellRenderer:
         # Pre-baked image — resize and return.
         if hasattr(value, "size") and callable(getattr(value, "resize", None)):
             try:
-                from PIL import Image  # noqa: PLC0415
+                from PIL import Image
             except ImportError:  # pragma: no cover - PIL declared in deps
                 return None
             try:
                 return value.resize((_CELL_WIDTH, _CELL_HEIGHT), Image.LANCZOS)
-            except Exception:  # noqa: BLE001 - defensive
+            except Exception:
                 return None
         # Vector path: delegate to the module-level rasteriser.
         return _rasterise_path(value, self._y_bounds)
@@ -296,10 +296,10 @@ class GlyphCellRenderer:
         self,
         table: Any,
         value: Any,
-        is_selected: bool = False,  # noqa: ARG002 - upstream signature parity
-        has_focus: bool = False,  # noqa: ARG002
-        row: int = 0,  # noqa: ARG002
-        column: int = 0,  # noqa: ARG002
+        is_selected: bool = False,
+        has_focus: bool = False,
+        row: int = 0,
+        column: int = 0,
     ) -> PilImage | None:
         """Return the per-cell rendering.
 

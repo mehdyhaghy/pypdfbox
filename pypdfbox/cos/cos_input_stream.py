@@ -54,12 +54,12 @@ class COSInputStream(io.IOBase):
         verbatim with an empty result list.
         """
         # Local import to avoid module cycle with the filter package.
-        from pypdfbox.filter.filter import Filter  # noqa: PLC0415
+        from pypdfbox.filter.filter import Filter
 
         if not filters:
             return cls(encoded, [])
 
-        from pypdfbox.filter.decode_result import DecodeResult  # noqa: F401, PLC0415
+        from pypdfbox.filter.decode_result import DecodeResult  # noqa: F401
 
         results: list[DecodeResult] = []
         decoded = Filter.decode_chain(
@@ -109,7 +109,7 @@ class COSInputStream(io.IOBase):
 
         Mirrors upstream ``COSInputStream.getDecodeResult`` (Java line 96).
         """
-        from pypdfbox.filter.decode_result import DecodeResult  # noqa: PLC0415
+        from pypdfbox.filter.decode_result import DecodeResult
 
         if not self._decode_results:
             return DecodeResult.create_default()

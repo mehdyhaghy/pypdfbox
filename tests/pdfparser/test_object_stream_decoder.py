@@ -246,7 +246,7 @@ def test_objstm_indirect_refs_inside_compressed_object_resolve() -> None:
     assert isinstance(body4, COSDictionary)
     parent = body4.get_item("Parent")
     # Parent is an indirect reference — its resolved object is the ObjStm.
-    from pypdfbox.cos import COSObject  # noqa: PLC0415
+    from pypdfbox.cos import COSObject
 
     assert isinstance(parent, COSObject)
     assert parent.object_number == 1

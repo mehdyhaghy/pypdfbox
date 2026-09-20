@@ -5,7 +5,7 @@ from pypdfbox.cos import COSDictionary, COSName
 
 
 def test_wave919_wave503_page_tree_stubs_are_exercised(monkeypatch) -> None:
-    def clone_with_page_tree_call(self, src, parent, root, page_tree):  # noqa: ANN001
+    def clone_with_page_tree_call(self, src, parent, root, page_tree):
         page_tree.index_of(COSDictionary())
         clone = getattr(self, "_wave919_clone", None)
         if clone is None:
@@ -26,12 +26,12 @@ def test_wave919_wave503_page_tree_stubs_are_exercised(monkeypatch) -> None:
 def test_wave919_wave503_unmapped_page_and_id_tree_stubs_are_exercised(
     monkeypatch,
 ) -> None:
-    def clone_none_with_page_tree_call(self, src, parent, root, page_tree):  # noqa: ANN001
+    def clone_none_with_page_tree_call(self, src, parent, root, page_tree):
         if src.get_dictionary_object(wave503._PG) is not None:
             page_tree.index_of(src.get_dictionary_object(wave503._PG))
-        return None
+        return
 
-    def clone_id_tree_calls_kids(self, source_root, dest_root, tree_cls):  # noqa: ANN001
+    def clone_id_tree_calls_kids(self, source_root, dest_root, tree_cls):
         id_tree = source_root.get_id_tree()
         assert id_tree.get_kids() is None
         tree = tree_cls()

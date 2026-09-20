@@ -220,7 +220,7 @@ def test_writer_failure_returns_1(
             return ["png", "jpg", "tiff"]
 
         @staticmethod
-        def write_image(image, filename, dpi, quality) -> bool:  # noqa: ANN001
+        def write_image(image, filename, dpi, quality) -> bool:
             return False
 
     monkeypatch.setattr(pdf_to_image, "ImageIOUtil", _ImageIOUtilFails)

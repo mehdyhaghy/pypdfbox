@@ -57,12 +57,12 @@ def test_create_content_stream_list_flattens_arrays_and_indirect_objects() -> No
     wrapped = COSObject(423, 0, resolved=second)
     contents = COSArray([first, COSArray([wrapped])])
 
-    assert Overlay._create_content_stream_list(contents) == [first, second]  # noqa: SLF001
+    assert Overlay._create_content_stream_list(contents) == [first, second]
 
 
 def test_create_content_stream_list_rejects_unknown_content_type() -> None:
     with pytest.raises(OSError, match="Unknown content type: COSDictionary"):
-        Overlay._create_content_stream_list(COSDictionary())  # noqa: SLF001
+        Overlay._create_content_stream_list(COSDictionary())
 
 
 def test_create_combined_content_stream_copies_all_decoded_stream_bodies() -> None:
@@ -71,7 +71,7 @@ def test_create_combined_content_stream_copies_all_decoded_stream_bodies() -> No
     overlay.set_input_pdf(base)
     contents = COSArray([_stream("one\n"), COSObject(424, 0, resolved=_stream("two\n"))])
 
-    combined = overlay._create_combined_content_stream(contents)  # noqa: SLF001
+    combined = overlay._create_combined_content_stream(contents)
 
     assert _decoded(combined) == b"one\ntwo\n"
     assert combined.has_filter(COSName.get_pdf_name("FlateDecode"))
@@ -83,14 +83,14 @@ def test_add_original_content_appends_array_entries_without_resolving_refs() -> 
     original = COSArray([first, second])
     target = COSArray()
 
-    Overlay._add_original_content(original, target)  # noqa: SLF001
+    Overlay._add_original_content(original, target)
 
     assert target.to_list() == [first, second]
 
 
 def test_add_original_content_rejects_unknown_content_type() -> None:
     with pytest.raises(OSError, match="Unknown content type: COSDictionary"):
-        Overlay._add_original_content(COSDictionary(), COSArray())  # noqa: SLF001
+        Overlay._add_original_content(COSDictionary(), COSArray())
 
 
 def test_all_pages_overlay_cycles_after_specific_overlays_are_disabled() -> None:
@@ -103,13 +103,13 @@ def test_all_pages_overlay_cycles_after_specific_overlays_are_disabled() -> None
     overlay.set_input_pdf(base)
     overlay.set_all_pages_overlay_pdf(all_pages)
     overlay.set_specific_page_overlay_pdf({2: explicit})
-    overlay._load_pdfs()  # noqa: SLF001
+    overlay._load_pdfs()
 
-    first = overlay._specific_page_overlay_layout[0]  # noqa: SLF001
-    second = overlay._specific_page_overlay_layout[1]  # noqa: SLF001
-    assert overlay._get_layout_page(1, 5) is first  # noqa: SLF001
-    assert overlay._get_layout_page(2, 5) is second  # noqa: SLF001
-    assert overlay._get_layout_page(3, 5) is first  # noqa: SLF001
+    first = overlay._specific_page_overlay_layout[0]
+    second = overlay._specific_page_overlay_layout[1]
+    assert overlay._get_layout_page(1, 5) is first
+    assert overlay._get_layout_page(2, 5) is second
+    assert overlay._get_layout_page(3, 5) is first
 
 
 def test_layout_page_selection_precedence_specific_first_last_odd_even_default() -> None:
@@ -120,18 +120,18 @@ def test_layout_page_selection_precedence_specific_first_last_odd_even_default()
     odd = _LayoutPage(PDRectangle(), COSStream(), COSDictionary(), 0)
     even = _LayoutPage(PDRectangle(), COSStream(), COSDictionary(), 0)
     default = _LayoutPage(PDRectangle(), COSStream(), COSDictionary(), 0)
-    overlay._specific_page_overlay_layout[3] = specific  # noqa: SLF001
-    overlay._first_page_overlay_page = first  # noqa: SLF001
-    overlay._last_page_overlay_page = last  # noqa: SLF001
-    overlay._odd_page_overlay_page = odd  # noqa: SLF001
-    overlay._even_page_overlay_page = even  # noqa: SLF001
-    overlay._default_overlay_page = default  # noqa: SLF001
+    overlay._specific_page_overlay_layout[3] = specific
+    overlay._first_page_overlay_page = first
+    overlay._last_page_overlay_page = last
+    overlay._odd_page_overlay_page = odd
+    overlay._even_page_overlay_page = even
+    overlay._default_overlay_page = default
 
-    assert overlay._get_layout_page(1, 6) is first  # noqa: SLF001
-    assert overlay._get_layout_page(6, 6) is last  # noqa: SLF001
-    assert overlay._get_layout_page(3, 6) is specific  # noqa: SLF001
-    assert overlay._get_layout_page(5, 6) is odd  # noqa: SLF001
-    assert overlay._get_layout_page(4, 6) is even  # noqa: SLF001
+    assert overlay._get_layout_page(1, 6) is first
+    assert overlay._get_layout_page(6, 6) is last
+    assert overlay._get_layout_page(3, 6) is specific
+    assert overlay._get_layout_page(5, 6) is odd
+    assert overlay._get_layout_page(4, 6) is even
 
 
 def test_adjust_rotation_reuses_cached_rotated_default_layout() -> None:
@@ -142,10 +142,10 @@ def test_adjust_rotation_reuses_cached_rotated_default_layout() -> None:
     overlay.set_input_pdf(base)
     overlay.set_default_overlay_pdf(overlay_doc)
     overlay.set_adjust_rotation(True)
-    overlay._load_pdfs()  # noqa: SLF001
+    overlay._load_pdfs()
 
-    adjusted = overlay._get_layout_page(1, 1)  # noqa: SLF001
-    same_adjusted = overlay._get_layout_page(1, 1)  # noqa: SLF001
+    adjusted = overlay._get_layout_page(1, 1)
+    same_adjusted = overlay._get_layout_page(1, 1)
 
     assert adjusted is same_adjusted
     assert adjusted is not None
@@ -172,7 +172,7 @@ def test_rotation_matrix_handles_quadrants_and_other_angles(
         rotation,
     )
 
-    assert Overlay._rotation_matrix(layout) == expected  # noqa: SLF001
+    assert Overlay._rotation_matrix(layout) == expected
 
 
 def test_create_overlay_stream_swaps_media_box_for_rotated_overlay() -> None:
@@ -187,7 +187,7 @@ def test_create_overlay_stream_swaps_media_box_for_rotated_overlay() -> None:
         90,
     )
 
-    stream = overlay._create_overlay_stream(  # noqa: SLF001
+    stream = overlay._create_overlay_stream(
         page, layout, COSName.get_pdf_name("OL0")
     )
 
@@ -206,14 +206,14 @@ def test_create_stream_only_compresses_long_content_and_float_formatting() -> No
     overlay = Overlay()
     overlay.set_input_pdf(base)
 
-    short = overlay._create_stream("short\n")  # noqa: SLF001
-    long = overlay._create_stream("x" * 21)  # noqa: SLF001
+    short = overlay._create_stream("short\n")
+    long = overlay._create_stream("x" * 21)
 
     assert short.get_filters() is None
     assert long.has_filter(COSName.get_pdf_name("FlateDecode"))
-    assert Overlay._float_to_string(1.0) == "1.0"  # noqa: SLF001
-    assert Overlay._float_to_string(1.25) == "1.25"  # noqa: SLF001
-    assert Overlay._float_to_string(0.000001) == "0.000001"  # noqa: SLF001
+    assert Overlay._float_to_string(1.0) == "1.0"
+    assert Overlay._float_to_string(1.25) == "1.25"
+    assert Overlay._float_to_string(0.000001) == "0.000001"
 
 
 def test_process_pages_rejects_unknown_overlay_position() -> None:
@@ -222,7 +222,7 @@ def test_process_pages_rejects_unknown_overlay_position() -> None:
     overlay = Overlay()
     overlay.set_input_pdf(base)
     overlay.set_default_overlay_pdf(overlay_doc)
-    overlay._position = "SIDEWAYS"  # type: ignore[assignment]  # noqa: SLF001
+    overlay._position = "SIDEWAYS"  # type: ignore[assignment]
 
     with pytest.raises(OSError, match="Unknown type of position"):
         overlay.overlay({})

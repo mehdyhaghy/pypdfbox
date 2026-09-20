@@ -85,7 +85,7 @@ def test_verify_certificate_wraps_arbitrary_exception(monkeypatch) -> None:
     message includes the leaf subject (lines 82-87)."""
     cert, _ = _self_signed()
 
-    def _raise_runtime(*args, **kwargs):  # noqa: ARG001
+    def _raise_runtime(*args, **kwargs):
         raise RuntimeError("explosion in chain builder")
 
     monkeypatch.setattr(CertificateVerifier, "_build_chain", staticmethod(_raise_runtime))
@@ -120,12 +120,12 @@ def test_verify_signed_by_falls_through_for_unknown_key_type(
         def __init__(self, *, raise_on_verify: bool) -> None:
             self._raise = raise_on_verify
 
-        def verify(self, signature, data):  # noqa: ARG002
+        def verify(self, signature, data):
             if self._raise:
                 raise ValueError("synthetic failure")
 
     class _StubIssuer:
-        def __init__(self, key) -> None:  # noqa: ANN001
+        def __init__(self, key) -> None:
             self._key = key
 
         def public_key(self):

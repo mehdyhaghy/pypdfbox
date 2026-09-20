@@ -24,7 +24,7 @@ def test_wave592_make_doc_removes_existing_pages(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(wave592, "PDDocument", FakeDocument)
 
-    doc, page = wave592._make_doc()  # noqa: SLF001
+    doc, page = wave592._make_doc()
 
     assert isinstance(doc, FakeDocument)
     assert doc.removed_indexes == [0, 0]
@@ -43,7 +43,7 @@ def test_wave592_tiling_stub_accessors_are_exercised(monkeypatch: Any) -> None:
         pattern.get_resources()
         bbox.get_lower_left_x()
         bbox.get_lower_left_y()
-        return None
+        return
 
     monkeypatch.setattr(wave592.PDFRenderer, "_render_tiling_cell", render_cell_stub)
 

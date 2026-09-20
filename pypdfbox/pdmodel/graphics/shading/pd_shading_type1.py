@@ -159,7 +159,7 @@ class PDShadingType1(PDShading):
         ``PDShadingType1.java``) which returns
         ``new Type1ShadingPaint(this, matrix)``.
         """
-        from .type1_shading_paint import Type1ShadingPaint  # noqa: PLC0415
+        from .type1_shading_paint import Type1ShadingPaint
 
         return Type1ShadingPaint(self, matrix)
 

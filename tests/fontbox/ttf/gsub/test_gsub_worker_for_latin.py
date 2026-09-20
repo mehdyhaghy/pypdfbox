@@ -41,7 +41,7 @@ def test_ccmp_then_liga_chained() -> None:
     # ccmp transforms then liga collapses.
     gd = _build_gsub_data(
         {
-            "ccmp": {(11,): (12,)},  # noqa
+            "ccmp": {(11,): (12,)},
             "liga": {(12, 13): (99,)},
         }
     )

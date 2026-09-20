@@ -27,7 +27,7 @@ def test_clear_document_catalog_when_trailer_is_none_is_noop() -> None:
         document.get_document().set_trailer(None)
         document.clear_document_catalog()
         # The catalog wrapper was nulled too.
-        assert document._catalog is None  # noqa: SLF001
+        assert document._catalog is None
     finally:
         document.close()
 
@@ -41,7 +41,7 @@ def test_clear_document_information_when_trailer_is_none_is_noop() -> None:
     try:
         document.get_document().set_trailer(None)
         document.clear_document_information()
-        assert document._document_information is None  # noqa: SLF001
+        assert document._document_information is None
     finally:
         document.close()
 
@@ -56,7 +56,7 @@ def test_set_encryption_dictionary_none_when_trailer_is_none() -> None:
         document.get_document().set_trailer(None)
         # Should not raise; the encryption cache is just cleared.
         document.set_encryption_dictionary(None)
-        assert document._encryption is None  # noqa: SLF001
+        assert document._encryption is None
     finally:
         document.close()
 

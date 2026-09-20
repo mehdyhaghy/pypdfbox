@@ -44,7 +44,7 @@ def test_extract_swallows_attribute_error_on_permission_probe(
     """
     src = make_pdf("attr-error.pdf", page_count=1)
 
-    def _boom(self) -> None:  # noqa: ANN001
+    def _boom(self) -> None:
         raise AttributeError("encryption probe unsupported")
 
     monkeypatch.setattr(
@@ -62,7 +62,7 @@ def test_extract_swallows_not_implemented_error_on_permission_probe(
     """The same guard catches ``NotImplementedError``."""
     src = make_pdf("notimpl.pdf", page_count=1)
 
-    def _boom(self) -> None:  # noqa: ANN001
+    def _boom(self) -> None:
         raise NotImplementedError("not wired yet")
 
     monkeypatch.setattr(
@@ -85,7 +85,7 @@ def test_extract_raises_when_extraction_forbidden(
         def can_extract_content(self) -> bool:
             return False
 
-    def _denied(self) -> _NoExtract:  # noqa: ANN001
+    def _denied(self) -> _NoExtract:
         return _NoExtract()
 
     monkeypatch.setattr(

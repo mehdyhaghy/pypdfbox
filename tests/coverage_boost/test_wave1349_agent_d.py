@@ -420,7 +420,7 @@ def test_line_handler_caption_begin_text_attribute_error_swallowed(
 
     original_begin_text = ps_mod.PDPageContentStream.begin_text
 
-    def _raises(self):  # noqa: ANN001
+    def _raises(self):
         raise AttributeError("forced for coverage")
 
     monkeypatch.setattr(ps_mod.PDPageContentStream, "begin_text", _raises)
@@ -465,7 +465,7 @@ def test_line_interior_components_size_method_branch() -> None:
     lazy = _LazyInterior()
 
     class _StubAnnot2:
-        def get_interior_color(self):  # noqa: ANN202
+        def get_interior_color(self):
             return lazy
 
     result = PDLineAppearanceHandler._interior_components(_StubAnnot2())
@@ -489,11 +489,11 @@ def test_line_interior_components_size_zero_returns_none() -> None:
                 if not self._probed:
                     self._probed = True
                     raise AttributeError(name)
-                return lambda: []
+                return list
             raise AttributeError(name)
 
     class _Annot:
-        def get_interior_color(self):  # noqa: ANN202
+        def get_interior_color(self):
             return _LazyEmpty()
 
     assert PDLineAppearanceHandler._interior_components(_Annot()) is None
@@ -546,7 +546,7 @@ def test_polyline_interior_components_size_method_branch() -> None:
             raise AttributeError(name)
 
     class _Annot:
-        def get_interior_color(self):  # noqa: ANN202
+        def get_interior_color(self):
             return _Lazy()
 
     assert PDPolylineAppearanceHandler._interior_components(_Annot()) == [0.3, 0.4]
@@ -567,11 +567,11 @@ def test_polyline_interior_components_size_zero_returns_none() -> None:
                 if not self._probed:
                     self._probed = True
                     raise AttributeError(name)
-                return lambda: []
+                return list
             raise AttributeError(name)
 
     class _Annot:
-        def get_interior_color(self):  # noqa: ANN202
+        def get_interior_color(self):
             return _Lazy()
 
     assert PDPolylineAppearanceHandler._interior_components(_Annot()) is None

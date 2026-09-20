@@ -22,25 +22,25 @@ from pypdfbox.contentstream.operator import Operator, OperatorName
 from pypdfbox.contentstream.operator.color.set_non_stroking_color import (
     SetNonStrokingColor,
 )
-from pypdfbox.contentstream.operator.color.set_non_stroking_device_cmyk_color import (  # noqa: E501
+from pypdfbox.contentstream.operator.color.set_non_stroking_device_cmyk_color import (
     SetNonStrokingDeviceCMYKColor,
 )
-from pypdfbox.contentstream.operator.color.set_non_stroking_device_gray_color import (  # noqa: E501
+from pypdfbox.contentstream.operator.color.set_non_stroking_device_gray_color import (
     SetNonStrokingDeviceGrayColor,
 )
-from pypdfbox.contentstream.operator.color.set_non_stroking_device_rgb_color import (  # noqa: E501
+from pypdfbox.contentstream.operator.color.set_non_stroking_device_rgb_color import (
     SetNonStrokingDeviceRGBColor,
 )
 from pypdfbox.contentstream.operator.color.set_stroking_color import (
     SetStrokingColor,
 )
-from pypdfbox.contentstream.operator.color.set_stroking_device_cmyk_color import (  # noqa: E501
+from pypdfbox.contentstream.operator.color.set_stroking_device_cmyk_color import (
     SetStrokingDeviceCMYKColor,
 )
-from pypdfbox.contentstream.operator.color.set_stroking_device_gray_color import (  # noqa: E501
+from pypdfbox.contentstream.operator.color.set_stroking_device_gray_color import (
     SetStrokingDeviceGrayColor,
 )
-from pypdfbox.contentstream.operator.color.set_stroking_device_rgb_color import (  # noqa: E501
+from pypdfbox.contentstream.operator.color.set_stroking_device_rgb_color import (
     SetStrokingDeviceRGBColor,
 )
 from pypdfbox.cos import COSFloat, COSName, COSString

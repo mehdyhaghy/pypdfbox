@@ -46,7 +46,7 @@ def test_process_pages_visits_contentless_pages() -> None:
         assert blank_a.has_contents() is False
 
         stripper = PDFTextStripper()
-        stripper._active_document = doc  # noqa: SLF001
+        stripper._active_document = doc
         visited: list[PDPage] = []
         original = stripper.process_page
 
@@ -78,7 +78,7 @@ def test_process_pages_does_not_resolve_contents_itself() -> None:
         page.has_contents = counting_has_contents  # type: ignore[method-assign]
 
         stripper = PDFTextStripper()
-        stripper._active_document = doc  # noqa: SLF001
+        stripper._active_document = doc
         stripper.process_pages([page])
 
         assert probes == []
@@ -91,7 +91,7 @@ def test_page_counter_still_advances_over_contentless_pages() -> None:
     try:
         pages = [_blank_page(doc), _blank_page(doc), _blank_page(doc)]
         stripper = PDFTextStripper()
-        stripper._active_document = doc  # noqa: SLF001
+        stripper._active_document = doc
         seen: list[int] = []
 
         original = stripper.process_page

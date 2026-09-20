@@ -34,7 +34,7 @@ def test_wave883_synth_otf_skips_when_fontbuilder_is_missing(
     monkeypatch.setattr(builtins, "__import__", fake_import)
 
     with pytest.raises(pytest.skip.Exception):
-        open_type_mod._synth_otf_name_keyed()  # noqa: SLF001
+        open_type_mod._synth_otf_name_keyed()
 
 
 @pytest.mark.parametrize(

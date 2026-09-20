@@ -150,7 +150,7 @@ class COSObject(COSBase):
         loader so it can't replace it on next access. Mirrors upstream
         ``setToNull``."""
         # Local import to avoid a hard cos→cos_null cycle at module load.
-        from .cos_null import COSNull  # noqa: PLC0415
+        from .cos_null import COSNull
 
         self._object = COSNull.NULL
         self._loader = None

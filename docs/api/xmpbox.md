@@ -52,7 +52,7 @@ from pypdfbox import Loader, PDDocument
 from pypdfbox.xmpbox import DomXmpParser, XMPMetadata
 
 # Read
-with Loader.load_pdf("in.pdf") as doc:
+with Loader.load_pdf("input.pdf") as doc:
     md_stream = doc.get_document_catalog().get_metadata()
     if md_stream is not None:
         xmp = DomXmpParser().parse(md_stream.export_xmp_metadata())

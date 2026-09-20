@@ -105,7 +105,7 @@ class RandomAccessReadNonClosingInputStream(io.RawIOBase):
             target = buf
             length = len(buf)
         n = self._random_access_read.read_into(target, 0, length)
-        return 0 if n <= 0 else n
+        return max(0, n)
 
     def seek(self, offset: int, whence: int = io.SEEK_SET) -> int:
         """Random-access seek mirror; ``skip(n)``-flavoured calls map onto

@@ -43,7 +43,7 @@ def _read_font() -> list[CFFFont] | None:
     lines 255-260): construct a parser, hand it the font bytes, return
     the parsed list."""
     try:
-        from fontTools.ttLib import TTFont  # noqa: PLC0415
+        from fontTools.ttLib import TTFont
     except ImportError:
         return None
     for candidate in _TYPE1_OTF_CANDIDATES:
@@ -61,7 +61,7 @@ def _read_font() -> list[CFFFont] | None:
             ttf["CFF "].cff.compile(buf, ttf, isCFF2=False)
             parser = CFFParser()
             return parser.parse(buf.getvalue())
-        except Exception:  # noqa: BLE001
+        except Exception:
             continue
     return None
 

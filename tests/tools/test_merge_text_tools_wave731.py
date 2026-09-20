@@ -19,14 +19,14 @@ def test_wave731_texttopdf_font_bbox_descriptor_and_fallback_paths() -> None:
     descriptor.set_font_bounding_box(PDRectangle(0.0, -5.0, 10.0, 15.0))
     font.set_font_descriptor(descriptor)
 
-    assert texttopdf._font_bbox_height(font) == pytest.approx(20.0)  # noqa: SLF001
-    assert texttopdf._font_bbox_height(PDFont()) == pytest.approx(1000.0)  # noqa: SLF001
+    assert texttopdf._font_bbox_height(font) == pytest.approx(20.0)
+    assert texttopdf._font_bbox_height(PDFont()) == pytest.approx(1000.0)
 
 
 def test_wave731_texttopdf_empty_string_width_is_zero() -> None:
     font = PDFontFactory.create_default_font()
 
-    assert texttopdf._string_width_units(font, "") == 0.0  # noqa: SLF001
+    assert texttopdf._string_width_units(font, "") == 0.0
 
 
 def test_wave731_texttopdf_lookahead_trims_form_feed_before_width_check() -> None:
@@ -49,7 +49,7 @@ def test_wave731_writedecodedstream_skip_images_leaves_stream_encoded() -> None:
     stream.set_item("Subtype", COSName.get_pdf_name("Image"))
     stream.set_data(b"image bytes", filters=COSName.FLATE_DECODE)
 
-    writedecodedstream._process_stream(stream, skip_images=True)  # noqa: SLF001
+    writedecodedstream._process_stream(stream, skip_images=True)
 
     assert stream.get_filter_list() == [COSName.FLATE_DECODE]
 
@@ -58,7 +58,7 @@ def test_wave731_writedecodedstream_empty_stream_is_left_unchanged() -> None:
     stream = COSStream()
     stream.set_item("Filter", COSName.FLATE_DECODE)
 
-    writedecodedstream._process_stream(stream, skip_images=False)  # noqa: SLF001
+    writedecodedstream._process_stream(stream, skip_images=False)
 
     assert stream.get_filter_list() == [COSName.FLATE_DECODE]
 
@@ -75,7 +75,7 @@ def test_wave731_writedecodedstream_decode_error_is_ignored(
 
     monkeypatch.setattr(COSStream, "create_input_stream", _broken_input_stream)
 
-    writedecodedstream._process_stream(stream, skip_images=False)  # noqa: SLF001
+    writedecodedstream._process_stream(stream, skip_images=False)
 
     assert stream.get_filter_list() == [COSName.get_pdf_name("Broken")]
 

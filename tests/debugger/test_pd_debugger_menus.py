@@ -51,13 +51,13 @@ def _reset_menu_singletons() -> None:
     from pypdfbox.debugger.ui.text_stripper_menu import TextStripperMenu
     from pypdfbox.debugger.ui.zoom_menu import ZoomMenu
 
-    ViewMenu._reset_instance()  # noqa: SLF001
-    ZoomMenu._reset_instance()  # noqa: SLF001
-    RotationMenu._reset_instance()  # noqa: SLF001
-    RenderDestinationMenu._reset_instance()  # noqa: SLF001
-    TreeViewMenu._reset_for_testing()  # noqa: SLF001
-    ImageTypeMenu._reset_for_testing()  # noqa: SLF001
-    TextStripperMenu._reset_for_testing()  # noqa: SLF001
+    ViewMenu._reset_instance()
+    ZoomMenu._reset_instance()
+    RotationMenu._reset_instance()
+    RenderDestinationMenu._reset_instance()
+    TreeViewMenu._reset_for_testing()
+    ImageTypeMenu._reset_for_testing()
+    TextStripperMenu._reset_for_testing()
 
 
 @pytest.fixture()
@@ -68,7 +68,7 @@ def debugger(tk_root: tk.Tk) -> Iterator[PDFDebugger]:
         yield dbg
     finally:
         with contextlib.suppress(tk.TclError):
-            dbg._main_frame.destroy()  # noqa: SLF001
+            dbg._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------
@@ -77,7 +77,7 @@ def debugger(tk_root: tk.Tk) -> Iterator[PDFDebugger]:
 
 
 def test_create_file_menu_returns_menu(debugger: PDFDebugger) -> None:
-    parent = tk.Menu(debugger._toplevel)  # noqa: SLF001
+    parent = tk.Menu(debugger._toplevel)
     menu = debugger.create_file_menu(parent)
     assert isinstance(menu, tk.Menu)
     # Upstream entries on a non-macOS layout:
@@ -93,7 +93,7 @@ def test_create_file_menu_returns_menu(debugger: PDFDebugger) -> None:
 
 
 def test_create_file_menu_has_open_label(debugger: PDFDebugger) -> None:
-    parent = tk.Menu(debugger._toplevel)  # noqa: SLF001
+    parent = tk.Menu(debugger._toplevel)
     menu = debugger.create_file_menu(parent)
     assert menu.entrycget(0, "label") == "Open..."
 
@@ -104,7 +104,7 @@ def test_create_file_menu_has_open_label(debugger: PDFDebugger) -> None:
 
 
 def test_create_edit_menu_returns_menu(debugger: PDFDebugger) -> None:
-    parent = tk.Menu(debugger._toplevel)  # noqa: SLF001
+    parent = tk.Menu(debugger._toplevel)
     menu = debugger.create_edit_menu(parent)
     assert isinstance(menu, tk.Menu)
     # Cut, Copy, Paste, Delete, sep, Copy Tree Path, sep, Find cascade
@@ -126,7 +126,7 @@ def test_create_edit_menu_returns_menu(debugger: PDFDebugger) -> None:
 
 
 def test_create_find_menu_three_entries(debugger: PDFDebugger) -> None:
-    parent = tk.Menu(debugger._toplevel)  # noqa: SLF001
+    parent = tk.Menu(debugger._toplevel)
     menu = debugger.create_find_menu(parent)
     assert isinstance(menu, tk.Menu)
     # Find..., Find Next, Find Previous
@@ -141,7 +141,7 @@ def test_create_find_menu_three_entries(debugger: PDFDebugger) -> None:
 
 
 def test_create_view_menu_returns_tk_menu(debugger: PDFDebugger) -> None:
-    parent = tk.Menu(debugger._toplevel)  # noqa: SLF001
+    parent = tk.Menu(debugger._toplevel)
     menu = debugger.create_view_menu(parent)
     assert isinstance(menu, tk.Menu)
     # ViewMenu wires its own children (Tree View, Zoom, Rotation, etc.);
@@ -158,7 +158,7 @@ def test_create_view_menu_returns_tk_menu(debugger: PDFDebugger) -> None:
 
 
 def test_create_window_menu_returns_empty_menu(debugger: PDFDebugger) -> None:
-    parent = tk.Menu(debugger._toplevel)  # noqa: SLF001
+    parent = tk.Menu(debugger._toplevel)
     menu = debugger.create_window_menu(parent)
     assert isinstance(menu, tk.Menu)
     # Upstream Swing has no Window menu; pypdfbox keeps a stub cascade.
@@ -171,7 +171,7 @@ def test_create_window_menu_returns_empty_menu(debugger: PDFDebugger) -> None:
 
 
 def test_create_help_menu_has_about(debugger: PDFDebugger) -> None:
-    parent = tk.Menu(debugger._toplevel)  # noqa: SLF001
+    parent = tk.Menu(debugger._toplevel)
     menu = debugger.create_help_menu(parent)
     assert isinstance(menu, tk.Menu)
     assert menu.index("end") == 0
@@ -187,9 +187,9 @@ def test_add_recent_file_items_in_mru_order(
     debugger: PDFDebugger, tmp_path: Path
 ) -> None:
     # Reset on-disk recent-files state so this test is deterministic.
-    debugger._recent_files.remove_all()  # noqa: SLF001
-    assert debugger._recent_files_menu is not None  # noqa: SLF001
-    debugger._recent_files_menu.delete(0, "end")  # noqa: SLF001
+    debugger._recent_files.remove_all()
+    assert debugger._recent_files_menu is not None
+    debugger._recent_files_menu.delete(0, "end")
 
     # Three real files so RecentFiles.get_files() doesn't drop them.
     paths = []
@@ -197,11 +197,11 @@ def test_add_recent_file_items_in_mru_order(
         path = tmp_path / f"sample-{i}.pdf"
         path.write_bytes(b"%PDF-1.4\n%%EOF\n")
         paths.append(str(path))
-        debugger._recent_files.add_file(str(path))  # noqa: SLF001
+        debugger._recent_files.add_file(str(path))
 
     debugger.add_recent_file_items()
 
-    menu = debugger._recent_files_menu  # noqa: SLF001
+    menu = debugger._recent_files_menu
     last = menu.index("end")
     assert last == 2
     # Java iterates ``size() - 1`` downwards, so the most recently-added
@@ -212,31 +212,31 @@ def test_add_recent_file_items_in_mru_order(
 
 def test_add_recent_file_items_empty_history(debugger: PDFDebugger) -> None:
     # Ensure history starts empty and the cascade is wiped.
-    debugger._recent_files.remove_all()  # noqa: SLF001
-    assert debugger._recent_files_menu is not None  # noqa: SLF001
-    debugger._recent_files_menu.delete(0, "end")  # noqa: SLF001
+    debugger._recent_files.remove_all()
+    assert debugger._recent_files_menu is not None
+    debugger._recent_files_menu.delete(0, "end")
 
     debugger.add_recent_file_items()
     # Upstream's ``addRecentFileItems`` early-returns on an empty
     # history without touching the cascade — so the menu stays empty.
-    assert debugger._recent_files_menu.index("end") is None  # noqa: SLF001
+    assert debugger._recent_files_menu.index("end") is None
 
 
 def test_add_recent_file_items_preserves_menu_when_history_empty(
     debugger: PDFDebugger, tmp_path: Path
 ) -> None:
     # Seed one item, populate, then clear the history and re-populate.
-    debugger._recent_files.remove_all()  # noqa: SLF001
-    assert debugger._recent_files_menu is not None  # noqa: SLF001
-    debugger._recent_files_menu.delete(0, "end")  # noqa: SLF001
+    debugger._recent_files.remove_all()
+    assert debugger._recent_files_menu is not None
+    debugger._recent_files_menu.delete(0, "end")
     path = tmp_path / "sample.pdf"
     path.write_bytes(b"%PDF-1.4\n%%EOF\n")
-    debugger._recent_files.add_file(str(path))  # noqa: SLF001
+    debugger._recent_files.add_file(str(path))
     debugger.add_recent_file_items()
-    assert debugger._recent_files_menu.index("end") == 0  # noqa: SLF001
+    assert debugger._recent_files_menu.index("end") == 0
     # Upstream's ``addRecentFileItems`` is a no-op when the history is
     # empty (it does NOT wipe the cascade); the cascade therefore
     # retains its prior contents. Mirror that behaviour faithfully.
-    debugger._recent_files.remove_all()  # noqa: SLF001
+    debugger._recent_files.remove_all()
     debugger.add_recent_file_items()
-    assert debugger._recent_files_menu.index("end") == 0  # noqa: SLF001
+    assert debugger._recent_files_menu.index("end") == 0

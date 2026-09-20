@@ -28,7 +28,7 @@ def test_wave402_make_doc_removes_existing_pages(monkeypatch: Any) -> None:
     doc = _DocWithExistingPage()
     monkeypatch.setattr(wave402, "PDDocument", lambda: doc)
 
-    returned_doc, page = wave402._make_doc()  # noqa: SLF001
+    returned_doc, page = wave402._make_doc()
 
     assert returned_doc is doc
     assert doc.removed_indexes == [0]
@@ -36,7 +36,7 @@ def test_wave402_make_doc_removes_existing_pages(monkeypatch: Any) -> None:
 
 
 def test_wave402_substitute_units_exception_branch_is_reachable() -> None:
-    substitute = wave402._Substitute(600.0, RuntimeError("units"))  # noqa: SLF001
+    substitute = wave402._Substitute(600.0, RuntimeError("units"))
 
     with pytest.raises(RuntimeError, match="units"):
         substitute.get_units_per_em()

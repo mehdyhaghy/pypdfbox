@@ -36,7 +36,7 @@ def test_wave689_xmp_schema_reads_dict_and_scalar_array_shapes() -> None:
     assert schema.get_unqualified_bag_value_list("keywords") == ["solo"]
 
     values = {"fr": "Bonjour"}
-    XMPSchema._reorganize_alt_order(values)  # noqa: SLF001
+    XMPSchema._reorganize_alt_order(values)
     assert values == {"fr": "Bonjour"}
 
 
@@ -71,9 +71,9 @@ def test_wave689_dublin_core_private_helpers_and_date_validation() -> None:
     metadata = _metadata()
     schema = DublinCoreSchema(metadata)
 
-    assert DublinCoreSchema._extract_text_value("raw text") == "raw text"  # noqa: SLF001
+    assert DublinCoreSchema._extract_text_value("raw text") == "raw text"
     with pytest.raises(TypeError, match="expected TextType or str"):
-        DublinCoreSchema._extract_text_value(object())  # type: ignore[arg-type]  # noqa: SLF001
+        DublinCoreSchema._extract_text_value(object())  # type: ignore[arg-type]
 
     lang_alt = ArrayProperty(
         metadata,

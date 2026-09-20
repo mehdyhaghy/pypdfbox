@@ -22,7 +22,7 @@ def test_process_subtype_0_alias_delegates_to_public_form() -> None:
     sub = CmapSubtable()
     # 256 byte mapping table.
     data = MemoryTTFDataStream(bytes(range(256)))
-    sub._process_subtype_0(data)  # noqa: SLF001 — alias under test
+    sub._process_subtype_0(data)
     assert sub.get_glyph_id(0) == 0
     assert sub.get_glyph_id(1) == 1
     assert sub.get_glyph_id(255) == 255
@@ -53,7 +53,7 @@ def _format4_min_bytes() -> bytes:
 def test_process_subtype_4_alias_delegates_to_public_form() -> None:
     sub = CmapSubtable()
     data = MemoryTTFDataStream(_format4_min_bytes())
-    sub._process_subtype_4(data, num_glyphs=256)  # noqa: SLF001
+    sub._process_subtype_4(data, num_glyphs=256)
     # The 0 -> 0 entry has glyph_id 0 (which is filtered), so just verify
     # the call ran without raising.
     assert sub.get_glyph_id(0) in (0,)
@@ -64,7 +64,7 @@ def test_process_subtype_6_alias_delegates_to_public_form() -> None:
     # firstCode, entryCount, glyphIdArray (3 entries: 1, 2, 3)
     payload = struct.pack(">HHHHH", 10, 3, 1, 2, 3)
     data = MemoryTTFDataStream(payload)
-    sub._process_subtype_6(data, num_glyphs=16)  # noqa: SLF001
+    sub._process_subtype_6(data, num_glyphs=16)
     assert sub.get_glyph_id(10) == 1
     assert sub.get_glyph_id(11) == 2
     assert sub.get_glyph_id(12) == 3
@@ -76,7 +76,7 @@ def test_process_subtype_8_alias_delegates_to_public_form() -> None:
     body = is32 + struct.pack(">I", 1)  # nGroups = 1
     body += struct.pack(">III", 100, 102, 10)  # first, end, startGlyph
     data = MemoryTTFDataStream(body)
-    sub._process_subtype_8(data, num_glyphs=64)  # noqa: SLF001
+    sub._process_subtype_8(data, num_glyphs=64)
     assert sub.get_glyph_id(100) == 10
     assert sub.get_glyph_id(102) == 12
 
@@ -85,7 +85,7 @@ def test_process_subtype_10_alias_delegates_to_public_form() -> None:
     sub = CmapSubtable()
     payload = struct.pack(">IIHH", 50, 2, 5, 6)
     data = MemoryTTFDataStream(payload)
-    sub._process_subtype_10(data, num_glyphs=16)  # noqa: SLF001
+    sub._process_subtype_10(data, num_glyphs=16)
     assert sub.get_glyph_id(50) == 5
     assert sub.get_glyph_id(51) == 6
 
@@ -95,7 +95,7 @@ def test_process_subtype_13_alias_delegates_to_public_form() -> None:
     body = struct.pack(">I", 1)  # nGroups
     body += struct.pack(">III", 200, 202, 7)  # first, end, glyph_id (same for all)
     data = MemoryTTFDataStream(body)
-    sub._process_subtype_13(data, num_glyphs=16)  # noqa: SLF001
+    sub._process_subtype_13(data, num_glyphs=16)
     assert sub.get_glyph_id(200) == 7
     assert sub.get_glyph_id(201) == 7
     assert sub.get_glyph_id(202) == 7
@@ -109,7 +109,7 @@ def test_process_subtype_14_alias_delegates_to_public_form() -> None:
     payload = b"\x00" * 6 + struct.pack(">I", 0)
     data = MemoryTTFDataStream(payload)
     data.seek(6)  # simulate having read past the format-14 header
-    sub._process_subtype_14(data)  # noqa: SLF001
+    sub._process_subtype_14(data)
 
 
 # ---------- _new_glyph_id_to_character_code alias ----------
@@ -118,7 +118,7 @@ def test_process_subtype_14_alias_delegates_to_public_form() -> None:
 def test_new_glyph_id_to_character_code_alias() -> None:
     """Static alias mirrors the public form."""
     public = CmapSubtable.new_glyph_id_to_character_code(4)
-    private = CmapSubtable._new_glyph_id_to_character_code(4)  # noqa: SLF001
+    private = CmapSubtable._new_glyph_id_to_character_code(4)
     assert public == private == [-1, -1, -1, -1]
 
 
@@ -127,8 +127,8 @@ def test_new_glyph_id_to_character_code_alias() -> None:
 
 def test_get_char_code_alias_delegates_to_public_form() -> None:
     sub = CmapSubtable()
-    sub._character_code_to_glyph_id = {65: 1, 66: 2}  # noqa: SLF001
+    sub._character_code_to_glyph_id = {65: 1, 66: 2}
     sub.build_glyph_id_to_character_code_lookup(2)
     public = sub.get_char_code(1)
-    private = sub._get_char_code(1)  # noqa: SLF001
+    private = sub._get_char_code(1)
     assert public == private

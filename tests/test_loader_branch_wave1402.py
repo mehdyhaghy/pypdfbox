@@ -80,7 +80,7 @@ def test_load_pdf_keyboard_interrupt_with_owned_source(monkeypatch: pytest.Monke
 
     # Force the parser to raise a BaseException (not PDFParseError) so
     # the second except arm runs with owned=True.
-    def _raise(self) -> None:  # noqa: ANN001
+    def _raise(self) -> None:
         raise KeyboardInterrupt
 
     monkeypatch.setattr(PDFParser, "parse", _raise)
@@ -105,7 +105,7 @@ def test_load_pdf_keyboard_interrupt_with_pre_owned_source(
 
     from pypdfbox.pdfparser.pdf_parser import PDFParser
 
-    def _raise(self) -> None:  # noqa: ANN001
+    def _raise(self) -> None:
         raise KeyboardInterrupt
 
     monkeypatch.setattr(PDFParser, "parse", _raise)
@@ -123,7 +123,7 @@ def test_load_pdf_decrypt_fail_with_pre_owned_source(
 
     from pypdfbox.pdmodel import PDDocument
 
-    def _raise_decrypt(self, password: Any = "") -> None:  # noqa: ANN001
+    def _raise_decrypt(self, password: Any = "") -> None:
         raise KeyboardInterrupt
 
     monkeypatch.setattr(PDDocument, "decrypt", _raise_decrypt)

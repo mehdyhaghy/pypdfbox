@@ -92,7 +92,7 @@ def test_call_uses_startfile_on_windows(sample_pdf: Path) -> None:
     runner = PrintPDF()
     runner.infile = sample_pdf
     runner.silent_print = True
-    import os as os_module  # noqa: PLC0415
+    import os as os_module
 
     fake_startfile = mock.MagicMock()
     # On non-Windows hosts ``os.startfile`` does not exist; patch it in

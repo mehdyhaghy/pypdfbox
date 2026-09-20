@@ -197,7 +197,7 @@ class PDShading:
         color-space references (e.g. ``/CS0`` looked up via the page's
         ``/Resources/ColorSpace`` table) can be resolved.
         """
-        from pypdfbox.pdmodel.graphics.color.pd_color_space import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.color.pd_color_space import (
             PDColorSpace,
         )
 
@@ -214,7 +214,7 @@ class PDShading:
         COS object is stored), a raw ``COSBase``, or ``None`` (clears the
         entry). Mirrors upstream
         ``PDShading.setColorSpace(PDColorSpace)``."""
-        from pypdfbox.pdmodel.graphics.color.pd_color_space import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.color.pd_color_space import (
             PDColorSpace,
         )
 
@@ -282,7 +282,7 @@ class PDShading:
         """Return ``/BBox`` as a typed ``PDRectangle``, or ``None`` when the
         entry is absent or not a valid 4-entry numeric array. Mirrors
         upstream ``PDShading.getBBox()`` which returns ``PDRectangle``."""
-        from pypdfbox.pdmodel.pd_rectangle import PDRectangle  # noqa: PLC0415
+        from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
         value = self._dict.get_dictionary_object(_BBOX)
         if isinstance(value, COSArray) and value.size() >= 4:
@@ -296,7 +296,7 @@ class PDShading:
         """Set ``/BBox`` from a typed ``PDRectangle``, raw ``COSArray``, or
         ``None`` (clears the entry). Mirrors upstream
         ``PDShading.setBBox(PDRectangle)``."""
-        from pypdfbox.pdmodel.pd_rectangle import PDRectangle  # noqa: PLC0415
+        from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
         if bbox is None:
             self.clear_b_box()
@@ -350,7 +350,7 @@ class PDShading:
         implementation provides the same behavior for direct base-class
         users and for shading types where the subclass does not override.
         """
-        from pypdfbox.pdmodel.common.function import PDFunction  # noqa: PLC0415
+        from pypdfbox.pdmodel.common.function import PDFunction
 
         item = self._dict.get_dictionary_object(_FUNCTION)
         if item is None:
@@ -374,7 +374,7 @@ class PDShading:
         Mirrors upstream ``PDShading.getFunctionsArray`` (which is private
         in upstream but exposed here for callers that need explicit
         per-component access)."""
-        from pypdfbox.pdmodel.common.function import PDFunction  # noqa: PLC0415
+        from pypdfbox.pdmodel.common.function import PDFunction
 
         item = self._dict.get_dictionary_object(_FUNCTION)
         if item is None:
@@ -395,7 +395,7 @@ class PDShading:
         ``PDFunction`` instances (wrapped into a fresh ``COSArray``), or
         ``None`` to remove. Mirrors upstream's overloaded
         ``setFunction(PDFunction)`` and ``setFunction(COSArray)``."""
-        from pypdfbox.pdmodel.common.function import PDFunction  # noqa: PLC0415
+        from pypdfbox.pdmodel.common.function import PDFunction
 
         if value is None:
             self.clear_function()
@@ -490,25 +490,25 @@ class PDShading:
         """
         shading_type = self._dict.get_int(_SHADING_TYPE, 0)
         if shading_type == PDShading.SHADING_TYPE1:
-            from .type1_shading_paint import Type1ShadingPaint  # noqa: PLC0415
+            from .type1_shading_paint import Type1ShadingPaint
             return Type1ShadingPaint(self, matrix)
         if shading_type == PDShading.SHADING_TYPE2:
-            from .axial_shading_paint import AxialShadingPaint  # noqa: PLC0415
+            from .axial_shading_paint import AxialShadingPaint
             return AxialShadingPaint(self, matrix)
         if shading_type == PDShading.SHADING_TYPE3:
-            from .radial_shading_paint import RadialShadingPaint  # noqa: PLC0415
+            from .radial_shading_paint import RadialShadingPaint
             return RadialShadingPaint(self, matrix)
         if shading_type == PDShading.SHADING_TYPE4:
-            from .type4_shading_paint import Type4ShadingPaint  # noqa: PLC0415
+            from .type4_shading_paint import Type4ShadingPaint
             return Type4ShadingPaint(self, matrix)
         if shading_type == PDShading.SHADING_TYPE5:
-            from .type5_shading_paint import Type5ShadingPaint  # noqa: PLC0415
+            from .type5_shading_paint import Type5ShadingPaint
             return Type5ShadingPaint(self, matrix)
         if shading_type == PDShading.SHADING_TYPE6:
-            from .type6_shading_paint import Type6ShadingPaint  # noqa: PLC0415
+            from .type6_shading_paint import Type6ShadingPaint
             return Type6ShadingPaint(self, matrix)
         if shading_type == PDShading.SHADING_TYPE7:
-            from .type7_shading_paint import Type7ShadingPaint  # noqa: PLC0415
+            from .type7_shading_paint import Type7ShadingPaint
             return Type7ShadingPaint(self, matrix)
         return None
 
@@ -523,7 +523,7 @@ class PDShading:
         Triangle/Coons types in upstream) override this; the default
         return is ``None``. Both arguments are accepted to preserve the
         upstream signature, even though the default ignores them."""
-        return None
+        return
 
 
 __all__ = ["PDShading"]

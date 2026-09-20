@@ -16,12 +16,12 @@ def test_wave576_constructor_adopts_loader_security_state() -> None:
     cos_doc = COSDocument()
     handler = object()
     encryption = object()
-    cos_doc._loader_security_handler = handler  # noqa: SLF001
-    cos_doc._loader_encryption = encryption  # noqa: SLF001
+    cos_doc._loader_security_handler = handler
+    cos_doc._loader_encryption = encryption
     doc = PDDocument(cos_doc)
 
     try:
-        assert doc._security_handler is handler  # noqa: SLF001
+        assert doc._security_handler is handler
         assert doc.get_encryption() is encryption
     finally:
         doc.close()
@@ -60,7 +60,7 @@ def test_wave576_save_strips_encryption_and_decodes_streams(
         def write(self, document: PDDocument) -> None:
             writes.append(document)
 
-    import pypdfbox.pdfwriter as pdfwriter
+    from pypdfbox import pdfwriter
 
     monkeypatch.setattr(pdfwriter, "COSWriter", Writer)
     cos_doc = COSDocument()
@@ -101,7 +101,7 @@ def test_wave576_save_incremental_path_target_closes_file(
         def write(self, document: COSDocument) -> None:
             writes.append(document)
 
-    import pypdfbox.pdfwriter as pdfwriter
+    from pypdfbox import pdfwriter
 
     monkeypatch.setattr(pdfwriter, "COSWriter", Writer)
     cos_doc = COSDocument(source=RandomAccessReadBuffer(b"%PDF-1.4\n%%EOF\n"))
@@ -136,9 +136,9 @@ def test_wave576_save_incremental_pending_signature_signs_and_clears(
         "_render_incremental_with_placeholder",
         lambda: (bytearray(b"<0000>tail"), (1, 5), [0, 1, 5, 5]),
     )
-    doc._pending_signature = signature  # noqa: SLF001
-    doc._pending_signature_interface = signer  # noqa: SLF001
-    doc._pending_signature_options = object()  # noqa: SLF001
+    doc._pending_signature = signature
+    doc._pending_signature_interface = signer
+    doc._pending_signature_options = object()
 
     try:
         doc.save_incremental(output)
@@ -170,21 +170,21 @@ def test_wave576_render_placeholder_error_paths(
         def write(self, _document: COSDocument) -> None:
             self.sink.write(self.data)
 
-    import pypdfbox.pdfwriter as pdfwriter
+    from pypdfbox import pdfwriter
 
     monkeypatch.setattr(pdfwriter, "COSWriter", Writer)
     doc = PDDocument(COSDocument(source=RandomAccessReadBuffer(b"%PDF-1.4\n%%EOF\n")))
-    doc._pending_signature = PDSignature()  # noqa: SLF001
+    doc._pending_signature = PDSignature()
 
     try:
         Writer.data = b"no contents here"
         with pytest.raises(RuntimeError, match="Contents placeholder not found"):
-            doc._render_incremental_with_placeholder()  # noqa: SLF001
+            doc._render_incremental_with_placeholder()
 
-        zero_run = b"<" + b"0" * doc._CONTENTS_PLACEHOLDER_HEX_LEN + b">"  # noqa: SLF001
+        zero_run = b"<" + b"0" * doc._CONTENTS_PLACEHOLDER_HEX_LEN + b">"
         Writer.data = b"/ByteRange [1 2 3 4] " + zero_run
         with pytest.raises(RuntimeError, match="ByteRange placeholder not found"):
-            doc._render_incremental_with_placeholder()  # noqa: SLF001
+            doc._render_incremental_with_placeholder()
     finally:
         doc.close()
 
@@ -203,19 +203,19 @@ def test_wave576_render_placeholder_rejects_byte_range_that_exceeds_slot(
             pass
 
         def write(self, _document: COSDocument) -> None:
-            zero_run = b"<" + b"0" * doc._CONTENTS_PLACEHOLDER_HEX_LEN + b">"  # noqa: SLF001
+            zero_run = b"<" + b"0" * doc._CONTENTS_PLACEHOLDER_HEX_LEN + b">"
             self.sink.write(b"prefix " + zero_run + b" [0 9 9 9]")
 
-    import pypdfbox.pdfwriter as pdfwriter
+    from pypdfbox import pdfwriter
 
     monkeypatch.setattr(pdfwriter, "COSWriter", Writer)
     doc = PDDocument(COSDocument(source=RandomAccessReadBuffer(b"%PDF-1.4\n%%EOF\n")))
-    doc._pending_signature = PDSignature()  # noqa: SLF001
+    doc._pending_signature = PDSignature()
     monkeypatch.setattr(doc, "_BYTERANGE_SLOT_WIDTH", 1)
 
     try:
         with pytest.raises(RuntimeError, match="exceeds placeholder width"):
-            doc._render_incremental_with_placeholder()  # noqa: SLF001
+            doc._render_incremental_with_placeholder()
     finally:
         doc.close()
 
@@ -275,20 +275,20 @@ def test_wave576_decrypt_sets_stream_handlers_and_invalidates_permission(
     cos_obj = cos_doc.get_object_from_pool(COSObjectKey(9, 2))
     cos_obj.set_object(stream)
     doc = PDDocument(cos_doc)
-    doc._access_permission = object()  # noqa: SLF001
+    doc._access_permission = object()
 
     try:
         doc.decrypt("secret")
         assert calls[0][1] == b"file-id"
 
         calls.clear()
-        doc._access_permission = object()  # noqa: SLF001
+        doc._access_permission = object()
         doc.decrypt(b"secret")
 
         assert calls
         assert calls[0][1] == b"file-id"
-        assert doc._security_handler is not None  # noqa: SLF001
-        assert doc._access_permission is None  # noqa: SLF001
+        assert doc._security_handler is not None
+        assert doc._access_permission is None
     finally:
         doc.close()
 

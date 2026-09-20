@@ -815,16 +815,16 @@ def test_get_feature_records_vrt2_supersedes_vert() -> None:
     class _F:
         LookupListIndex = []
 
-    class _FR_vert:
+    class _FRVert:
         FeatureTag = "vert"
         Feature = _F()
 
-    class _FR_vrt2:
+    class _FRVrt2:
         FeatureTag = "vrt2"
         Feature = _F()
 
     class _FakeFeatureList:
-        FeatureRecord = [_FR_vert(), _FR_vrt2()]
+        FeatureRecord = [_FRVert(), _FRVrt2()]
 
     class _FakeGsub:
         FeatureList = _FakeFeatureList()

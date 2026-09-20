@@ -555,7 +555,7 @@ def test_to_unicode_embedded_cmap_fallback_uses_parent_cmap_cid(
     ttf = descendant.get_true_type_font()
     assert ttf is not None
 
-    inner = ttf._tt  # noqa: SLF001
+    inner = ttf._tt
     glyph_name = inner["cmap"].getBestCmap()[ord("A")]
     gid_for_a = inner.getGlyphOrder().index(glyph_name)
 

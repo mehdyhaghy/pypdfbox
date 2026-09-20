@@ -79,7 +79,7 @@ _GOLDEN: list[tuple[float, str]] = [
 def test_float_to_string_matches_java_float2string(
     value: float, expected: str
 ) -> None:
-    assert Overlay._float_to_string(value) == expected  # noqa: SLF001
+    assert Overlay._float_to_string(value) == expected
 
 
 @pytest.mark.parametrize(
@@ -95,7 +95,7 @@ def test_public_float2_string_matches_java(value: float, expected: str) -> None:
 def test_no_trailing_zero_except_dot_zero() -> None:
     """Upstream strips trailing ``0`` digits but always keeps a final
     ``.0`` on integer-valued plain decimals."""
-    f = Overlay._float_to_string  # noqa: SLF001
+    f = Overlay._float_to_string
     assert f(12.500) == "12.5"
     assert f(12.0) == "12.0"
     assert not f(12.34).endswith("0")
@@ -104,7 +104,7 @@ def test_no_trailing_zero_except_dot_zero() -> None:
 def test_float32_cast_is_applied() -> None:
     """A double that is not representable as float32 must render the
     nearest float32's shortest decimal, not the double's digits."""
-    f = Overlay._float_to_string  # noqa: SLF001
+    f = Overlay._float_to_string
     # 0.1 + 0.2 == 0.30000000000000004 as a double; float32-nearest is 0.3.
     val = 0.1 + 0.2
     f32 = struct.unpack("f", struct.pack("f", val))[0]
@@ -113,4 +113,4 @@ def test_float32_cast_is_applied() -> None:
 
 
 def test_negative_zero_normalised() -> None:
-    assert Overlay._float_to_string(-0.0) == "0.0"  # noqa: SLF001
+    assert Overlay._float_to_string(-0.0) == "0.0"

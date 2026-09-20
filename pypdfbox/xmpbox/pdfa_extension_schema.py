@@ -81,7 +81,7 @@ class PDFAExtensionSchema(XMPSchema):
         """
         existing = self._properties.get(self.SCHEMAS)
         if isinstance(existing, list) and all(isinstance(item, dict) for item in existing):
-            return cast(list[dict[str, str]], existing)
+            return cast("list[dict[str, str]]", existing)
         if existing is None and create:
             new_list: list[dict[str, str]] = []
             self._properties[self.SCHEMAS] = new_list

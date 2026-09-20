@@ -135,7 +135,7 @@ def _load_certificates(cert_files: Iterable[str | Path]) -> list[Certificate]:
     public-key encryption free of the import cost.
     """
     # Local import — keeps non-cert code paths free of the dependency.
-    from cryptography import x509  # noqa: PLC0415 — lazy load
+    from cryptography import x509
 
     certs = []
     for cert_path in cert_files:

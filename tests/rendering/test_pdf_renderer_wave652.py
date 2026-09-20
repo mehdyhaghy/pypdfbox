@@ -28,16 +28,16 @@ def _prepared_renderer(
 ) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -119,7 +119,7 @@ def test_evaluate_shading_rgb_returns_none_for_malformed_functions(
 ) -> None:
     doc, renderer = _prepared_renderer()
     try:
-        assert renderer._evaluate_shading_rgb(  # noqa: SLF001
+        assert renderer._evaluate_shading_rgb(
             _Shading(raise_function=True),
             0.5,
         ) is None
@@ -128,26 +128,26 @@ def test_evaluate_shading_rgb_returns_none_for_malformed_functions(
             raise RuntimeError("factory failed")
 
         monkeypatch.setattr(PDFunction, "create", staticmethod(raise_create))
-        assert renderer._evaluate_shading_rgb(  # noqa: SLF001
+        assert renderer._evaluate_shading_rgb(
             _Shading(function=object()),
             0.5,
         ) is None
 
         monkeypatch.setattr(PDFunction, "create", staticmethod(lambda _fn: None))
-        assert renderer._evaluate_shading_rgb(  # noqa: SLF001
+        assert renderer._evaluate_shading_rgb(
             _Shading(function=object()),
             0.5,
         ) is None
 
-        assert renderer._evaluate_shading_rgb(  # noqa: SLF001
+        assert renderer._evaluate_shading_rgb(
             _Shading(function=_RaisesEval()),
             0.5,
         ) is None
-        assert renderer._evaluate_shading_rgb(  # noqa: SLF001
+        assert renderer._evaluate_shading_rgb(
             _Shading(function=_EvalFunction([])),
             0.5,
         ) is None
-        assert renderer._evaluate_shading_rgb(  # noqa: SLF001
+        assert renderer._evaluate_shading_rgb(
             _Shading(
                 function=_EvalFunction([0.25, 0.5, 0.75]),
                 raise_color_space=True,
@@ -163,22 +163,22 @@ def test_unknown_shading_uses_fallback_function_or_skips_when_missing() -> None:
     doc, renderer = _prepared_renderer()
     try:
         mask = Image.new("L", (6, 6), 255)
-        renderer._paint_shading(_Shading(function=_EvalFunction([0.0, 1.0, 0.0])), region_mask=mask)  # noqa: E501, SLF001
+        renderer._paint_shading(_Shading(function=_EvalFunction([0.0, 1.0, 0.0])), region_mask=mask)
 
         _finish(renderer)
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((2, 2)) == (0, 255, 0)  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.getpixel((2, 2)) == (0, 255, 0)
 
-        before = renderer._image.copy()  # noqa: SLF001
-        renderer._paint_shading(_Shading(raise_function=True), region_mask=mask)  # noqa: SLF001
+        before = renderer._image.copy()
+        renderer._paint_shading(_Shading(raise_function=True), region_mask=mask)
         _finish(renderer)
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.tobytes() == before.tobytes()  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.tobytes() == before.tobytes()
 
-        renderer._image = None  # noqa: SLF001
-        renderer._paint_shading(_Shading(), region_mask=mask)  # noqa: SLF001
+        renderer._image = None
+        renderer._paint_shading(_Shading(), region_mask=mask)
     finally:
-        renderer._draw = None  # noqa: SLF001
+        renderer._draw = None
         doc.close()
 
 
@@ -187,25 +187,25 @@ def test_axial_shading_ignores_unpaintable_inputs() -> None:
     try:
         mask = Image.new("L", (6, 6), 255)
 
-        renderer._image = None  # noqa: SLF001
-        renderer._paint_axial_shading(_Shading(), region_mask=mask)  # noqa: SLF001
+        renderer._image = None
+        renderer._paint_axial_shading(_Shading(), region_mask=mask)
 
-        renderer._image = Image.new("RGB", (6, 6), (255, 255, 255))  # noqa: SLF001
-        renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-        renderer._paint_axial_shading(_Shading(coords=_Coords(0.0, 0.0)), region_mask=mask)  # noqa: E501, SLF001
-        renderer._paint_axial_shading(  # noqa: SLF001
+        renderer._image = Image.new("RGB", (6, 6), (255, 255, 255))
+        renderer._draw = aggdraw.Draw(renderer._image)
+        renderer._paint_axial_shading(_Shading(coords=_Coords(0.0, 0.0)), region_mask=mask)
+        renderer._paint_axial_shading(
             _Shading(coords=_Coords(1.0, 1.0, 1.0, 1.0)),
             region_mask=mask,
         )
 
-        renderer._device_ctm = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)  # noqa: SLF001
-        renderer._paint_axial_shading(  # noqa: SLF001
+        renderer._device_ctm = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        renderer._paint_axial_shading(
             _Shading(coords=_Coords(0.0, 0.0, 5.0, 0.0)),
             region_mask=mask,
         )
 
         _finish(renderer)
-        assert renderer._image.getpixel((3, 3)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image.getpixel((3, 3)) == (255, 255, 255)
     finally:
         doc.close()
 
@@ -218,24 +218,24 @@ def test_radial_shading_respects_masks_and_extend_flags() -> None:
 
         mask = Image.new("L", (5, 1), 255)
         mask.putpixel((0, 0), 0)
-        renderer._paint_radial_shading(  # noqa: SLF001
+        renderer._paint_radial_shading(
             _Shading(coords=coords, function=function, extend=(False, False)),
             region_mask=mask,
         )
         _finish(renderer)
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)  # noqa: SLF001
-        assert renderer._image.getpixel((4, 0)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)
+        assert renderer._image.getpixel((4, 0)) == (255, 255, 255)
 
-        renderer._image = Image.new("RGB", (5, 1), (255, 255, 255))  # noqa: SLF001
-        renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-        renderer._draw.setantialias(True)  # noqa: SLF001
-        renderer._paint_radial_shading(  # noqa: SLF001
+        renderer._image = Image.new("RGB", (5, 1), (255, 255, 255))
+        renderer._draw = aggdraw.Draw(renderer._image)
+        renderer._draw.setantialias(True)
+        renderer._paint_radial_shading(
             _Shading(coords=coords, function=function, extend=(True, True)),
             region_mask=Image.new("L", (5, 1), 255),
         )
         _finish(renderer)
-        assert renderer._image.getpixel((4, 0)) == (255, 0, 0)  # noqa: SLF001
+        assert renderer._image.getpixel((4, 0)) == (255, 0, 0)
     finally:
         doc.close()
 
@@ -243,27 +243,27 @@ def test_radial_shading_respects_masks_and_extend_flags() -> None:
 def test_text_state_operators_ignore_incomplete_operands() -> None:
     doc, renderer = _prepared_renderer()
     try:
-        renderer._gs.text_charspace = 1.0  # noqa: SLF001
-        renderer._gs.text_wordspace = 2.0  # noqa: SLF001
-        renderer._gs.text_leading = 3.0  # noqa: SLF001
-        renderer._gs.text_horizontal_scaling = 90.0  # noqa: SLF001
-        renderer._gs.text_rise = 4.0  # noqa: SLF001
+        renderer._gs.text_charspace = 1.0
+        renderer._gs.text_wordspace = 2.0
+        renderer._gs.text_leading = 3.0
+        renderer._gs.text_horizontal_scaling = 90.0
+        renderer._gs.text_rise = 4.0
 
-        renderer._op_set_font(None, [])  # noqa: SLF001
-        renderer._op_set_font(None, [COSFloat(12.0), COSFloat(9.0)])  # noqa: SLF001
-        renderer._op_set_charspace(None, [])  # noqa: SLF001
-        renderer._op_set_wordspace(None, [])  # noqa: SLF001
-        renderer._op_set_leading(None, [])  # noqa: SLF001
-        renderer._op_set_horizontal_scaling(None, [])  # noqa: SLF001
-        renderer._op_set_text_rise(None, [])  # noqa: SLF001
-        renderer._op_show_text(None, [])  # noqa: SLF001
+        renderer._op_set_font(None, [])
+        renderer._op_set_font(None, [COSFloat(12.0), COSFloat(9.0)])
+        renderer._op_set_charspace(None, [])
+        renderer._op_set_wordspace(None, [])
+        renderer._op_set_leading(None, [])
+        renderer._op_set_horizontal_scaling(None, [])
+        renderer._op_set_text_rise(None, [])
+        renderer._op_show_text(None, [])
 
-        assert renderer._gs.text_font is None  # noqa: SLF001
-        assert renderer._gs.text_charspace == 1.0  # noqa: SLF001
-        assert renderer._gs.text_wordspace == 2.0  # noqa: SLF001
-        assert renderer._gs.text_leading == 3.0  # noqa: SLF001
-        assert renderer._gs.text_horizontal_scaling == 90.0  # noqa: SLF001
-        assert renderer._gs.text_rise == 4.0  # noqa: SLF001
+        assert renderer._gs.text_font is None
+        assert renderer._gs.text_charspace == 1.0
+        assert renderer._gs.text_wordspace == 2.0
+        assert renderer._gs.text_leading == 3.0
+        assert renderer._gs.text_horizontal_scaling == 90.0
+        assert renderer._gs.text_rise == 4.0
     finally:
         _finish(renderer)
         doc.close()
@@ -282,14 +282,14 @@ def test_resolve_font_handles_absent_failing_and_missing_resources() -> None:
     try:
         name = COSName.get_pdf_name("F1")
 
-        renderer._resources = None  # noqa: SLF001
-        assert renderer._resolve_font(name) is None  # noqa: SLF001
+        renderer._resources = None
+        assert renderer._resolve_font(name) is None
 
-        renderer._resources = RaisingResources()  # noqa: SLF001
-        assert renderer._resolve_font(name) is None  # noqa: SLF001
+        renderer._resources = RaisingResources()
+        assert renderer._resolve_font(name) is None
 
-        renderer._resources = EmptyResources()  # noqa: SLF001
-        assert renderer._resolve_font(name) is None  # noqa: SLF001
+        renderer._resources = EmptyResources()
+        assert renderer._resolve_font(name) is None
     finally:
         _finish(renderer)
         doc.close()
@@ -310,16 +310,16 @@ def test_inline_image_paths_ignore_missing_canvas_and_decode_none(
 
     doc, renderer = _prepared_renderer()
     try:
-        renderer._image = None  # noqa: SLF001
-        renderer._op_inline_image(None, [])  # noqa: SLF001
+        renderer._image = None
+        renderer._op_inline_image(None, [])
 
-        renderer._image = Image.new("RGB", (6, 6), (255, 255, 255))  # noqa: SLF001
-        renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
+        renderer._image = Image.new("RGB", (6, 6), (255, 255, 255))
+        renderer._draw = aggdraw.Draw(renderer._image)
         monkeypatch.setattr(renderer, "_decode_inline_image", lambda *_: None)
 
         renderer.show_inline_image(InlineImage())
         _finish(renderer)
 
-        assert renderer._image.getpixel((3, 3)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image.getpixel((3, 3)) == (255, 255, 255)
     finally:
         doc.close()

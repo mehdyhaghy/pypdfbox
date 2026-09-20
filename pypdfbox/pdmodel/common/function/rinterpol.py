@@ -25,7 +25,7 @@ class Rinterpol:
     def __init__(
         self,
         function: PDFunctionType0,
-        input: list[float],  # noqa: A002 - upstream parameter name
+        input: list[float],
         input_prev: list[int],
         input_next: list[int],
     ) -> None:

@@ -39,7 +39,7 @@ class TSAClient:
         url: str,
         username: str | None,
         password: str | None,
-        digest,  # noqa: ANN001 - hashlib-style
+        digest,
         transport: Callable[[bytes, str, dict[str, str]], bytes] | None = None,
     ) -> None:
         self._url = url
@@ -102,11 +102,11 @@ class TSAClient:
             return self._transport(request, self._url, headers)
 
         req = Request(self._url, data=request, headers=headers, method="POST")
-        with urlopen(req, timeout=30) as resp:  # noqa: S310 - URL comes from user config
+        with urlopen(req, timeout=30) as resp:
             return resp.read()
 
 
-def _reset(digest):  # noqa: ANN001, ANN202 - hashlib doesn't have reset()
+def _reset(digest):
     import hashlib
 
     return hashlib.new(getattr(digest, "name", "sha256"))

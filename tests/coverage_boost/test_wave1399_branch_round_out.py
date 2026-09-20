@@ -95,9 +95,9 @@ def test_pd_document_save_unencrypted_with_no_trailer() -> None:
     doc = PDDocument()
     # Force encrypted shape so the outer ``if`` triggers, and remove the
     # trailer so the inner ``if trailer is not None`` short-circuits.
-    doc._all_security_to_be_removed = True  # noqa: SLF001
+    doc._all_security_to_be_removed = True
     # Stand up a fake encryption marker so is_encrypted() returns True.
-    cos_doc = doc._document  # noqa: SLF001
+    cos_doc = doc._document
     # Save a trailer with /Encrypt; we'll then null the trailer.
     trailer = cos_doc.get_trailer()
     assert trailer is not None
@@ -132,8 +132,8 @@ def test_pdf_parser_initial_parse_without_cos_parser() -> None:
     from pypdfbox.pdfparser.pdf_parser import PDFParser
 
     parser = PDFParser.__new__(PDFParser)
-    parser._cos_parser = None  # noqa: SLF001
-    parser._lenient = False  # noqa: SLF001
+    parser._cos_parser = None
+    parser._lenient = False
 
     # Build a minimal resolver with a trailer holding /Root → a non-dict.
     class _Resolver:
@@ -144,12 +144,12 @@ def test_pdf_parser_initial_parse_without_cos_parser() -> None:
         def get_trailer(self) -> COSDictionary:
             return self.trailer
 
-    parser._resolver = _Resolver()  # noqa: SLF001
+    parser._resolver = _Resolver()
     # Should not raise — cos_parser is None.
     parser.initial_parse()
     # Now flip to bad shape: missing /Root.
-    parser._resolver = _Resolver()  # noqa: SLF001
-    parser._resolver.trailer.remove_item(COSName.ROOT)  # noqa: SLF001
+    parser._resolver = _Resolver()
+    parser._resolver.trailer.remove_item(COSName.ROOT)
     with pytest.raises(PDFParseError, match="Missing root object"):
         parser.initial_parse()
 
@@ -326,7 +326,7 @@ def test_pd_action_embedded_go_to_set_d_empty_dest_array() -> None:
     from pypdfbox.pdmodel.interactive.action.pd_action_embedded_go_to import (
         PDActionEmbeddedGoTo,
     )
-    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (  # noqa: E501
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (
         PDNamedDestination,
     )
     from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_xyz_destination import (  # noqa: E501
@@ -429,7 +429,7 @@ def test_fdf_document_close_with_source_close_raising() -> None:
         def close(self) -> None:
             raise OSError("boom")
 
-    fdf._fdf_source = _BadSource()  # noqa: SLF001
+    fdf._fdf_source = _BadSource()
     # close() must swallow the OSError silently.
     fdf.close()
     assert fdf.is_closed()
@@ -451,9 +451,9 @@ def test_xref_trailer_resolver_next_xref_obj_without_current() -> None:
     r = XrefTrailerResolver()
     # Patch begin_section to leave _current None, so the inner ``if`` doesn't fire.
     r.begin_section = lambda pos: None  # type: ignore[method-assign]
-    r._current = None  # noqa: SLF001
+    r._current = None
     r.next_xref_obj(100, XrefType.TABLE)
-    assert r._current is None  # noqa: SLF001
+    assert r._current is None
 
 
 def test_xref_trailer_resolver_resolve_with_no_trailer() -> None:
@@ -522,16 +522,16 @@ def test_pdocg_set_render_state_overwrites_existing_sub() -> None:
     # Set a second sub so when we delete one, /Usage stays.
     ocg.set_render_state("ON", "View")
     # Now drop /Print — usage still has /View so it's not removed.
-    ocg.set_render_state("OFF", "Print")  # noqa - intentional state mutation
+    ocg.set_render_state("OFF", "Print")
     # Now set /Print to None (we don't have a direct API but the typed
     # accessor exposes it through _set_usage_state_entry).
-    ocg._set_usage_state_entry(  # noqa: SLF001
+    ocg._set_usage_state_entry(
         COSName.get_pdf_name("Print"),
         COSName.get_pdf_name("PrintState"),
         None,
     )
     # /Usage should still be present because /View remained.
-    assert ocg._dict.get_dictionary_object(  # noqa: SLF001
+    assert ocg._dict.get_dictionary_object(
         COSName.get_pdf_name("Usage")
     ) is not None
 
@@ -699,7 +699,7 @@ def test_fdf_annotation_polyline_missing_interior_color() -> None:
 
 def test_pd_structure_node_create_object_returns_none_for_unknown() -> None:
     """283->285: an unrecognised kid type returns None from create_object."""
-    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_node import (  # noqa: E501
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_node import (
         PDStructureNode,
     )
 
@@ -843,8 +843,8 @@ def test_pdf_xref_stream_index_entry_contiguous_numbers() -> None:
     from pypdfbox.pdfparser.pdf_xref_stream import PDFXRefStream
 
     stream = PDFXRefStream.__new__(PDFXRefStream)
-    stream._object_numbers = {1, 2, 3, 4}  # noqa: SLF001 - contiguous run + 0
-    linked = stream._get_index_entry()  # noqa: SLF001
+    stream._object_numbers = {1, 2, 3, 4}
+    linked = stream._get_index_entry()
     # Single contiguous range (0..4) -> [0, 5]
     assert linked == [0, 5]
 
@@ -855,8 +855,8 @@ def test_pdf_xref_stream_index_entry_with_gap() -> None:
 
     stream = PDFXRefStream.__new__(PDFXRefStream)
     # {0, 1} then a gap then {5} — two ranges.
-    stream._object_numbers = {1, 5}  # noqa: SLF001 - {0, 1} contiguous, gap, {5}
-    linked = stream._get_index_entry()  # noqa: SLF001
+    stream._object_numbers = {1, 5}
+    linked = stream._get_index_entry()
     # [0, 2, 5, 1]
     assert linked == [0, 2, 5, 1]
 
@@ -1041,7 +1041,7 @@ def test_pd_extended_gs_get_font_size_with_non_number_entry() -> None:
     arr = COSArray()
     arr.add(COSDictionary())  # font dict
     arr.add(COSName.get_pdf_name("NotANumber"))
-    state._dict.set_item(COSName.get_pdf_name("Font"), arr)  # noqa: SLF001
+    state._dict.set_item(COSName.get_pdf_name("Font"), arr)
     assert state.get_font_size() is None
 
 
@@ -1119,7 +1119,7 @@ def test_pd_inline_image_to_long_name_passes_unknown_through() -> None:
     from pypdfbox.pdmodel.graphics.image.pd_inline_image import PDInlineImage
 
     img = PDInlineImage.__new__(PDInlineImage)
-    img._resources = None  # noqa: SLF001
+    img._resources = None
     # Not a known abbreviation — pass through.
     name = COSName.get_pdf_name("UnknownCS")
     result = img.to_long_name(name)
@@ -1137,8 +1137,8 @@ def test_pd_cid_font_type0_coerce_bbox_returns_none_for_malformed() -> None:
     """_coerce_bbox(None) and short-list → None."""
     from pypdfbox.pdmodel.font.pd_cid_font_type0 import PDCIDFontType0
 
-    assert PDCIDFontType0._coerce_bbox(None) is None  # noqa: SLF001
-    assert PDCIDFontType0._coerce_bbox([1, 2, 3]) is None  # noqa: SLF001 - too short
+    assert PDCIDFontType0._coerce_bbox(None) is None
+    assert PDCIDFontType0._coerce_bbox([1, 2, 3]) is None
 
 
 # -----------------------------------------------------------------------------

@@ -52,10 +52,10 @@ class ExtractEmbeddedFiles:
     @staticmethod
     def extract_files_from_page(page: Any, directory_path: str) -> None:
         """Mirrors ``extractFilesFromPage(PDPage, String)`` (line 83)."""
-        from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (  # noqa: E501
+        from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (
             PDComplexFileSpecification,
         )
-        from pypdfbox.pdmodel.interactive.annotation.pd_annotation_file_attachment import (  # noqa: E501
+        from pypdfbox.pdmodel.interactive.annotation.pd_annotation_file_attachment import (
             PDAnnotationFileAttachment,
         )
 
@@ -164,7 +164,7 @@ class ExtractEmbeddedFiles:
                 continue
             try:
                 result = getter()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 result = None
             if result is not None:
                 return result

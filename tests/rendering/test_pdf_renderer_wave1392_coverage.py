@@ -227,14 +227,14 @@ def test_paint_patch_mesh_shading_image_none_returns_true_short_circuit() -> Non
     helper short-circuits with True (caller treats this as "handled,
     nothing to do")."""
     r = _bare_renderer()
-    r._image = None  # noqa: SLF001
+    r._image = None
 
     class _ShadingNoOp:
         def parse_patches(self) -> list[Any]:
             return []
 
     mask = Image.new("L", (10, 10), 255)
-    result = r._paint_patch_mesh_shading(  # noqa: SLF001
+    result = r._paint_patch_mesh_shading(
         _ShadingNoOp(), region_mask=mask, control_points=12,
     )
     assert result is True
@@ -245,9 +245,9 @@ def test_paint_patch_mesh_shading_on_rgba_canvas_uses_alpha_composite() -> None:
     blended via ``alpha_composite`` (not ``paste``). Hit with a bare
     renderer that owns an RGBA backing image."""
     r = _bare_renderer()
-    r._image = Image.new("RGBA", (20, 20), (0, 0, 0, 0))  # noqa: SLF001
+    r._image = Image.new("RGBA", (20, 20), (0, 0, 0, 0))
     import pypdfbox.rendering._aggdraw_compat as agg
-    r._draw = agg.Draw(r._image)  # noqa: SLF001
+    r._draw = agg.Draw(r._image)
 
     class _StubPatch:
         points = [
@@ -278,7 +278,7 @@ def test_paint_patch_mesh_shading_on_rgba_canvas_uses_alpha_composite() -> None:
             return False
 
     mask = Image.new("L", (20, 20), 255)
-    result = r._paint_patch_mesh_shading(  # noqa: SLF001
+    result = r._paint_patch_mesh_shading(
         _Shading(), region_mask=mask, control_points=12,
     )
     assert result is True
@@ -289,9 +289,9 @@ def test_paint_patch_mesh_shading_get_color_space_raises_falls_through() -> None
     cs_name=None and the rasteriser carries on. Hit by stubbing the
     shading object."""
     r = _bare_renderer()
-    r._image = Image.new("RGB", (20, 20), (255, 255, 255))  # noqa: SLF001
+    r._image = Image.new("RGB", (20, 20), (255, 255, 255))
     import pypdfbox.rendering._aggdraw_compat as agg
-    r._draw = agg.Draw(r._image)  # noqa: SLF001
+    r._draw = agg.Draw(r._image)
 
     class _StubPatch:
         points = [
@@ -322,7 +322,7 @@ def test_paint_patch_mesh_shading_get_color_space_raises_falls_through() -> None
             return False
 
     mask = Image.new("L", (20, 20), 255)
-    result = r._paint_patch_mesh_shading(  # noqa: SLF001
+    result = r._paint_patch_mesh_shading(
         _Shading(), region_mask=mask, control_points=12,
     )
     assert result is True
@@ -331,9 +331,9 @@ def test_paint_patch_mesh_shading_get_color_space_raises_falls_through() -> None
 def test_paint_patch_mesh_shading_get_function_raises_falls_through() -> None:
     """Lines 4303-4304 — ``shading.get_function`` raising sets raw_fn=None."""
     r = _bare_renderer()
-    r._image = Image.new("RGB", (20, 20), (255, 255, 255))  # noqa: SLF001
+    r._image = Image.new("RGB", (20, 20), (255, 255, 255))
     import pypdfbox.rendering._aggdraw_compat as agg
-    r._draw = agg.Draw(r._image)  # noqa: SLF001
+    r._draw = agg.Draw(r._image)
 
     class _StubPatch:
         points = [
@@ -364,7 +364,7 @@ def test_paint_patch_mesh_shading_get_function_raises_falls_through() -> None:
             return False
 
     mask = Image.new("L", (20, 20), 255)
-    result = r._paint_patch_mesh_shading(  # noqa: SLF001
+    result = r._paint_patch_mesh_shading(
         _Shading(), region_mask=mask, control_points=12,
     )
     assert result is True
@@ -374,9 +374,9 @@ def test_paint_patch_mesh_shading_pd_function_create_raises_falls_through() -> N
     """Lines 4307-4313 — when ``raw_fn`` has no .eval and PDFunction.create
     raises, fn falls back to None."""
     r = _bare_renderer()
-    r._image = Image.new("RGB", (20, 20), (255, 255, 255))  # noqa: SLF001
+    r._image = Image.new("RGB", (20, 20), (255, 255, 255))
     import pypdfbox.rendering._aggdraw_compat as agg
-    r._draw = agg.Draw(r._image)  # noqa: SLF001
+    r._draw = agg.Draw(r._image)
 
     class _StubPatch:
         points = [
@@ -413,7 +413,7 @@ def test_paint_patch_mesh_shading_pd_function_create_raises_falls_through() -> N
             return False
 
     mask = Image.new("L", (20, 20), 255)
-    result = r._paint_patch_mesh_shading(  # noqa: SLF001
+    result = r._paint_patch_mesh_shading(
         _Shading(), region_mask=mask, control_points=12,
     )
     assert result is True
@@ -427,7 +427,7 @@ def test_patch_color_at_function_eval_raises_falls_through() -> None:
         def eval(self, _x: list[float]) -> list[float]:
             raise RuntimeError("eval boom")
 
-    out = PDFRenderer._patch_color_at(  # noqa: SLF001
+    out = PDFRenderer._patch_color_at(
         [[0.5], [0.5], [0.5], [0.5]],
         0.5, 0.5, _BadFn(), "DeviceRGB",
     )
@@ -612,7 +612,7 @@ def test_patch_mesh_zero_alpha_triangle_skipped() -> None:
     canvas.clear(skia.ColorWHITE)
     # All-zero alpha at every corner → triangle is skipped, surface
     # stays white.
-    PDFRenderer._fill_skia_triangle(  # noqa: SLF001
+    PDFRenderer._fill_skia_triangle(
         canvas, skia,
         (0.0, 0.0), (10.0, 0.0), (5.0, 10.0),
         (255, 0, 0, 0), (0, 255, 0, 0), (0, 0, 255, 0),
@@ -633,7 +633,7 @@ def test_patch_background_rgba_handles_missing_get_background() -> None:
         def get_background(self) -> Any:
             raise RuntimeError("boom")
 
-    assert PDFRenderer._patch_background_rgba(_Shading()) is None  # noqa: SLF001
+    assert PDFRenderer._patch_background_rgba(_Shading()) is None
 
 
 def test_patch_background_rgba_to_float_array_raises_returns_none() -> None:
@@ -646,7 +646,7 @@ def test_patch_background_rgba_to_float_array_raises_returns_none() -> None:
         def get_background(self) -> Any:
             return _BG()
 
-    assert PDFRenderer._patch_background_rgba(_Shading()) is None  # noqa: SLF001
+    assert PDFRenderer._patch_background_rgba(_Shading()) is None
 
 
 def test_patch_background_rgba_empty_flat_returns_none() -> None:
@@ -659,7 +659,7 @@ def test_patch_background_rgba_empty_flat_returns_none() -> None:
         def get_background(self) -> Any:
             return _BG()
 
-    assert PDFRenderer._patch_background_rgba(_Shading()) is None  # noqa: SLF001
+    assert PDFRenderer._patch_background_rgba(_Shading()) is None
 
 
 def test_patch_background_rgba_color_space_raises_falls_back() -> None:
@@ -677,7 +677,7 @@ def test_patch_background_rgba_color_space_raises_falls_back() -> None:
         def get_color_space(self) -> Any:
             raise RuntimeError("boom")
 
-    out = PDFRenderer._patch_background_rgba(_Shading())  # noqa: SLF001
+    out = PDFRenderer._patch_background_rgba(_Shading())
     assert out is not None and out[0] == 255  # alpha is fixed
 
 
@@ -688,14 +688,14 @@ def test_patch_bbox_rect_handles_failure_modes() -> None:
         def get_b_box(self) -> Any:
             raise RuntimeError("boom")
 
-    assert PDFRenderer._patch_bbox_rect(_S1()) is None  # noqa: SLF001
+    assert PDFRenderer._patch_bbox_rect(_S1()) is None
 
     # bbox is None -> None
     class _S2:
         def get_b_box(self) -> None:
             return None
 
-    assert PDFRenderer._patch_bbox_rect(_S2()) is None  # noqa: SLF001
+    assert PDFRenderer._patch_bbox_rect(_S2()) is None
 
     # to_float_array raises -> None
     class _BB:
@@ -706,7 +706,7 @@ def test_patch_bbox_rect_handles_failure_modes() -> None:
         def get_b_box(self) -> Any:
             return _BB()
 
-    assert PDFRenderer._patch_bbox_rect(_S3()) is None  # noqa: SLF001
+    assert PDFRenderer._patch_bbox_rect(_S3()) is None
 
     # too-short flat -> None
     class _BB2:
@@ -717,7 +717,7 @@ def test_patch_bbox_rect_handles_failure_modes() -> None:
         def get_b_box(self) -> Any:
             return _BB2()
 
-    assert PDFRenderer._patch_bbox_rect(_S4()) is None  # noqa: SLF001
+    assert PDFRenderer._patch_bbox_rect(_S4()) is None
 
 
 def test_patch_anti_alias_raises_defaults_false() -> None:
@@ -726,7 +726,7 @@ def test_patch_anti_alias_raises_defaults_false() -> None:
         def get_anti_alias(self) -> bool:
             raise RuntimeError("boom")
 
-    assert PDFRenderer._patch_anti_alias(_S()) is False  # noqa: SLF001
+    assert PDFRenderer._patch_anti_alias(_S()) is False
 
 
 def test_rasterise_single_patch_mismatched_lengths_returns_early() -> None:
@@ -737,14 +737,14 @@ def test_rasterise_single_patch_mismatched_lengths_returns_early() -> None:
         colors = [[0.5, 0.5, 0.5]] * 4
 
     r = _bare_renderer()
-    r._image = Image.new("RGBA", (10, 10), (0, 0, 0, 0))  # noqa: SLF001
+    r._image = Image.new("RGBA", (10, 10), (0, 0, 0, 0))
     import skia
 
     surface = skia.Surface.MakeRasterN32Premul(10, 10)
     canvas = surface.getCanvas()
     # Expects 12 control points but patch has 8 — should return without
     # drawing anything.
-    r._rasterise_single_patch(  # noqa: SLF001
+    r._rasterise_single_patch(
         canvas, skia, _Patch(), 12, 2, 2, None, "DeviceRGB",
         anti_alias=False,
     )
@@ -767,7 +767,7 @@ def test_decode_inline_image_with_non_numeric_width_returns_none() -> None:
     )
     params.set_int(COSName.get_pdf_name("H"), 2)
     params.set_int(COSName.get_pdf_name("BPC"), 8)
-    assert r._decode_inline_image(params, b"\x00" * 12) is None  # noqa: SLF001
+    assert r._decode_inline_image(params, b"\x00" * 12) is None
 
 
 def test_decode_inline_image_with_non_numeric_height_returns_none() -> None:
@@ -779,7 +779,7 @@ def test_decode_inline_image_with_non_numeric_height_returns_none() -> None:
         COSName.get_pdf_name("H"), COSName.get_pdf_name("NotANumber")
     )
     params.set_int(COSName.get_pdf_name("BPC"), 8)
-    assert r._decode_inline_image(params, b"\x00" * 12) is None  # noqa: SLF001
+    assert r._decode_inline_image(params, b"\x00" * 12) is None
 
 
 def test_decode_inline_image_dct_filter_decodes_via_pil() -> None:
@@ -799,7 +799,7 @@ def test_decode_inline_image_dct_filter_decodes_via_pil() -> None:
     params.set_item(
         COSName.get_pdf_name("F"), COSName.get_pdf_name("DCT")
     )
-    out = r._decode_inline_image(params, jpeg_bytes)  # noqa: SLF001
+    out = r._decode_inline_image(params, jpeg_bytes)
     assert out is not None
     assert out.size == (4, 4)
 
@@ -818,7 +818,7 @@ def test_decode_inline_image_jpx_filter_routes_via_pil() -> None:
     # PIL.Image.open will raise on this fake payload, but the line
     # 6449 itself is the call site we want covered. Wrap in suppress.
     with contextlib.suppress(Exception):
-        r._decode_inline_image(params, b"\x00\x00\x00\x0cjP  ")  # noqa: SLF001
+        r._decode_inline_image(params, b"\x00\x00\x00\x0cjP  ")
 
 
 def test_decode_inline_image_with_cs_array_routes_through_pd_color_space() -> None:
@@ -841,7 +841,7 @@ def test_decode_inline_image_with_cs_array_routes_through_pd_color_space() -> No
     cal_dict.set_item(COSName.get_pdf_name("WhitePoint"), wp)
     cs_array.add(cal_dict)
     params.set_item(COSName.get_pdf_name("ColorSpace"), cs_array)
-    out = r._decode_inline_image(params, b"\x80\xc0\x40\x20")  # noqa: SLF001
+    out = r._decode_inline_image(params, b"\x80\xc0\x40\x20")
     # Generic per-pixel loop should produce a 2x2 RGB image.
     assert out is not None
     assert out.size == (2, 2)
@@ -868,7 +868,7 @@ def test_decode_inline_image_pd_color_space_create_raises() -> None:
     # cs_name is None and we have 12 bytes for a 2x2 RGB, it returns
     # DeviceRGB. Either path is OK; we just want the lines exercised.
     with contextlib.suppress(Exception):
-        r._decode_inline_image(params, b"\xff" * 12)  # noqa: SLF001
+        r._decode_inline_image(params, b"\xff" * 12)
 
 
 def test_decode_inline_image_with_malformed_cs_array_returns_none() -> None:
@@ -883,7 +883,7 @@ def test_decode_inline_image_with_malformed_cs_array_returns_none() -> None:
     cs_array = COSArray()
     cs_array.add(COSName.get_pdf_name("BogusTypeThatDoesNotExist"))
     params.set_item(COSName.get_pdf_name("ColorSpace"), cs_array)
-    out = r._decode_inline_image(params, b"\xff\x00\x00\x00")  # noqa: SLF001
+    out = r._decode_inline_image(params, b"\xff\x00\x00\x00")
     # Falls through to default-CS path which picks DeviceGray when len<3*w*h.
     # The 4-byte payload is enough for DeviceGray. Either we get a valid
     # image (default-CS fallback) or None — both are acceptable; we just
@@ -903,7 +903,7 @@ def test_decode_inline_image_cs_name_unresolved_returns_none() -> None:
         COSName.get_pdf_name("ColorSpace"),
         COSName.get_pdf_name("NonExistentCS"),
     )
-    out = r._decode_inline_image(params, b"\x00" * 4)  # noqa: SLF001
+    out = r._decode_inline_image(params, b"\x00" * 4)
     assert out is None
 
 
@@ -926,7 +926,7 @@ def test_decode_inline_image_palette_to_rgb_image_raises_falls_through() -> None
 
     r = _bare_renderer()
     # Monkey-patch _resolve_color_space to return our stub.
-    r._resolve_color_space = lambda _name: _PaletteCS()  # type: ignore[method-assign]  # noqa: SLF001
+    r._resolve_color_space = lambda _name: _PaletteCS()  # type: ignore[method-assign]
     params = COSDictionary()
     params.set_int(COSName.get_pdf_name("Width"), 2)
     params.set_int(COSName.get_pdf_name("Height"), 2)
@@ -935,7 +935,7 @@ def test_decode_inline_image_palette_to_rgb_image_raises_falls_through() -> None
         COSName.get_pdf_name("ColorSpace"),
         COSName.get_pdf_name("MyIndexed"),
     )
-    out = r._decode_inline_image(params, b"\x00\x40\x80\xc0")  # noqa: SLF001
+    out = r._decode_inline_image(params, b"\x00\x40\x80\xc0")
     assert raised["flag"], "to_rgb_image stub was not invoked"
     # Falls through to generic to_rgb loop -> returns a 2x2 mid-gray RGB.
     assert out is not None and out.size == (2, 2)
@@ -952,7 +952,7 @@ def test_decode_inline_image_palette_returns_non_rgb_image() -> None:
             return Image.new("L", (w, h), 128)
 
     r = _bare_renderer()
-    r._resolve_color_space = lambda _name: _PaletteCS()  # type: ignore[method-assign]  # noqa: SLF001
+    r._resolve_color_space = lambda _name: _PaletteCS()  # type: ignore[method-assign]
     params = COSDictionary()
     params.set_int(COSName.get_pdf_name("Width"), 2)
     params.set_int(COSName.get_pdf_name("Height"), 2)
@@ -961,7 +961,7 @@ def test_decode_inline_image_palette_returns_non_rgb_image() -> None:
         COSName.get_pdf_name("ColorSpace"),
         COSName.get_pdf_name("MyIndexed"),
     )
-    out = r._decode_inline_image(params, b"\x00\x40\x80\xc0")  # noqa: SLF001
+    out = r._decode_inline_image(params, b"\x00\x40\x80\xc0")
     assert out is not None
     assert out.mode == "RGB"
 
@@ -974,7 +974,7 @@ def test_decode_inline_image_cs_zero_components_returns_none() -> None:
             return 0
 
     r = _bare_renderer()
-    r._resolve_color_space = lambda _name: _BrokenCS()  # type: ignore[method-assign]  # noqa: SLF001
+    r._resolve_color_space = lambda _name: _BrokenCS()  # type: ignore[method-assign]
     params = COSDictionary()
     params.set_int(COSName.get_pdf_name("Width"), 2)
     params.set_int(COSName.get_pdf_name("Height"), 2)
@@ -983,7 +983,7 @@ def test_decode_inline_image_cs_zero_components_returns_none() -> None:
         COSName.get_pdf_name("ColorSpace"),
         COSName.get_pdf_name("BrokenCS"),
     )
-    assert r._decode_inline_image(params, b"\x00" * 4) is None  # noqa: SLF001
+    assert r._decode_inline_image(params, b"\x00" * 4) is None
 
 
 def test_decode_inline_image_cs_get_number_of_components_raises_returns_none() -> None:
@@ -994,7 +994,7 @@ def test_decode_inline_image_cs_get_number_of_components_raises_returns_none() -
             raise RuntimeError("boom")
 
     r = _bare_renderer()
-    r._resolve_color_space = lambda _name: _RaisingCS()  # type: ignore[method-assign]  # noqa: SLF001
+    r._resolve_color_space = lambda _name: _RaisingCS()  # type: ignore[method-assign]
     params = COSDictionary()
     params.set_int(COSName.get_pdf_name("Width"), 2)
     params.set_int(COSName.get_pdf_name("Height"), 2)
@@ -1003,7 +1003,7 @@ def test_decode_inline_image_cs_get_number_of_components_raises_returns_none() -
         COSName.get_pdf_name("ColorSpace"),
         COSName.get_pdf_name("RaisingCS"),
     )
-    assert r._decode_inline_image(params, b"\x00" * 4) is None  # noqa: SLF001
+    assert r._decode_inline_image(params, b"\x00" * 4) is None
 
 
 def test_decode_inline_image_data_too_short_returns_none() -> None:
@@ -1017,7 +1017,7 @@ def test_decode_inline_image_data_too_short_returns_none() -> None:
             return comps[:3]
 
     r = _bare_renderer()
-    r._resolve_color_space = lambda _name: _ThreeCompCS()  # type: ignore[method-assign]  # noqa: SLF001
+    r._resolve_color_space = lambda _name: _ThreeCompCS()  # type: ignore[method-assign]
     params = COSDictionary()
     params.set_int(COSName.get_pdf_name("Width"), 4)
     params.set_int(COSName.get_pdf_name("Height"), 4)
@@ -1027,7 +1027,7 @@ def test_decode_inline_image_data_too_short_returns_none() -> None:
         COSName.get_pdf_name("ThreeComp"),
     )
     # Need 4*4*3 = 48 bytes; supply 10.
-    assert r._decode_inline_image(params, b"\x00" * 10) is None  # noqa: SLF001
+    assert r._decode_inline_image(params, b"\x00" * 10) is None
 
 
 def test_decode_inline_image_no_to_rgb_method_returns_none() -> None:
@@ -1038,7 +1038,7 @@ def test_decode_inline_image_no_to_rgb_method_returns_none() -> None:
             return 2
 
     r = _bare_renderer()
-    r._resolve_color_space = lambda _name: _NoToRGBCS()  # type: ignore[method-assign]  # noqa: SLF001
+    r._resolve_color_space = lambda _name: _NoToRGBCS()  # type: ignore[method-assign]
     params = COSDictionary()
     params.set_int(COSName.get_pdf_name("Width"), 2)
     params.set_int(COSName.get_pdf_name("Height"), 2)
@@ -1048,7 +1048,7 @@ def test_decode_inline_image_no_to_rgb_method_returns_none() -> None:
         COSName.get_pdf_name("NoToRGB"),
     )
     # 8 bytes for 2*2*2 = 8 expected.
-    assert r._decode_inline_image(params, b"\x00" * 8) is None  # noqa: SLF001
+    assert r._decode_inline_image(params, b"\x00" * 8) is None
 
 
 def test_decode_inline_image_to_rgb_returns_none_paints_black() -> None:
@@ -1063,7 +1063,7 @@ def test_decode_inline_image_to_rgb_returns_none_paints_black() -> None:
             return None  # triggers the (0,0,0) fallback per pixel
 
     r = _bare_renderer()
-    r._resolve_color_space = lambda _name: _BadCS()  # type: ignore[method-assign]  # noqa: SLF001
+    r._resolve_color_space = lambda _name: _BadCS()  # type: ignore[method-assign]
     params = COSDictionary()
     params.set_int(COSName.get_pdf_name("Width"), 2)
     params.set_int(COSName.get_pdf_name("Height"), 2)
@@ -1072,7 +1072,7 @@ def test_decode_inline_image_to_rgb_returns_none_paints_black() -> None:
         COSName.get_pdf_name("ColorSpace"),
         COSName.get_pdf_name("BadCS"),
     )
-    out = r._decode_inline_image(params, b"\x00\x40\x80\xc0")  # noqa: SLF001
+    out = r._decode_inline_image(params, b"\x00\x40\x80\xc0")
     assert out is not None and out.size == (2, 2)
     assert int(np.array(out).max()) == 0, "all pixels should be black"
 
@@ -1088,7 +1088,7 @@ def test_decode_inline_image_to_rgb_returns_short_tuple_paints_black() -> None:
             return (1.0, 0.5)  # too short
 
     r = _bare_renderer()
-    r._resolve_color_space = lambda _name: _ShortCS()  # type: ignore[method-assign]  # noqa: SLF001
+    r._resolve_color_space = lambda _name: _ShortCS()  # type: ignore[method-assign]
     params = COSDictionary()
     params.set_int(COSName.get_pdf_name("Width"), 2)
     params.set_int(COSName.get_pdf_name("Height"), 2)
@@ -1097,7 +1097,7 @@ def test_decode_inline_image_to_rgb_returns_short_tuple_paints_black() -> None:
         COSName.get_pdf_name("ColorSpace"),
         COSName.get_pdf_name("ShortCS"),
     )
-    out = r._decode_inline_image(params, b"\x00\x40\x80\xc0")  # noqa: SLF001
+    out = r._decode_inline_image(params, b"\x00\x40\x80\xc0")
     assert out is not None and int(np.array(out).max()) == 0
 
 
@@ -1118,7 +1118,7 @@ def test_decode_inline_image_to_rgb_per_pixel_raises_returns_none() -> None:
             return (0.5, 0.5, 0.5)
 
     r = _bare_renderer()
-    r._resolve_color_space = lambda _name: _MidLoopFail()  # type: ignore[method-assign]  # noqa: SLF001
+    r._resolve_color_space = lambda _name: _MidLoopFail()  # type: ignore[method-assign]
     params = COSDictionary()
     params.set_int(COSName.get_pdf_name("Width"), 2)
     params.set_int(COSName.get_pdf_name("Height"), 2)
@@ -1127,7 +1127,7 @@ def test_decode_inline_image_to_rgb_per_pixel_raises_returns_none() -> None:
         COSName.get_pdf_name("ColorSpace"),
         COSName.get_pdf_name("MidLoopFail"),
     )
-    assert r._decode_inline_image(params, b"\x00" * 4) is None  # noqa: SLF001
+    assert r._decode_inline_image(params, b"\x00" * 4) is None
 
 
 # ---------------------------------------------------------------------------
@@ -1145,26 +1145,26 @@ def _drive_text_knockout(
     ``blend_mode``. Returns the renderer + the (post-composite) parent
     image so the test can inspect the layered result."""
     r = _bare_renderer()
-    r._gs.text_knockout = True  # noqa: SLF001
-    r._gs.fill_alpha = fill_alpha  # noqa: SLF001
-    r._gs.stroke_alpha = fill_alpha  # noqa: SLF001
-    r._gs.blend_mode = blend_mode  # noqa: SLF001
+    r._gs.text_knockout = True
+    r._gs.fill_alpha = fill_alpha
+    r._gs.stroke_alpha = fill_alpha
+    r._gs.blend_mode = blend_mode
     parent = Image.new("RGB", (40, 40), (255, 255, 255))
-    r._image = parent  # noqa: SLF001
+    r._image = parent
     import pypdfbox.rendering._aggdraw_compat as agg
-    r._draw = agg.Draw(parent)  # noqa: SLF001
+    r._draw = agg.Draw(parent)
     # Begin the fork — canvas is swapped to a fresh RGBA layer.
-    r._maybe_begin_text_knockout()  # noqa: SLF001
+    r._maybe_begin_text_knockout()
     # Paint a black rectangle into the layer so the composite has
     # something to lift.
-    layer = r._image  # noqa: SLF001
+    layer = r._image
     assert isinstance(layer, Image.Image)
     # Drop opaque-black pixels directly into the RGBA layer.
     for y in range(5, 35):
         for x in range(5, 35):
             layer.putpixel((x, y), (0, 0, 0, 255))
     # End the fork — composite back through saved alpha + blend mode.
-    r._maybe_end_text_knockout()  # noqa: SLF001
+    r._maybe_end_text_knockout()
     return r, parent
 
 
@@ -1202,32 +1202,32 @@ def test_maybe_begin_text_knockout_existing_layer_is_noop() -> None:
     """Line 6683-6684 — when ``_text_knockout_layer`` is already set
     (defensive against re-entrant BT) the second begin is a no-op."""
     r = _bare_renderer()
-    r._gs.text_knockout = True  # noqa: SLF001
-    r._gs.fill_alpha = 0.5  # noqa: SLF001
-    r._image = Image.new("RGBA", (10, 10), (0, 0, 0, 0))  # noqa: SLF001
+    r._gs.text_knockout = True
+    r._gs.fill_alpha = 0.5
+    r._image = Image.new("RGBA", (10, 10), (0, 0, 0, 0))
     import pypdfbox.rendering._aggdraw_compat as agg
-    r._draw = agg.Draw(r._image)  # noqa: SLF001
+    r._draw = agg.Draw(r._image)
     # Pretend we're already inside a knockout layer.
     sentinel = Image.new("RGBA", (10, 10), (255, 0, 0, 255))
-    r._text_knockout_layer = sentinel  # noqa: SLF001
-    r._maybe_begin_text_knockout()  # noqa: SLF001
+    r._text_knockout_layer = sentinel
+    r._maybe_begin_text_knockout()
     # No swap occurred — the canvas is still the original.
-    assert r._text_knockout_layer is sentinel  # noqa: SLF001
+    assert r._text_knockout_layer is sentinel
 
 
 def test_maybe_end_text_knockout_prev_image_none_returns_early() -> None:
     """Line 6727-6728 — prev_image / prev_draw being None aborts the
     composite. Set up the layer state but leave prev_image None."""
     r = _bare_renderer()
-    r._text_knockout_layer = Image.new("RGBA", (10, 10), (0, 0, 0, 0))  # noqa: SLF001
-    r._text_knockout_prev_image = None  # noqa: SLF001
-    r._text_knockout_prev_draw = None  # noqa: SLF001
-    r._text_knockout_saved_fill_alpha = 1.0  # noqa: SLF001
-    r._text_knockout_saved_stroke_alpha = 1.0  # noqa: SLF001
-    r._text_knockout_saved_blend_mode = None  # noqa: SLF001
-    r._maybe_end_text_knockout()  # noqa: SLF001
+    r._text_knockout_layer = Image.new("RGBA", (10, 10), (0, 0, 0, 0))
+    r._text_knockout_prev_image = None
+    r._text_knockout_prev_draw = None
+    r._text_knockout_saved_fill_alpha = 1.0
+    r._text_knockout_saved_stroke_alpha = 1.0
+    r._text_knockout_saved_blend_mode = None
+    r._maybe_end_text_knockout()
     # Layer cleared.
-    assert r._text_knockout_layer is None  # noqa: SLF001
+    assert r._text_knockout_layer is None
 
 
 def test_accumulate_text_clip_path_without_sk_attr_returns_early() -> None:
@@ -1235,35 +1235,35 @@ def test_accumulate_text_clip_path_without_sk_attr_returns_early() -> None:
     canonical attr where the skia.Path lives in our compat shim), the
     record-path helper returns without queueing anything."""
     r = _bare_renderer()
-    r._text_clip_paths = []  # noqa: SLF001
+    r._text_clip_paths = []
 
     class _PathNoSk:
         pass
 
-    r._accumulate_text_clip_path(  # noqa: SLF001
+    r._accumulate_text_clip_path(
         _PathNoSk(), (1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
     )
-    assert r._text_clip_paths == []  # noqa: SLF001
+    assert r._text_clip_paths == []
 
 
 def test_maybe_begin_text_knockout_with_image_or_draw_none_returns_early() -> None:
     """Line 6679 — _image None or _draw None aborts the begin path."""
     r = _bare_renderer()
-    r._gs.text_knockout = True  # noqa: SLF001
-    r._gs.fill_alpha = 0.5  # noqa: SLF001
-    r._image = None  # noqa: SLF001
-    r._draw = None  # noqa: SLF001
-    r._maybe_begin_text_knockout()  # noqa: SLF001
-    assert r._text_knockout_layer is None  # noqa: SLF001
+    r._gs.text_knockout = True
+    r._gs.fill_alpha = 0.5
+    r._image = None
+    r._draw = None
+    r._maybe_begin_text_knockout()
+    assert r._text_knockout_layer is None
 
 
 def test_commit_text_clip_no_image_or_paths_returns_early() -> None:
     """Lines 6770-6771 — ``_image`` None or empty paths list returns
     early before touching skia."""
     r = _bare_renderer()
-    r._image = None  # noqa: SLF001
-    r._text_clip_paths = []  # noqa: SLF001
-    r._commit_text_clip()  # noqa: SLF001 — no crash
+    r._image = None
+    r._text_clip_paths = []
+    r._commit_text_clip()
 
 
 def test_commit_text_clip_zero_bounds_returns_early() -> None:
@@ -1272,14 +1272,14 @@ def test_commit_text_clip_zero_bounds_returns_early() -> None:
     import skia
 
     r = _bare_renderer()
-    r._image = Image.new("RGB", (10, 10), (255, 255, 255))  # noqa: SLF001
+    r._image = Image.new("RGB", (10, 10), (255, 255, 255))
     # Degenerate path — moveTo only, no draw → zero bounds.
     p = skia.Path()
     p.moveTo(5.0, 5.0)
-    r._text_clip_paths = [p]  # noqa: SLF001
-    r._commit_text_clip()  # noqa: SLF001
+    r._text_clip_paths = [p]
+    r._commit_text_clip()
     # No clip mask was installed because bounds were degenerate.
-    assert r._gs.clip_mask is None  # noqa: SLF001
+    assert r._gs.clip_mask is None
 
 
 def test_commit_text_clip_intersects_existing_clip_mask() -> None:
@@ -1288,21 +1288,21 @@ def test_commit_text_clip_intersects_existing_clip_mask() -> None:
     import skia
 
     r = _bare_renderer()
-    r._image = Image.new("RGB", (20, 20), (255, 255, 255))  # noqa: SLF001
+    r._image = Image.new("RGB", (20, 20), (255, 255, 255))
     # Existing clip mask — a 10x10 white square at top-left.
     existing = Image.new("L", (20, 20), 0)
     for y in range(10):
         for x in range(10):
             existing.putpixel((x, y), 255)
-    r._gs.clip_mask = existing  # noqa: SLF001
+    r._gs.clip_mask = existing
     # New text-clip path: a full 20x20 rectangle.
     p = skia.Path()
     p.addRect(skia.Rect.MakeLTRB(0.0, 0.0, 20.0, 20.0))
-    r._text_clip_paths = [p]  # noqa: SLF001
-    r._commit_text_clip()  # noqa: SLF001
+    r._text_clip_paths = [p]
+    r._commit_text_clip()
     # Intersection of full-rect + existing top-left 10x10 = top-left 10x10.
-    assert r._gs.clip_mask is not None  # noqa: SLF001
-    out = np.array(r._gs.clip_mask)  # noqa: SLF001
+    assert r._gs.clip_mask is not None
+    out = np.array(r._gs.clip_mask)
     assert int(out[5, 5]) > 200, "top-left should still be opaque"
     assert int(out[15, 15]) < 50, "outside-existing should be transparent"
 
@@ -1418,7 +1418,7 @@ def _force_widget_on_page(page: PDPage, widget: PDAnnotationWidget) -> None:
     ``_restore_annotation_iteration`` (autouse below) puts the
     original class method back at teardown."""
     PDPage.get_annotations = (  # type: ignore[method-assign,assignment]
-        lambda self, filter=None: [widget]  # noqa: A006, ARG005
+        lambda self, filter=None: [widget]
     )
     del page  # unused — the lambda doesn't consult self
 
@@ -2000,8 +2000,8 @@ def _drive_op_gs(renderer: PDFRenderer, stub: _StubExtGState) -> None:
         def get_ext_gstate(self, _name: Any) -> Any:
             return stub
 
-    renderer._resources = _StubResources()  # type: ignore[assignment]  # noqa: SLF001
-    renderer._op_set_graphics_state_parameters(  # noqa: SLF001
+    renderer._resources = _StubResources()  # type: ignore[assignment]
+    renderer._op_set_graphics_state_parameters(
         None, [COSName.get_pdf_name("GS1")]
     )
 
@@ -2130,7 +2130,7 @@ def test_apply_transfer_to_pil_image_failure_returns_unchanged() -> None:
         def eval(self, _x: list[float]) -> list[float]:
             raise RuntimeError("transfer boom")
 
-    r._gs.transfer_function = _BadFn()  # noqa: SLF001
+    r._gs.transfer_function = _BadFn()
     img = Image.new("L", (4, 4), 128)
     # Patch _apply_transfer_to_byte to actually raise (the existing impl
     # catches eval errors, so we need to force the outer try to raise).
@@ -2141,7 +2141,7 @@ def test_apply_transfer_to_pil_image_failure_returns_unchanged() -> None:
 
     PDFRenderer._apply_transfer_to_byte = staticmethod(_bad)  # type: ignore[method-assign]
     try:
-        out = r._apply_transfer_to_pil_image(img)  # noqa: SLF001
+        out = r._apply_transfer_to_pil_image(img)
     finally:
         PDFRenderer._apply_transfer_to_byte = original  # type: ignore[method-assign]
     # Returned unchanged.
@@ -2157,7 +2157,7 @@ def test_apply_transfer_to_rgb_bytes_exception_path() -> None:
         def eval(self, _x: list[float]) -> list[float]:
             raise RuntimeError("rgb boom")
 
-    r._gs.transfer_function = _BadFn()  # noqa: SLF001
+    r._gs.transfer_function = _BadFn()
     # Patch _apply_transfer_to_byte to raise so the outer try catches.
     original = PDFRenderer._apply_transfer_to_byte
 
@@ -2166,7 +2166,7 @@ def test_apply_transfer_to_rgb_bytes_exception_path() -> None:
 
     PDFRenderer._apply_transfer_to_byte = staticmethod(_bad)  # type: ignore[method-assign]
     try:
-        out = r._apply_transfer_to_rgb_bytes((128, 64, 32))  # noqa: SLF001
+        out = r._apply_transfer_to_rgb_bytes((128, 64, 32))
     finally:
         PDFRenderer._apply_transfer_to_byte = original  # type: ignore[method-assign]
     assert out == (128, 64, 32)
@@ -2180,7 +2180,7 @@ def test_pop_gs_during_page_render_annotation_iteration_error_handled() -> None:
     contents.set_raw_data(b"0 0 30 30 re\nf\n")
     page.get_cos_object().set_item(COSName.CONTENTS, contents)
 
-    def _bomb(self: Any, filter: Any = None) -> Any:  # noqa: A002, ARG001
+    def _bomb(self: Any, filter: Any = None) -> Any:
         raise RuntimeError("annot iteration boom")
 
     PDPage.get_annotations = _bomb  # type: ignore[method-assign]
@@ -2213,7 +2213,7 @@ def test_render_annotation_individual_raise_logs_and_continues() -> None:
     bad = PDAnnotationWidget()
     bad.set_rectangle(PDRectangle(10.0, 10.0, 30.0, 30.0))
 
-    def _get(self: Any, filter: Any = None) -> Any:  # noqa: A002, ARG001
+    def _get(self: Any, filter: Any = None) -> Any:
         return [bad, good]
 
     PDPage.get_annotations = _get  # type: ignore[method-assign]
@@ -2248,15 +2248,15 @@ def test_color_components_coerce_falls_through_to_set_returns_early() -> None:
     tuple is None and there is no pattern, return early (no fill_rgb
     update)."""
     r = _bare_renderer()
-    initial_rgb = r._gs.fill_rgb  # noqa: SLF001
+    initial_rgb = r._gs.fill_rgb
     # Build a single non-numeric, non-name operand (so _coerce_color_components
     # rejects it AND _resolve_pattern_operand returns None).
     class _Bogus:
         pass
 
-    r._op_set_fill_color_n(None, [_Bogus()])  # noqa: SLF001
+    r._op_set_fill_color_n(None, [_Bogus()])
     # fill_rgb unchanged.
-    assert r._gs.fill_rgb == initial_rgb  # noqa: SLF001
+    assert r._gs.fill_rgb == initial_rgb
 
 
 def test_decode_inline_image_static_with_non_dict_params_returns_none() -> None:
@@ -2294,7 +2294,7 @@ def test_extract_pattern_tint_rgb_with_int_value_only_operand() -> None:
         def get_alternate_color_space(self) -> Any:
             return None
 
-    out = r._extract_pattern_tint_rgb(  # noqa: SLF001
+    out = r._extract_pattern_tint_rgb(
         [_IntOnly(), COSName.get_pdf_name("P1")], _PatternCS(),
     )
     # The int_value branch was walked; alt-CS is None so we expect None.
@@ -2311,10 +2311,10 @@ def test_apply_function_pdfunction_create_returns_none() -> None:
     # COSObject(1, 0) with no loader → get_object() returns None →
     # PDFunction.create unwraps and returns None.
     empty_obj = COSObject(1, 0)
-    assert r._apply_function(empty_obj, 0.3) == 0.3  # noqa: SLF001
+    assert r._apply_function(empty_obj, 0.3) == 0.3
     # Clamp test.
-    assert r._apply_function(empty_obj, 1.5) == 1.0  # noqa: SLF001
-    assert r._apply_function(empty_obj, -0.5) == 0.0  # noqa: SLF001
+    assert r._apply_function(empty_obj, 1.5) == 1.0
+    assert r._apply_function(empty_obj, -0.5) == 0.0
 
 
 def test_apply_function_eval_returns_empty_clamps_input() -> None:
@@ -2325,7 +2325,7 @@ def test_apply_function_eval_returns_empty_clamps_input() -> None:
             return []
 
     r = _bare_renderer()
-    out = r._apply_function(_EmptyFn(), 0.5)  # noqa: SLF001
+    out = r._apply_function(_EmptyFn(), 0.5)
     assert out == 0.5
 
 
@@ -2336,7 +2336,7 @@ def test_apply_function_result_clamps_negative_to_zero() -> None:
             return [-0.5]
 
     r = _bare_renderer()
-    assert r._apply_function(_NegFn(), 0.5) == 0.0  # noqa: SLF001
+    assert r._apply_function(_NegFn(), 0.5) == 0.0
 
 
 def test_apply_function_result_clamps_over_one_to_one() -> None:
@@ -2346,7 +2346,7 @@ def test_apply_function_result_clamps_over_one_to_one() -> None:
             return [1.5]
 
     r = _bare_renderer()
-    assert r._apply_function(_OverFn(), 0.5) == 1.0  # noqa: SLF001
+    assert r._apply_function(_OverFn(), 0.5) == 1.0
 
 
 def test_overprint_suppresses_stroke_op_returns_early() -> None:
@@ -2354,22 +2354,22 @@ def test_overprint_suppresses_stroke_op_returns_early() -> None:
     stroke flag is flipped off mid-path-paint. Drive directly on a
     bare renderer for precise state control."""
     r = _bare_renderer()
-    r._image = Image.new("RGB", (40, 40), (255, 255, 255))  # noqa: SLF001
+    r._image = Image.new("RGB", (40, 40), (255, 255, 255))
     import pypdfbox.rendering._aggdraw_compat as agg
-    r._draw = agg.Draw(r._image)  # noqa: SLF001
+    r._draw = agg.Draw(r._image)
     # Set stroke overprint on with OPM=1, stroke_rgb black so the
     # suppression test on line 2928 returns True.
-    r._gs.overprint_stroking = True  # noqa: SLF001
-    r._gs.overprint_non_stroking = False  # noqa: SLF001
-    r._gs.overprint_mode = 1  # noqa: SLF001
-    r._gs.stroke_rgb = (0, 0, 0)  # noqa: SLF001
-    r._gs.fill_rgb = (200, 100, 100)  # non-black → fill not suppressed  # noqa: SLF001
-    r._subpaths = [[("M", 0.0, 0.0), ("L", 10.0, 0.0), ("L", 10.0, 10.0), ("Z",)]]  # noqa: SLF001
-    r._pending_clip = None  # noqa: SLF001
+    r._gs.overprint_stroking = True
+    r._gs.overprint_non_stroking = False
+    r._gs.overprint_mode = 1
+    r._gs.stroke_rgb = (0, 0, 0)
+    r._gs.fill_rgb = (200, 100, 100)  # non-black → fill not suppressed
+    r._subpaths = [[("M", 0.0, 0.0), ("L", 10.0, 0.0), ("L", 10.0, 10.0), ("Z",)]]
+    r._pending_clip = None
     # Drive _paint with both stroke+fill — stroke suppression flips
     # at line 2929; fill still runs.
     with contextlib.suppress(Exception):
-        r._paint(stroke=True, fill=True, even_odd=False)  # noqa: SLF001
+        r._paint(stroke=True, fill=True, even_odd=False)
 
 
 def test_stroke_adjustment_sub_pixel_snaps_to_one() -> None:
@@ -2403,14 +2403,14 @@ def test_paint_overprint_suppression_only_kicks_when_rgb_is_black() -> None:
     """Sanity — when stroke_rgb is not (0,0,0), overprint must NOT
     suppress the stroke (line 2204 falls through, line 2929 not hit)."""
     r = _bare_renderer()
-    r._image = Image.new("RGB", (10, 10), (255, 255, 255))  # noqa: SLF001
+    r._image = Image.new("RGB", (10, 10), (255, 255, 255))
     import pypdfbox.rendering._aggdraw_compat as agg
-    r._draw = agg.Draw(r._image)  # noqa: SLF001
-    r._gs.overprint_stroking = True  # noqa: SLF001
-    r._gs.overprint_non_stroking = False  # noqa: SLF001
-    r._gs.overprint_mode = 1  # noqa: SLF001
-    r._gs.stroke_rgb = (180, 60, 60)  # non-black  # noqa: SLF001
-    assert r._overprint_suppresses_paint(stroke=True, fill=False) is False  # noqa: SLF001
+    r._draw = agg.Draw(r._image)
+    r._gs.overprint_stroking = True
+    r._gs.overprint_non_stroking = False
+    r._gs.overprint_mode = 1
+    r._gs.stroke_rgb = (180, 60, 60)  # non-black
+    assert r._overprint_suppresses_paint(stroke=True, fill=False) is False
 
 
 def test_paint_through_clip_with_smask_render_raises_handled() -> None:
@@ -2418,11 +2418,11 @@ def test_paint_through_clip_with_smask_render_raises_handled() -> None:
     ``_paint_through_clip``, the exception is logged and the composite
     skips the soft mask multiply step."""
     r = _bare_renderer()
-    r._image = Image.new("RGB", (20, 20), (255, 255, 255))  # noqa: SLF001
+    r._image = Image.new("RGB", (20, 20), (255, 255, 255))
     import pypdfbox.rendering._aggdraw_compat as agg
-    r._draw = agg.Draw(r._image)  # noqa: SLF001
-    r._subpaths = [[("M", 0.0, 0.0), ("L", 10.0, 0.0), ("L", 10.0, 10.0), ("Z",)]]  # noqa: SLF001
-    r._transparency_group_depth = 0  # noqa: SLF001
+    r._draw = agg.Draw(r._image)
+    r._subpaths = [[("M", 0.0, 0.0), ("L", 10.0, 0.0), ("L", 10.0, 10.0), ("Z",)]]
+    r._transparency_group_depth = 0
     clip_mask = Image.new("L", (20, 20), 255)
     # Drive _paint_through_clip with a stub soft_mask whose render
     # raises. Patch _render_soft_mask_alpha to raise.
@@ -2433,7 +2433,7 @@ def test_paint_through_clip_with_smask_render_raises_handled() -> None:
 
     PDFRenderer._render_soft_mask_alpha = _bomb  # type: ignore[method-assign]
     try:
-        r._paint_through_clip(  # noqa: SLF001
+        r._paint_through_clip(
             stroke=False, fill=True, even_odd=False,
             clip_mask=clip_mask, soft_mask=object(),
         )
@@ -2481,7 +2481,7 @@ def test_flatten_subpath_to_device_with_bezier_segment() -> None:
         ("M", 0.0, 0.0),
         ("C", 1.0, 1.0, 2.0, 2.0, 3.0, 3.0),
     ]
-    out = r._flatten_subpath_to_device(  # noqa: SLF001
+    out = r._flatten_subpath_to_device(
         subpath, (1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
     )
     # 1 (M) + 16 (Bezier samples) = 17 points.
@@ -2491,17 +2491,17 @@ def test_flatten_subpath_to_device_with_bezier_segment() -> None:
 def test_build_skia_path_alpha_mask_no_image_returns_none() -> None:
     """Line 3273-3274 — _image None returns None."""
     r = _bare_renderer()
-    r._image = None  # noqa: SLF001
-    r._subpaths = [[("M", 0.0, 0.0), ("L", 10.0, 10.0)]]  # noqa: SLF001
-    assert r._build_skia_path_alpha_mask(even_odd=False) is None  # noqa: SLF001
+    r._image = None
+    r._subpaths = [[("M", 0.0, 0.0), ("L", 10.0, 10.0)]]
+    assert r._build_skia_path_alpha_mask(even_odd=False) is None
 
 
 def test_build_skia_path_alpha_mask_no_segments_returns_none() -> None:
     """Line 3299-3300 — empty subpaths (no M/L/C/Z) returns None."""
     r = _bare_renderer()
-    r._image = Image.new("RGB", (10, 10), (255, 255, 255))  # noqa: SLF001
-    r._subpaths = [[]]  # noqa: SLF001
-    assert r._build_skia_path_alpha_mask(even_odd=False) is None  # noqa: SLF001
+    r._image = Image.new("RGB", (10, 10), (255, 255, 255))
+    r._subpaths = [[]]
+    assert r._build_skia_path_alpha_mask(even_odd=False) is None
 
 
 def test_op_do_xobject_is_stencil_raises_falls_back() -> None:
@@ -2543,17 +2543,17 @@ def test_op_do_paint_stencil_mask_raises_logs_and_continues() -> None:
     """Lines 4839-4840 — when ``_paint_stencil_mask`` raises, the
     exception is logged and the dispatch returns."""
     r = _bare_renderer()
-    r._image = Image.new("RGB", (20, 20), (255, 255, 255))  # noqa: SLF001
+    r._image = Image.new("RGB", (20, 20), (255, 255, 255))
     import pypdfbox.rendering._aggdraw_compat as agg
-    r._draw = agg.Draw(r._image)  # noqa: SLF001
-    r._resources = PDResources()  # noqa: SLF001
+    r._draw = agg.Draw(r._image)
+    r._resources = PDResources()
     img_xobj = _make_image_xobject(
         width=2, height=2, data=b"\xff\xff", cs_name="DeviceGray", bpc=1,
     )
     img_xobj.get_cos_object().set_item(
         COSName.get_pdf_name("ImageMask"), COSBoolean.TRUE
     )
-    r._resources.put(  # noqa: SLF001
+    r._resources.put(
         COSName.get_pdf_name("XObject"),
         COSName.get_pdf_name("Im1"),
         img_xobj.get_cos_object(),
@@ -2562,17 +2562,17 @@ def test_op_do_paint_stencil_mask_raises_logs_and_continues() -> None:
     def _bomb_paint(_img: Any) -> None:
         raise RuntimeError("paint boom")
 
-    r._paint_stencil_mask = _bomb_paint  # type: ignore[method-assign]  # noqa: SLF001
+    r._paint_stencil_mask = _bomb_paint  # type: ignore[method-assign]
     # Drive _op_do directly.
-    r._op_do(None, [COSName.get_pdf_name("Im1")])  # noqa: SLF001
+    r._op_do(None, [COSName.get_pdf_name("Im1")])
 
 
 def test_paint_stencil_mask_zero_dimensions_returns_early() -> None:
     """Lines 6146-6147 — stencil with zero width/height returns early."""
     r = _bare_renderer()
-    r._image = Image.new("RGB", (10, 10), (255, 255, 255))  # noqa: SLF001
+    r._image = Image.new("RGB", (10, 10), (255, 255, 255))
     import pypdfbox.rendering._aggdraw_compat as agg
-    r._draw = agg.Draw(r._image)  # noqa: SLF001
+    r._draw = agg.Draw(r._image)
 
     class _ZeroSizeImage:
         def get_width(self) -> int:
@@ -2581,7 +2581,7 @@ def test_paint_stencil_mask_zero_dimensions_returns_early() -> None:
         def get_height(self) -> int:
             return 0
 
-    r._paint_stencil_mask(_ZeroSizeImage())  # noqa: SLF001  — no crash
+    r._paint_stencil_mask(_ZeroSizeImage())
 
 
 def test_paint_stencil_mask_truncated_data_returns_early() -> None:
@@ -2596,19 +2596,19 @@ def test_paint_stencil_mask_truncated_data_returns_early() -> None:
         COSName.get_pdf_name("ImageMask"), COSBoolean.TRUE
     )
     r = _bare_renderer()
-    r._image = Image.new("RGB", (20, 20), (255, 255, 255))  # noqa: SLF001
+    r._image = Image.new("RGB", (20, 20), (255, 255, 255))
     import pypdfbox.rendering._aggdraw_compat as agg
-    r._draw = agg.Draw(r._image)  # noqa: SLF001
-    r._paint_stencil_mask(img_xobj)  # noqa: SLF001  — no crash
+    r._draw = agg.Draw(r._image)
+    r._paint_stencil_mask(img_xobj)
 
 
 def test_paint_stencil_mask_non_1bpc_returns_early() -> None:
     """Lines 6149-6151 — stencil with bpc != 1 is rejected (spec
     requires 1 bpc for stencils)."""
     r = _bare_renderer()
-    r._image = Image.new("RGB", (10, 10), (255, 255, 255))  # noqa: SLF001
+    r._image = Image.new("RGB", (10, 10), (255, 255, 255))
     import pypdfbox.rendering._aggdraw_compat as agg
-    r._draw = agg.Draw(r._image)  # noqa: SLF001
+    r._draw = agg.Draw(r._image)
 
     class _BadBpcImage:
         def get_width(self) -> int:
@@ -2620,7 +2620,7 @@ def test_paint_stencil_mask_non_1bpc_returns_early() -> None:
         def get_bits_per_component(self) -> int:
             return 8  # invalid for stencil
 
-    r._paint_stencil_mask(_BadBpcImage())  # noqa: SLF001
+    r._paint_stencil_mask(_BadBpcImage())
 
 
 def test_paint_stencil_mask_decode_inverted_polarity() -> None:
@@ -2644,10 +2644,10 @@ def test_paint_stencil_mask_decode_inverted_polarity() -> None:
     )
 
     r = _bare_renderer()
-    r._image = Image.new("RGB", (20, 20), (255, 255, 255))  # noqa: SLF001
+    r._image = Image.new("RGB", (20, 20), (255, 255, 255))
     import pypdfbox.rendering._aggdraw_compat as agg
-    r._draw = agg.Draw(r._image)  # noqa: SLF001
-    r._paint_stencil_mask(img_xobj)  # noqa: SLF001
+    r._draw = agg.Draw(r._image)
+    r._paint_stencil_mask(img_xobj)
 
 
 def test_decode_image_xobject_cs_raises_returns_rgb_fallback() -> None:
@@ -2670,7 +2670,7 @@ def test_decode_image_xobject_cs_raises_returns_rgb_fallback() -> None:
 
     img.get_color_space = _bomb  # type: ignore[method-assign]
     r = _bare_renderer()
-    out = r._decode_image_xobject(img)  # noqa: SLF001
+    out = r._decode_image_xobject(img)
     # 3-byte payload + cs_name None falls into the default DeviceRGB
     # path (width*height*3 = 3 bytes available).
     assert out is not None
@@ -2694,6 +2694,6 @@ def test_decode_image_xobject_to_rgb_image_raises_returns_none() -> None:
     img.to_pil_image = lambda: None  # type: ignore[method-assign]
     img.get_color_space = lambda: _BadCS()  # type: ignore[method-assign]
     r = _bare_renderer()
-    out = r._decode_image_xobject(img)  # noqa: SLF001
+    out = r._decode_image_xobject(img)
     # Indexed name + raising to_rgb_image returns None.
     assert out is None

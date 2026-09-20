@@ -152,7 +152,7 @@ def test_wave1339_create_from_byte_array_rejects_non_bytes_input() -> None:
     doc = PDDocument()
     try:
         with pytest.raises(TypeError, match="byte_array must be bytes-like"):
-            PDImageXObject.create_from_byte_array(doc, cast(Any, "not-bytes"))
+            PDImageXObject.create_from_byte_array(doc, cast("Any", "not-bytes"))
     finally:
         doc.close()
 
@@ -278,7 +278,7 @@ def test_wave1339_create_raw_stream_skips_non_bytes_payload() -> None:
             def read(self) -> str:  # not bytes — deliberately
                 return "not bytes"
 
-        stream = PDImageXObject.create_raw_stream(doc, cast(Any, NonBytesIO()))
+        stream = PDImageXObject.create_raw_stream(doc, cast("Any", NonBytesIO()))
         with stream.create_raw_input_stream() as src:
             assert src.read() == b""
     finally:
@@ -330,7 +330,7 @@ def test_wave1339_get_raw_raster_returns_none_for_non_stream_cos() -> None:
     hold a dictionary)."""
     image = PDImageXObject(COSStream())
     # Override ``get_cos_object`` so it reports a plain dictionary.
-    image.get_cos_object = lambda: cast(Any, COSDictionary())  # type: ignore[method-assign]
+    image.get_cos_object = lambda: cast("Any", COSDictionary())  # type: ignore[method-assign]
     assert image.get_raw_raster() is None
 
 
@@ -382,7 +382,7 @@ def test_wave1339_extract_matte_returns_raw_matte_when_color_space_has_no_to_rgb
 
         # No ``to_rgb`` attribute at all.
 
-    image.get_color_space = lambda: cast(Any, NoToRgbCS())  # type: ignore[method-assign]
+    image.get_color_space = lambda: cast("Any", NoToRgbCS())  # type: ignore[method-assign]
     assert image.extract_matte(soft) == pytest.approx([0.7, 0.7, 0.7])
 
 
@@ -400,7 +400,7 @@ def test_wave1339_extract_matte_returns_raw_matte_when_to_rgb_raises() -> None:
             raise RuntimeError("bad transform")
 
     # Monkey-patch ``get_color_space`` so the method picks up our fake.
-    image.get_color_space = lambda: cast(Any, FakeCS())  # type: ignore[method-assign]
+    image.get_color_space = lambda: cast("Any", FakeCS())  # type: ignore[method-assign]
     out = image.extract_matte(soft)
     assert out == pytest.approx([0.4, 0.4, 0.4])
 
@@ -418,7 +418,7 @@ def test_wave1339_extract_matte_returns_raw_matte_when_to_rgb_returns_none() -> 
         def to_rgb(self, components: list[float]) -> None:
             return None
 
-    image.get_color_space = lambda: cast(Any, NoneCS())  # type: ignore[method-assign]
+    image.get_color_space = lambda: cast("Any", NoneCS())  # type: ignore[method-assign]
     assert image.extract_matte(soft) == pytest.approx([0.1, 0.2, 0.3])
 
 
@@ -436,7 +436,7 @@ def test_wave1339_extract_matte_returns_converted_rgb_when_to_rgb_succeeds() -> 
             r, g, b = components
             return (r, g, b)
 
-    image.get_color_space = lambda: cast(Any, IdentityCS())  # type: ignore[method-assign]
+    image.get_color_space = lambda: cast("Any", IdentityCS())  # type: ignore[method-assign]
     out = image.extract_matte(soft)
     assert out == [1.0, 0.0, 0.0]
 

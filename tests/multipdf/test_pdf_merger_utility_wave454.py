@@ -45,7 +45,7 @@ def _make_doc(page_count: int) -> PDDocument:
 
 def test_wave454_open_source_rejects_binary_stream_returning_text() -> None:
     with pytest.raises(TypeError, match="binary stream source read"):
-        PDFMergerUtility._open_source(io.StringIO("%PDF-1.7"))  # type: ignore[arg-type]  # noqa: SLF001,E501
+        PDFMergerUtility._open_source(io.StringIO("%PDF-1.7"))  # type: ignore[arg-type]
 
 
 def test_wave454_acroform_legacy_mode_empty_source_fields_is_noop() -> None:
@@ -65,7 +65,7 @@ def test_wave454_acroform_legacy_mode_empty_source_fields_is_noop() -> None:
 
     dest_form = Form([])
 
-    PDFMergerUtility()._acro_form_legacy_mode(  # noqa: SLF001
+    PDFMergerUtility()._acro_form_legacy_mode(
         _IdentityCloner(), dest_form, Form([])
     )
 
@@ -86,7 +86,7 @@ def test_wave454_join_fields_mode_empty_source_fields_leaves_destination() -> No
 
     dest_form = Form([])
 
-    PDFMergerUtility()._acro_form_join_fields_mode(  # noqa: SLF001
+    PDFMergerUtility()._acro_form_join_fields_mode(
         _IdentityCloner(), dest_form, Form([])
     )
 
@@ -120,7 +120,7 @@ def test_wave454_page_labels_invalid_index_rolls_back_partial_append(
     )
 
     with caplog.at_level(logging.ERROR, logger="pypdfbox.multipdf.pdf_merger_utility"):
-        PDFMergerUtility()._merge_page_labels(  # noqa: SLF001
+        PDFMergerUtility()._merge_page_labels(
             _IdentityCloner(), source, destination
         )
 
@@ -144,7 +144,7 @@ def test_wave454_update_struct_parent_entries_offsets_non_negative_values() -> N
     annots.add(COSName.get_pdf_name("NotADict"))
     page.set_item(_ANNOTS, annots)
 
-    PDFMergerUtility._update_struct_parent_entries(page, 10)  # noqa: SLF001
+    PDFMergerUtility._update_struct_parent_entries(page, 10)
 
     assert page.get_dictionary_object(_STRUCT_PARENTS).int_value() == 14
     assert shifted_annot.get_dictionary_object(_STRUCT_PARENT).int_value() == 11
@@ -158,7 +158,7 @@ def test_wave454_merge_k_entries_installs_source_k_when_destination_empty() -> N
     src_root.set_item(_K, child)
     dest_root = COSDictionary()
 
-    PDFMergerUtility()._merge_k_entries(  # noqa: SLF001
+    PDFMergerUtility()._merge_k_entries(
         _IdentityCloner(), _Root(src_root), _Root(dest_root)
     )
 
@@ -176,7 +176,7 @@ def test_wave454_merge_role_map_installs_missing_destination_map() -> None:
     src_root.set_item(_ROLE_MAP, src_role_map)
     dest_root = COSDictionary()
 
-    PDFMergerUtility()._merge_role_map(  # noqa: SLF001
+    PDFMergerUtility()._merge_role_map(
         _IdentityCloner(), _Root(src_root), _Root(dest_root)
     )
 

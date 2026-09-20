@@ -40,7 +40,7 @@ def test_three_arg_constructor_writes_to_underlying_dict() -> None:
 def test_three_arg_constructor_coerces_supplement_to_int() -> None:
     # Plain int float-likes (e.g. ``True``) coerce; floats are rejected
     # by the underlying COS setter, so we restrict to integers / int-likes.
-    info = PDCIDSystemInfo("Adobe", "GB1", True)  # noqa: FBT003
+    info = PDCIDSystemInfo("Adobe", "GB1", True)
     assert info.get_supplement() == 1
 
 

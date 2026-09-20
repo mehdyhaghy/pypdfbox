@@ -21,16 +21,16 @@ import pytest
 pytest.importorskip("pypdfbox.pdmodel.encryption.standard_security_handler")
 pytest.importorskip("pypdfbox.pdmodel.encryption.standard_protection_policy")
 
-from pypdfbox import Loader, PDDocument  # noqa: E402
-from pypdfbox.cos import COSStream  # noqa: E402
-from pypdfbox.pdmodel import PDPage  # noqa: E402
-from pypdfbox.pdmodel.encryption.access_permission import (  # noqa: E402
+from pypdfbox import Loader, PDDocument
+from pypdfbox.cos import COSStream
+from pypdfbox.pdmodel import PDPage
+from pypdfbox.pdmodel.encryption.access_permission import (
     AccessPermission,
 )
-from pypdfbox.pdmodel.encryption.standard_protection_policy import (  # noqa: E402
+from pypdfbox.pdmodel.encryption.standard_protection_policy import (
     StandardProtectionPolicy,
 )
-from pypdfbox.pdmodel.encryption.standard_security_handler import (  # noqa: E402
+from pypdfbox.pdmodel.encryption.standard_security_handler import (
     InvalidPasswordException,
 )
 
@@ -191,5 +191,5 @@ def test_protect_then_save_propagates_security_handler() -> None:
     )
     pd.protect(policy)
     _ = _save_to_bytes(pd)
-    assert pd._security_handler is not None  # noqa: SLF001
+    assert pd._security_handler is not None
     pd.close()

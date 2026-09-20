@@ -34,7 +34,7 @@ def test_wave688_append_field_subtree_stops_for_non_terminal_non_node_field() ->
     field = _OddField(form, terminal=False)
     out: list[PDField] = []
 
-    form._append_field_subtree(field, out)  # noqa: SLF001
+    form._append_field_subtree(field, out)
 
     assert out == [field]
 
@@ -46,7 +46,7 @@ def test_wave688_collect_terminals_ignores_fields_outside_expected_classes(
     form = PDAcroForm()
     field = _OddField(form, terminal=terminal)
 
-    assert form._collect_terminals(field) == []  # noqa: SLF001
+    assert form._collect_terminals(field) == []
 
 
 def test_wave688_flatten_with_no_targets_returns_without_mutating_form() -> None:
@@ -78,7 +78,7 @@ def test_wave688_flatten_widget_skips_valid_appearance_without_page() -> None:
     ap.set_item("N", _appearance())
     widget.set_item("AP", ap)
 
-    form._flatten_widget(widget)  # noqa: SLF001
+    form._flatten_widget(widget)
 
     assert widget.get_dictionary_object("AP") is ap
 
@@ -94,7 +94,7 @@ def test_wave688_resolve_widget_page_scans_pages_without_match() -> None:
         annots.add(COSDictionary())
         second.get_cos_object().set_item("Annots", annots)
 
-        assert PDAcroForm(doc)._resolve_widget_page(COSDictionary()) is None  # noqa: SLF001
+        assert PDAcroForm(doc)._resolve_widget_page(COSDictionary()) is None
     finally:
         doc.close()
 
@@ -113,11 +113,11 @@ def test_wave688_read_form_geometry_treats_non_numeric_bbox_as_missing() -> None
         ),
     )
 
-    bbox, matrix = PDAcroForm._read_form_geometry(stream)  # noqa: SLF001
+    bbox, matrix = PDAcroForm._read_form_geometry(stream)
 
     assert bbox is None
     assert matrix == (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
 
 
 def test_wave688_remove_acro_form_from_catalog_is_noop_without_document() -> None:
-    PDAcroForm()._remove_acro_form_from_catalog()  # noqa: SLF001
+    PDAcroForm()._remove_acro_form_from_catalog()

@@ -39,7 +39,7 @@ def test_wave878_wave542_make_doc_and_finish_flush_live_draw() -> None:
 
     prepared_doc, renderer = wave542._prepared_renderer((2, 2))
     try:
-        assert renderer._draw is not None  # noqa: SLF001
+        assert renderer._draw is not None
         wave542._finish(renderer)
     finally:
         prepared_doc.close()

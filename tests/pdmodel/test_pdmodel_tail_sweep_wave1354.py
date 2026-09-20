@@ -277,7 +277,7 @@ def test_pd_type1_font_embedder_width_fallback_on_value_error(
     """
     import io as _io
 
-    import fontTools.t1Lib as _t1mod
+    from fontTools import t1Lib
 
     # Defensive: embedder references these as static-attribute constants
     # on COSName; ``cos_name.py`` does not pre-register them, so other
@@ -310,7 +310,7 @@ def test_pd_type1_font_embedder_width_fallback_on_value_error(
         def getGlyphSet(self) -> object:  # noqa: N802 — fontTools API
             raise ValueError("forced width-lookup failure")
 
-    monkeypatch.setattr(_t1mod, "T1Font", _StubT1)
+    monkeypatch.setattr(t1Lib, "T1Font", _StubT1)
 
     # Minimal valid PFB byte layout (markers + segment lengths).
     seg1 = b"%!PS"

@@ -666,8 +666,8 @@ def _build_minimal_cff_bytes() -> bytes:
     fontTools' :class:`FontBuilder` so the parser end-to-end gets
     exercised without depending on a system font fixture.
     """
-    from fontTools.fontBuilder import FontBuilder  # noqa: PLC0415
-    from fontTools.misc.psCharStrings import T2CharString  # noqa: PLC0415
+    from fontTools.fontBuilder import FontBuilder
+    from fontTools.misc.psCharStrings import T2CharString
 
     fb = FontBuilder(1000, isTTF=False)
     glyph_order = [".notdef", "A"]
@@ -693,7 +693,7 @@ def _build_minimal_cff_bytes() -> bytes:
 _BUILT_CFF: bytes | None
 try:
     _BUILT_CFF = _build_minimal_cff_bytes()
-except Exception:  # noqa: BLE001
+except Exception:
     _BUILT_CFF = None
 
 

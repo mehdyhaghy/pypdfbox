@@ -126,7 +126,7 @@ def test_wave377_array_emits_eol_after_every_tenth_item() -> None:
 def test_wave377_dictionary_visitor_skips_none_entries() -> None:
     dictionary = COSDictionary()
     dictionary.set_int("Present", 7)
-    cast(Any, dictionary)._items[COSName.get_pdf_name("Missing")] = None
+    cast("Any", dictionary)._items[COSName.get_pdf_name("Missing")] = None
     sink = io.BytesIO()
 
     with COSWriter(sink) as writer:

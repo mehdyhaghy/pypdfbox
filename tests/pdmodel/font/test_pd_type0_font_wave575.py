@@ -19,7 +19,7 @@ def test_wave575_gsub_empty_scripts_and_apply_noop_paths(
         font,
         "_get_gsub_table",
         lambda: SimpleNamespace(
-            get_supported_script_tags=lambda: [],
+            get_supported_script_tags=list,
             get_raw_table=lambda: object(),
             _glyph_order=[],
             _glyph_name_to_gid={},
@@ -86,7 +86,7 @@ def test_wave575_collect_feature_indices_ignores_missing_langsys() -> None:
         ),
     )
 
-    assert PDType0Font._collect_gsub_feature_indices(raw, ["liga"]) == []  # noqa: SLF001
+    assert PDType0Font._collect_gsub_feature_indices(raw, ["liga"]) == []
 
 
 def test_wave575_ligature_candidate_longer_than_run_is_ignored() -> None:
@@ -102,7 +102,7 @@ def test_wave575_ligature_candidate_longer_than_run_is_ignored() -> None:
         ]
     )
 
-    assert PDType0Font._apply_ligature_run(  # noqa: SLF001
+    assert PDType0Font._apply_ligature_run(
         lookup,
         [1, 2],
         [".notdef", "f", "i", "f_i"],
@@ -124,7 +124,7 @@ def test_wave575_embedded_cmap_fallback_negative_shapes(
 ) -> None:
     font = PDType0Font()
 
-    assert font._unicode_from_embedded_cmap(1) is None  # noqa: SLF001
+    assert font._unicode_from_embedded_cmap(1) is None
 
     class InnerTTF(dict):
         def getGlyphOrder(self) -> list[str]:
@@ -138,10 +138,10 @@ def test_wave575_embedded_cmap_fallback_negative_shapes(
     monkeypatch.setattr(
         descendant,
         "get_true_type_font",
-        lambda: SimpleNamespace(_tt=InnerTTF(cmap=SimpleNamespace(getBestCmap=lambda: {}))),
+        lambda: SimpleNamespace(_tt=InnerTTF(cmap=SimpleNamespace(getBestCmap=dict))),
     )
 
-    assert font._unicode_from_embedded_cmap(1) is None  # noqa: SLF001
+    assert font._unicode_from_embedded_cmap(1) is None
 
     monkeypatch.setattr(descendant, "code_to_gid", lambda _cid: 1)
     monkeypatch.setattr(
@@ -152,13 +152,13 @@ def test_wave575_embedded_cmap_fallback_negative_shapes(
         ),
     )
 
-    assert font._unicode_from_embedded_cmap(1) is None  # noqa: SLF001
+    assert font._unicode_from_embedded_cmap(1) is None
 
 
 def test_wave575_ttf_helpers_fall_back_for_malformed_names_and_units() -> None:
-    assert type0_module._ps_name_from_ttf(SimpleNamespace(_tt={}), "Fallback") == "Fallback"  # noqa: SLF001
+    assert type0_module._ps_name_from_ttf(SimpleNamespace(_tt={}), "Fallback") == "Fallback"
     assert (
-        type0_module._ps_name_from_ttf(  # noqa: SLF001
+        type0_module._ps_name_from_ttf(
             SimpleNamespace(
                 _tt={
                     "name": SimpleNamespace(
@@ -180,14 +180,14 @@ def test_wave575_ttf_helpers_fall_back_for_malformed_names_and_units() -> None:
     )
     hhea = SimpleNamespace(get_ascender=lambda: 8, get_descender=lambda: -3)
     descriptor = PDFontDescriptor()
-    type0_module._populate_descriptor_from_ttf(  # noqa: SLF001
+    type0_module._populate_descriptor_from_ttf(
         descriptor,
         SimpleNamespace(get_header=lambda: head, get_horizontal_header=lambda: hhea),
     )
 
     assert descriptor.get_cos_object().get_int(COSName.get_pdf_name("Ascent")) == 8
 
-    widths = type0_module._build_w_array(  # noqa: SLF001
+    widths = type0_module._build_w_array(
         SimpleNamespace(get_header=lambda: head, advance_widths=[1, 2])
     )
 

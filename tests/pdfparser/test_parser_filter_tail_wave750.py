@@ -25,7 +25,7 @@ def _pack_lzw_codes(codes: list[tuple[int, int]]) -> bytes:
 def test_lzw_decode_params_array_exception_returns_empty_dictionary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def raise_from_get_object(self: COSArray, index: int) -> object:  # noqa: ARG001
+    def raise_from_get_object(self: COSArray, index: int) -> object:
         raise RuntimeError("boom")
 
     params_array = COSArray([COSDictionary()])
@@ -144,6 +144,6 @@ def test_cos_parser_bruteforce_object_search_rejects_trailing_number_fragment() 
 
     parser = COSParser(RandomAccessReadBuffer(b""))
     monkeypatch_data = DigitPrefixBytes(b"x12 0 obj\n4 0 obj")
-    parser._read_all_bytes = lambda: monkeypatch_data  # type: ignore[method-assign]  # noqa: SLF001
+    parser._read_all_bytes = lambda: monkeypatch_data  # type: ignore[method-assign]
 
     assert parser.bf_search_for_objects() == {COSObjectKey(4, 0): 10}

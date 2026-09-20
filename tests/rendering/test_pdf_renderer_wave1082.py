@@ -17,7 +17,7 @@ def test_wave391_make_doc_removes_seed_pages(
 ) -> None:
     monkeypatch.setattr(wave391, "PDDocument", _SeededDocument)
 
-    doc, page = wave391._make_doc(width=7.0, height=9.0)  # noqa: SLF001
+    doc, page = wave391._make_doc(width=7.0, height=9.0)
     try:
         stored_page = doc.get_page(0)
         assert doc.get_number_of_pages() == 1

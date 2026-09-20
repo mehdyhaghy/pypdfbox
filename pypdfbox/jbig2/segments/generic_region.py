@@ -277,7 +277,7 @@ class GenericRegion(Region):
             # 6.2.5.7 3d
             result = 0
             next_byte = x + 8
-            minor_width = 8 if width - x > 8 else width - x
+            minor_width = min(width - x, 8)
 
             if line_number > 0:
                 line1 = (line1 << 8) | (
@@ -347,7 +347,7 @@ class GenericRegion(Region):
             # 6.2.5.7 3d
             result = 0
             next_byte = x + 8
-            minor_width = 8 if width - x > 8 else width - x
+            minor_width = min(width - x, 8)
 
             if line_number > 0:
                 line1 = (line1 << 8) | (
@@ -417,7 +417,7 @@ class GenericRegion(Region):
             # 6.2.5.7 3d
             result = 0
             next_byte = x + 8
-            minor_width = 8 if width - x > 8 else width - x
+            minor_width = min(width - x, 8)
 
             if line_number >= 1:
                 line1 = (line1 << 8) | (
@@ -487,7 +487,7 @@ class GenericRegion(Region):
             # 6.2.5.7 3d
             result = 0
             next_byte = x + 8
-            minor_width = 8 if width - x > 8 else width - x
+            minor_width = min(width - x, 8)
 
             if line_number >= 1:
                 line1 = (line1 << 8) | (
@@ -553,7 +553,7 @@ class GenericRegion(Region):
             # 6.2.5.7 3d
             result = 0
             next_byte = x + 8
-            minor_width = 8 if width - x > 8 else width - x
+            minor_width = min(width - x, 8)
 
             if line_number >= 1:
                 line1 = (line1 << 8) | (

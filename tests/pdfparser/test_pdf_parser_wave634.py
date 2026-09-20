@@ -32,8 +32,8 @@ def _xref_stream(widths: list[int]) -> COSDictionary:
 def test_wave634_resolve_dict_entry_loads_uncompressed_reference_and_restores_cursor() -> None:
     data = b"4 0 obj\n<< /Filter /Standard >>\nendobj\ntrailing bytes"
     parser = _parser(data)
-    doc = parser._document = COSDocument()  # noqa: SLF001
-    parser._cos_parser = COSParser(parser._src, document=doc)  # noqa: SLF001
+    doc = parser._document = COSDocument()
+    parser._cos_parser = COSParser(parser._src, document=doc)
     parser.get_xref_trailer_resolver().begin_section(0)
     parser.get_xref_trailer_resolver().set_entry(
         COSObjectKey(4, 0),
@@ -45,7 +45,7 @@ def test_wave634_resolve_dict_entry_loads_uncompressed_reference_and_restores_cu
     parser._src.seek(len(data))
 
     try:
-        resolved = parser._resolve_dict_entry(  # noqa: SLF001
+        resolved = parser._resolve_dict_entry(
             trailer,
             COSName.ENCRYPT,
         )
@@ -66,4 +66,4 @@ def test_wave634_decode_xref_stream_rejects_non_integer_width_entry() -> None:
     widths.add(COSDictionary())
 
     with pytest.raises(PDFParseError, match=r"/W\[2\] is not an integer"):
-        parser._decode_xref_stream_entries(stream)  # noqa: SLF001
+        parser._decode_xref_stream_entries(stream)

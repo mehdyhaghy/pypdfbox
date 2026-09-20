@@ -277,7 +277,7 @@ def test_process_forwards_each_operand_singly() -> None:
     engine = _Spy()
     engine.add_operator(p)
     p.process(Operator.get_operator('"'), [aw, ac, s])
-    by_name = {n: ops for n, ops in engine.unsupported}
+    by_name = dict(engine.unsupported)
     assert by_name["Tw"] == [aw]
     assert by_name["Tc"] == [ac]
     # ' fires before its inner T*+Tj decomposition

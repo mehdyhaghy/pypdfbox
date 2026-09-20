@@ -249,14 +249,14 @@ def test_bead_partition_two_beads_uses_2n_plus_1_slots() -> None:
             PDRectangle(350.0, 600.0, 550.0, 750.0),  # bead 1 (right)
         ],
     )
-    s._active_page = page  # noqa: SLF001
+    s._active_page = page
     in0 = TextPosition(text="A", x=100.0, y=700.0, font_size=12.0)
     in1 = TextPosition(text="B", x=400.0, y=700.0, font_size=12.0)
     # x between the two beads, above their bottom edge -> gap slot before
     # bead 1 (it is left of bead 1). It is NOT left of bead 0 (x>250) but IS
     # above bead 0 -> qualifies for bead 0's gap slot (slot 0) first.
     between = TextPosition(text="C", x=300.0, y=700.0, font_size=12.0)
-    buckets = s._partition_by_beads([in0, in1, between])  # noqa: SLF001
+    buckets = s._partition_by_beads([in0, in1, between])
     assert buckets == [[between], [in0], [in1]]
 
 

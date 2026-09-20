@@ -1314,7 +1314,7 @@ class PDPageContentStream(ContentStreamForGlyphLayoutInterface):
         the int form is the legacy spelling. Out-of-range integers raise
         :class:`ValueError`.
         """
-        from pypdfbox.pdmodel.graphics.state.rendering_mode import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.state.rendering_mode import (
             RenderingMode,
         )
 
@@ -2093,7 +2093,7 @@ class PDPageContentStream(ContentStreamForGlyphLayoutInterface):
         :class:`PDAbstractPattern` (or any object exposing
         ``get_cos_object``) — accepts a raw :class:`COSDictionary` for
         callers porting tests that pre-built the dictionary."""
-        from pypdfbox.cos import COSDictionary  # noqa: PLC0415
+        from pypdfbox.cos import COSDictionary
 
         pat_cos = (
             pattern.get_cos_object()
@@ -2115,7 +2115,7 @@ class PDPageContentStream(ContentStreamForGlyphLayoutInterface):
     def _resource_key_for_shading(self, shading: Any) -> COSName:
         """Return the /Resources/Shading key for ``shading``, allocating
         a new ``sh<n>`` slot when necessary."""
-        from pypdfbox.cos import COSDictionary  # noqa: PLC0415
+        from pypdfbox.cos import COSDictionary
 
         sh_cos = (
             shading.get_cos_object()
@@ -2209,8 +2209,8 @@ def _format_number(value: float, max_fraction_digits: int = _MAX_FRACTION_DIGITS
     Non-finite values (``inf`` / ``-inf`` / ``nan``) raise :class:`ValueError`,
     mirroring upstream's ``writeOperand(float)`` ``IllegalArgumentException``
     guard ("X is not a finite number")."""
-    import math as _math  # noqa: PLC0415
-    import struct as _struct  # noqa: PLC0415
+    import math as _math
+    import struct as _struct
 
     # Python ``int`` operands print via the integer path (NumberFormat.format
     # on a long), with no float narrowing — Python ints are unbounded so the

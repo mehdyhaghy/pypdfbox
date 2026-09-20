@@ -28,7 +28,7 @@ def test_wave886_validate_accepts_array_color_space_name() -> None:
     color_space.add(COSName.get_pdf_name("Indexed"))
     image = _ImageWithColorSpace(color_space)
 
-    lossless_mod._validate(image, 8, 2, 3, "Indexed")  # noqa: SLF001
+    lossless_mod._validate(image, 8, 2, 3, "Indexed")
 
 
 def test_wave886_validate_rejects_array_without_name_entry() -> None:
@@ -37,11 +37,11 @@ def test_wave886_validate_rejects_array_without_name_entry() -> None:
     image = _ImageWithColorSpace(color_space)
 
     with pytest.raises(AssertionError):
-        lossless_mod._validate(image, 8, 2, 3, "Indexed")  # noqa: SLF001
+        lossless_mod._validate(image, 8, 2, 3, "Indexed")
 
 
 def test_wave886_validate_rejects_unexpected_color_space_object() -> None:
     image = _ImageWithColorSpace(object())
 
     with pytest.raises(AssertionError, match="unexpected /ColorSpace type"):
-        lossless_mod._validate(image, 8, 2, 3, "Indexed")  # noqa: SLF001
+        lossless_mod._validate(image, 8, 2, 3, "Indexed")

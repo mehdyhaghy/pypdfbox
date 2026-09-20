@@ -204,6 +204,6 @@ def test_get_average_character_width_rescales_to_1000_em() -> None:
     font = _inject_font({"A": 1024, "B": 2048})
     program = font.get_cff_font()
     assert program is not None
-    program._units_per_em = 2048  # type: ignore[attr-defined]  # noqa: SLF001
+    program._units_per_em = 2048  # type: ignore[attr-defined]
     # mean of (1024, 2048) = 1536; rescaled: 1536 * 1000 / 2048 = 750.
     assert font.get_average_character_width() == 750.0

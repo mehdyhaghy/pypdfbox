@@ -88,14 +88,14 @@ def _default_font_dirs() -> list[Path]:
     # subsequent scans without a re-download. The directory may not exist
     # (loader is off by default) — ``_collect_font_files`` already tolerates
     # missing roots.
-    from pypdfbox.fontbox.cjk_loader import cache_dir as _cjk_cache_dir  # noqa: PLC0415
+    from pypdfbox.fontbox.cjk_loader import cache_dir as _cjk_cache_dir
     dirs.append(_cjk_cache_dir())
     # pypdfbox extension (wave 1376): include the bundled
     # ``pypdfbox/resources/ttf/`` directory so a lookup by PostScript
     # name (e.g. ``"LiberationSans"``) resolves through the normal
     # provider path without forcing callers to go through
     # ``liberation_loader.ensure_font``.
-    from pypdfbox.fontbox.liberation_loader import bundled_dir as _liberation_dir  # noqa: PLC0415
+    from pypdfbox.fontbox.liberation_loader import bundled_dir as _liberation_dir
     with contextlib.suppress(OSError, ModuleNotFoundError):
         dirs.append(_liberation_dir())
     return dirs
@@ -223,7 +223,7 @@ class FileSystemFontProvider(FontProvider):
         before = len(self._font_info_list)
         self._add_ttf_metadata(file, ttf)
         if len(self._font_info_list) > before:
-            self._font_info_list[-1]._hash = font_hash  # noqa: SLF001
+            self._font_info_list[-1]._hash = font_hash
 
     def add_type1_font(self, file: Path) -> None:
         """Public spelling of :meth:`_add_type1_font`.
@@ -239,7 +239,7 @@ class FileSystemFontProvider(FontProvider):
         Mirrors upstream private ``computeHash`` (Java line 874-894).
         Library-first: delegates to :mod:`hashlib`.
         """
-        digest = hashlib.sha1()  # noqa: S324 - parity with upstream choice
+        digest = hashlib.sha1()
         if hasattr(stream, "read"):
             while True:
                 chunk = stream.read(65536)
@@ -378,7 +378,7 @@ class FileSystemFontProvider(FontProvider):
                     self._add_true_type_collection(file)
                 elif suffix in _TYPE1_SUFFIXES:
                     self._add_type1_font(file)
-            except Exception as ex:  # noqa: BLE001
+            except Exception as ex:
                 _LOG.debug("Could not load font %s: %s", file, ex)
 
     def _add_true_type_font(self, file: Path) -> None:
@@ -394,7 +394,7 @@ class FileSystemFontProvider(FontProvider):
             return
         try:
             ttf = TTFont(str(file), lazy=True)
-        except Exception as ex:  # noqa: BLE001
+        except Exception as ex:
             _LOG.debug("Could not parse %s: %s", file, ex)
             return
         try:
@@ -416,7 +416,7 @@ class FileSystemFontProvider(FontProvider):
             return
         try:
             ttc = TTCollection(str(file))
-        except Exception as ex:  # noqa: BLE001
+        except Exception as ex:
             _LOG.debug("Could not parse TTC %s: %s", file, ex)
             return
         for font in ttc.fonts:
@@ -512,7 +512,7 @@ class FileSystemFontProvider(FontProvider):
             return
         try:
             t1 = T1Font(str(file))
-        except Exception as ex:  # noqa: BLE001
+        except Exception as ex:
             _LOG.debug("Could not parse Type 1 font %s: %s", file, ex)
             return
         ps_name = t1.font.get("FontName") if isinstance(t1.font, dict) else None

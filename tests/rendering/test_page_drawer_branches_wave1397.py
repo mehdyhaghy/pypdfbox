@@ -51,7 +51,7 @@ def _drawer_with_bare_renderer() -> tuple[PageDrawer, PDFRenderer]:
     ):
         setattr(renderer, attr, None)
     renderer._image = Image.new("RGB", (100, 100), (255, 255, 255))
-    from pypdfbox.rendering import _aggdraw_compat as aggdraw  # noqa: PLC0415
+    from pypdfbox.rendering import _aggdraw_compat as aggdraw
 
     renderer._draw = aggdraw.Draw(renderer._image)
     renderer._draw.setantialias(True)
@@ -76,10 +76,10 @@ def test_set_rendering_hints_idempotent_when_already_initialised() -> None:
     lazy assignment branch."""
     drawer, _ = _drawer_with_bare_renderer()
     sentinel = object()
-    drawer._rendering_hints = sentinel  # type: ignore[assignment]  # noqa: SLF001
+    drawer._rendering_hints = sentinel  # type: ignore[assignment]
     drawer.set_rendering_hints()
     # The sentinel survived; no fresh hints were materialised.
-    assert drawer._rendering_hints is sentinel  # noqa: SLF001
+    assert drawer._rendering_hints is sentinel
 
 
 def test_draw_image_exits_when_renderer_lacks_paste_image_helper() -> None:

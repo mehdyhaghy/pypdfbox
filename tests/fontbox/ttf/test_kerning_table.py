@@ -45,7 +45,7 @@ class _FakeTTF:
             def __init__(self, names: list[str]) -> None:
                 self._names = names
 
-            def getGlyphOrder(self) -> list[str]:  # noqa: N802
+            def getGlyphOrder(self) -> list[str]:
                 return list(self._names)
 
         self._tt: Any = _Inner(glyph_order)
@@ -182,12 +182,12 @@ def test_get_kerning_table_returns_none_when_kern_absent() -> None:
     ttf = TrueTypeFont.from_bytes(FIXTURE.read_bytes())
     # Drop kern from both the lazy reader directory and any already-loaded
     # cache slot so fontTools' ``__contains__`` reports False.
-    ttf._tt.reader.tables.pop("kern", None)  # noqa: SLF001
-    ttf._tt.tables.pop("kern", None)  # noqa: SLF001
-    assert "kern" not in ttf._tt  # noqa: SLF001
+    ttf._tt.reader.tables.pop("kern", None)
+    ttf._tt.tables.pop("kern", None)
+    assert "kern" not in ttf._tt
     # Reset cached resolution so the lookup re-walks the directory.
-    ttf._kern = None  # noqa: SLF001
-    ttf._kern_resolved = False  # noqa: SLF001
+    ttf._kern = None
+    ttf._kern_resolved = False
     assert ttf.get_kerning_table() is None
     # Cached negative — second call returns the same None without re-probing.
     assert ttf.get_kerning_table() is None
@@ -199,7 +199,7 @@ def test_horizontal_kerning_subtable_from_real_font() -> None:
     assert kt is not None
     sub = kt.get_horizontal_kerning_subtable()
     assert sub is not None
-    glyph_order = ttf._tt.getGlyphOrder()  # noqa: SLF001
+    glyph_order = ttf._tt.getGlyphOrder()
     gid_a = glyph_order.index("A")
     gid_v = glyph_order.index("V")
     # A,V is a textbook kerning pair — must be a non-zero adjustment.

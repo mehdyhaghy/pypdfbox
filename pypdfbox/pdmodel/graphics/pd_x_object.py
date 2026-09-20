@@ -82,10 +82,10 @@ class PDXObject:
         # Local imports — cluster boundary, avoids a circular import at
         # module load (graphics → form/image which themselves import
         # PDXObject).
-        from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (
             PDFormXObject,
         )
-        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (
             PDImageXObject,
         )
 
@@ -114,14 +114,14 @@ class PDXObject:
                 isinstance(group, COSDictionary)
                 and group.get_name(_S) == "Transparency"
             ):
-                from pypdfbox.pdmodel.graphics.form.pd_transparency_group import (  # noqa: PLC0415
+                from pypdfbox.pdmodel.graphics.form.pd_transparency_group import (
                     PDTransparencyGroup,
                 )
 
                 return PDTransparencyGroup(base, cache=cache)
             return PDFormXObject(base, cache=cache)
         if subtype == "PS":
-            from pypdfbox.pdmodel.graphics.pd_post_script_x_object import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.graphics.pd_post_script_x_object import (
                 PDPostScriptXObject,
             )
 
@@ -139,7 +139,7 @@ class PDXObject:
     ) -> None:
         # Local import — PDDocument transitively imports the graphics
         # cluster, so importing it at module load creates a cycle.
-        from pypdfbox.pdmodel.pd_document import PDDocument  # noqa: PLC0415
+        from pypdfbox.pdmodel.pd_document import PDDocument
 
         if isinstance(stream, COSStream):
             self._stream = PDStream(stream)
@@ -185,7 +185,7 @@ class PDXObject:
         upstream ``getMetadata()``."""
         # Local import to avoid an import cycle with PDMetadata's
         # PDDocument dependency at package import time.
-        from pypdfbox.pdmodel.common.pd_metadata import PDMetadata  # noqa: PLC0415
+        from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
 
         value = self.get_cos_object().get_dictionary_object(_METADATA)
         if isinstance(value, COSStream):

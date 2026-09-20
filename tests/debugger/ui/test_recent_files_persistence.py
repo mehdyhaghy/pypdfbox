@@ -155,6 +155,6 @@ def test_legacy_private_aliases_still_work(tmp_path: Path, store: Path) -> None:
     """The underscore-prefixed names map to the public methods."""
     recent = RecentFiles("scope.a", 5, path=store)
     entries = [str(tmp_path / "x.pdf")]
-    recent._write_history_to_pref(entries)  # noqa: SLF001
+    recent._write_history_to_pref(entries)
     again = RecentFiles("scope.a", 5, path=store)
-    assert again._read_history_from_pref() == entries  # noqa: SLF001
+    assert again._read_history_from_pref() == entries

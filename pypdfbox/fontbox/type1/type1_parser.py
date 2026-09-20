@@ -397,7 +397,7 @@ class Type1Lexer:
     def _read_paren_string(self) -> tuple[str, str]:
         # Skip opening "(". PostScript ``( ... )`` strings allow nested
         # balanced parens and ``\`` escapes — handle the common forms.
-        assert self._buf[self._pos] == "("  # noqa: S101
+        assert self._buf[self._pos] == "("
         self._pos += 1
         depth = 1
         out: list[str] = []
@@ -458,7 +458,7 @@ class Type1Lexer:
 
     def _read_hex_string(self) -> tuple[str, bytes]:
         # Skip opening "<".
-        assert self._buf[self._pos] == "<"  # noqa: S101
+        assert self._buf[self._pos] == "<"
         self._pos += 1
         chars: list[str] = []
         while self._pos < len(self._buf) and self._buf[self._pos] != ">":
@@ -650,8 +650,8 @@ class Type1Parser:
         # and let the accessor-side defaults handle the missing data).
         try:
             self._parse_binary(self.decrypted_binary)
-        except Exception as exc:  # noqa: BLE001
-            import logging  # noqa: PLC0415
+        except Exception as exc:
+            import logging
 
             logging.getLogger(__name__).debug(
                 "Type1Parser: binary segment parse failed: %s", exc
@@ -1172,7 +1172,7 @@ class Type1Parser:
             idx = int(idx_tok[1])
             try:
                 plain = Type1FontUtil.charstring_decrypt(cs_tok[1], len_iv)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 plain = b""
             if 0 <= idx < len(out):
                 out[idx] = plain
@@ -1228,7 +1228,7 @@ class Type1Parser:
                 continue
             try:
                 plain = Type1FontUtil.charstring_decrypt(cs_tok[1], len_iv)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 plain = b""
             out[str(name_tok[1])] = plain
             # Drain trailing readonly / noaccess / def / ND.

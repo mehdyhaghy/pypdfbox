@@ -25,11 +25,11 @@ def test_reset_page_no_op_when_page_absent_from_both_stores() -> None:
         idx = sf.get_new_page()
         # Force the "neither store" defensive state: null the in-memory slot
         # and ensure it is not registered as file-backed.
-        sf._mem_pages[idx] = None  # noqa: SLF001
-        sf._file_pages.pop(idx, None)  # noqa: SLF001
+        sf._mem_pages[idx] = None
+        sf._file_pages.pop(idx, None)
 
         # Should be a silent no-op (no IndexError, no file write).
-        sf._reset_page(idx)  # noqa: SLF001
+        sf._reset_page(idx)
 
-        assert sf._mem_pages[idx] is None  # noqa: SLF001
-        assert idx not in sf._file_pages  # noqa: SLF001
+        assert sf._mem_pages[idx] is None
+        assert idx not in sf._file_pages

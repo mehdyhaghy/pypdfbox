@@ -275,7 +275,7 @@ def test_encrypt_tool_access_permission_flags_propagate() -> None:
     runner.can_assemble = False
     runner.can_extract_for_accessibility = False
     runner.can_print_faithful = False
-    ap = runner._access_permission()  # noqa: SLF001 — exercising port invariant
+    ap = runner._access_permission()
     assert ap.can_print() is False
     assert ap.can_modify() is False
     assert ap.can_extract_content() is False
@@ -290,7 +290,7 @@ def test_encrypt_tool_default_permissions_all_true() -> None:
     """A freshly-constructed ``Encrypt`` carries every permission bit
     set to ``True`` — mirrors upstream defaults."""
     runner = encrypt_tool.Encrypt()
-    ap = runner._access_permission()  # noqa: SLF001
+    ap = runner._access_permission()
     assert ap.can_print() is True
     assert ap.can_modify() is True
     assert ap.can_extract_content() is True
@@ -471,14 +471,14 @@ def test_import_fdf_no_acroform_pdf_still_saves(
 
 def test_import_fdf_missing_infile_raises() -> None:
     runner = import_fdf.ImportFDF()
-    runner.fdffile = Path("/tmp/x.fdf")  # noqa: S108 — placeholder
+    runner.fdffile = Path("/tmp/x.fdf")
     with pytest.raises(OSError, match="infile and fdffile are required"):
         runner.call()
 
 
 def test_import_fdf_missing_fdffile_raises() -> None:
     runner = import_fdf.ImportFDF()
-    runner.infile = Path("/tmp/x.pdf")  # noqa: S108 — placeholder
+    runner.infile = Path("/tmp/x.pdf")
     with pytest.raises(OSError, match="infile and fdffile are required"):
         runner.call()
 
@@ -805,7 +805,7 @@ def test_md_write_paragraph_end_clears_font_state(
     patched_parent: list[str],
 ) -> None:
     p = PDFText2Markdown()
-    p._font_state.open("**")  # noqa: SLF001 — exercising port invariant
+    p._font_state.open("**")
     p.write_paragraph_end()
     captured = "".join(patched_parent)
     # The closing ``**`` from clear() is present, then the parent's

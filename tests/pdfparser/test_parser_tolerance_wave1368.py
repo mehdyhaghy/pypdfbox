@@ -132,7 +132,7 @@ def test_multiple_consecutive_comments_skipped() -> None:
     )
     pdf = _build_with_obj(body)
     doc = PDFParser(RandomAccessReadBuffer(pdf)).parse()
-    from pypdfbox.cos import COSInteger  # noqa: PLC0415
+    from pypdfbox.cos import COSInteger
 
     body_obj = doc.get_object_from_pool(COSObjectKey(1, 0)).get_object()
     assert isinstance(body_obj, COSInteger) and body_obj.value == 42

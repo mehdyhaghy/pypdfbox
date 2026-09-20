@@ -24,7 +24,7 @@ from pypdfbox.pdmodel.graphics.optionalcontent import (
 from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_group import (
     RenderState,
 )
-from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_membership_dictionary import (  # noqa: E501
+from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_membership_dictionary import (
     PDOptionalContentMembershipDictionary,
 )
 from pypdfbox.rendering.render_destination import RenderDestination

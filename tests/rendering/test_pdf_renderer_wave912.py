@@ -24,7 +24,7 @@ def test_wave652_make_doc_removes_existing_pages(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(wave652, "PDDocument", FakeDocument)
 
-    doc, page = wave652._make_doc()  # noqa: SLF001
+    doc, page = wave652._make_doc()
 
     assert isinstance(doc, FakeDocument)
     assert doc.removed_indexes == [0]
@@ -32,6 +32,6 @@ def test_wave652_make_doc_removes_existing_pages(monkeypatch: Any) -> None:
 
 
 def test_wave652_domain_stub_returns_float_array() -> None:
-    domain = wave652._Domain(0.25, 0.75)  # noqa: SLF001
+    domain = wave652._Domain(0.25, 0.75)
 
     assert domain.to_float_array() == [0.25, 0.75]

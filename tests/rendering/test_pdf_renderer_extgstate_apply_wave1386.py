@@ -55,14 +55,14 @@ def test_ca_multiplies_into_stroke_pen_opacity() -> None:
     set, then poke through ``_build_stroke_pen`` to read back the opacity
     actually stored on the pen."""
     r = _bare_renderer(_GState(stroke_alpha=0.5))
-    pen = r._build_stroke_pen((1.0, 0.0, 0.0, 1.0, 0.0, 0.0))  # noqa: SLF001
+    pen = r._build_stroke_pen((1.0, 0.0, 0.0, 1.0, 0.0, 0.0))
     # Pen.opacity is 0..255 — 0.5 alpha → 128 ± 1 (rounding).
     assert 126 <= pen.opacity <= 129
 
 
 def test_ca_zero_zeros_stroke_pen_opacity() -> None:
     r = _bare_renderer(_GState(stroke_alpha=0.0))
-    pen = r._build_stroke_pen((1.0, 0.0, 0.0, 1.0, 0.0, 0.0))  # noqa: SLF001
+    pen = r._build_stroke_pen((1.0, 0.0, 0.0, 1.0, 0.0, 0.0))
     assert pen.opacity == 0
 
 
@@ -70,20 +70,20 @@ def test_ca_clamped_above_one() -> None:
     """Defensive — out-of-range ``/CA`` should clamp to [0, 1] before the
     opacity multiplication so we never overflow the byte range."""
     r = _bare_renderer(_GState(stroke_alpha=2.5))
-    pen = r._build_stroke_pen((1.0, 0.0, 0.0, 1.0, 0.0, 0.0))  # noqa: SLF001
+    pen = r._build_stroke_pen((1.0, 0.0, 0.0, 1.0, 0.0, 0.0))
     assert pen.opacity == 255
 
 
 def test_glyph_brush_honours_fill_alpha() -> None:
     r = _bare_renderer(_GState(fill_alpha=0.25))
-    brush = r._build_glyph_brush((100, 100, 100))  # noqa: SLF001
+    brush = r._build_glyph_brush((100, 100, 100))
     # 0.25 → 64 ± 1.
     assert 63 <= brush.opacity <= 65
 
 
 def test_glyph_brush_zero_alpha_is_fully_transparent() -> None:
     r = _bare_renderer(_GState(fill_alpha=0.0))
-    brush = r._build_glyph_brush((255, 0, 0))  # noqa: SLF001
+    brush = r._build_glyph_brush((255, 0, 0))
     assert brush.opacity == 0
 
 
@@ -104,7 +104,7 @@ def test_sub_pixel_stroke_floored_to_quarter_pixel() -> None:
     """A line width that lands below 0.25 device px is floored to 0.25
     (identity CTM → ctm_scale 1.0 → glyph-local width == device width)."""
     r = _bare_renderer(_GState(line_width=0.1, stroke_adjustment=False))
-    pen = r._build_stroke_pen((1.0, 0.0, 0.0, 1.0, 0.0, 0.0))  # noqa: SLF001
+    pen = r._build_stroke_pen((1.0, 0.0, 0.0, 1.0, 0.0, 0.0))
     assert pen.width == 0.25
 
 
@@ -113,7 +113,7 @@ def test_sa_does_not_snap_glyph_stroke_width() -> None:
     upstream ``getStroke`` floors to 0.25 regardless of ``/SA`` (the hint
     only affects Java2D's stroke-pure/normalize mode, not the pen width)."""
     r = _bare_renderer(_GState(line_width=0.1, stroke_adjustment=True))
-    pen = r._build_stroke_pen((1.0, 0.0, 0.0, 1.0, 0.0, 0.0))  # noqa: SLF001
+    pen = r._build_stroke_pen((1.0, 0.0, 0.0, 1.0, 0.0, 0.0))
     assert pen.width == 0.25
 
 
@@ -178,12 +178,12 @@ def test_gs_operator_sets_both_alphas_through_to_pen_and_brush() -> None:
     ext.set_stroking_alpha_constant(0.4)
     ext.set_non_stroking_alpha_constant(0.8)
     r = _attach_renderer(ext)
-    r._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
-    assert abs(r._gs.stroke_alpha - 0.4) < 1e-6  # noqa: SLF001
-    assert abs(r._gs.fill_alpha - 0.8) < 1e-6  # noqa: SLF001
+    r._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+    assert abs(r._gs.stroke_alpha - 0.4) < 1e-6
+    assert abs(r._gs.fill_alpha - 0.8) < 1e-6
 
-    pen = r._build_stroke_pen((1.0, 0.0, 0.0, 1.0, 0.0, 0.0))  # noqa: SLF001
-    brush = r._build_glyph_brush((10, 20, 30))  # noqa: SLF001
+    pen = r._build_stroke_pen((1.0, 0.0, 0.0, 1.0, 0.0, 0.0))
+    brush = r._build_glyph_brush((10, 20, 30))
     # 0.4 → 102, 0.8 → 204 (rounding).
     assert 101 <= pen.opacity <= 103
     assert 203 <= brush.opacity <= 205
@@ -198,10 +198,10 @@ def test_gs_operator_sa_stroke_adjustment_round_trip() -> None:
     ext = PDExtendedGraphicsState()
     ext.set_stroke_adjustment(True)
     r = _attach_renderer(ext)
-    r._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
-    assert r._gs.stroke_adjustment is True  # noqa: SLF001
-    r._gs.line_width = 0.2  # noqa: SLF001
-    pen = r._build_stroke_pen((1.0, 0.0, 0.0, 1.0, 0.0, 0.0))  # noqa: SLF001
+    r._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+    assert r._gs.stroke_adjustment is True
+    r._gs.line_width = 0.2
+    pen = r._build_stroke_pen((1.0, 0.0, 0.0, 1.0, 0.0, 0.0))
     # /SA round-trips onto the GS but no longer snaps the pen width — the
     # 0.2 user-space width floors to the 0.25 device minimum (wave 1595).
     assert pen.width == 0.25
@@ -218,9 +218,9 @@ def test_transfer_to_rgb_bytes_no_op_when_no_gs_stack() -> None:
     r = PDFRenderer.__new__(PDFRenderer)
     r._gs_stack = []
     # The protected helper should short-circuit and return its input.
-    assert r._apply_transfer_to_rgb_bytes((10, 20, 30)) == (10, 20, 30)  # noqa: SLF001
+    assert r._apply_transfer_to_rgb_bytes((10, 20, 30)) == (10, 20, 30)
 
 
 def test_transfer_to_rgb_bytes_no_op_when_function_none() -> None:
     r = _bare_renderer(_GState(transfer_function=None))
-    assert r._apply_transfer_to_rgb_bytes((10, 20, 30)) == (10, 20, 30)  # noqa: SLF001
+    assert r._apply_transfer_to_rgb_bytes((10, 20, 30)) == (10, 20, 30)

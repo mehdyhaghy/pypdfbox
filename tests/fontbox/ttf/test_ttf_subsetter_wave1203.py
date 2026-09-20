@@ -41,7 +41,7 @@ def liberation_sans(liberation_bytes: bytes) -> TrueTypeFont:
 
 
 def _load_fonttools(buf: bytes):
-    import fontTools.ttLib as ttLib  # type: ignore[import-untyped]  # noqa: PLC0415
+    from fontTools import ttLib  # type: ignore[import-untyped]
 
     return ttLib.TTFont(io.BytesIO(buf))
 

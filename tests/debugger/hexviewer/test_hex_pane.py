@@ -61,7 +61,7 @@ def test_selection_listener_receives_event_on_click(tk_root: tk.Tk) -> None:
     recorder = _SelectionRecorder()
     pane.add_selection_change_listener(recorder)
     # Manually fire a selection-change event via the private helper.
-    pane._fire_selection_changed(SelectEvent(1, SelectEvent.IN))  # noqa: SLF001
+    pane._fire_selection_changed(SelectEvent(1, SelectEvent.IN))
     assert len(recorder.events) == 1
     assert recorder.events[0].get_hex_index() == 1
 
@@ -71,7 +71,7 @@ def test_hex_change_listener_receives_event(tk_root: tk.Tk) -> None:
     pane = HexPane(tk_root, model)
     recorder = _HexChangeRecorder()
     pane.add_hex_change_listeners(recorder)
-    pane._fire_hex_value_changed(0xAB, 0)  # noqa: SLF001
+    pane._fire_hex_value_changed(0xAB, 0)
     assert len(recorder.events) == 1
     assert recorder.events[0].get_new_value() == 0xAB
 
@@ -96,7 +96,7 @@ def test_index_for_click_returns_negative_for_out_of_range_byte(
     # valid byte index for an empty second row.
     event = types.SimpleNamespace(x=1000, y=200)
     # The wired ``_on_click`` always returns "break".
-    assert pane._on_click(event) == "break"  # type: ignore[arg-type]  # noqa: SLF001
+    assert pane._on_click(event) == "break"  # type: ignore[arg-type]
 
 
 def test_on_click_for_valid_position_fires_in_event(tk_root: tk.Tk) -> None:
@@ -110,7 +110,7 @@ def test_on_click_for_valid_position_fires_in_event(tk_root: tk.Tk) -> None:
     # ``identify`` lands on a valid line/column.
     pane.update_idletasks()
     event = types.SimpleNamespace(x=2, y=2)
-    pane._on_click(event)  # type: ignore[arg-type]  # noqa: SLF001
+    pane._on_click(event)  # type: ignore[arg-type]
     # At least one event was fired — exact type depends on whether the
     # click landed inside the grid; we only assert the wiring ran.
     assert recorder.events
@@ -125,7 +125,7 @@ def test_on_key_with_no_selection_is_noop(tk_root: tk.Tk) -> None:
     import types
 
     event = types.SimpleNamespace(char="A")
-    assert pane._on_key(event) is None  # type: ignore[arg-type]  # noqa: SLF001
+    assert pane._on_key(event) is None  # type: ignore[arg-type]
 
 
 def test_on_key_first_digit_triggers_edit(tk_root: tk.Tk) -> None:
@@ -137,11 +137,11 @@ def test_on_key_first_digit_triggers_edit(tk_root: tk.Tk) -> None:
     import types
 
     event = types.SimpleNamespace(char="A")
-    pane._on_key(event)  # type: ignore[arg-type]  # noqa: SLF001
+    pane._on_key(event)  # type: ignore[arg-type]
     assert recorder.events
     # First digit replaces the high nibble; the rest stays zero.
     assert recorder.events[-1].get_new_value() == 0xA0
-    assert pane._state == pane.EDIT  # noqa: SLF001
+    assert pane._state == pane.EDIT
 
 
 def test_on_key_non_hex_char_is_noop(tk_root: tk.Tk) -> None:
@@ -151,7 +151,7 @@ def test_on_key_non_hex_char_is_noop(tk_root: tk.Tk) -> None:
     import types
 
     event = types.SimpleNamespace(char="z")
-    assert pane._on_key(event) is None  # type: ignore[arg-type]  # noqa: SLF001
+    assert pane._on_key(event) is None  # type: ignore[arg-type]
 
 
 def test_on_key_second_digit_fires_navigate_next(tk_root: tk.Tk) -> None:
@@ -164,8 +164,8 @@ def test_on_key_second_digit_fires_navigate_next(tk_root: tk.Tk) -> None:
     pane.add_hex_change_listeners(hex_recorder)
     import types
 
-    pane._on_key(types.SimpleNamespace(char="A"))  # type: ignore[arg-type]  # noqa: SLF001
-    pane._on_key(types.SimpleNamespace(char="B"))  # type: ignore[arg-type]  # noqa: SLF001
+    pane._on_key(types.SimpleNamespace(char="A"))  # type: ignore[arg-type]
+    pane._on_key(types.SimpleNamespace(char="B"))  # type: ignore[arg-type]
     # After the second digit, a NEXT selection fired (the byte value
     # itself reflects the still-zero previous byte plus the low nibble,
     # because ``_fire_hex_value_changed`` does not mutate the model).
@@ -181,7 +181,7 @@ def test_arrow_in_normal_state_returns_break(tk_root: tk.Tk) -> None:
     model = HexModel(b"\x00")
     pane = HexPane(tk_root, model)
     # Not selected → arrow handler returns "break" but does not fire.
-    assert pane._handle_arrow(SelectEvent.NEXT) == "break"  # noqa: SLF001
+    assert pane._handle_arrow(SelectEvent.NEXT) == "break"
 
 
 def test_arrow_left_after_edit_collapses_nibble(tk_root: tk.Tk) -> None:
@@ -191,11 +191,11 @@ def test_arrow_left_after_edit_collapses_nibble(tk_root: tk.Tk) -> None:
     import types
 
     # Type one digit → enter EDIT with selected_char=1.
-    pane._on_key(types.SimpleNamespace(char="A"))  # type: ignore[arg-type]  # noqa: SLF001
-    assert pane._selected_char == 1  # noqa: SLF001
+    pane._on_key(types.SimpleNamespace(char="A"))  # type: ignore[arg-type]
+    assert pane._selected_char == 1
     # Left arrow rewinds to the high nibble.
-    pane._handle_arrow(SelectEvent.PREVIOUS)  # noqa: SLF001
-    assert pane._selected_char == 0  # noqa: SLF001
+    pane._handle_arrow(SelectEvent.PREVIOUS)
+    assert pane._selected_char == 0
 
 
 # ---- static helpers -----------------------------------------------------
@@ -203,18 +203,18 @@ def test_arrow_left_after_edit_collapses_nibble(tk_root: tk.Tk) -> None:
 
 def test_is_hex_char_matches_only_hex_digits(tk_root: tk.Tk) -> None:
     pane = HexPane(tk_root, HexModel(b"\x00"))
-    assert pane._is_hex_char("A") is True  # noqa: SLF001
-    assert pane._is_hex_char("f") is True  # noqa: SLF001
-    assert pane._is_hex_char("9") is True  # noqa: SLF001
-    assert pane._is_hex_char("g") is False  # noqa: SLF001
-    assert pane._is_hex_char("AB") is False  # noqa: SLF001
+    assert pane._is_hex_char("A") is True
+    assert pane._is_hex_char("f") is True
+    assert pane._is_hex_char("9") is True
+    assert pane._is_hex_char("g") is False
+    assert pane._is_hex_char("AB") is False
 
 
 def test_get_chars_and_get_byte_round_trip(tk_root: tk.Tk) -> None:
     pane = HexPane(tk_root, HexModel(b"\x00"))
-    chars = pane._get_chars(0xAB)  # noqa: SLF001
+    chars = pane._get_chars(0xAB)
     assert chars == "AB"
-    assert pane._get_byte(["A", "B"]) == 0xAB  # noqa: SLF001
+    assert pane._get_byte(["A", "B"]) == 0xAB
 
 
 # ---- additional rendering / click / arrow branches ------------------------
@@ -230,9 +230,9 @@ def test_render_in_edit_state_low_nibble_tags_edit_high_on_right(
     pane = HexPane(tk_root, model)
     pane.set_selected(0)
     # Manually enter the low-nibble edit state then force a re-render.
-    pane._state = pane.EDIT  # noqa: SLF001
-    pane._selected_char = 1  # noqa: SLF001
-    pane._render()  # noqa: SLF001
+    pane._state = pane.EDIT
+    pane._selected_char = 1
+    pane._render()
     # Both edit_high & edit_low ranges should now exist.
     assert pane.tag_ranges("edit_high")
     assert pane.tag_ranges("edit_low")
@@ -249,7 +249,7 @@ def test_index_for_click_returns_neg_one_for_tk_error(tk_root: tk.Tk) -> None:
         raise tk.TclError("invalid")
 
     pane.index = boom  # type: ignore[method-assign]
-    assert pane._index_for_click(types.SimpleNamespace(x=0, y=0)) == -1  # noqa: SLF001
+    assert pane._index_for_click(types.SimpleNamespace(x=0, y=0)) == -1
 
 
 def test_index_for_click_returns_neg_one_for_out_of_range_line(
@@ -261,7 +261,7 @@ def test_index_for_click_returns_neg_one_for_out_of_range_line(
     import types
 
     pane.index = lambda _spec: "999.0"  # type: ignore[method-assign]
-    assert pane._index_for_click(types.SimpleNamespace(x=0, y=0)) == -1  # noqa: SLF001
+    assert pane._index_for_click(types.SimpleNamespace(x=0, y=0)) == -1
 
 
 def test_index_for_click_returns_neg_one_for_out_of_range_element(
@@ -274,7 +274,7 @@ def test_index_for_click_returns_neg_one_for_out_of_range_element(
 
     # Column 100 / _CELL_WIDTH (3) = 33 → element>15 branch.
     pane.index = lambda _spec: "1.100"  # type: ignore[method-assign]
-    assert pane._index_for_click(types.SimpleNamespace(x=0, y=0)) == -1  # noqa: SLF001
+    assert pane._index_for_click(types.SimpleNamespace(x=0, y=0)) == -1
 
 
 def test_index_for_click_returns_neg_one_when_past_model_size(
@@ -287,7 +287,7 @@ def test_index_for_click_returns_neg_one_when_past_model_size(
 
     # Column 6 / 3 = element 2, but the model only has 1 byte → past size.
     pane.index = lambda _spec: "1.6"  # type: ignore[method-assign]
-    assert pane._index_for_click(types.SimpleNamespace(x=0, y=0)) == -1  # noqa: SLF001
+    assert pane._index_for_click(types.SimpleNamespace(x=0, y=0)) == -1
 
 
 def test_on_click_with_invalid_index_fires_none_event(tk_root: tk.Tk) -> None:
@@ -299,7 +299,7 @@ def test_on_click_with_invalid_index_fires_none_event(tk_root: tk.Tk) -> None:
     import types
 
     pane.index = lambda _spec: "999.0"  # type: ignore[method-assign]
-    pane._on_click(types.SimpleNamespace(x=0, y=0))  # type: ignore[arg-type]  # noqa: SLF001
+    pane._on_click(types.SimpleNamespace(x=0, y=0))  # type: ignore[arg-type]
     assert recorder.events
     assert recorder.events[-1].get_hex_index() == -1
 
@@ -312,6 +312,6 @@ def test_arrow_in_selected_state_fires_navigation_event(tk_root: tk.Tk) -> None:
     pane.set_selected(5)
     recorder = _SelectionRecorder()
     pane.add_selection_change_listener(recorder)
-    pane._handle_arrow(SelectEvent.NEXT)  # noqa: SLF001
+    pane._handle_arrow(SelectEvent.NEXT)
     assert recorder.events
     assert recorder.events[-1].get_navigation() == SelectEvent.NEXT

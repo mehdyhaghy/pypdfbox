@@ -89,7 +89,7 @@ class CMapStrings:
         class load time. We build them eagerly at module import via
         ``_build_tables`` — this method is a no-op preserved for parity.
         """
-        return None
+        return
 
 
 __all__ = ["CMapStrings"]

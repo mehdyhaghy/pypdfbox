@@ -86,7 +86,7 @@ def test_wave800_filtered_text_stripper_skips_tj_array_for_other_angle() -> None
     state.tm_d = 0.0
     positions: list[TextPosition] = []
 
-    stripper._emit_tj_array(COSArray(), state, positions)  # noqa: SLF001
+    stripper._emit_tj_array(COSArray(), state, positions)
 
     assert positions == []
 

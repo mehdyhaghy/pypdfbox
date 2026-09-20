@@ -58,13 +58,13 @@ class AbstractSyntaxHandler(SyntaxHandler):
     Mirrors upstream ``Parser.AbstractSyntaxHandler``.
     """
 
-    def comment(self, text: str) -> None:  # noqa: D401
+    def comment(self, text: str) -> None:
         """No-op default."""
 
-    def new_line(self, text: str) -> None:  # noqa: D401
+    def new_line(self, text: str) -> None:
         """No-op default."""
 
-    def whitespace(self, text: str) -> None:  # noqa: D401
+    def whitespace(self, text: str) -> None:
         """No-op default."""
 
     @abstractmethod
@@ -208,7 +208,7 @@ class Parser:
         pass
 
     @staticmethod
-    def parse(input: str, handler: SyntaxHandler) -> None:  # noqa: A002 - upstream parameter name
+    def parse(input: str, handler: SyntaxHandler) -> None:
         """Parse a Type 4 function, dispatching syntactic elements to
         ``handler``.
 

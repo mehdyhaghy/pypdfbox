@@ -24,7 +24,7 @@ def test_wave591_make_doc_removes_existing_pages(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(wave591, "PDDocument", FakeDocument)
 
-    doc, page = wave591._make_doc()  # noqa: SLF001
+    doc, page = wave591._make_doc()
 
     assert isinstance(doc, FakeDocument)
     assert doc.removed_indexes == [0]
@@ -38,14 +38,14 @@ def test_wave591_dispatch_restore_else_branch(
     def original_handler(_renderer: Any, _op: object, _operands: list[object]) -> None:
         raise AssertionError("original handler should only be restored")
 
-    monkeypatch.setitem(wave591.renderer_module._DISPATCH, "W591", original_handler)  # noqa: SLF001
+    monkeypatch.setitem(wave591.renderer_module._DISPATCH, "W591", original_handler)
 
     wave591.test_process_operator_logs_and_swallows_handler_os_error(
         caplog,
         monkeypatch,
     )
 
-    assert wave591.renderer_module._DISPATCH["W591"] is original_handler  # noqa: SLF001
+    assert wave591.renderer_module._DISPATCH["W591"] is original_handler
 
 
 def test_wave591_inline_image_stream_accessor_is_exercised(

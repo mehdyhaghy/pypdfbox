@@ -255,7 +255,7 @@ class WinAnsiEncoding(Encoding):
         """Return ``COSName.WIN_ANSI_ENCODING``. Mirrors upstream
         ``WinAnsiEncoding.getCOSObject()`` (line 41-44).
         """
-        from pypdfbox.cos.cos_name import COSName  # noqa: PLC0415
+        from pypdfbox.cos.cos_name import COSName
 
         return COSName.WIN_ANSI_ENCODING
 

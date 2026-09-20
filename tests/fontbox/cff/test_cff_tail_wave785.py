@@ -12,8 +12,8 @@ from pypdfbox.fontbox.cff.type1_char_string import Type1CharString
 class _CIDTop:
     charset = [".notdef", "cid00007", "cid00042"]
     rawDict: dict[str, Any] = {}
-    CharStrings: dict[str, Any] = {}  # noqa: N815
-    GlobalSubrs: list[Any] = []  # noqa: N815
+    CharStrings: dict[str, Any] = {}
+    GlobalSubrs: list[Any] = []
     Private = None
 
 
@@ -76,7 +76,7 @@ def test_synthetic_fdselect_accessors_return_copies_and_item_lookup() -> None:
 
 def test_cid_font_selector_strings_and_missing_charstrings_are_safe() -> None:
     font = CFFCIDFont()
-    font._top = _CIDTop()  # noqa: SLF001
+    font._top = _CIDTop()
 
     assert CFFCIDFont._coerce_to_cid("cid00042") == 42
     assert CFFCIDFont._coerce_to_cid("cidbad") == -1
@@ -92,7 +92,7 @@ def test_cff_font_bbox_and_type2_fallbacks_for_synthetic_font() -> None:
     font.add_value_to_top_dict("FontBBox", object())
 
     cid_font = CFFCIDFont()
-    cid_font._top = _CIDTop()  # noqa: SLF001
+    cid_font._top = _CIDTop()
 
     char_string = cid_font.get_type2_char_string(-10)
 
@@ -103,9 +103,9 @@ def test_cff_font_bbox_and_type2_fallbacks_for_synthetic_font() -> None:
 
 def test_type1_width_can_be_read_from_previously_cached_path() -> None:
     char_string = Type1CharString(None, "F", "cached", None)
-    char_string._cached_path = [("moveto", 0.0, 0.0)]  # noqa: SLF001
-    char_string._t1 = SimpleNamespace(width=321.5)  # noqa: SLF001
+    char_string._cached_path = [("moveto", 0.0, 0.0)]
+    char_string._t1 = SimpleNamespace(width=321.5)
 
     assert char_string.get_width() == 321.5
-    char_string._t1.width = 100.0  # noqa: SLF001
+    char_string._t1.width = 100.0
     assert char_string.get_width() == 321.5

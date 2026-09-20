@@ -35,7 +35,7 @@ def test_wave604_scrub_acroform_drops_signature_state_but_keeps_other_fields() -
     doc.get_document_catalog().get_cos_object().set_item(_ACROFORM, acroform)
 
     try:
-        Splitter()._scrub_acroform(doc)  # noqa: SLF001
+        Splitter()._scrub_acroform(doc)
 
         kept_fields = acroform.get_dictionary_object(_FIELDS)
         assert isinstance(kept_fields, COSArray)
@@ -58,7 +58,7 @@ def test_wave604_scrub_acroform_removes_empty_signature_only_form() -> None:
     doc.get_document_catalog().get_cos_object().set_item(_ACROFORM, acroform)
 
     try:
-        Splitter()._scrub_acroform(doc)  # noqa: SLF001
+        Splitter()._scrub_acroform(doc)
 
         assert not doc.get_document_catalog().get_cos_object().contains_key(_ACROFORM)
     finally:
@@ -72,7 +72,7 @@ def test_wave604_signature_widget_detects_signature_value_by_byte_range() -> Non
     sig_value.set_item(_BYTE_RANGE, COSArray())
     widget.set_item(_V, sig_value)
 
-    assert Splitter._is_signature_widget(widget)  # noqa: SLF001
+    assert Splitter._is_signature_widget(widget)
 
 
 def test_wave604_clone_tree_array_preserves_mcid_holes_with_nulls() -> None:
@@ -83,10 +83,10 @@ def test_wave604_clone_tree_array_preserves_mcid_holes_with_nulls() -> None:
     src_array.add(retained_src)
     src_array.add(dropped_src)
     splitter = Splitter()
-    splitter._struct_dict_map = {id(retained_src): retained_clone}  # noqa: SLF001
+    splitter._struct_dict_map = {id(retained_src): retained_clone}
     dst_numbers: dict[int, object] = {}
 
-    splitter._clone_tree_element({9: src_array}, dst_numbers, 9)  # noqa: SLF001
+    splitter._clone_tree_element({9: src_array}, dst_numbers, 9)
 
     cloned = dst_numbers[9]
     assert isinstance(cloned, COSArray)
@@ -98,7 +98,7 @@ def test_wave604_clone_tree_element_warns_for_unexpected_number_tree_value(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level(logging.WARNING, logger="pypdfbox.multipdf.splitter"):
-        Splitter()._clone_tree_element({7: COSInteger.get(4)}, {}, 7)  # noqa: SLF001
+        Splitter()._clone_tree_element({7: COSInteger.get(4)}, {}, 7)
 
     assert "tree element neither dictionary nor array" in caplog.text
 
@@ -113,7 +113,7 @@ def test_wave604_remove_possible_orphan_annotation_keeps_annotation_on_page() ->
     dst = COSDictionary()
     dst.set_item(_OBJ, source_annot)
 
-    Splitter()._remove_possible_orphan_annotation(  # noqa: SLF001
+    Splitter()._remove_possible_orphan_annotation(
         source_annot, COSDictionary(), page, dst
     )
 
@@ -131,7 +131,7 @@ def test_wave604_remove_possible_orphan_annotation_removes_missing_page_annotati
     dst.set_item(_OBJ, source_annot)
 
     with caplog.at_level(logging.WARNING, logger="pypdfbox.multipdf.splitter"):
-        Splitter()._remove_possible_orphan_annotation(  # noqa: SLF001
+        Splitter()._remove_possible_orphan_annotation(
             source_annot, COSDictionary(), page, dst
         )
 

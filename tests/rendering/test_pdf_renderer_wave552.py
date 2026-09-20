@@ -23,16 +23,16 @@ def _make_doc(width: float = 8.0, height: float = 8.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (8, 8)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -50,17 +50,17 @@ def test_do_operator_defensive_resource_paths_log_and_skip(caplog: Any) -> None:
     try:
         caplog.set_level("DEBUG", logger="pypdfbox.rendering.pdf_renderer")
 
-        renderer._resources = None  # noqa: SLF001
+        renderer._resources = None
         renderer.process_operator("Do", [COSName.get_pdf_name("Im0")])
 
-        renderer._resources = _MissingResources()  # noqa: SLF001
+        renderer._resources = _MissingResources()
         renderer.process_operator("Do", [COSName.get_pdf_name("Im0")])
 
-        renderer._resources = _BrokenResources()  # noqa: SLF001
+        renderer._resources = _BrokenResources()
         renderer.process_operator("Do", [COSName.get_pdf_name("Im0")])
 
         assert "cannot resolve XObject Im0: xobject boom" in caplog.text
-        assert renderer._image.getbbox() == (0, 0, 8, 8)  # noqa: SLF001
+        assert renderer._image.getbbox() == (0, 0, 8, 8)
     finally:
         _finish(renderer)
         doc.close()
@@ -90,34 +90,34 @@ def test_render_form_xobject_applies_scope_and_restores_scoped_state(
     original_ctm = (2.0, 0.0, 0.0, 2.0, 5.0, 7.0)
     seen: list[tuple[object | None, tuple[float, ...], bool, bytes]] = []
     try:
-        renderer._resources = outer_resources  # noqa: SLF001
-        renderer._gs.ctm = original_ctm  # noqa: SLF001
-        renderer._subpaths = [[("M", 99.0, 99.0)]]  # noqa: SLF001
-        renderer._current_subpath = renderer._subpaths[0]  # noqa: SLF001
-        renderer._current_point = (99.0, 99.0)  # noqa: SLF001
+        renderer._resources = outer_resources
+        renderer._gs.ctm = original_ctm
+        renderer._subpaths = [[("M", 99.0, 99.0)]]
+        renderer._current_subpath = renderer._subpaths[0]
+        renderer._current_point = (99.0, 99.0)
 
         def _process_form_bytes(data: bytes) -> None:
             seen.append(
                 (
-                    renderer._resources,  # noqa: SLF001
-                    renderer._gs.ctm,  # noqa: SLF001
-                    renderer._gs.clip_mask is not None,  # noqa: SLF001
+                    renderer._resources,
+                    renderer._gs.ctm,
+                    renderer._gs.clip_mask is not None,
                     data,
                 )
             )
 
         monkeypatch.setattr(renderer, "_process_form_bytes", _process_form_bytes)
 
-        renderer._render_form_xobject(_Form())  # noqa: SLF001
+        renderer._render_form_xobject(_Form())
 
         assert seen == [
             (inner_resources, (2.0, 0.0, 0.0, 2.0, 9.0, 13.0), True, b"0 0 m\n")
         ]
-        assert renderer._resources is outer_resources  # noqa: SLF001
-        assert renderer._gs.ctm == original_ctm  # noqa: SLF001
-        assert renderer._subpaths == []  # noqa: SLF001
-        assert renderer._current_subpath is None  # noqa: SLF001
-        assert renderer._current_point == (1.0, 1.0)  # noqa: SLF001
+        assert renderer._resources is outer_resources
+        assert renderer._gs.ctm == original_ctm
+        assert renderer._subpaths == []
+        assert renderer._current_subpath is None
+        assert renderer._current_point == (1.0, 1.0)
     finally:
         _finish(renderer)
         doc.close()
@@ -162,15 +162,15 @@ def test_decode_image_xobject_raw_gray_and_invalid_inputs() -> None:
 
     doc, renderer = _prepared_renderer()
     try:
-        decoded = renderer._decode_image_xobject(_ImageXObject())  # noqa: SLF001
+        decoded = renderer._decode_image_xobject(_ImageXObject())
 
         assert decoded is not None
         assert decoded.mode == "RGB"
         assert decoded.getpixel((0, 0)) == (0, 0, 0)
         assert decoded.getpixel((1, 0)) == (255, 255, 255)
-        assert renderer._decode_image_xobject(_ImageXObject(width=0)) is None  # noqa: SLF001
-        assert renderer._decode_image_xobject(_ImageXObject(bpc=4)) is None  # noqa: SLF001
-        assert renderer._decode_image_xobject(  # noqa: SLF001
+        assert renderer._decode_image_xobject(_ImageXObject(width=0)) is None
+        assert renderer._decode_image_xobject(_ImageXObject(bpc=4)) is None
+        assert renderer._decode_image_xobject(
             _ImageXObject(color_space=COSName.get_pdf_name("DeviceCMYK"))
         ) is None
     finally:
@@ -181,18 +181,18 @@ def test_decode_image_xobject_raw_gray_and_invalid_inputs() -> None:
 def test_concat_matrix_and_short_text_positioning_operands_are_noops() -> None:
     doc, renderer = _prepared_renderer()
     try:
-        renderer._gs.ctm = (1.0, 0.0, 0.0, 1.0, 5.0, 6.0)  # noqa: SLF001
-        renderer._gs.text_matrix = (1.0, 0.0, 0.0, 1.0, 7.0, 8.0)  # noqa: SLF001
-        renderer._gs.text_line_matrix = renderer._gs.text_matrix  # noqa: SLF001
+        renderer._gs.ctm = (1.0, 0.0, 0.0, 1.0, 5.0, 6.0)
+        renderer._gs.text_matrix = (1.0, 0.0, 0.0, 1.0, 7.0, 8.0)
+        renderer._gs.text_line_matrix = renderer._gs.text_matrix
 
         renderer.process_operator("cm", [COSFloat(1.0), COSFloat(0.0)])
         renderer.process_operator("Td", [COSFloat(2.0)])
         renderer.process_operator("TD", [COSFloat(2.0)])
         renderer.process_operator("Tm", [COSFloat(1.0)])
 
-        assert renderer._gs.ctm == (1.0, 0.0, 0.0, 1.0, 5.0, 6.0)  # noqa: SLF001
-        assert renderer._gs.text_matrix == (1.0, 0.0, 0.0, 1.0, 7.0, 8.0)  # noqa: SLF001
-        assert renderer._gs.text_line_matrix == renderer._gs.text_matrix  # noqa: SLF001
+        assert renderer._gs.ctm == (1.0, 0.0, 0.0, 1.0, 5.0, 6.0)
+        assert renderer._gs.text_matrix == (1.0, 0.0, 0.0, 1.0, 7.0, 8.0)
+        assert renderer._gs.text_line_matrix == renderer._gs.text_matrix
 
         renderer.process_operator(
             "cm",
@@ -206,7 +206,7 @@ def test_concat_matrix_and_short_text_positioning_operands_are_noops() -> None:
             ],
         )
 
-        assert renderer._gs.ctm == (2.0, 0.0, 0.0, 3.0, 9.0, 11.0)  # noqa: SLF001
+        assert renderer._gs.ctm == (2.0, 0.0, 0.0, 3.0, 9.0, 11.0)
     finally:
         _finish(renderer)
         doc.close()

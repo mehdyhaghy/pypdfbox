@@ -59,9 +59,9 @@ def test_log_dialog_set_visible_false_without_toplevel(tk_root) -> None:
 
     dlg = LogDialog(tk_root)
     # toplevel hasn't been built yet.
-    assert dlg._toplevel is None  # noqa: SLF001
+    assert dlg._toplevel is None
     dlg.set_visible(False)  # should not raise
-    assert dlg._toplevel is None  # noqa: SLF001
+    assert dlg._toplevel is None
 
 
 def test_log_dialog_show_then_show_again_skips_build(tk_root) -> None:
@@ -71,7 +71,7 @@ def test_log_dialog_show_then_show_again_skips_build(tk_root) -> None:
 
     dlg = LogDialog(tk_root)
     dlg.show()
-    assert dlg._toplevel is not None  # noqa: SLF001
+    assert dlg._toplevel is not None
     # 2nd call — re-uses existing toplevel.
     dlg.show()
 
@@ -117,7 +117,7 @@ def test_menu_base_radio_group_change_handler_when_none_skips(tk_root) -> None:
     container = _Container(tk_root)
     container.add_radio_group(items=["X", "Y"], current="X", on_change=None)
     # Invoke the menu entry to trigger _handler — should not raise.
-    container._menu.invoke(0)  # noqa: SLF001
+    container._menu.invoke(0)
 
 
 # ---------------------------------------------------------------------------
@@ -135,9 +135,9 @@ def test_searcher_update_navigation_buttons_out_of_valid_range(tk_root) -> None:
     txt = tk.Text(tk_root)
     s = Searcher(txt)
     # Set current_match > total_match - 1 → both elif False branches.
-    s._current_match = 5  # noqa: SLF001
-    s._total_match = 3  # noqa: SLF001
-    s._search_panel = None  # noqa: SLF001 — skip the panel update block too
+    s._current_match = 5
+    s._total_match = 3
+    s._search_panel = None
     s.update_navigation_buttons()
 
 

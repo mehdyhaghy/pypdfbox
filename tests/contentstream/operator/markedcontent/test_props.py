@@ -177,7 +177,7 @@ def test_resolve_property_dict_context_without_get_resources() -> None:
 
 def test_resolve_property_dict_get_resources_raises_swallowed() -> None:
     class _Boom:
-        def get_resources(self):  # noqa: ANN001 — test stub
+        def get_resources(self):
             raise RuntimeError("synthetic")
 
     out = resolve_property_dict(
@@ -194,7 +194,7 @@ def test_resolve_property_dict_get_resources_returns_none_swallowed() -> None:
     # Page with no resources at all — get_resources() may legitimately
     # return None. The helper must treat this as "unresolved".
     class _NoRes:
-        def get_resources(self):  # noqa: ANN001 — test stub
+        def get_resources(self):
             return None
 
     out = resolve_property_dict(

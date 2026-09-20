@@ -76,7 +76,7 @@ def _collect_info(doc: PDDocument, src: Path) -> dict[str, object]:
     header_version = cos_doc.get_version()
     try:
         catalog_version = doc.get_document_catalog().get_version()
-    except Exception:  # noqa: BLE001 — defensive, malformed catalogs
+    except Exception:
         catalog_version = None
 
     info = doc.get_document_information()
@@ -119,7 +119,7 @@ def _read_xmp(doc: PDDocument) -> str | None:
     ``None`` if the document carries no XMP."""
     try:
         meta = doc.get_document_catalog().get_metadata()
-    except Exception:  # noqa: BLE001 — defensive
+    except Exception:
         return None
     if meta is None:
         return None
@@ -128,12 +128,12 @@ def _read_xmp(doc: PDDocument) -> str | None:
         if text is None:
             return None
         return text if isinstance(text, str) else str(text)
-    except Exception:  # noqa: BLE001 — fall back to raw bytes
+    except Exception:
         try:
             with meta.create_input_stream() as stream:
                 raw = stream.read()
             return bytes(raw).decode("utf-8", errors="replace")
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
 
 

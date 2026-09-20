@@ -219,7 +219,7 @@ def test_vri_key_for_signature_is_sha1_upper_hex() -> None:
     sig = PDSignature()
     sig.set_contents(b"the-contents-octet-string")
     key = PDDocumentSecurityStore._vri_key_for(sig)
-    assert key == hashlib.sha1(b"the-contents-octet-string").hexdigest().upper()  # noqa: S324
+    assert key == hashlib.sha1(b"the-contents-octet-string").hexdigest().upper()
 
 
 def test_vri_key_for_signature_without_contents_raises() -> None:
@@ -234,7 +234,7 @@ def test_vri_key_for_str_is_uppercased() -> None:
 
 def test_vri_key_for_bytes_is_sha1_hex() -> None:
     blob = b"some-contents"
-    expected = hashlib.sha1(blob).hexdigest().upper()  # noqa: S324
+    expected = hashlib.sha1(blob).hexdigest().upper()
     assert PDDocumentSecurityStore._vri_key_for(blob) == expected
 
 
@@ -486,7 +486,7 @@ def test_dss_round_trip_in_signed_pdf(tmp_path: Path) -> None:
         # Per-spec key: uppercase SHA-1 hex of /Contents.
         vri_dict = dss.get_vri_dictionary()
         assert vri_dict is not None
-        expected_key = hashlib.sha1(  # noqa: S324
+        expected_key = hashlib.sha1(
             reloaded_sig.get_contents() or b""
         ).hexdigest().upper()
         assert vri_dict.get_dictionary_object(

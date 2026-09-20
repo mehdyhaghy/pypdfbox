@@ -216,7 +216,7 @@ def test_constructor_raises_when_certificate_missing(monkeypatch, pkcs12_bytes):
     """Cover the cert/private_key ``None`` guard (line 45)."""
     import pypdfbox.examples.signature.create_signature_base as mod
 
-    def _no_cert(data, password):  # noqa: ARG001
+    def _no_cert(data, password):
         return (None, None, [])
 
     monkeypatch.setattr(mod.pkcs12, "load_key_and_certificates", _no_cert)

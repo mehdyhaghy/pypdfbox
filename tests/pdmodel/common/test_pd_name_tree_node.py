@@ -296,7 +296,7 @@ def test_value_type_constructor_arg_round_trips() -> None:
     typed = PDStringNameTreeNode()
     # Subclasses pin T, but the base lets callers stash the marker class
     # for parity with PDFBox's ``PDNameTreeNode(Class<? extends T>)`` ctor.
-    typed._value_type = str  # noqa: SLF001 - direct marker assignment is fine
+    typed._value_type = str
     assert typed.get_value_type() is str
 
 

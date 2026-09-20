@@ -221,7 +221,7 @@ def test_1d_8bit_interpolated_midpoint() -> None:
 )
 def test_1d_matches_reference(x: float) -> None:
     samples = [10, 70, 130, 200, 255]
-    kw = dict(domain=[0.0, 1.0], range_=[0.0, 1.0], size=[5], bits=8, samples=samples)
+    kw = {"domain": [0.0, 1.0], "range_": [0.0, 1.0], "size": [5], "bits": 8, "samples": samples}
     fn = _build_type0(**kw)
     _assert_close(fn.eval([x]), _ref_eval([x], **kw))
 
@@ -256,14 +256,14 @@ def test_encode_default_multi_dim() -> None:
 def test_explicit_encode_remaps_grid() -> None:
     samples = [0, 50, 100, 150, 200, 250]
     # Encode [5,0] reverses the grid: domain min → sample index 5.
-    kw = dict(
-        domain=[0.0, 1.0],
-        range_=[0.0, 1.0],
-        size=[6],
-        bits=8,
-        samples=samples,
-        encode=[5.0, 0.0],
-    )
+    kw = {
+        "domain": [0.0, 1.0],
+        "range_": [0.0, 1.0],
+        "size": [6],
+        "bits": 8,
+        "samples": samples,
+        "encode": [5.0, 0.0],
+    }
     fn = _build_type0(**kw)
     # domain 0 → grid 5 → sample 250.
     _assert_close(fn.eval([0.0]), [250.0 / 255.0])
@@ -295,14 +295,14 @@ def test_decode_default_equals_range() -> None:
 
 
 def test_explicit_decode_independent_of_range() -> None:
-    kw = dict(
-        domain=[0.0, 1.0],
-        range_=[0.0, 100.0],
-        size=[2],
-        bits=8,
-        samples=[0, 255],
-        decode=[10.0, 90.0],
-    )
+    kw = {
+        "domain": [0.0, 1.0],
+        "range_": [0.0, 100.0],
+        "size": [2],
+        "bits": 8,
+        "samples": [0, 255],
+        "decode": [10.0, 90.0],
+    }
     fn = _build_type0(**kw)
     _assert_close(fn.eval([0.0]), [10.0])
     _assert_close(fn.eval([1.0]), [90.0])
@@ -322,14 +322,14 @@ def test_bit_unpacking_roundtrip_via_decode(bits: int) -> None:
     # A spread of codes across the value space, length = size.
     size = 7
     samples = [int(round(k * smax / (size - 1))) for k in range(size)]
-    kw = dict(
-        domain=[0.0, 1.0],
-        range_=[0.0, float(smax)],
-        size=[size],
-        bits=bits,
-        samples=samples,
-        decode=[0.0, float(smax)],
-    )
+    kw = {
+        "domain": [0.0, 1.0],
+        "range_": [0.0, float(smax)],
+        "size": [size],
+        "bits": bits,
+        "samples": samples,
+        "decode": [0.0, float(smax)],
+    }
     fn = _build_type0(**kw)
     for k in range(size):
         x = k / (size - 1)
@@ -340,14 +340,14 @@ def test_bit_unpacking_roundtrip_via_decode(bits: int) -> None:
 def test_12bit_specific_codes() -> None:
     # 12-bit straddles byte boundaries: codes [0xFFF, 0x000, 0xAAA, 0x555].
     samples = [0xFFF, 0x000, 0xAAA, 0x555]
-    kw = dict(
-        domain=[0.0, 1.0],
-        range_=[0.0, 4095.0],
-        size=[4],
-        bits=12,
-        samples=samples,
-        decode=[0.0, 4095.0],
-    )
+    kw = {
+        "domain": [0.0, 1.0],
+        "range_": [0.0, 4095.0],
+        "size": [4],
+        "bits": 12,
+        "samples": samples,
+        "decode": [0.0, 4095.0],
+    }
     fn = _build_type0(**kw)
     for k in range(4):
         x = k / 3.0
@@ -357,14 +357,14 @@ def test_12bit_specific_codes() -> None:
 def test_1bit_packing() -> None:
     # 8 one-bit samples in a single byte, alternating.
     samples = [1, 0, 1, 0, 1, 0, 1, 0]
-    kw = dict(
-        domain=[0.0, 1.0],
-        range_=[0.0, 1.0],
-        size=[8],
-        bits=1,
-        samples=samples,
-        decode=[0.0, 1.0],
-    )
+    kw = {
+        "domain": [0.0, 1.0],
+        "range_": [0.0, 1.0],
+        "size": [8],
+        "bits": 1,
+        "samples": samples,
+        "decode": [0.0, 1.0],
+    }
     fn = _build_type0(**kw)
     for k in range(8):
         x = k / 7.0
@@ -373,14 +373,14 @@ def test_1bit_packing() -> None:
 
 def test_4bit_nibbles() -> None:
     samples = [0x0, 0x5, 0xA, 0xF, 0x3, 0xC]
-    kw = dict(
-        domain=[0.0, 1.0],
-        range_=[0.0, 15.0],
-        size=[6],
-        bits=4,
-        samples=samples,
-        decode=[0.0, 15.0],
-    )
+    kw = {
+        "domain": [0.0, 1.0],
+        "range_": [0.0, 15.0],
+        "size": [6],
+        "bits": 4,
+        "samples": samples,
+        "decode": [0.0, 15.0],
+    }
     fn = _build_type0(**kw)
     for k in range(6):
         x = k / 5.0
@@ -400,14 +400,14 @@ def test_multi_output_unpacking(bits: int) -> None:
     samples = []
     for k in range(3):
         samples += [out_a[k], out_b[k]]
-    kw = dict(
-        domain=[0.0, 1.0],
-        range_=[0.0, float(smax), 0.0, float(smax)],
-        size=[3],
-        bits=bits,
-        samples=samples,
-        decode=[0.0, float(smax), 0.0, float(smax)],
-    )
+    kw = {
+        "domain": [0.0, 1.0],
+        "range_": [0.0, float(smax), 0.0, float(smax)],
+        "size": [3],
+        "bits": bits,
+        "samples": samples,
+        "decode": [0.0, float(smax), 0.0, float(smax)],
+    }
     fn = _build_type0(**kw)
     for k in range(3):
         x = k / 2.0
@@ -456,14 +456,14 @@ def test_bilinear_center() -> None:
 )
 def test_bilinear_matches_reference(pt) -> None:
     samples = [10, 240, 60, 180]
-    kw = dict(
-        domain=[0.0, 1.0, 0.0, 1.0],
-        range_=[0.0, 1.0],
-        size=[2, 2],
-        bits=8,
-        samples=samples,
-        decode=[0.0, 255.0],
-    )
+    kw = {
+        "domain": [0.0, 1.0, 0.0, 1.0],
+        "range_": [0.0, 1.0],
+        "size": [2, 2],
+        "bits": 8,
+        "samples": samples,
+        "decode": [0.0, 255.0],
+    }
     fn = _build_type0(**kw)
     _assert_close(fn.eval(list(pt)), _ref_eval(list(pt), **kw))
 
@@ -471,14 +471,14 @@ def test_bilinear_matches_reference(pt) -> None:
 def test_2d_3x2_grid_matches_reference() -> None:
     # 3 x 2 grid, first dim varies fastest. 6 cells, 1 output.
     samples = [0, 50, 100, 150, 200, 250]
-    kw = dict(
-        domain=[0.0, 1.0, 0.0, 1.0],
-        range_=[0.0, 255.0],
-        size=[3, 2],
-        bits=8,
-        samples=samples,
-        decode=[0.0, 255.0],
-    )
+    kw = {
+        "domain": [0.0, 1.0, 0.0, 1.0],
+        "range_": [0.0, 255.0],
+        "size": [3, 2],
+        "bits": 8,
+        "samples": samples,
+        "decode": [0.0, 255.0],
+    }
     fn = _build_type0(**kw)
     for p in [(0.0, 0.0), (0.5, 0.0), (1.0, 0.0), (0.25, 1.0), (0.5, 0.5)]:
         _assert_close(fn.eval(list(p)), _ref_eval(list(p), **kw))
@@ -491,7 +491,7 @@ def test_2d_3x2_grid_matches_reference() -> None:
 
 def test_input_clamped_to_domain() -> None:
     samples = [0, 255]
-    kw = dict(domain=[0.0, 1.0], range_=[0.0, 1.0], size=[2], bits=8, samples=samples)
+    kw = {"domain": [0.0, 1.0], "range_": [0.0, 1.0], "size": [2], "bits": 8, "samples": samples}
     fn = _build_type0(**kw)
     # Below and above domain clamp to endpoints.
     _assert_close(fn.eval([-5.0]), [0.0])
@@ -500,14 +500,14 @@ def test_input_clamped_to_domain() -> None:
 
 def test_output_clamped_to_range() -> None:
     # Decode pushes the value outside /Range; eval must clamp.
-    kw = dict(
-        domain=[0.0, 1.0],
-        range_=[0.0, 1.0],
-        size=[2],
-        bits=8,
-        samples=[0, 255],
-        decode=[-10.0, 10.0],
-    )
+    kw = {
+        "domain": [0.0, 1.0],
+        "range_": [0.0, 1.0],
+        "size": [2],
+        "bits": 8,
+        "samples": [0, 255],
+        "decode": [-10.0, 10.0],
+    }
     fn = _build_type0(**kw)
     # sample 0 → decode -10 → clamp to 0; sample 255 → decode 10 → clamp to 1.
     _assert_close(fn.eval([0.0]), [0.0])
@@ -546,14 +546,14 @@ def test_interpolate_degenerate_domain_returns_ymin() -> None:
 
 def test_boundary_inputs_hit_edge_samples() -> None:
     samples = [11, 22, 33, 44, 55]
-    kw = dict(
-        domain=[0.0, 1.0],
-        range_=[0.0, 255.0],
-        size=[5],
-        bits=8,
-        samples=samples,
-        decode=[0.0, 255.0],
-    )
+    kw = {
+        "domain": [0.0, 1.0],
+        "range_": [0.0, 255.0],
+        "size": [5],
+        "bits": 8,
+        "samples": samples,
+        "decode": [0.0, 255.0],
+    }
     fn = _build_type0(**kw)
     _assert_close(fn.eval([0.0]), [11.0])  # first sample
     _assert_close(fn.eval([1.0]), [55.0])  # last sample
@@ -561,14 +561,14 @@ def test_boundary_inputs_hit_edge_samples() -> None:
 
 def test_nonzero_domain_boundaries() -> None:
     samples = [0, 128, 255]
-    kw = dict(
-        domain=[-10.0, 10.0],
-        range_=[0.0, 255.0],
-        size=[3],
-        bits=8,
-        samples=samples,
-        decode=[0.0, 255.0],
-    )
+    kw = {
+        "domain": [-10.0, 10.0],
+        "range_": [0.0, 255.0],
+        "size": [3],
+        "bits": 8,
+        "samples": samples,
+        "decode": [0.0, 255.0],
+    }
     fn = _build_type0(**kw)
     _assert_close(fn.eval([-10.0]), [0.0])
     _assert_close(fn.eval([0.0]), [128.0])
@@ -582,14 +582,14 @@ def test_nonzero_domain_boundaries() -> None:
 
 def test_size_one_degenerate_returns_single_sample() -> None:
     # Only one grid point; any input maps to it.
-    kw = dict(
-        domain=[0.0, 1.0],
-        range_=[0.0, 255.0],
-        size=[1],
-        bits=8,
-        samples=[123],
-        decode=[0.0, 255.0],
-    )
+    kw = {
+        "domain": [0.0, 1.0],
+        "range_": [0.0, 255.0],
+        "size": [1],
+        "bits": 8,
+        "samples": [123],
+        "decode": [0.0, 255.0],
+    }
     fn = _build_type0(**kw)
     for x in (0.0, 0.5, 1.0):
         _assert_close(fn.eval([x]), [123.0])
@@ -598,14 +598,14 @@ def test_size_one_degenerate_returns_single_sample() -> None:
 def test_size_one_in_one_dim_of_2d() -> None:
     # 2D grid where dim 1 is degenerate (Size=1): bilinear collapses to 1D.
     samples = [0, 255]  # cells: (0,0)=0, (1,0)=255
-    kw = dict(
-        domain=[0.0, 1.0, 0.0, 1.0],
-        range_=[0.0, 255.0],
-        size=[2, 1],
-        bits=8,
-        samples=samples,
-        decode=[0.0, 255.0],
-    )
+    kw = {
+        "domain": [0.0, 1.0, 0.0, 1.0],
+        "range_": [0.0, 255.0],
+        "size": [2, 1],
+        "bits": 8,
+        "samples": samples,
+        "decode": [0.0, 255.0],
+    }
     fn = _build_type0(**kw)
     for x0 in (0.0, 0.5, 1.0):
         for x1 in (0.0, 1.0):
@@ -621,14 +621,14 @@ def test_size_one_in_one_dim_of_2d() -> None:
 def test_wide_sample_decode(bits: int) -> None:
     smax = (1 << bits) - 1
     samples = [0, smax]
-    kw = dict(
-        domain=[0.0, 1.0],
-        range_=[0.0, 1.0],
-        size=[2],
-        bits=bits,
-        samples=samples,
-        decode=[0.0, 1.0],
-    )
+    kw = {
+        "domain": [0.0, 1.0],
+        "range_": [0.0, 1.0],
+        "size": [2],
+        "bits": bits,
+        "samples": samples,
+        "decode": [0.0, 1.0],
+    }
     fn = _build_type0(**kw)
     _assert_close(fn.eval([0.0]), [0.0])
     _assert_close(fn.eval([1.0]), [1.0], tol=1e-6)
@@ -639,14 +639,14 @@ def test_32bit_top_bit_sign_extension_then_range_clamp() -> None:
     # A 32-bit code >= 2^31 is sign-extended to negative (upstream Java cast),
     # then Decode-mapped and clamped to /Range.
     code = 0x80000000  # 2^31, sign-extends to -2^31.
-    kw = dict(
-        domain=[0.0, 1.0],
-        range_=[0.0, 1.0],
-        size=[2],
-        bits=32,
-        samples=[0, code],
-        decode=[0.0, 1.0],
-    )
+    kw = {
+        "domain": [0.0, 1.0],
+        "range_": [0.0, 1.0],
+        "size": [2],
+        "bits": 32,
+        "samples": [0, code],
+        "decode": [0.0, 1.0],
+    }
     fn = _build_type0(**kw)
     # At x=1 the negative sample decodes negative, clamps to range min 0.
     _assert_close(fn.eval([1.0]), _ref_eval([1.0], **kw))
@@ -656,14 +656,14 @@ def test_32bit_top_bit_sign_extension_then_range_clamp() -> None:
 def test_32bit_below_signbit_unsigned() -> None:
     # A 32-bit code < 2^31 stays positive (no sign extension).
     code = 0x40000000  # 2^30
-    kw = dict(
-        domain=[0.0, 1.0],
-        range_=[0.0, 4.0],
-        size=[2],
-        bits=32,
-        samples=[0, code],
-        decode=[0.0, 4.0],
-    )
+    kw = {
+        "domain": [0.0, 1.0],
+        "range_": [0.0, 4.0],
+        "size": [2],
+        "bits": 32,
+        "samples": [0, code],
+        "decode": [0.0, 4.0],
+    }
     fn = _build_type0(**kw)
     # code / (2^32-1) * 4 ≈ 1.0 (2^30 is a quarter of 2^32).
     _assert_close(fn.eval([1.0]), _ref_eval([1.0], **kw))

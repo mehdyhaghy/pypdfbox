@@ -29,7 +29,7 @@ class _BrokenCharString:
 
 def _font_with(font_dict: dict[str, Any]) -> Type1Font:
     font = Type1Font()
-    font._t1 = _FakeT1(font_dict)  # noqa: SLF001
+    font._t1 = _FakeT1(font_dict)
     return font
 
 
@@ -54,8 +54,8 @@ def test_wave474_from_bytes_normalizes_hex_and_binary_eexec_chunks(
 
     assert font.get_ascii_segment() == b"%!PS-AdobeFont-1.0\n"
     assert font.get_binary_segment() == b"ABCD\x01\x02"
-    assert font._t1.data == b"%!PS-AdobeFont-1.0\nABCD\x01\x02"  # noqa: SLF001
-    assert font._t1.encoding == "ascii"  # noqa: SLF001
+    assert font._t1.data == b"%!PS-AdobeFont-1.0\nABCD\x01\x02"
+    assert font._t1.encoding == "ascii"
     assert font.has_glyph(".notdef") is True
 
 

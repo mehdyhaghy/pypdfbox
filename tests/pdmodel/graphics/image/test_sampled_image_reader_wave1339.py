@@ -219,7 +219,7 @@ def test_get_rgb_image_subsample_with_region_skips_outside() -> None:
     # 4x4 image with subsampling=2 and a tiny region (1,1,2,2) starting
     # at (1,1) — the loop iterates over all 4 src rows but only y=1 and y=3
     # land inside the 2-pixel-tall region.
-    data = bytes([i for i in range(4 * 4 * 3)])
+    data = bytes(list(range(4 * 4 * 3)))
     pd = _StubPDImage(4, 4, 8, data, components=3)
     out = SampledImageReader.get_rgb_image(pd, (1, 1, 2, 2), 2, None)
     assert out is not None

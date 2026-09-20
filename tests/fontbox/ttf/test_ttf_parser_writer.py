@@ -118,7 +118,7 @@ def _set_custom_name(
     nr.platEncID = plat_enc_id
     nr.langID = lang_id
     nr.string = value
-    font._tt["name"].names.append(nr)  # noqa: SLF001
+    font._tt["name"].names.append(nr)
 
 
 class TestTrueTypeFontSave:

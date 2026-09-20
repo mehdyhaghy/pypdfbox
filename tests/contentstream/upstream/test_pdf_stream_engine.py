@@ -32,8 +32,8 @@ def test_show_form_requires_current_page_like_upstream() -> None:
     """Upstream ``showForm`` raises ``IllegalStateException`` when no
     current page is set. We surface ``RuntimeError`` (the project's
     exception mapping)."""
-    from pypdfbox.cos import COSStream  # noqa: PLC0415
-    from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (  # noqa: PLC0415
+    from pypdfbox.cos import COSStream
+    from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (
         PDFormXObject,
     )
 

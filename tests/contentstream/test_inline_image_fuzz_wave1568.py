@@ -182,7 +182,7 @@ def test_ei_scan_sha_stability() -> None:
     # subtle off-by-one in the scan window is caught.
     data = _scan_image_data(_SCAN_CASES[1][1])
     assert data is not None
-    assert hashlib.sha1(data).hexdigest() == hashlib.sha1(  # noqa: S324
+    assert hashlib.sha1(data).hexdigest() == hashlib.sha1(
         b"\x01EI\x80\x81\x82\x83\x84\x85 "
     ).hexdigest()
 

@@ -140,7 +140,7 @@ def test_run_falls_back_when_process_page_raises(tmp_path, capsys) -> None:
     stream engine refuses the page."""
     src = _build_image_pdf(tmp_path / "fb.pdf", image_count=1)
 
-    def _boom(self, page):  # noqa: ARG001
+    def _boom(self, page):
         raise NotImplementedError("stream engine offline")
 
     with patch.object(PrintImageLocations, "process_page", _boom):
@@ -153,7 +153,7 @@ def test_run_falls_back_when_process_page_raises(tmp_path, capsys) -> None:
 def test_run_fallback_attribute_error(tmp_path, capsys) -> None:
     src = _build_image_pdf(tmp_path / "fb2.pdf", image_count=1)
 
-    def _attr_err(self, page):  # noqa: ARG001
+    def _attr_err(self, page):
         raise AttributeError("no process_page")
 
     with patch.object(PrintImageLocations, "process_page", _attr_err):
@@ -184,7 +184,7 @@ class _StubResources:
     def __init__(self, xobj: Any) -> None:
         self._xobj = xobj
 
-    def get_x_object(self, name: Any) -> Any:  # noqa: ARG002
+    def get_x_object(self, name: Any) -> Any:
         return self._xobj
 
 
@@ -200,7 +200,7 @@ def test_process_operator_do_prints_image_metadata(capsys) -> None:
 
 def test_process_operator_do_swallows_resource_error(capsys) -> None:
     class _BrokenResources:
-        def get_x_object(self, name: Any) -> Any:  # noqa: ARG002
+        def get_x_object(self, name: Any) -> Any:
             raise RuntimeError("broken")
 
     printer = PrintImageLocations()
@@ -326,7 +326,7 @@ def test_show_form_swallows_attribute_error() -> None:
     to raise that exact type via a stub override."""
     printer = PrintImageLocations()
 
-    def _raise_attr(self, form):  # noqa: ARG001
+    def _raise_attr(self, form):
         raise AttributeError("no impl")
 
     with patch(

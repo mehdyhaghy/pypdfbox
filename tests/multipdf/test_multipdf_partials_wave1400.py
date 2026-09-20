@@ -240,7 +240,7 @@ def test_overlay_create_form_xobject_skips_resources_when_clone_none() -> None:
     )
 
     class _Cloner:
-        def clone_for_new_document(self, base):  # noqa: D401, ARG002
+        def clone_for_new_document(self, base):
             return None
 
     form = overlay._create_overlay_form_x_object(layout, _Cloner())
@@ -624,13 +624,13 @@ def test_process_resources_skips_unknown_xobject_subclass(
     from pypdfbox.pdmodel.pd_resources import PDResources
 
     class _FakeResources:
-        def get_cos_object(self):  # noqa: D401
+        def get_cos_object(self):
             return COSDictionary()
 
-        def get_xobject_names(self):  # noqa: D401
+        def get_xobject_names(self):
             return [COSName.get_pdf_name("XO1")]
 
-        def get_x_object(self, name):  # noqa: D401, ARG002
+        def get_x_object(self, name):
             stream = COSStream()
             stream.set_raw_data(b"")
             # Build a bare PDXObject with a non-Form, non-Image subtype.
@@ -679,5 +679,5 @@ def test_clone_struct_element_kid_dict_objr_non_dict_obj() -> None:
 
 
 class _PageTreeStub:
-    def index_of(self, page_dict):  # noqa: D401, ARG002
+    def index_of(self, page_dict):
         return 0

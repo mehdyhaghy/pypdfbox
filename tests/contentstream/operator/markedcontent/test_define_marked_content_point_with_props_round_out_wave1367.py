@@ -177,7 +177,7 @@ def test_dp_uses_distinct_hook_from_bdc() -> None:
     """``DP`` calls ``marked_content_point``; ``BDC`` calls
     ``begin_marked_content_sequence``. The classes must dispatch to
     distinct engine hooks even though they share property resolution."""
-    from pypdfbox.contentstream.operator.markedcontent.begin_marked_content_with_props import (  # noqa: E501
+    from pypdfbox.contentstream.operator.markedcontent.begin_marked_content_with_props import (
         BeginMarkedContentWithProps,
     )
 

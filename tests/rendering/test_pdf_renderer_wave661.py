@@ -34,14 +34,14 @@ def test_blend_channel_short_circuits_none_mode_and_clamps_outputs(
     backdrop = Image.new("L", (1, 1), 120)
     source = Image.new("L", (1, 1), 40)
 
-    assert PDFRenderer._blend_channel(backdrop, source, None) is backdrop  # noqa: SLF001
+    assert PDFRenderer._blend_channel(backdrop, source, None) is backdrop
 
     monkeypatch.setattr(
         PDFRenderer,
         "_blend_scalar",
         staticmethod(lambda _b, _s, _mode: -0.25),
     )
-    low = PDFRenderer._blend_channel(backdrop, source, "Synthetic")  # noqa: SLF001
+    low = PDFRenderer._blend_channel(backdrop, source, "Synthetic")
     assert low.getpixel((0, 0)) == 0
 
     monkeypatch.setattr(
@@ -49,22 +49,22 @@ def test_blend_channel_short_circuits_none_mode_and_clamps_outputs(
         "_blend_scalar",
         staticmethod(lambda _b, _s, _mode: 1.25),
     )
-    high = PDFRenderer._blend_channel(backdrop, source, "Synthetic")  # noqa: SLF001
+    high = PDFRenderer._blend_channel(backdrop, source, "Synthetic")
     assert high.getpixel((0, 0)) == 255
 
 
 def test_hsl_helpers_cover_equal_component_fallbacks() -> None:
-    assert PDFRenderer._hsl_clip_color(-0.25, -0.25, -0.25) == (  # noqa: SLF001
+    assert PDFRenderer._hsl_clip_color(-0.25, -0.25, -0.25) == (
         0.0,
         0.0,
         0.0,
     )
-    assert PDFRenderer._hsl_clip_color(1.25, 1.25, 1.25) == (  # noqa: SLF001
+    assert PDFRenderer._hsl_clip_color(1.25, 1.25, 1.25) == (
         1.0,
         1.0,
         1.0,
     )
-    assert PDFRenderer._hsl_set_sat(0.4, 0.4, 0.4, 0.8) == (  # noqa: SLF001
+    assert PDFRenderer._hsl_set_sat(0.4, 0.4, 0.4, 0.8) == (
         0.0,
         0.0,
         0.0,
@@ -75,7 +75,7 @@ def test_build_transfer_lookup_handles_factory_none_and_empty_outputs(
     monkeypatch: Any,
 ) -> None:
     monkeypatch.setattr(PDFunction, "create", staticmethod(lambda _tr: None))
-    assert PDFRenderer._build_transfer_lookup(object()) is None  # noqa: SLF001
+    assert PDFRenderer._build_transfer_lookup(object()) is None
 
     class EmptyThenHalf:
         def eval(self, values: list[float]) -> list[float]:
@@ -89,7 +89,7 @@ def test_build_transfer_lookup_handles_factory_none_and_empty_outputs(
         staticmethod(lambda _tr: EmptyThenHalf()),
     )
 
-    lookup = PDFRenderer._build_transfer_lookup(COSName.get_pdf_name("TR"))  # noqa: SLF001
+    lookup = PDFRenderer._build_transfer_lookup(COSName.get_pdf_name("TR"))
 
     assert lookup is not None
     assert lookup[0] == 0
@@ -97,6 +97,6 @@ def test_build_transfer_lookup_handles_factory_none_and_empty_outputs(
 
 
 def test_shading_domain_and_extend_malformed_values_default() -> None:
-    assert PDFRenderer._shading_domain(_RaisesDomain()) == (0.0, 1.0)  # noqa: SLF001
-    assert PDFRenderer._shading_domain(_BadDomain()) == (0.0, 1.0)  # noqa: SLF001
-    assert PDFRenderer._shading_extend(_BadExtend()) == (False, False)  # noqa: SLF001
+    assert PDFRenderer._shading_domain(_RaisesDomain()) == (0.0, 1.0)
+    assert PDFRenderer._shading_domain(_BadDomain()) == (0.0, 1.0)
+    assert PDFRenderer._shading_extend(_BadExtend()) == (False, False)

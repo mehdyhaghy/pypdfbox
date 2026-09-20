@@ -60,13 +60,13 @@ class PDAnnotationSquiggly(PDAnnotationTextMarkup):
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
-            return None
+            return
         from .handlers.pd_squiggly_appearance_handler import (
             PDSquigglyAppearanceHandler,
         )
 
         PDSquigglyAppearanceHandler(self, document).generate_appearance_streams()
-        return None
+        return
 
 
 __all__ = ["PDAnnotationSquiggly"]

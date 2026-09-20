@@ -23,20 +23,20 @@ def _parser(data: bytes = b"") -> PDFParser:
 
 def _ready_parser(data: bytes) -> tuple[PDFParser, COSDocument]:
     parser = _parser(data)
-    doc = parser._document = COSDocument()  # noqa: SLF001
-    parser._cos_parser = COSParser(parser._src, document=doc)  # noqa: SLF001
+    doc = parser._document = COSDocument()
+    parser._cos_parser = COSParser(parser._src, document=doc)
     return parser, doc
 
 
 def test_wave674_linearization_detection_ignores_bad_object_keyword() -> None:
     parser = _parser(b"%PDF-1.7\n1 0 @")
     parser.parse_header()
-    saved = parser._src.get_position()  # noqa: SLF001
+    saved = parser._src.get_position()
 
-    parser._detect_linearization()  # noqa: SLF001
+    parser._detect_linearization()
 
     assert parser.get_linearization_dictionary() is None
-    assert parser._src.get_position() == saved  # noqa: SLF001
+    assert parser._src.get_position() == saved
 
 
 def test_wave674_resolve_dict_entry_skips_compressed_reference() -> None:
@@ -51,7 +51,7 @@ def test_wave674_resolve_dict_entry_skips_compressed_reference() -> None:
             XrefEntry(type=XrefType.COMPRESSED, offset=9, compressed_index=0),
         )
 
-        assert parser._resolve_dict_entry(container, COSName.ENCRYPT) is None  # noqa: SLF001
+        assert parser._resolve_dict_entry(container, COSName.ENCRYPT) is None
     finally:
         doc.close()
 
@@ -62,15 +62,15 @@ def test_wave674_recover_xref_offset_returns_original_for_non_section_recovery()
             return 3
 
     parser = _parser(b"abcnotxref")
-    parser._cos_parser = Searcher()  # type: ignore[assignment]  # noqa: SLF001
+    parser._cos_parser = Searcher()  # type: ignore[assignment]
 
-    assert parser._recover_xref_offset_if_needed(0) == 0  # noqa: SLF001
+    assert parser._recover_xref_offset_if_needed(0) == 0
 
 
 def test_wave674_xref_shape_check_rejects_dictionary_without_xref_type() -> None:
     parser, doc = _ready_parser(b"1 0 obj\n<< /Type /Catalog >>\nendobj")
     try:
-        assert parser._xref_section_starts_at(0) is False  # noqa: SLF001
+        assert parser._xref_section_starts_at(0) is False
     finally:
         doc.close()
 
@@ -79,7 +79,7 @@ def test_wave674_handle_xref_stream_rejects_non_dictionary_body() -> None:
     parser, doc = _ready_parser(b"1 0 obj\n42\nstream\nendstream")
     try:
         with pytest.raises(PDFParseError, match="not a dictionary"):
-            parser._handle_xref_stream_at(0)  # noqa: SLF001
+            parser._handle_xref_stream_at(0)
     finally:
         doc.close()
 
@@ -92,7 +92,7 @@ def test_wave674_decode_xref_stream_rejects_non_integer_width() -> None:
     stream.set_raw_data(b"\x01\x00\x00")
 
     with pytest.raises(PDFParseError, match=r"/W\[1\]"):
-        parser._decode_xref_stream_entries(stream)  # noqa: SLF001
+        parser._decode_xref_stream_entries(stream)
 
 
 def test_wave674_decode_xref_stream_rejects_odd_index_length() -> None:
@@ -103,7 +103,7 @@ def test_wave674_decode_xref_stream_rejects_odd_index_length() -> None:
     stream.set_raw_data(b"\x01\x00\x00")
 
     with pytest.raises(PDFParseError, match="odd length"):
-        parser._decode_xref_stream_entries(stream)  # noqa: SLF001
+        parser._decode_xref_stream_entries(stream)
 
 
 def test_wave674_indirect_loader_rejects_stream_body_without_dictionary() -> None:
@@ -111,7 +111,7 @@ def test_wave674_indirect_loader_rejects_stream_body_without_dictionary() -> Non
     try:
         obj = doc.get_object_from_pool(COSObjectKey(1, 0))
         with pytest.raises(PDFParseError, match="not a dictionary"):
-            parser._load_indirect_object_at(0, obj)  # noqa: SLF001
+            parser._load_indirect_object_at(0, obj)
     finally:
         doc.close()
 
@@ -133,7 +133,7 @@ def test_wave674_compressed_object_resolved_by_number_not_index() -> None:
         objstm.set_raw_data(b"8 0 42")
         doc.get_object_from_pool(COSObjectKey(7, 0)).set_object(objstm)
 
-        loaded = parser._load_compressed_object(7, 1, COSObject(8, 0))  # noqa: SLF001
+        loaded = parser._load_compressed_object(7, 1, COSObject(8, 0))
         assert isinstance(loaded, COSInteger)
         assert loaded.value == 42
     finally:

@@ -221,7 +221,7 @@ class KerningSubtable:
             pairs[(left, right)] = value
         self._gid_pairs = pairs
 
-    def _read_subtable_1(self, data: TTFDataStream) -> None:  # noqa: ARG002
+    def _read_subtable_1(self, data: TTFDataStream) -> None:
         """Upstream ``readSubtable1`` — Apple state-machine layout. Logged as
         "not yet supported" upstream; leave ``pairs`` unset → 0 lookup."""
         return
@@ -475,7 +475,7 @@ class KerningSubtable:
         # them up.
         if self._ttf is None:
             return 0
-        glyph_order = self._ttf._tt.getGlyphOrder()  # noqa: SLF001
+        glyph_order = self._ttf._tt.getGlyphOrder()
         if left >= len(glyph_order) or right >= len(glyph_order):
             return 0
         key = (glyph_order[left], glyph_order[right])

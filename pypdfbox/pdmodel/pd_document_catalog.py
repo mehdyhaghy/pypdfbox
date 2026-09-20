@@ -596,7 +596,7 @@ class PDDocumentCatalog:
         try:
             if self._document.get_version() < 1.5:
                 self._document.set_version(1.5)
-        except Exception:  # noqa: BLE001 — defensive: catalogs without a doc
+        except Exception:
             pass
 
     def get_names(self) -> Any:
@@ -677,7 +677,7 @@ class PDDocumentCatalog:
         if names_dict is not None:
             try:
                 dests_tree = names_dict.get_dests()
-            except Exception:  # noqa: BLE001 — defensive on malformed names
+            except Exception:
                 dests_tree = None
             if dests_tree is not None:
                 # PDDestinationNameTreeNode (the proper name-tree shape) has

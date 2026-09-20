@@ -215,7 +215,7 @@ class HexEditor(ttk.Frame):
 
         return dialog
 
-    def action_performed(self, event: object | None = None) -> None:  # noqa: ARG002
+    def action_performed(self, event: object | None = None) -> None:
         """Trigger the jump-to-index dialog from a menu / accelerator action.
 
         Mirrors the three anonymous ``ActionListener.actionPerformed``

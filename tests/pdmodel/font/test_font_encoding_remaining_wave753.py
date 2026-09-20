@@ -26,7 +26,7 @@ class _NamedEncoding(Encoding):
 class _RecordingMapper(FontMapper):
     def __init__(self) -> None:
         self.calls: list[tuple[str, object | None]] = []
-        self.mapping = FontMapping(cast(FontBoxFont, object()), False)
+        self.mapping = FontMapping(cast("FontBoxFont", object()), False)
 
     def get_true_type_font(
         self,

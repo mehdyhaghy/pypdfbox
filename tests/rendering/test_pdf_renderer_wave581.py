@@ -22,16 +22,16 @@ def _make_doc(width: float = 4.0, height: float = 4.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (4, 4)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -69,10 +69,10 @@ def test_decode_image_xobject_rejects_invalid_raw_image_shapes() -> None:
 
     doc, renderer = _prepared_renderer()
     try:
-        assert renderer._decode_image_xobject(_ImageXObject(width=0)) is None  # noqa: SLF001
-        assert renderer._decode_image_xobject(_ImageXObject(height=0)) is None  # noqa: SLF001
-        assert renderer._decode_image_xobject(_ImageXObject(bpc=4)) is None  # noqa: SLF001
-        assert renderer._decode_image_xobject(  # noqa: SLF001
+        assert renderer._decode_image_xobject(_ImageXObject(width=0)) is None
+        assert renderer._decode_image_xobject(_ImageXObject(height=0)) is None
+        assert renderer._decode_image_xobject(_ImageXObject(bpc=4)) is None
+        assert renderer._decode_image_xobject(
             _ImageXObject(color_space=COSName.get_pdf_name("DeviceCMYK"))
         ) is None
     finally:
@@ -110,10 +110,10 @@ def test_inline_image_operator_logs_constructor_failure_and_skips_paste(
             lambda _image: (_ for _ in ()).throw(AssertionError("pasted")),
         )
 
-        renderer._op_inline_image(_Operator(), [])  # noqa: SLF001
+        renderer._op_inline_image(_Operator(), [])
 
         assert "cannot construct inline image: inline boom" in caplog.text
-        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)
     finally:
         _finish(renderer)
         doc.close()

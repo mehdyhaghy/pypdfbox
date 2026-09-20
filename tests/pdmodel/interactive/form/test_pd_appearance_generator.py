@@ -917,12 +917,12 @@ def test_color_array_to_tuple_non_array_returns_none() -> None:
 def test_color_array_to_tuple_non_numeric_entry_returns_none() -> None:
     """A /BG array with a name or string entry is malformed — fall back
     to None rather than raising."""
-    from pypdfbox.cos import COSName as _CN
+    from pypdfbox.cos import COSName
     from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
         PDAppearanceGenerator as Gen,
     )
 
-    arr = COSArray([COSFloat(0.5), _CN.get_pdf_name("Foo"), COSFloat(0.5)])
+    arr = COSArray([COSFloat(0.5), COSName.get_pdf_name("Foo"), COSFloat(0.5)])
     assert Gen._color_array_to_tuple(arr) is None
 
 
@@ -1240,47 +1240,47 @@ def _make_mk(**entries: object) -> COSDictionary:
 
 def test_wave1374_resolve_widget_rotation_canonical() -> None:
     """Rotations of 0/90/180/270 round-trip verbatim."""
-    Gen = PDAppearanceGenerator
+    gen = PDAppearanceGenerator
     for rot in (0, 90, 180, 270):
         widget = COSDictionary()
         widget.set_item(COSName.get_pdf_name("MK"), _make_mk(R=rot))
-        assert Gen._resolve_widget_rotation(widget) == rot
+        assert gen._resolve_widget_rotation(widget) == rot
 
 
 def test_wave1374_resolve_widget_rotation_negative_normalises() -> None:
     """Negative multiples of 90 wrap to ``[0, 360)``."""
-    Gen = PDAppearanceGenerator
+    gen = PDAppearanceGenerator
     widget = COSDictionary()
     widget.set_item(COSName.get_pdf_name("MK"), _make_mk(R=-90))
-    assert Gen._resolve_widget_rotation(widget) == 270
+    assert gen._resolve_widget_rotation(widget) == 270
 
 
 def test_wave1374_resolve_widget_rotation_non_canonical_collapses_to_zero() -> None:
     """Non-multiple-of-90 rotations collapse to 0 (matches upstream)."""
-    Gen = PDAppearanceGenerator
+    gen = PDAppearanceGenerator
     widget = COSDictionary()
     widget.set_item(COSName.get_pdf_name("MK"), _make_mk(R=45))
-    assert Gen._resolve_widget_rotation(widget) == 0
+    assert gen._resolve_widget_rotation(widget) == 0
 
 
 def test_wave1374_resolve_widget_rotation_no_mk_returns_zero() -> None:
-    Gen = PDAppearanceGenerator
+    gen = PDAppearanceGenerator
     widget = COSDictionary()
-    assert Gen._resolve_widget_rotation(widget) == 0
+    assert gen._resolve_widget_rotation(widget) == 0
 
 
 def test_wave1374_calculate_matrix_identity_for_zero_rotation() -> None:
-    Gen = PDAppearanceGenerator
-    assert Gen._calculate_matrix(100.0, 50.0, 0) == (
+    gen = PDAppearanceGenerator
+    assert gen._calculate_matrix(100.0, 50.0, 0) == (
         1.0, 0.0, 0.0, 1.0, 0.0, 0.0,
     )
 
 
 def test_wave1374_calculate_matrix_ninety_translates_y_to_x() -> None:
-    Gen = PDAppearanceGenerator
+    gen = PDAppearanceGenerator
     # 90 deg rotation about origin then translate so rotated content stays
     # in the bbox.
-    m = Gen._calculate_matrix(50.0, 100.0, 90)
+    m = gen._calculate_matrix(50.0, 100.0, 90)
     # cos(90)=0, sin(90)=1 (with floating-point noise)
     assert m[0] == pytest.approx(0.0, abs=1e-9)
     assert m[1] == pytest.approx(1.0, abs=1e-9)
@@ -1292,8 +1292,8 @@ def test_wave1374_calculate_matrix_ninety_translates_y_to_x() -> None:
 
 
 def test_wave1374_calculate_matrix_one_eighty() -> None:
-    Gen = PDAppearanceGenerator
-    m = Gen._calculate_matrix(80.0, 40.0, 180)
+    gen = PDAppearanceGenerator
+    m = gen._calculate_matrix(80.0, 40.0, 180)
     assert m[0] == pytest.approx(-1.0, abs=1e-9)
     assert m[3] == pytest.approx(-1.0, abs=1e-9)
     assert m[4] == pytest.approx(80.0)
@@ -1301,8 +1301,8 @@ def test_wave1374_calculate_matrix_one_eighty() -> None:
 
 
 def test_wave1374_calculate_matrix_two_seventy() -> None:
-    Gen = PDAppearanceGenerator
-    m = Gen._calculate_matrix(50.0, 100.0, 270)
+    gen = PDAppearanceGenerator
+    m = gen._calculate_matrix(50.0, 100.0, 270)
     assert m[0] == pytest.approx(0.0, abs=1e-9)
     assert m[1] == pytest.approx(-1.0, abs=1e-9)
     assert m[2] == pytest.approx(1.0, abs=1e-9)
@@ -1355,10 +1355,10 @@ def test_wave1374_iterative_auto_size_returns_max_for_empty_text() -> None:
     from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
     from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
 
-    Gen = PDAppearanceGenerator
+    gen = PDAppearanceGenerator
     font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
     # height=30 -> height*0.7=21 -> clamped to AUTO_FONT_SIZE_MAX=12.
-    assert Gen._iterative_auto_size(font, "", 100.0, 30.0) == 12.0
+    assert gen._iterative_auto_size(font, "", 100.0, 30.0) == 12.0
 
 
 def test_wave1374_iterative_auto_size_shrinks_overflowing_text() -> None:
@@ -1366,15 +1366,15 @@ def test_wave1374_iterative_auto_size_shrinks_overflowing_text() -> None:
     from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
     from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
 
-    Gen = PDAppearanceGenerator
+    gen = PDAppearanceGenerator
     font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
     # At 12pt Helvetica, "OVERFLOW" is ~ 8 * 500 * 12 / 1000 = 48 user units.
     # A 10pt-wide rect cannot fit it, forcing shrink-to-fit.
-    size = Gen._iterative_auto_size(font, "OVERFLOWING", 10.0, 30.0)
+    size = gen._iterative_auto_size(font, "OVERFLOWING", 10.0, 30.0)
     # Final size must be smaller than the unshrunk candidate (12.0).
     assert size < 12.0
     # And must never drop below MINIMUM_FONT_SIZE.
-    assert size >= Gen.MINIMUM_FONT_SIZE
+    assert size >= gen.MINIMUM_FONT_SIZE
 
 
 def test_wave1374_iterative_auto_size_floor_at_minimum() -> None:
@@ -1382,11 +1382,11 @@ def test_wave1374_iterative_auto_size_floor_at_minimum() -> None:
     from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
     from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
 
-    Gen = PDAppearanceGenerator
+    gen = PDAppearanceGenerator
     font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
     # 0.1pt-wide rect — no font size, even MINIMUM_FONT_SIZE, will fit.
-    size = Gen._iterative_auto_size(font, "huge text value", 0.1, 30.0)
-    assert size == Gen.MINIMUM_FONT_SIZE
+    size = gen._iterative_auto_size(font, "huge text value", 0.1, 30.0)
+    assert size == gen.MINIMUM_FONT_SIZE
 
 
 def test_wave1374_iterative_auto_size_fits_at_starting_size() -> None:
@@ -1394,11 +1394,11 @@ def test_wave1374_iterative_auto_size_fits_at_starting_size() -> None:
     from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
     from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
 
-    Gen = PDAppearanceGenerator
+    gen = PDAppearanceGenerator
     font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
     # "hi" at 12pt is roughly 12 user units; rect of 100pt easily fits.
-    size = Gen._iterative_auto_size(font, "hi", 100.0, 20.0)
-    assert size == Gen._auto_size(20.0)
+    size = gen._iterative_auto_size(font, "hi", 100.0, 20.0)
+    assert size == gen._auto_size(20.0)
 
 
 def test_wave1374_iterative_auto_size_non_positive_width_uses_clamp() -> None:
@@ -1406,9 +1406,9 @@ def test_wave1374_iterative_auto_size_non_positive_width_uses_clamp() -> None:
     from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
     from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
 
-    Gen = PDAppearanceGenerator
+    gen = PDAppearanceGenerator
     font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
-    size = Gen._iterative_auto_size(font, "anything", 0.0, 10.0)
+    size = gen._iterative_auto_size(font, "anything", 0.0, 10.0)
     # height=10 -> 7.0 (between 4 and 12) — same as _auto_size.
     assert size == 7.0
 

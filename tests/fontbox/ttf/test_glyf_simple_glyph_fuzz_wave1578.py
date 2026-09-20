@@ -378,7 +378,7 @@ def test_on_curve_vs_off_curve_flags():
 def test_multi_contour_end_points():
     end_pts = [2, 5, 6]  # 3 contours, 7 points total
     flags = [ON_CURVE | X_SHORT | X_SAME_OR_POSITIVE] * 7
-    xs = [i for i in range(1, 8)]
+    xs = list(range(1, 8))
     d = _decode(end_pts, flags, xs, [0] * 7)
     assert d.get_contour_count() == 3
     assert d.get_number_of_contours() == 3

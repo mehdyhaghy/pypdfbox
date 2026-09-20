@@ -24,7 +24,7 @@ def test_str_returns_member_name_for_each() -> None:
 
 
 def test_identity_comparison_works() -> None:
-    assert FontFormat.TTF is FontFormat.TTF  # noqa: PLR0124 - identity check
+    assert FontFormat.TTF is FontFormat.TTF
     assert FontFormat.OTF is not FontFormat.TTF
 
 

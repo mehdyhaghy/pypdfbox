@@ -20,7 +20,7 @@ class ImportXFDF:
         self.outfile: Path | None = None
         self.xfdffile: Path | None = None
 
-    def import_fdf(self, pdf_document, fdf_document) -> None:  # noqa: ANN001
+    def import_fdf(self, pdf_document, fdf_document) -> None:
         """Mirror of ``ImportXFDF.importFDF(PDDocument, FDFDocument)``.
 
         Note: upstream sets ``cacheFields`` then calls ``importFDF`` —

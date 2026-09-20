@@ -23,7 +23,7 @@ def test_wave602_make_doc_removes_default_pages(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(wave602, "PDDocument", _Document)
 
-    doc, page = wave602._make_doc()  # noqa: SLF001
+    doc, page = wave602._make_doc()
 
     assert doc.removed_indexes == [0]
     assert doc.pages == [page]

@@ -23,16 +23,16 @@ def _make_doc(width: float = 10.0, height: float = 10.0) -> tuple[PDDocument, PD
 def _prepared_renderer(size: tuple[int, int] = (10, 10)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -41,16 +41,16 @@ def test_apostrophe_text_operator_moves_line_before_showing(monkeypatch: Any) ->
     shown: list[bytes] = []
     doc, renderer = _prepared_renderer()
     try:
-        renderer._gs.text_leading = 3.5  # noqa: SLF001
-        renderer._gs.text_matrix = (1.0, 0.0, 0.0, 1.0, 2.0, 9.0)  # noqa: SLF001
-        renderer._gs.text_line_matrix = renderer._gs.text_matrix  # noqa: SLF001
+        renderer._gs.text_leading = 3.5
+        renderer._gs.text_matrix = (1.0, 0.0, 0.0, 1.0, 2.0, 9.0)
+        renderer._gs.text_line_matrix = renderer._gs.text_matrix
         monkeypatch.setattr(renderer, "_show_string", lambda data: shown.append(data))
 
         renderer.process_operator("'", [COSString(b"next")])
 
         assert shown == [b"next"]
-        assert renderer._gs.text_matrix[4:] == (2.0, 5.5)  # noqa: SLF001
-        assert renderer._gs.text_line_matrix[4:] == (2.0, 5.5)  # noqa: SLF001
+        assert renderer._gs.text_matrix[4:] == (2.0, 5.5)
+        assert renderer._gs.text_line_matrix[4:] == (2.0, 5.5)
     finally:
         _finish(renderer)
         doc.close()
@@ -60,11 +60,11 @@ def test_show_text_array_applies_adjustments_between_strings(monkeypatch: Any) -
     positions: list[tuple[float, float]] = []
     doc, renderer = _prepared_renderer()
     try:
-        renderer._gs.text_font_size = 20.0  # noqa: SLF001
-        renderer._gs.text_horizontal_scaling = 50.0  # noqa: SLF001
+        renderer._gs.text_font_size = 20.0
+        renderer._gs.text_horizontal_scaling = 50.0
 
         def _show_string(_data: bytes) -> None:
-            positions.append(renderer._gs.text_matrix[4:])  # noqa: SLF001
+            positions.append(renderer._gs.text_matrix[4:])
 
         monkeypatch.setattr(renderer, "_show_string", _show_string)
         array = COSArray()
@@ -93,26 +93,26 @@ def test_render_tiling_cell_restores_transform_path_and_current_point() -> None:
     doc, renderer = _prepared_renderer()
     stream = COSStream()
     stream.set_raw_data(b"0 0 m\n1 1 l\n")
-    renderer._device_ctm = (2.0, 0.0, 0.0, 2.0, 3.0, 4.0)  # noqa: SLF001
-    renderer._page_height_px = 99.0  # noqa: SLF001
-    renderer._subpaths = [[("M", 7.0, 8.0)]]  # noqa: SLF001
-    renderer._current_subpath = renderer._subpaths[0]  # noqa: SLF001
-    renderer._current_point = (7.0, 8.0)  # noqa: SLF001
-    renderer._pending_clip = "W"  # noqa: SLF001
+    renderer._device_ctm = (2.0, 0.0, 0.0, 2.0, 3.0, 4.0)
+    renderer._page_height_px = 99.0
+    renderer._subpaths = [[("M", 7.0, 8.0)]]
+    renderer._current_subpath = renderer._subpaths[0]
+    renderer._current_point = (7.0, 8.0)
+    renderer._pending_clip = "W"
     try:
-        tile = renderer._render_tiling_cell(  # noqa: SLF001
+        tile = renderer._render_tiling_cell(
             _Pattern(),
             bbox=PDRectangle(0.0, 0.0, 2.0, 2.0),
             tile_size=(4, 4),
         )
 
         assert tile is not None
-        assert renderer._device_ctm == (2.0, 0.0, 0.0, 2.0, 3.0, 4.0)  # noqa: SLF001
-        assert renderer._page_height_px == 99.0  # noqa: SLF001
-        assert renderer._subpaths == [[("M", 7.0, 8.0)]]  # noqa: SLF001
-        assert renderer._current_subpath is renderer._subpaths[0]  # noqa: SLF001
-        assert renderer._current_point == (7.0, 8.0)  # noqa: SLF001
-        assert renderer._pending_clip == "W"  # noqa: SLF001
+        assert renderer._device_ctm == (2.0, 0.0, 0.0, 2.0, 3.0, 4.0)
+        assert renderer._page_height_px == 99.0
+        assert renderer._subpaths == [[("M", 7.0, 8.0)]]
+        assert renderer._current_subpath is renderer._subpaths[0]
+        assert renderer._current_point == (7.0, 8.0)
+        assert renderer._pending_clip == "W"
     finally:
         _finish(renderer)
         doc.close()
@@ -137,21 +137,21 @@ def test_paint_tiling_pattern_skips_missing_or_invalid_geometry() -> None:
     doc, renderer = _prepared_renderer((3, 3))
     mask = Image.new("L", (3, 3), 255)
     try:
-        renderer._paint_tiling_pattern(  # noqa: SLF001
+        renderer._paint_tiling_pattern(
             _Pattern(None, 1.0, 1.0),
             region_mask=mask,
         )
-        renderer._paint_tiling_pattern(  # noqa: SLF001
+        renderer._paint_tiling_pattern(
             _Pattern(PDRectangle(0.0, 0.0, 0.0, 2.0), 1.0, 1.0),
             region_mask=mask,
         )
-        renderer._paint_tiling_pattern(  # noqa: SLF001
+        renderer._paint_tiling_pattern(
             _Pattern(PDRectangle(0.0, 0.0, 2.0, 2.0), 0.0, 1.0),
             region_mask=mask,
         )
         _finish(renderer)
 
-        assert renderer._image.getbbox() == (0, 0, 3, 3)  # noqa: SLF001
-        assert renderer._image.getpixel((1, 1)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image.getbbox() == (0, 0, 3, 3)
+        assert renderer._image.getpixel((1, 1)) == (255, 255, 255)
     finally:
         doc.close()

@@ -191,7 +191,7 @@ class MacExpertEncoding(Encoding):
         """Return ``COSName.MAC_EXPERT_ENCODING``. Mirrors upstream
         ``MacExpertEncoding.getCOSObject()``.
         """
-        from pypdfbox.cos.cos_name import COSName  # noqa: PLC0415
+        from pypdfbox.cos.cos_name import COSName
 
         return COSName.MAC_EXPERT_ENCODING
 

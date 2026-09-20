@@ -306,7 +306,7 @@ def test_create_x_object_form_threads_resource_cache_from_resources() -> None:
     assert isinstance(obj, PDFormXObject)
     # The form must have captured the *same* cache instance, not None
     # and not a fresh cache.
-    assert obj._cache is cache  # noqa: SLF001 — invariant we want to lock down
+    assert obj._cache is cache
 
 
 def test_create_x_object_transparency_group_threads_resource_cache() -> None:
@@ -331,7 +331,7 @@ def test_create_x_object_transparency_group_threads_resource_cache() -> None:
 
     obj = PDXObject.create_x_object(stream, resources)
     assert isinstance(obj, PDTransparencyGroup)
-    assert obj._cache is cache  # noqa: SLF001
+    assert obj._cache is cache
 
 
 def test_create_x_object_form_has_no_cache_when_resources_none() -> None:
@@ -344,7 +344,7 @@ def test_create_x_object_form_has_no_cache_when_resources_none() -> None:
     stream.set_name(COSName.SUBTYPE, "Form")  # type: ignore[attr-defined]
     obj = PDXObject.create_x_object(stream, None)
     assert isinstance(obj, PDFormXObject)
-    assert obj._cache is None  # noqa: SLF001
+    assert obj._cache is None
 
 
 def test_create_x_object_form_has_no_cache_when_resources_lack_cache() -> None:
@@ -361,7 +361,7 @@ def test_create_x_object_form_has_no_cache_when_resources_lack_cache() -> None:
     resources = PDResources()  # no cache configured
     obj = PDXObject.create_x_object(stream, resources)
     assert isinstance(obj, PDFormXObject)
-    assert obj._cache is None  # noqa: SLF001
+    assert obj._cache is None
 
 
 def test_create_x_object_image_ignores_resource_cache() -> None:

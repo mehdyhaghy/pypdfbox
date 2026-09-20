@@ -34,7 +34,7 @@ from pypdfbox.pdmodel.interactive.annotation.pd_annotation_popup import (
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_text import (
     PDAnnotationText,
 )
-from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: E501
+from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (
     PDPageDestination,
 )
 from pypdfbox.pdmodel.pd_document import PDDocument

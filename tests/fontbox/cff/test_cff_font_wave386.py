@@ -24,7 +24,7 @@ class _Top:
 
 
 class _FontSet:
-    fontNames = ["StubFont"]  # noqa: N815
+    fontNames = ["StubFont"]
 
 
 class _BytecodeEntry:
@@ -51,7 +51,7 @@ def test_wave386_get_top_dict_tolerates_top_without_raw_dict() -> None:
         pass
 
     font = CFFFont()
-    font._top = _TopWithoutRawDict()  # noqa: SLF001
+    font._top = _TopWithoutRawDict()
     font.add_value_to_top_dict("Synthetic", 42)
 
     assert font.get_top_dict() == {"Synthetic": 42}
@@ -65,12 +65,12 @@ def test_wave386_private_accessors_tolerate_missing_and_rawless_private_dicts() 
         Private = object()
 
     font = CFFFont()
-    font._top = _TopWithoutPrivate()  # noqa: SLF001
+    font._top = _TopWithoutPrivate()
     assert font.get_private_dict() == {}
     assert font.get_default_width_x() == 0.0
     assert font.get_nominal_width_x() == 0.0
 
-    font._top = _TopWithRawlessPrivate()  # noqa: SLF001
+    font._top = _TopWithRawlessPrivate()
     assert font.get_private_dict() == {}
 
 
@@ -78,7 +78,7 @@ def test_wave386_global_subr_index_normalises_mixed_entries() -> None:
     font = CFFFont()
     top = _Top()
     top.GlobalSubrs = [_BytecodeEntry(), b"raw-bytes", bytearray(b"raw-array"), object()]
-    font._top = top  # noqa: SLF001
+    font._top = top
 
     assert font.get_global_subr_index() == [
         b"from-bytecode",
@@ -90,7 +90,7 @@ def test_wave386_global_subr_index_normalises_mixed_entries() -> None:
 
 def test_wave386_char_string_bytes_handles_compile_success_failure_and_missing_names() -> None:
     font = CFFFont()
-    font._top = _Top(  # noqa: SLF001
+    font._top = _Top(
         {
             ".notdef": _BytecodeEntry(),
             "A": _CompilesToBytecode(),
@@ -108,7 +108,7 @@ def test_wave386_char_string_bytes_handles_compile_success_failure_and_missing_n
 
 def test_wave386_font_matrix_units_and_bbox_fallbacks_on_stub_top() -> None:
     font = CFFFont()
-    font._top = _Top()  # noqa: SLF001
+    font._top = _Top()
 
     assert font.get_font_matrix() == [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     assert font.units_per_em == 1000
@@ -120,7 +120,7 @@ def test_wave386_font_matrix_units_and_bbox_fallbacks_on_stub_top() -> None:
 
 def test_wave386_name_property_falls_back_to_fontset_and_can_be_cleared() -> None:
     font = CFFFont()
-    font._fontset = _FontSet()  # noqa: SLF001
+    font._fontset = _FontSet()
 
     assert font.name == "StubFont"
     font.set_name("Override")
@@ -131,24 +131,24 @@ def test_wave386_name_property_falls_back_to_fontset_and_can_be_cleared() -> Non
 
 def test_wave386_cid_and_property_detection_use_raw_dict_and_attributes() -> None:
     class _CIDTop:
-        rawDict = {"ROS": ["Adobe", "Identity", 0]}  # noqa: N815, RUF012
-        FullName = "RawDictCID"  # noqa: N815
+        rawDict = {"ROS": ["Adobe", "Identity", 0]}
+        FullName = "RawDictCID"
 
     class _AttrTop:
-        rawDict: dict[str, object] = {}  # noqa: RUF012
-        FullName = "AttributeName"  # noqa: N815
+        rawDict: dict[str, object] = {}
+        FullName = "AttributeName"
 
     font = CFFFont()
-    font._top = _CIDTop()  # noqa: SLF001
+    font._top = _CIDTop()
     assert font.is_cid_font() is True
 
-    font._top = _AttrTop()  # noqa: SLF001
+    font._top = _AttrTop()
     assert font.get_property("FullName") == "AttributeName"
 
 
 def test_wave386_get_type2_char_string_missing_mapping_returns_empty_wrapper() -> None:
     font = CFFFont()
-    font._top = _Top({})  # noqa: SLF001
+    font._top = _Top({})
     font.set_name("Wave386")
 
     charstring = font.get_type2_char_string(1)
@@ -174,7 +174,7 @@ def test_wave386_read_encoding_ignores_gids_missing_from_short_charset() -> None
 
 def test_wave386_from_bytes_rejects_empty_cff_fontset(monkeypatch: pytest.MonkeyPatch) -> None:
     class _EmptyFontSet:
-        fontNames: list[str] = []  # noqa: N815
+        fontNames: list[str] = []
 
         def decompile(self, stream: object, otFont: object | None = None) -> None:  # noqa: N803
             del stream, otFont

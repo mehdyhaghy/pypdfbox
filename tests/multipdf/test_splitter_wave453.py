@@ -66,9 +66,9 @@ def test_wave453_process_annotations_clones_popup_reference_without_source_alias
     splitter = Splitter()
     # Wave 1373: chunk-level deferred second pass — drain manually when
     # calling ``_process_annotations`` outside the ``split()`` driver.
-    splitter._pending_annot_passes = []  # noqa: SLF001
-    splitter._process_annotations(source_page, imported)  # noqa: SLF001
-    splitter._finalize_annotation_links()  # noqa: SLF001
+    splitter._pending_annot_passes = []
+    splitter._process_annotations(source_page, imported)
+    splitter._finalize_annotation_links()
 
     cloned_annots = imported.get_cos_object().get_dictionary_object(_ANNOTS)
     assert isinstance(cloned_annots, COSArray)
@@ -89,8 +89,8 @@ def test_wave453_clone_tree_element_logs_missing_dict_and_unsupported_value(
     dst_numbers: dict[int, object] = {}
 
     with caplog.at_level(logging.WARNING, logger="pypdfbox.multipdf.splitter"):
-        splitter._clone_tree_element({2: missing_struct, 3: COSInteger.get(7)}, dst_numbers, 2)  # noqa: SLF001,E501
-        splitter._clone_tree_element({2: missing_struct, 3: COSInteger.get(7)}, dst_numbers, 3)  # noqa: SLF001,E501
+        splitter._clone_tree_element({2: missing_struct, 3: COSInteger.get(7)}, dst_numbers, 2)
+        splitter._clone_tree_element({2: missing_struct, 3: COSInteger.get(7)}, dst_numbers, 3)
 
     assert dst_numbers == {}
     assert "ParentTree index 2 dictionary not found in /K" in caplog.text
@@ -106,7 +106,7 @@ def test_wave453_objr_clone_drops_annotation_not_present_on_host_page(
 
     splitter = Splitter()
     host_page = COSDictionary()
-    splitter._page_dict_map = {id(host_page): host_page}  # noqa: SLF001
+    splitter._page_dict_map = {id(host_page): host_page}
     host_page.set_item(_ANNOTS, COSArray())
     orphan_annotation = _annotation("Link")
     objr = COSDictionary()
@@ -115,7 +115,7 @@ def test_wave453_objr_clone_drops_annotation_not_present_on_host_page(
     objr.set_item(COSName.get_pdf_name("Pg"), host_page)
 
     with caplog.at_level(logging.WARNING, logger="pypdfbox.multipdf.splitter"):
-        cloned = splitter._k_create_clone(objr, COSDictionary(), None, PageTree())  # noqa: SLF001
+        cloned = splitter._k_create_clone(objr, COSDictionary(), None, PageTree())
 
     assert cloned is None
     assert "An annotation OBJ that isn't in the page" in caplog.text
@@ -131,13 +131,13 @@ def test_wave453_fix_destinations_rewrites_in_chunk_target() -> None:
     dest.add(COSName.get_pdf_name("Fit"))
 
     splitter = Splitter()
-    splitter._dest_to_fix = [(dest, source_pages[0].get_cos_object())]  # noqa: SLF001
-    splitter._page_dict_map = {  # noqa: SLF001
+    splitter._dest_to_fix = [(dest, source_pages[0].get_cos_object())]
+    splitter._page_dict_map = {
         id(source_pages[0].get_cos_object()): chunk_pages[0].get_cos_object(),
         id(source_pages[1].get_cos_object()): chunk_pages[1].get_cos_object(),
     }
 
-    splitter._fix_destinations(chunk)  # noqa: SLF001
+    splitter._fix_destinations(chunk)
 
     assert dest.get_object(0) is chunk_pages[1].get_cos_object()
     assert dest.get(0) is not COSNull.NULL

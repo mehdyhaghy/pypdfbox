@@ -42,13 +42,13 @@ class SHA1DigestCalculator:
 class _DigestStream(io.RawIOBase):
     """Tiny ``write``-only adapter that forwards bytes into a hasher."""
 
-    def __init__(self, hasher) -> None:  # noqa: ANN001
+    def __init__(self, hasher) -> None:
         super().__init__()
         self._hasher = hasher
 
     def writable(self) -> bool:  # pragma: no cover - trivial
         return True
 
-    def write(self, b) -> int:  # type: ignore[override]  # noqa: ANN001
+    def write(self, b) -> int:  # type: ignore[override]
         self._hasher.update(b)
         return len(b)

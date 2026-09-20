@@ -103,7 +103,7 @@ def test_wave605_merge_names_removes_misplaced_id_tree_from_destination(
     destination = _Catalog()
 
     with caplog.at_level(logging.WARNING, logger="pypdfbox.multipdf.pdf_merger_utility"):
-        PDFMergerUtility()._merge_names(  # noqa: SLF001
+        PDFMergerUtility()._merge_names(
             _IdentityCloner(),  # type: ignore[arg-type]
             source,
             destination,
@@ -121,7 +121,7 @@ def test_wave605_finish_struct_tree_merge_rekeys_parent_tree_entries() -> None:
     src_root = _StructRoot()
     dest_root = _StructRoot()
 
-    PDFMergerUtility()._finish_struct_tree_merge(  # noqa: SLF001
+    PDFMergerUtility()._finish_struct_tree_merge(
         _IdentityCloner(),  # type: ignore[arg-type]
         src_root,
         dest_root,
@@ -148,7 +148,7 @@ def test_wave605_update_page_references_recurses_through_nested_arrays() -> None
     nested.set_item(_OBJ, old_obj)
     parent_tree_value = COSArray([COSString("skip"), COSArray([nested])])
 
-    PDFMergerUtility()._update_page_references_map(  # noqa: SLF001
+    PDFMergerUtility()._update_page_references_map(
         _IdentityCloner(),  # type: ignore[arg-type]
         {0: parent_tree_value},
         {id(old_page): new_page, id(old_obj): new_obj},
@@ -165,7 +165,7 @@ def test_wave605_role_map_installs_when_destination_missing() -> None:
     src_root_dict.set_item(_ROLE_MAP, source_role_map)
     dest_root_dict = COSDictionary()
 
-    PDFMergerUtility()._merge_role_map(  # noqa: SLF001
+    PDFMergerUtility()._merge_role_map(
         _IdentityCloner(),  # type: ignore[arg-type]
         _StructRoot(src_root_dict),
         _StructRoot(dest_root_dict),
@@ -175,6 +175,6 @@ def test_wave605_role_map_installs_when_destination_missing() -> None:
 
 
 def test_wave605_has_only_documents_or_parts_rejects_malformed_entries() -> None:
-    assert PDFMergerUtility._has_only_documents_or_parts(  # noqa: SLF001
+    assert PDFMergerUtility._has_only_documents_or_parts(
         COSArray([COSInteger.get(1)])
     ) is False

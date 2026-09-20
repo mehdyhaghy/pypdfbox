@@ -37,7 +37,7 @@ def test_wave563_xref_stream_requires_integer_width_entries() -> None:
     stream.set_item("Size", COSInteger.get(1))
 
     with pytest.raises(PDFParseError, match=r"/W\[1\] is not an integer"):
-        parser._decode_xref_stream_entries(stream)  # noqa: SLF001
+        parser._decode_xref_stream_entries(stream)
 
 
 def test_wave563_xref_stream_requires_size_when_index_is_absent() -> None:
@@ -46,7 +46,7 @@ def test_wave563_xref_stream_requires_size_when_index_is_absent() -> None:
     stream = _xref_stream([1, 1, 1])
 
     with pytest.raises(PDFParseError, match="missing /Size and /Index"):
-        parser._decode_xref_stream_entries(stream)  # noqa: SLF001
+        parser._decode_xref_stream_entries(stream)
 
 
 def test_wave563_xref_stream_rejects_zero_and_overwide_records() -> None:
@@ -56,13 +56,13 @@ def test_wave563_xref_stream_rejects_zero_and_overwide_records() -> None:
     zero_width.set_item("Size", COSInteger.get(1))
 
     with pytest.raises(PDFParseError, match="widths sum to zero"):
-        parser._decode_xref_stream_entries(zero_width)  # noqa: SLF001
+        parser._decode_xref_stream_entries(zero_width)
 
     overwide = _xref_stream([7, 7, 7], b"\x00" * 21)
     overwide.set_item("Size", COSInteger.get(1))
 
     with pytest.raises(PDFParseError, match="entry wider than 20 bytes"):
-        parser._decode_xref_stream_entries(overwide)  # noqa: SLF001
+        parser._decode_xref_stream_entries(overwide)
 
 
 def test_wave563_xref_stream_free_and_compressed_entries_are_registered() -> None:
@@ -74,7 +74,7 @@ def test_wave563_xref_stream_free_and_compressed_entries_are_registered() -> Non
     index.add(COSInteger.get(2))
     stream.set_item("Index", index)
 
-    parser._decode_xref_stream_entries(stream)  # noqa: SLF001
+    parser._decode_xref_stream_entries(stream)
 
     table = parser.get_xref_trailer_resolver().get_xref_table()
     free = table[COSObjectKey(8, 2)]
@@ -107,11 +107,11 @@ def test_wave563_handle_xref_stream_reports_malformed_object_shapes(
 ) -> None:
     parser = _parser(body)
     doc = COSDocument()
-    parser._document = doc  # noqa: SLF001
-    parser._cos_parser = COSParser(parser._src, document=doc)  # noqa: SLF001
+    parser._document = doc
+    parser._cos_parser = COSParser(parser._src, document=doc)
 
     try:
         with pytest.raises(PDFParseError, match=message):
-            parser._handle_xref_stream_at(0)  # noqa: SLF001
+            parser._handle_xref_stream_at(0)
     finally:
         doc.close()

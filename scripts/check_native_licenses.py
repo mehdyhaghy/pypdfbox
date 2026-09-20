@@ -201,8 +201,7 @@ def _dist_name_for(path: Path, site_packages: Path) -> str:
     except ValueError:
         return path.parent.name.lower()
     first = rel.parts[0] if rel.parts else path.name
-    if first.endswith(".dist-info"):
-        first = first[: -len(".dist-info")]
+    first = first.removesuffix(".dist-info")
     first = re.sub(r"-\d[\w.+!]*$", "", first)
     return first.lower()
 

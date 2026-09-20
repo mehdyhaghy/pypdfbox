@@ -30,7 +30,7 @@ the project's permissive-license rule.
 from pypdfbox import Loader
 from pypdfbox.rendering import PDFRenderer, ImageType
 
-with Loader.load_pdf("in.pdf") as doc:
+with Loader.load_pdf("input.pdf") as doc:
     renderer = PDFRenderer(doc)
     img = renderer.render_image_with_dpi(0, 144, image_type=ImageType.RGB)
     img.save("page0.png")

@@ -20,7 +20,7 @@ def test_wave525_append_field_subtree_walks_non_terminal_children() -> None:
     parent.set_children([child])
     out = []
 
-    form._append_field_subtree(parent, out)  # noqa: SLF001
+    form._append_field_subtree(parent, out)
 
     assert [field.get_fully_qualified_name() for field in out] == [
         "parent",
@@ -158,7 +158,7 @@ def test_wave525_flatten_widget_skips_missing_page_after_valid_appearance() -> N
     widget.set_item("AP", ap)
     widget.set_item("Rect", COSArray())
 
-    form._flatten_widget(widget)  # noqa: SLF001
+    form._flatten_widget(widget)
 
     assert widget.get_dictionary_object("AP") is ap
 
@@ -167,12 +167,12 @@ def test_wave525_select_appearance_requires_appearance_dictionary() -> None:
     widget = COSDictionary()
     widget.set_item("AP", COSName.get_pdf_name("not-a-dictionary"))
 
-    assert PDAcroForm._select_appearance_stream(widget) is None  # noqa: SLF001
+    assert PDAcroForm._select_appearance_stream(widget) is None
 
 
 def test_wave525_resolve_widget_page_scans_past_malformed_annots() -> None:
     form = PDAcroForm(object())
     widget = COSDictionary()
 
-    assert form._resolve_widget_page(widget) is None  # noqa: SLF001
-    form._remove_acro_form_from_catalog()  # noqa: SLF001
+    assert form._resolve_widget_page(widget) is None
+    form._remove_acro_form_from_catalog()

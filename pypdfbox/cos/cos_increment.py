@@ -39,7 +39,7 @@ class COSIncrement:
         Mirrors upstream ``COSIncrement.contains`` (Java line 242).
         """
         # Local import dodges a module-load cycle.
-        from .cos_object import COSObject  # noqa: PLC0415
+        from .cos_object import COSObject
 
         if base is None:
             return False
@@ -130,9 +130,9 @@ class COSIncrement:
     # ------------------------------------------------------------------
 
     def _collect(self, base: COSBase | None) -> bool:
-        from .cos_array import COSArray  # noqa: PLC0415
-        from .cos_dictionary import COSDictionary  # noqa: PLC0415
-        from .cos_object import COSObject  # noqa: PLC0415
+        from .cos_array import COSArray
+        from .cos_dictionary import COSDictionary
+        from .cos_object import COSObject
 
         if base is None or self.contains(base):
             return False
@@ -159,8 +159,8 @@ class COSIncrement:
                 continue
             entry_state = entry.get_update_state()
             self._update_different_origin(entry_state)
-            from .cos_array import COSArray  # noqa: PLC0415
-            from .cos_object import COSObject  # noqa: PLC0415
+            from .cos_array import COSArray
+            from .cos_object import COSObject
 
             if entry.is_needs_to_be_updated() and (
                 (not isinstance(entry, COSObject) and entry.is_direct())

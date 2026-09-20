@@ -20,7 +20,7 @@ class ImportFDF:
         self.outfile: Path | None = None
         self.fdffile: Path | None = None
 
-    def import_fdf(self, pdf_document, fdf_document) -> None:  # noqa: ANN001 — mirror upstream sig
+    def import_fdf(self, pdf_document, fdf_document) -> None:
         """Mirror of ``ImportFDF.importFDF(PDDocument, FDFDocument)``."""
         doc_catalog = pdf_document.get_document_catalog()
         acro_form = doc_catalog.get_acro_form()

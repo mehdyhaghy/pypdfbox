@@ -95,7 +95,7 @@ def test_wave835_format12_logs_beyond_ucs4_after_defensive_add(
     subtable = CmapSubtable()
 
     with caplog.at_level(logging.WARNING, logger="pypdfbox.fontbox.ttf.cmap_subtable"):
-        subtable._process_subtype_12(_Format12BeyondUCS4Data(), num_glyphs=2)  # type: ignore[arg-type]  # noqa: SLF001
+        subtable._process_subtype_12(_Format12BeyondUCS4Data(), num_glyphs=2)  # type: ignore[arg-type]
 
     assert "Format 12 cmap contains character beyond UCS-4" in caplog.text
 
@@ -103,7 +103,7 @@ def test_wave835_format12_logs_beyond_ucs4_after_defensive_add(
 def test_wave835_type1_encoding_array_eof_returns_notdef_defaults() -> None:
     parser = Type1Parser()
 
-    assert parser._read_encoding_array(Type1Lexer(""), 4) == [  # noqa: SLF001
+    assert parser._read_encoding_array(Type1Lexer(""), 4) == [
         ".notdef",
         ".notdef",
         ".notdef",
@@ -129,6 +129,6 @@ def test_wave835_type1_charstrings_returns_when_peeked_name_disappears() -> None
     parser = Type1Parser()
     charstrings: dict[str, bytes] = {}
 
-    parser._read_charstrings(_PeekedLiteralDisappearsLexer(), charstrings, len_iv=4)  # type: ignore[arg-type]  # noqa: SLF001
+    parser._read_charstrings(_PeekedLiteralDisappearsLexer(), charstrings, len_iv=4)  # type: ignore[arg-type]
 
     assert charstrings == {}

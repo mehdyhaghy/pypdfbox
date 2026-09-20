@@ -230,7 +230,7 @@ class PDStructureNode:
             raise ValueError("MCID should not be negative")
         # Lazy import to avoid a cycle; PDMarkedContent isn't a transitive
         # import of this module.
-        from pypdfbox.pdmodel.documentinterchange.markedcontent.pd_marked_content import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.documentinterchange.markedcontent.pd_marked_content import (
             PDMarkedContent,
         )
 
@@ -405,10 +405,10 @@ class PDStructureNode:
 
 def _to_cos(value: Any) -> COSBase:
     if hasattr(value, "get_cos_object"):
-        return cast(COSBase, value.get_cos_object())
+        return cast("COSBase", value.get_cos_object())
     if isinstance(value, int) and not isinstance(value, bool):
         return COSInteger.get(value)
-    return cast(COSBase, value)
+    return cast("COSBase", value)
 
 
 def _remove_array_kid(array: COSArray, cos_kid: COSBase) -> bool:

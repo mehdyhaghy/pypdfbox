@@ -263,7 +263,7 @@ class PDAnnotationSquare(PDAnnotationSquareCircle):
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
-            return None
+            return
         from .handlers.pd_square_appearance_handler import (
             PDSquareAppearanceHandler,
         )
@@ -271,7 +271,7 @@ class PDAnnotationSquare(PDAnnotationSquareCircle):
         PDSquareAppearanceHandler(
             self, document
         ).generate_appearance_streams()
-        return None
+        return
 
 
 class PDAnnotationCircle(PDAnnotationSquareCircle):
@@ -323,7 +323,7 @@ class PDAnnotationCircle(PDAnnotationSquareCircle):
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
-            return None
+            return
         from .handlers.pd_circle_appearance_handler import (
             PDCircleAppearanceHandler,
         )
@@ -331,7 +331,7 @@ class PDAnnotationCircle(PDAnnotationSquareCircle):
         PDCircleAppearanceHandler(
             self, document
         ).generate_appearance_streams()
-        return None
+        return
 
 
 __all__ = [

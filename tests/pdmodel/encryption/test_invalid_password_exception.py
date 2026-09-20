@@ -38,17 +38,17 @@ def test_importable_from_handler_module():
 def test_same_class_across_import_paths():
     """All import paths resolve to the exact same class object."""
     from pypdfbox.pdmodel.encryption import (
-        InvalidPasswordException as from_package,
+        InvalidPasswordException as ExcFromPackage,
     )
     from pypdfbox.pdmodel.encryption.invalid_password_exception import (
-        InvalidPasswordException as from_module,
+        InvalidPasswordException as ExcFromModule,
     )
     from pypdfbox.pdmodel.encryption.standard_security_handler import (
-        InvalidPasswordException as from_handler,
+        InvalidPasswordException as ExcFromHandler,
     )
 
-    assert from_module is from_package
-    assert from_module is from_handler
+    assert ExcFromModule is ExcFromPackage
+    assert ExcFromModule is ExcFromHandler
 
 
 def test_subclasses_oserror():

@@ -230,7 +230,7 @@ def _ttf_glyph_path(
     """
     try:
         gid = ttf.name_to_gid(glyph_name)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return []
     if gid <= 0:
         return []
@@ -251,7 +251,7 @@ def _ttf_glyph_path_for_code_point(
         return []
     try:
         gid = int(cmap.get_glyph_id(code_point))
-    except Exception:  # noqa: BLE001
+    except Exception:
         return []
     if gid <= 0:
         return []
@@ -273,12 +273,12 @@ def _ttf_glyph_path_for_gid(
     the pen raises mid-walk.
     """
     try:
-        glyph_set = ttf._tt.getGlyphSet()  # noqa: SLF001
-        glyph_name = ttf._tt.getGlyphName(gid)  # noqa: SLF001
+        glyph_set = ttf._tt.getGlyphSet()
+        glyph_name = ttf._tt.getGlyphName(gid)
         glyph = glyph_set[glyph_name]
-    except Exception:  # noqa: BLE001
+    except Exception:
         return []
-    from pypdfbox.rendering._pen_bridge import (  # noqa: PLC0415
+    from pypdfbox.rendering._pen_bridge import (
         make_base_pen_bridge,
     )
 
@@ -286,7 +286,7 @@ def _ttf_glyph_path_for_gid(
     pen = _DecomposingCommandPen(glyph_set, inner)
     try:
         glyph.draw(make_base_pen_bridge(pen, glyph_set=glyph_set))
-    except Exception:  # noqa: BLE001
+    except Exception:
         return []
     return inner.commands
 
@@ -352,9 +352,9 @@ class _DecomposingCommandPen:
         # Build a transforming pen that applies the affine on the way to
         # the inner recorder. fontTools' TransformPen expects a BasePen
         # camelCase target, so wrap ``self`` through the bridge first.
-        from fontTools.pens.transformPen import TransformPen  # noqa: PLC0415
+        from fontTools.pens.transformPen import TransformPen
 
-        from pypdfbox.rendering._pen_bridge import (  # noqa: PLC0415
+        from pypdfbox.rendering._pen_bridge import (
             make_base_pen_bridge,
         )
 
@@ -365,7 +365,7 @@ class _DecomposingCommandPen:
                     transformation,
                 )
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             return
 
 
@@ -509,11 +509,11 @@ def _load_substitution_ttf(canonical: str) -> TrueTypeFont | None:
         return None
     # Lazy import — fontbox.ttf pulls in fontTools, which is heavy and
     # most pypdfbox use-cases never touch the rendering pipeline.
-    from pypdfbox.fontbox.ttf import TrueTypeFont  # noqa: PLC0415
+    from pypdfbox.fontbox.ttf import TrueTypeFont
 
     try:
         parsed = TrueTypeFont.from_bytes(raw)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         _LOG.warning(
             "Standard 14 Liberation substitute %r failed to parse: %s",
             ttf_name,
@@ -1017,7 +1017,7 @@ class Standard14Fonts:
         # Local import — :mod:`pypdfbox.fontbox.font_mapper` reaches back
         # into this module via :class:`DefaultFontMapper`, so import at
         # call time to break the cycle.
-        from pypdfbox.fontbox.font_mapper import (  # noqa: PLC0415
+        from pypdfbox.fontbox.font_mapper import (
             Standard14FontWrapper,
         )
 
@@ -1043,7 +1043,7 @@ class Standard14Fonts:
             raise ValueError(
                 f"{base_name!r} is not one of the 14 Standard fonts"
             )
-        from pypdfbox.fontbox.encoding.glyph_list import (  # noqa: PLC0415
+        from pypdfbox.fontbox.encoding.glyph_list import (
             GlyphList,
         )
 

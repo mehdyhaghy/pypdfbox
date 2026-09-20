@@ -28,7 +28,7 @@ def test_wave311_malformed_utf16_name_uses_replacement_character() -> None:
     table.set_offset(0)
     table.set_length(len(blob))
 
-    table.read(cast(TrueTypeFont, object()), MemoryTTFDataStream(blob))
+    table.read(cast("TrueTypeFont", object()), MemoryTTFDataStream(blob))
 
     assert table.get_name_records()[0].get_string() == "A\ufffd"
     assert table.get_font_family() == "A\ufffd"

@@ -69,7 +69,7 @@ def test_init_ui_is_public_callable(_tk_root: tk.Tk) -> None:
     panel = _make_panel(_tk_root)
     assert callable(panel.init_ui)
     # Back-compat alias preserved — both names resolve to the same function.
-    assert SearchPanel._init_ui is SearchPanel.init_ui  # noqa: SLF001
+    assert SearchPanel._init_ui is SearchPanel.init_ui
 
 
 def test_init_ui_wires_search_var_to_document_listener(_tk_root: tk.Tk) -> None:
@@ -89,5 +89,5 @@ def test_init_ui_wires_search_var_to_document_listener(_tk_root: tk.Tk) -> None:
     )
     # Mutating the search var must reach the document listener — confirms
     # ``init_ui`` installed the ``trace_add("write", ...)`` callback.
-    panel._search_var.set("hello")  # noqa: SLF001 - smoke probe
+    panel._search_var.set("hello")
     assert len(fired) == 1

@@ -126,8 +126,8 @@ def test_wave509_prepare_for_decryption_owner_password_sets_owner_access() -> No
 def test_wave509_resolve_cfm_handles_identity_direct_algorithms_and_unknowns() -> None:
     encryption = PDEncryption()
 
-    assert StandardSecurityHandler._resolve_cfm(encryption, None) is None  # noqa: SLF001
-    assert StandardSecurityHandler._resolve_cfm(encryption, "Identity") == "Identity"  # noqa: SLF001
-    assert StandardSecurityHandler._resolve_cfm(encryption, "V2") == "V2"  # noqa: SLF001
-    assert StandardSecurityHandler._resolve_cfm(encryption, "AESV3") == "AESV3"  # noqa: SLF001
-    assert StandardSecurityHandler._resolve_cfm(encryption, "UnknownCF") is None  # noqa: SLF001
+    assert StandardSecurityHandler._resolve_cfm(encryption, None) is None
+    assert StandardSecurityHandler._resolve_cfm(encryption, "Identity") == "Identity"
+    assert StandardSecurityHandler._resolve_cfm(encryption, "V2") == "V2"
+    assert StandardSecurityHandler._resolve_cfm(encryption, "AESV3") == "AESV3"
+    assert StandardSecurityHandler._resolve_cfm(encryption, "UnknownCF") is None

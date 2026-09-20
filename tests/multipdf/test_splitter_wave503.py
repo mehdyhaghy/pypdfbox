@@ -74,7 +74,7 @@ def test_wave503_process_annotations_returns_when_annotation_read_fails() -> Non
         def get_annotations(self) -> object:
             raise OSError("bad annotations")
 
-    Splitter()._process_annotations(PDPage(), BrokenImportedPage())  # type: ignore[arg-type]  # noqa: SLF001,E501
+    Splitter()._process_annotations(PDPage(), BrokenImportedPage())  # type: ignore[arg-type]
 
 
 def test_wave503_signature_widget_detects_signature_value_type() -> None:
@@ -84,7 +84,7 @@ def test_wave503_signature_widget_detects_signature_value_type() -> None:
     signature_value.set_item(_TYPE, COSName.get_pdf_name("Sig"))
     widget.set_item(_V, signature_value)
 
-    assert Splitter._is_signature_widget(widget)  # noqa: SLF001
+    assert Splitter._is_signature_widget(widget)
 
 
 def test_wave503_stage_link_destination_ignores_links_with_broken_action() -> None:
@@ -97,9 +97,9 @@ def test_wave503_stage_link_destination_ignores_links_with_broken_action() -> No
 
     splitter = Splitter()
 
-    splitter._stage_link_destination(LinkWithBrokenAction(), COSDictionary())  # type: ignore[arg-type]  # noqa: SLF001,E501
+    splitter._stage_link_destination(LinkWithBrokenAction(), COSDictionary())  # type: ignore[arg-type]
 
-    assert splitter._dest_to_fix == []  # noqa: SLF001
+    assert splitter._dest_to_fix == []
 
 
 def test_wave503_k_clone_dictionary_reuses_existing_clone_and_tracks_id_role() -> None:
@@ -113,12 +113,12 @@ def test_wave503_k_clone_dictionary_reuses_existing_clone_and_tracks_id_role() -
     src.set_string(_ID, "kept-id")
     src.set_item(_S, COSName.get_pdf_name("P"))
 
-    first = splitter._k_create_clone(src, parent, parent, PageTree())  # noqa: SLF001
-    second = splitter._k_create_clone(src, parent, parent, PageTree())  # noqa: SLF001
+    first = splitter._k_create_clone(src, parent, parent, PageTree())
+    second = splitter._k_create_clone(src, parent, parent, PageTree())
 
     assert first is second
-    assert splitter._id_set == {"kept-id"}  # noqa: SLF001
-    assert splitter._role_set == {"P"}  # noqa: SLF001
+    assert splitter._id_set == {"kept-id"}
+    assert splitter._role_set == {"P"}
     assert first.get_dictionary_object(_P) is parent
 
 
@@ -135,7 +135,7 @@ def test_wave503_k_clone_drops_unmapped_page_mcid_and_rootless_mcr() -> None:
     mcr_with_missing_page.set_item(_K, COSInteger.get(0))
 
     assert (
-        splitter._k_create_clone(  # noqa: SLF001
+        splitter._k_create_clone(
             mcr_with_missing_page, COSDictionary(), None, PageTree()
         )
         is None
@@ -144,7 +144,7 @@ def test_wave503_k_clone_drops_unmapped_page_mcid_and_rootless_mcr() -> None:
     rootless_mcr = COSDictionary()
     rootless_mcr.set_item(_TYPE, COSName.get_pdf_name("MCR"))
     assert (
-        splitter._k_create_clone(rootless_mcr, COSDictionary(), None, PageTree())  # noqa: SLF001,E501
+        splitter._k_create_clone(rootless_mcr, COSDictionary(), None, PageTree())
         is None
     )
 
@@ -159,15 +159,15 @@ def test_wave503_objr_rewrites_cloned_annotation_reference() -> None:
     source_annotation = COSDictionary()
     cloned_annotation = COSDictionary()
     splitter = Splitter()
-    splitter._page_dict_map = {id(source_page): cloned_page}  # noqa: SLF001
-    splitter._annot_dict_map = {id(source_annotation): cloned_annotation}  # noqa: SLF001
+    splitter._page_dict_map = {id(source_page): cloned_page}
+    splitter._annot_dict_map = {id(source_annotation): cloned_annotation}
 
     objr = COSDictionary()
     objr.set_item(_TYPE, COSName.get_pdf_name("OBJR"))
     objr.set_item(_PG, source_page)
     objr.set_item(_OBJ, source_annotation)
 
-    cloned = splitter._k_create_clone(objr, COSDictionary(), None, PageTree())  # noqa: SLF001
+    cloned = splitter._k_create_clone(objr, COSDictionary(), None, PageTree())
 
     assert isinstance(cloned, COSDictionary)
     assert cloned.get_dictionary_object(_PG) is cloned_page
@@ -185,7 +185,7 @@ def test_wave503_orphan_annotation_keeps_object_when_present_on_current_page() -
     dst = COSDictionary()
     dst.set_item(_OBJ, source_annotation)
 
-    splitter._remove_possible_orphan_annotation(  # noqa: SLF001
+    splitter._remove_possible_orphan_annotation(
         source_annotation, COSDictionary(), current_page, dst
     )
 
@@ -213,12 +213,12 @@ def test_wave503_role_map_and_id_tree_are_filtered_to_retained_structure() -> No
     dest_root = _Root(COSDictionary())
     cloned_struct = COSDictionary()
     splitter = Splitter()
-    splitter._role_set = {"P"}  # noqa: SLF001
-    splitter._id_set = {"keep"}  # noqa: SLF001
-    splitter._struct_dict_map = {id(source_struct): cloned_struct}  # noqa: SLF001
+    splitter._role_set = {"P"}
+    splitter._id_set = {"keep"}
+    splitter._struct_dict_map = {id(source_struct): cloned_struct}
 
-    splitter._clone_role_map(source_root, dest_root)  # noqa: SLF001
-    splitter._clone_id_tree(source_root, dest_root, _IdentityNameTree)  # noqa: SLF001
+    splitter._clone_role_map(source_root, dest_root)
+    splitter._clone_id_tree(source_root, dest_root, _IdentityNameTree)
 
     cloned_role_map = dest_root.get_cos_object().get_dictionary_object(_ROLE_MAP)
     assert isinstance(cloned_role_map, COSDictionary)
@@ -235,11 +235,11 @@ def test_wave503_has_mcids_finds_integer_inside_array_and_object_array_clone() -
     src = COSArray()
     src.add(wrapped)
 
-    cloned = splitter._k_clone_array(src, COSDictionary(), COSDictionary(), object())  # noqa: SLF001,E501
+    cloned = splitter._k_clone_array(src, COSDictionary(), COSDictionary(), object())
 
     assert isinstance(cloned, COSArray)
     assert cloned.get_object(0) is not child
     mcids = COSArray()
     mcids.add(COSName.get_pdf_name("NotAnInteger"))
     mcids.add(COSInteger.get(4))
-    assert Splitter._has_mcids(mcids)  # noqa: SLF001
+    assert Splitter._has_mcids(mcids)

@@ -20,10 +20,10 @@ def test_wave981_original_handler_raise_restores_existing_previous(
     caplog: Any,
 ) -> None:
     def call_current_handler(_monkeypatch: Any, _caplog: Any) -> None:
-        handler = wave981.wave972.wave966.wave531.renderer_mod._DISPATCH["W531"]  # noqa: SLF001
+        handler = wave981.wave972.wave966.wave531.renderer_mod._DISPATCH["W531"]
         handler(None, object(), [])
 
-    dispatch = wave981.wave972.wave966.wave531.renderer_mod._DISPATCH  # noqa: SLF001
+    dispatch = wave981.wave972.wave966.wave531.renderer_mod._DISPATCH
     original = dispatch.get("W531")
     dispatch["W531"] = _raise_previous_handler
     monkeypatch.setattr(

@@ -28,16 +28,16 @@ def _prepared_renderer(
 ) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -90,22 +90,22 @@ def test_axial_shading_guards_bad_coords_zero_axis_and_singular_ctm() -> None:
     doc, renderer = _prepared_renderer(size=(2, 2))
     try:
         mask = Image.new("L", (2, 2), 255)
-        before = renderer._image.copy()  # noqa: SLF001
+        before = renderer._image.copy()
 
-        renderer._image = None  # noqa: SLF001
-        renderer._paint_axial_shading(_ValidAxis(), region_mask=mask)  # noqa: SLF001
+        renderer._image = None
+        renderer._paint_axial_shading(_ValidAxis(), region_mask=mask)
 
-        renderer._image = before.copy()  # noqa: SLF001
-        renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-        renderer._paint_axial_shading(_BadCoords(), region_mask=mask)  # noqa: SLF001
-        renderer._paint_axial_shading(_ZeroAxis(), region_mask=mask)  # noqa: SLF001
+        renderer._image = before.copy()
+        renderer._draw = aggdraw.Draw(renderer._image)
+        renderer._paint_axial_shading(_BadCoords(), region_mask=mask)
+        renderer._paint_axial_shading(_ZeroAxis(), region_mask=mask)
 
-        renderer._device_ctm = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)  # noqa: SLF001
-        renderer._paint_axial_shading(_ValidAxis(), region_mask=mask)  # noqa: SLF001
+        renderer._device_ctm = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        renderer._paint_axial_shading(_ValidAxis(), region_mask=mask)
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.tobytes() == before.tobytes()  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.tobytes() == before.tobytes()
     finally:
         doc.close()
 
@@ -133,36 +133,36 @@ def test_radial_shading_guards_and_zero_mask_pixels_preserve_canvas() -> None:
 
     doc, renderer = _prepared_renderer(size=(2, 1))
     try:
-        before = renderer._image.copy()  # noqa: SLF001
+        before = renderer._image.copy()
 
-        renderer._image = None  # noqa: SLF001
-        renderer._paint_radial_shading(  # noqa: SLF001
+        renderer._image = None
+        renderer._paint_radial_shading(
             _Valid(),
             region_mask=Image.new("L", (2, 1), 255),
         )
 
-        renderer._image = before.copy()  # noqa: SLF001
-        renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-        renderer._paint_radial_shading(  # noqa: SLF001
+        renderer._image = before.copy()
+        renderer._draw = aggdraw.Draw(renderer._image)
+        renderer._paint_radial_shading(
             _BadCoords(),
             region_mask=Image.new("L", (2, 1), 255),
         )
 
-        renderer._device_ctm = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)  # noqa: SLF001
-        renderer._paint_radial_shading(  # noqa: SLF001
+        renderer._device_ctm = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        renderer._paint_radial_shading(
             _Valid(),
             region_mask=Image.new("L", (2, 1), 255),
         )
 
-        renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
-        renderer._paint_radial_shading(  # noqa: SLF001
+        renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+        renderer._paint_radial_shading(
             _Valid(),
             region_mask=Image.new("L", (2, 1), 0),
         )
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.tobytes() == before.tobytes()  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.tobytes() == before.tobytes()
     finally:
         doc.close()
 
@@ -199,21 +199,21 @@ def test_function_shading_exception_and_scalar_eval_failure_paths(
 
     doc, renderer = _prepared_renderer(size=(1, 1))
     try:
-        before = renderer._image.copy()  # noqa: SLF001
+        before = renderer._image.copy()
 
-        renderer._paint_function_shading(  # noqa: SLF001
+        renderer._paint_function_shading(
             _RaisesFunction(),
             region_mask=Image.new("L", (1, 1), 255),
         )
         monkeypatch.setattr(PDFunction, "create", staticmethod(lambda _fn: _BadEval()))
-        renderer._paint_function_shading(  # noqa: SLF001
+        renderer._paint_function_shading(
             _ScalarShading(),
             region_mask=Image.new("L", (1, 1), 255),
         )
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.tobytes() == before.tobytes()  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.tobytes() == before.tobytes()
     finally:
         doc.close()
 
@@ -221,25 +221,25 @@ def test_function_shading_exception_and_scalar_eval_failure_paths(
 def test_text_state_empty_operands_and_non_string_show_text_are_noops() -> None:
     doc, renderer = _prepared_renderer()
     try:
-        renderer._gs.text_charspace = 3.0  # noqa: SLF001
-        renderer._gs.text_wordspace = 4.0  # noqa: SLF001
-        renderer._gs.text_leading = 5.0  # noqa: SLF001
-        renderer._gs.text_horizontal_scaling = 80.0  # noqa: SLF001
-        renderer._gs.text_rise = 6.0  # noqa: SLF001
+        renderer._gs.text_charspace = 3.0
+        renderer._gs.text_wordspace = 4.0
+        renderer._gs.text_leading = 5.0
+        renderer._gs.text_horizontal_scaling = 80.0
+        renderer._gs.text_rise = 6.0
 
-        renderer._op_set_charspace(None, [])  # noqa: SLF001
-        renderer._op_set_wordspace(None, [])  # noqa: SLF001
-        renderer._op_set_leading(None, [])  # noqa: SLF001
-        renderer._op_set_horizontal_scaling(None, [])  # noqa: SLF001
-        renderer._op_set_text_rise(None, [])  # noqa: SLF001
-        renderer._op_show_text(None, [])  # noqa: SLF001
-        renderer._op_show_text(None, [COSName.get_pdf_name("NotString")])  # noqa: SLF001
+        renderer._op_set_charspace(None, [])
+        renderer._op_set_wordspace(None, [])
+        renderer._op_set_leading(None, [])
+        renderer._op_set_horizontal_scaling(None, [])
+        renderer._op_set_text_rise(None, [])
+        renderer._op_show_text(None, [])
+        renderer._op_show_text(None, [COSName.get_pdf_name("NotString")])
 
-        assert renderer._gs.text_charspace == 3.0  # noqa: SLF001
-        assert renderer._gs.text_wordspace == 4.0  # noqa: SLF001
-        assert renderer._gs.text_leading == 5.0  # noqa: SLF001
-        assert renderer._gs.text_horizontal_scaling == 80.0  # noqa: SLF001
-        assert renderer._gs.text_rise == 6.0  # noqa: SLF001
+        assert renderer._gs.text_charspace == 3.0
+        assert renderer._gs.text_wordspace == 4.0
+        assert renderer._gs.text_leading == 5.0
+        assert renderer._gs.text_horizontal_scaling == 80.0
+        assert renderer._gs.text_rise == 6.0
     finally:
         _finish(renderer)
         doc.close()
@@ -260,18 +260,18 @@ def test_resolve_font_dictionary_factory_none_and_set_font_non_name(
     doc, renderer = _prepared_renderer()
     try:
         resources = _Resources()
-        renderer._resources = resources  # noqa: SLF001
+        renderer._resources = resources
         monkeypatch.setattr(
             factory_module.PDFontFactory,
             "create_font",
             staticmethod(lambda _font_dict: None),
         )
 
-        assert renderer._resolve_font(COSName.get_pdf_name("F1")) is None  # noqa: SLF001
-        renderer._gs.text_font = "unchanged"  # noqa: SLF001
-        renderer._op_set_font(None, [COSString("F1"), COSFloat(12.0)])  # noqa: SLF001
+        assert renderer._resolve_font(COSName.get_pdf_name("F1")) is None
+        renderer._gs.text_font = "unchanged"
+        renderer._op_set_font(None, [COSString("F1"), COSFloat(12.0)])
 
-        assert renderer._gs.text_font == "unchanged"  # noqa: SLF001
+        assert renderer._gs.text_font == "unchanged"
     finally:
         _finish(renderer)
         doc.close()
@@ -306,7 +306,7 @@ def test_get_ttf_glyph_set_accepts_direct_true_type_font(
         ttf = _TTF(glyph_set)
         monkeypatch.setattr(true_type_module, "PDTrueTypeFont", _TrueTypeFont)
 
-        assert renderer._get_ttf_glyph_set(_TrueTypeFont(ttf)) == (ttf, glyph_set)  # noqa: SLF001,E501
+        assert renderer._get_ttf_glyph_set(_TrueTypeFont(ttf)) == (ttf, glyph_set)
     finally:
         _finish(renderer)
         doc.close()

@@ -154,7 +154,7 @@ class StreamImageView(ttk.Frame):
 
     # ---- listener-shaped public surface (upstream parity) ------------------
 
-    def action_performed(self, event: Any | None = None) -> None:  # noqa: ARG002
+    def action_performed(self, event: Any | None = None) -> None:
         """Re-render in response to a zoom / rotation menu selection.
 
         Mirrors upstream ``StreamImageView.actionPerformed(ActionEvent)``
@@ -165,7 +165,7 @@ class StreamImageView(ttk.Frame):
         """
         self._render()
 
-    def ancestor_added(self, event: Any | None = None) -> None:  # noqa: ARG002
+    def ancestor_added(self, event: Any | None = None) -> None:
         """Enable the zoom + rotation menus when this view is shown.
 
         Mirrors upstream ``ancestorAdded(AncestorEvent)`` from the
@@ -176,13 +176,13 @@ class StreamImageView(ttk.Frame):
         class.
         """
 
-    def ancestor_removed(self, event: Any | None = None) -> None:  # noqa: ARG002
+    def ancestor_removed(self, event: Any | None = None) -> None:
         """Disable the zoom + rotation menus when this view is hidden.
 
         Mirrors upstream ``ancestorRemoved(AncestorEvent)``.
         """
 
-    def ancestor_moved(self, event: Any | None = None) -> None:  # noqa: ARG002
+    def ancestor_moved(self, event: Any | None = None) -> None:
         """No-op — kept for upstream API parity.
 
         Mirrors upstream ``ancestorMoved(AncestorEvent)`` whose body is

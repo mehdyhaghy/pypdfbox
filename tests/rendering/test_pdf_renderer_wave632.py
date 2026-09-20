@@ -29,16 +29,16 @@ def _prepared_renderer(
 ) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -61,10 +61,10 @@ def test_process_operator_logs_and_swallows_handler_type_error(
         raise TypeError("synthetic type failure")
 
     doc, renderer = _prepared_renderer()
-    original = renderer_module._DISPATCH["RG"]  # noqa: SLF001
+    original = renderer_module._DISPATCH["RG"]
     try:
         caplog.set_level("DEBUG", logger="pypdfbox.rendering.pdf_renderer")
-        monkeypatch.setitem(renderer_module._DISPATCH, "RG", _broken_handler)  # noqa: SLF001
+        monkeypatch.setitem(renderer_module._DISPATCH, "RG", _broken_handler)
 
         renderer.process_operator(
             "RG",
@@ -72,9 +72,9 @@ def test_process_operator_logs_and_swallows_handler_type_error(
         )
 
         assert "dropping operator RG: synthetic type failure" in caplog.text
-        assert renderer._gs.stroke_rgb == (0, 0, 0)  # noqa: SLF001
+        assert renderer._gs.stroke_rgb == (0, 0, 0)
     finally:
-        monkeypatch.setitem(renderer_module._DISPATCH, "RG", original)  # noqa: SLF001
+        monkeypatch.setitem(renderer_module._DISPATCH, "RG", original)
         _finish(renderer)
         doc.close()
 
@@ -112,7 +112,7 @@ def test_decode_image_xobject_dct_path_uses_encoded_stream_payload() -> None:
     doc, renderer = _prepared_renderer()
     image = _ImageXObject(_png_payload((21, 43, 65)))
     try:
-        decoded = renderer._decode_image_xobject(image)  # noqa: SLF001
+        decoded = renderer._decode_image_xobject(image)
 
         assert decoded is not None
         assert decoded.mode == "RGB"

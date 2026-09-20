@@ -27,10 +27,10 @@ from pypdfbox.cos import COSArray, COSName
 from pypdfbox.pdmodel.graphics.optionalcontent import (
     PDOptionalContentGroup,
 )
-from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_configuration import (  # noqa: E501
+from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_configuration import (
     PDOptionalContentConfiguration,
 )
-from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_properties import (  # noqa: E501
+from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_properties import (
     BaseState,
     PDOptionalContentProperties,
 )

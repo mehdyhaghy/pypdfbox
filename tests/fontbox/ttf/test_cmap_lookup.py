@@ -15,7 +15,7 @@ def test_cmap_lookup_is_abstract_cannot_instantiate() -> None:
 
 def test_cmap_lookup_subclass_missing_get_char_codes_cannot_instantiate() -> None:
     class Partial(CmapLookup):
-        def get_glyph_id(self, code_point_at: int) -> int:  # noqa: ARG002
+        def get_glyph_id(self, code_point_at: int) -> int:
             return 0
 
     global _MissingGetCharCodesPartial
@@ -27,7 +27,7 @@ def test_cmap_lookup_subclass_missing_get_char_codes_cannot_instantiate() -> Non
 
 def test_cmap_lookup_subclass_missing_get_glyph_id_cannot_instantiate() -> None:
     class Partial(CmapLookup):
-        def get_char_codes(self, gid: int) -> list[int] | None:  # noqa: ARG002
+        def get_char_codes(self, gid: int) -> list[int] | None:
             return None
 
     global _MissingGetGlyphIdPartial

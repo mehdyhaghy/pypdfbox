@@ -97,16 +97,16 @@ def test_get_glyphs_returns_one_per_gid(
 def test_set_glyphs_replaces_cache() -> None:
     # Use a tiny synthetic table to avoid touching the module-scoped fixture.
     gt = GlyphTable()
-    gt._num_glyphs = 3  # noqa: SLF001
-    gt._glyphs = [None, None, None]  # noqa: SLF001
+    gt._num_glyphs = 3
+    gt._glyphs = [None, None, None]
     placeholder = GlyphData()
     gt.set_glyphs([placeholder, placeholder, placeholder])
     # All slots populated -> cached count should match.
-    assert gt._cached == 3  # noqa: SLF001
-    assert gt._glyphs == [placeholder, placeholder, placeholder]  # noqa: SLF001
+    assert gt._cached == 3
+    assert gt._glyphs == [placeholder, placeholder, placeholder]
     gt.set_glyphs(None)
-    assert gt._glyphs is None  # noqa: SLF001
-    assert gt._cached == 0  # noqa: SLF001
+    assert gt._glyphs is None
+    assert gt._cached == 0
 
 
 # ---------- TrueTypeFont convenience accessor ------------------------------

@@ -18,7 +18,7 @@ from pypdfbox.filter.filter_factory import FilterFactory
 def test_get_all_filters_dedups_duplicate_instance() -> None:
     """Closes 110->109: a single ``Filter`` instance registered under two
     names appears once in the deduplicated result."""
-    saved = dict(FilterFactory._registry)  # noqa: SLF001
+    saved = dict(FilterFactory._registry)
     try:
         any_name = next(iter(saved))
         instance = saved[any_name]
@@ -29,5 +29,5 @@ def test_get_all_filters_dedups_duplicate_instance() -> None:
         # The aliased instance must appear exactly once despite two keys.
         assert result.count(instance) == 1
     finally:
-        FilterFactory._registry.clear()  # noqa: SLF001
-        FilterFactory._registry.update(saved)  # noqa: SLF001
+        FilterFactory._registry.clear()
+        FilterFactory._registry.update(saved)

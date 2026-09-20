@@ -82,7 +82,7 @@ class _BlitRecorder:
         recorder = self
         real = rdr._image
 
-        def fake_paste(im, box=None, mask=None):  # noqa: ANN001
+        def fake_paste(im, box=None, mask=None):
             recorder.calls.append({"image": im, "box": box, "mask": mask})
 
         real.paste = fake_paste  # type: ignore[method-assign]

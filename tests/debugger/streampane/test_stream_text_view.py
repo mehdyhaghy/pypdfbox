@@ -37,7 +37,7 @@ def test_text_view_with_tooltip_controller_responds_to_motion(tk_root) -> None:
     class Controller:
         def get_tool_tip(self, offset, text_widget):
             captured.append(offset)
-            return None  # nothing to show — exercises only the call path
+            return  # nothing to show — exercises only the call path
 
     view = StreamTextView(
         tk_root,
@@ -71,11 +71,11 @@ def test_on_motion_shows_tooltip_when_controller_returns_string(tk_root) -> None
     import types
 
     event = types.SimpleNamespace(x=10, y=5, x_root=200, y_root=300)
-    view._on_motion(event)  # type: ignore[arg-type]  # noqa: SLF001
+    view._on_motion(event)  # type: ignore[arg-type]
     # Tooltip window has been spawned.
-    assert view._tool_tip_window is not None  # noqa: SLF001
-    view._hide_tooltip()  # noqa: SLF001
-    assert view._tool_tip_window is None  # noqa: SLF001
+    assert view._tool_tip_window is not None
+    view._hide_tooltip()
+    assert view._tool_tip_window is None
 
 
 def test_on_motion_handles_controller_exception(tk_root) -> None:
@@ -93,9 +93,9 @@ def test_on_motion_handles_controller_exception(tk_root) -> None:
 
     event = types.SimpleNamespace(x=10, y=5, x_root=200, y_root=300)
     # The motion handler must swallow the controller's error.
-    view._on_motion(event)  # type: ignore[arg-type]  # noqa: SLF001
+    view._on_motion(event)  # type: ignore[arg-type]
     # No tooltip window since the controller blew up.
-    assert view._tool_tip_window is None  # noqa: SLF001
+    assert view._tool_tip_window is None
 
 
 def test_on_motion_without_controller_is_noop(tk_root) -> None:
@@ -104,7 +104,7 @@ def test_on_motion_without_controller_is_noop(tk_root) -> None:
     import types
 
     event = types.SimpleNamespace(x=0, y=0, x_root=0, y_root=0)
-    view._on_motion(event)  # type: ignore[arg-type]  # noqa: SLF001
+    view._on_motion(event)  # type: ignore[arg-type]
 
 
 def test_text_index_to_offset_across_lines(tk_root) -> None:

@@ -226,7 +226,7 @@ class PNGConverter:
     ) -> None:
         """Mirror of ``PNGConverter.setupIndexedColorSpace`` (Java line 304)."""
         # Handled inside Pillow's LosslessFactory path; nothing to do here.
-        return None
+        return
 
     @staticmethod
     def build_image_object(doc: PDDocument, state: _PNGConverterState) -> PDImageXObject | None:

@@ -170,7 +170,7 @@ def test_decode_image_xobject_helper_fallbacks() -> None:
 
     doc, renderer = _make_doc()[0], PDFRenderer(_make_doc()[0])
     try:
-        gray = renderer._decode_image_xobject(  # noqa: SLF001
+        gray = renderer._decode_image_xobject(
             _FakeImage(data=bytes([64, 192]), width=2, height=1)
         )
         assert gray is not None
@@ -178,7 +178,7 @@ def test_decode_image_xobject_helper_fallbacks() -> None:
         assert gray.getpixel((0, 0)) == (64, 64, 64)
         assert gray.getpixel((1, 0)) == (192, 192, 192)
 
-        rgb = renderer._decode_image_xobject(  # noqa: SLF001
+        rgb = renderer._decode_image_xobject(
             _FakeImage(
                 data=bytes([1, 2, 3]),
                 color_space=None,
@@ -187,9 +187,9 @@ def test_decode_image_xobject_helper_fallbacks() -> None:
         assert rgb is not None
         assert rgb.getpixel((0, 0)) == (1, 2, 3)
 
-        assert renderer._decode_image_xobject(_FakeImage(width=0)) is None  # noqa: SLF001
-        assert renderer._decode_image_xobject(_FakeImage(bpc=4)) is None  # noqa: SLF001
-        assert renderer._decode_image_xobject(_FakeImage(cos=COSDictionary())) is None  # noqa: SLF001
+        assert renderer._decode_image_xobject(_FakeImage(width=0)) is None
+        assert renderer._decode_image_xobject(_FakeImage(bpc=4)) is None
+        assert renderer._decode_image_xobject(_FakeImage(cos=COSDictionary())) is None
     finally:
         doc.close()
         renderer.get_document().close()
@@ -225,19 +225,19 @@ def test_shading_static_helpers_default_and_convert_defensively() -> None:
         def get_extend(self) -> Any:
             return self._extend
 
-    assert PDFRenderer._shading_domain(_RaisesDomain()) == (0.0, 1.0)  # noqa: SLF001
-    assert PDFRenderer._shading_domain(_Domain(None)) == (0.0, 1.0)  # noqa: SLF001
-    assert PDFRenderer._shading_domain(_Domain(_float_array([0.25, 0.75]))) == (  # noqa: SLF001
+    assert PDFRenderer._shading_domain(_RaisesDomain()) == (0.0, 1.0)
+    assert PDFRenderer._shading_domain(_Domain(None)) == (0.0, 1.0)
+    assert PDFRenderer._shading_domain(_Domain(_float_array([0.25, 0.75]))) == (
         0.25,
         0.75,
     )
-    assert PDFRenderer._shading_domain_2d(_Domain(_float_array([0.0, 2.0]))) == (  # noqa: SLF001
+    assert PDFRenderer._shading_domain_2d(_Domain(_float_array([0.0, 2.0]))) == (
         0.0,
         1.0,
         0.0,
         1.0,
     )
-    assert PDFRenderer._shading_matrix(_RaisesMatrix()) == (  # noqa: SLF001
+    assert PDFRenderer._shading_matrix(_RaisesMatrix()) == (
         1.0,
         0.0,
         0.0,
@@ -245,7 +245,7 @@ def test_shading_static_helpers_default_and_convert_defensively() -> None:
         0.0,
         0.0,
     )
-    assert PDFRenderer._shading_matrix(_Matrix(_float_array([1, 2, 3, 4, 5, 6]))) == (  # noqa: SLF001
+    assert PDFRenderer._shading_matrix(_Matrix(_float_array([1, 2, 3, 4, 5, 6]))) == (
         1.0,
         2.0,
         3.0,
@@ -257,17 +257,17 @@ def test_shading_static_helpers_default_and_convert_defensively() -> None:
     extend = COSArray()
     extend.add(COSBoolean.get(True))
     extend.add(COSBoolean.get(False))
-    assert PDFRenderer._shading_extend(_Extend((True, False))) == (True, False)  # noqa: SLF001
-    assert PDFRenderer._shading_extend(_Extend(extend)) == (True, False)  # noqa: SLF001
-    assert PDFRenderer._shading_extend(_Extend(COSArray())) == (False, False)  # noqa: SLF001
+    assert PDFRenderer._shading_extend(_Extend((True, False))) == (True, False)
+    assert PDFRenderer._shading_extend(_Extend(extend)) == (True, False)
+    assert PDFRenderer._shading_extend(_Extend(COSArray())) == (False, False)
 
-    assert PDFRenderer._invert_matrix((1.0, 2.0, 2.0, 4.0, 0.0, 0.0)) is None  # noqa: SLF001
-    inv = PDFRenderer._invert_matrix((2.0, 0.0, 0.0, 4.0, 6.0, 8.0))  # noqa: SLF001
+    assert PDFRenderer._invert_matrix((1.0, 2.0, 2.0, 4.0, 0.0, 0.0)) is None
+    inv = PDFRenderer._invert_matrix((2.0, 0.0, 0.0, 4.0, 6.0, 8.0))
     assert inv == (0.5, -0.0, -0.0, 0.25, -3.0, -2.0)
 
-    assert PDFRenderer._function_output_to_rgb([], None) == (0, 0, 0)  # noqa: SLF001
-    assert PDFRenderer._function_output_to_rgb([0.5], "DeviceGray") == (128, 128, 128)  # noqa: SLF001
-    assert PDFRenderer._function_output_to_rgb([1.0, 0.0, 0.0, 0.0], "DeviceCMYK") == (  # noqa: SLF001
+    assert PDFRenderer._function_output_to_rgb([], None) == (0, 0, 0)
+    assert PDFRenderer._function_output_to_rgb([0.5], "DeviceGray") == (128, 128, 128)
+    assert PDFRenderer._function_output_to_rgb([1.0, 0.0, 0.0, 0.0], "DeviceCMYK") == (
         0,
         255,
         255,
@@ -276,11 +276,11 @@ def test_shading_static_helpers_default_and_convert_defensively() -> None:
 
 def test_render_tiling_cell_empty_and_invalid_inputs() -> None:
     doc, renderer = _make_doc()[0], PDFRenderer(_make_doc()[0])
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
+    renderer._gs_stack = [_GState()]
     try:
         empty_stream = COSStream()
         empty_stream.set_raw_data(b"")
-        tile = renderer._render_tiling_cell(  # noqa: SLF001
+        tile = renderer._render_tiling_cell(
             _TilingPattern(empty_stream),
             bbox=PDRectangle(0.0, 0.0, 4.0, 4.0),
             tile_size=(3, 3),
@@ -293,7 +293,7 @@ def test_render_tiling_cell_empty_and_invalid_inputs() -> None:
         assert tile.mode == "RGBA"
         assert tile.getpixel((1, 1)) == (0, 0, 0, 0)
 
-        assert renderer._render_tiling_cell(  # noqa: SLF001
+        assert renderer._render_tiling_cell(
             _TilingPattern(COSDictionary()),
             bbox=PDRectangle(0.0, 0.0, 4.0, 4.0),
             tile_size=(3, 3),
@@ -301,7 +301,7 @@ def test_render_tiling_cell_empty_and_invalid_inputs() -> None:
 
         nonempty_stream = COSStream()
         nonempty_stream.set_raw_data(b"0 0 1 rg 0 0 1 1 re f\n")
-        assert renderer._render_tiling_cell(  # noqa: SLF001
+        assert renderer._render_tiling_cell(
             _TilingPattern(nonempty_stream),
             bbox=PDRectangle(0.0, 0.0, 0.0, 4.0),
             tile_size=(3, 3),

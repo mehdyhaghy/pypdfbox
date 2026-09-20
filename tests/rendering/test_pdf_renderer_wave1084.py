@@ -17,7 +17,7 @@ def test_wave303_make_doc_removes_existing_factory_page(
 
     monkeypatch.setattr(wave303, "PDDocument", document_with_existing_page)
 
-    doc = wave303._make_doc()  # noqa: SLF001
+    doc = wave303._make_doc()
     try:
         assert doc.get_number_of_pages() == 1
         page = doc.get_page(0)

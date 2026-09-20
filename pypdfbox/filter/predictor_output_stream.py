@@ -41,7 +41,7 @@ def _max_row_length() -> int:
     """
     # Imported lazily: ``filter`` pulls in the whole codec surface and
     # this module sits below it in the import graph.
-    from .filter import Filter  # noqa: PLC0415
+    from .filter import Filter
 
     max_row_length = _DEFAULT_MAX_ROW_LENGTH
     sys_prop = os.environ.get(Filter.SYSPROP_PREDICTOR_MAX_ROW_LENGTH)

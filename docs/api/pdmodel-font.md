@@ -85,7 +85,7 @@ with PDDocument() as doc:
         cs.new_line_at_offset(72, 720)
         cs.show_text("Hello, world")
         cs.end_text()
-    doc.save("out.pdf")
+    doc.save("output.pdf")
 ```
 
 ## PDFBox divergence

@@ -101,7 +101,7 @@ def test_missing_glyph_logs_warning_and_returns_empty_path_for_std14_lf(
         def get_name(self) -> str:
             return "Helvetica"
 
-        def has_glyph(self, code: int) -> bool:  # noqa: ARG002
+        def has_glyph(self, code: int) -> bool:
             return False
 
         def is_standard14(self) -> bool:
@@ -133,7 +133,7 @@ def test_cid_font_missing_glyph_logs_cid_and_returns_outline(
         def get_name(self) -> str:
             return "CIDFont"
 
-        def has_glyph(self, code: int) -> bool:  # noqa: ARG002
+        def has_glyph(self, code: int) -> bool:
             return False
 
         def code_to_cid(self, code: int) -> int:
@@ -198,7 +198,7 @@ def test_font_without_get_normalized_path_returns_empty_path() -> None:
     """
 
     class _NoOutlineFont:
-        def has_glyph(self, code: int) -> bool:  # noqa: ARG002
+        def has_glyph(self, code: int) -> bool:
             return True
 
     cache = GlyphCache(_NoOutlineFont())  # type: ignore[arg-type]

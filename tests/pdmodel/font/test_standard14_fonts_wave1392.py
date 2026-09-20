@@ -23,7 +23,7 @@ def test_get_glyph_path_pua_fallback_path_empty_falls_through(
     :data:`_SYMBOL_PUA_FALLBACKS` but ``_ttf_glyph_path_for_code_point``
     returns an empty path (substitute TTF doesn't carry the glyph), the
     code must fall through to the ``mapped_font`` branch."""
-    saved = s14._ttf_glyph_path_for_code_point  # noqa: SLF001
+    saved = s14._ttf_glyph_path_for_code_point
 
     def _empty(*_args: Any, **_kwargs: Any) -> list[tuple[Any, ...]]:
         return []
@@ -32,7 +32,7 @@ def test_get_glyph_path_pua_fallback_path_empty_falls_through(
     monkeypatch.setattr(s14, "_ttf_glyph_path_for_code_point", _empty)
     # Pick a glyph_name that's in _SYMBOL_PUA_FALLBACKS — exercise via
     # Symbol base.
-    fallback_name = next(iter(s14._SYMBOL_PUA_FALLBACKS))  # noqa: SLF001
+    fallback_name = next(iter(s14._SYMBOL_PUA_FALLBACKS))
     # Run through Standard14Fonts.get_glyph_path("Symbol", fallback_name).
     # We expect the fall-through to the mapped_font branch (which for
     # Symbol typically yields the glyph from the wrapper or []).

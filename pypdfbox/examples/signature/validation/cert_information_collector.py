@@ -142,12 +142,12 @@ class CertInformationCollector:
             return None
         return self._build_node(certs[0], certs, None, depth=0)
 
-    def add_timestamp_certs(self, signer_information) -> None:  # noqa: ANN001
+    def add_timestamp_certs(self, signer_information) -> None:
         """Harvest TST certificates from a CMS ``SignerInfo`` (upstream 136)."""
 
     def process_signer_store(
         self,
-        signed_data,  # noqa: ANN001
+        signed_data,
         cert_info: CertSignatureInformation,
     ):
         """Mirrors ``processSignerStore`` (upstream 180).
@@ -182,12 +182,12 @@ class CertInformationCollector:
     ) -> None:
         """Look for alternative issuer paths (upstream 284)."""
 
-    def get_cert_from_holder(self, certificate_holder) -> x509.Certificate | None:  # noqa: ANN001
+    def get_cert_from_holder(self, certificate_holder) -> x509.Certificate | None:
         """Decode a Bouncy-Castle X509CertificateHolder (upstream 320). In
         pypdfbox we work directly with :class:`cryptography.x509.Certificate`."""
         return certificate_holder
 
-    def add_all_certs(self, cert_holders) -> None:  # noqa: ANN001
+    def add_all_certs(self, cert_holders) -> None:
         """Add a collection of cert-holders to the set (upstream 339)."""
         for holder in cert_holders:
             cert = self.get_cert_from_holder(holder)

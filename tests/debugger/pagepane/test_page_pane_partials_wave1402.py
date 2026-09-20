@@ -45,12 +45,12 @@ def _reset_menus() -> Iterator[None]:
     from pypdfbox.debugger.ui.zoom_menu import ZoomMenu
 
     def _wipe() -> None:
-        ZoomMenu._reset_instance()  # noqa: SLF001
-        RotationMenu._reset_instance()  # noqa: SLF001
-        RenderDestinationMenu._reset_instance()  # noqa: SLF001
-        ViewMenu._reset_instance()  # noqa: SLF001
-        ImageTypeMenu._reset_for_testing()  # noqa: SLF001
-        TextStripperMenu._reset_for_testing()  # noqa: SLF001
+        ZoomMenu._reset_instance()
+        RotationMenu._reset_instance()
+        RenderDestinationMenu._reset_instance()
+        ViewMenu._reset_instance()
+        ImageTypeMenu._reset_for_testing()
+        TextStripperMenu._reset_for_testing()
 
     _wipe()
     try:
@@ -87,7 +87,7 @@ def test_collect_link_location_catalog_without_named_destination_resolver(
     ``PDActionGoTo``), routing through ``link_annotation.get_destination()``
     so we control the typed return.
     """
-    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (  # noqa: E501
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (
         PDNamedDestination,
     )
 
@@ -220,7 +220,7 @@ def test_render_image_renderer_without_subsampling_setter(
 
         monkeypatch.setattr(_r, "PDFRenderer", _SubsamplinglessRenderer)
         # Should succeed without invoking the missing setter.
-        image = pane._render_image()  # noqa: SLF001
+        image = pane._render_image()
         assert image is not None
     finally:
         doc.close()
@@ -244,7 +244,7 @@ def test_on_mouse_moved_continues_past_non_hit_rect(
 
         # Force a Tk canvas so the canvas-config branch on the same call
         # is also covered.
-        pane._canvas = tk.Canvas(tk_root)  # noqa: SLF001
+        pane._canvas = tk.Canvas(tk_root)
 
         class _Rect:
             def __init__(self, hit: bool) -> None:
@@ -254,7 +254,7 @@ def test_on_mouse_moved_continues_past_non_hit_rect(
                 return self._hit
 
         # Two rects: first NOT a hit ⇒ continue, second IS a hit ⇒ break.
-        pane._rect_map = {  # noqa: SLF001
+        pane._rect_map = {
             _Rect(False): "Far rect",
             _Rect(True): "URI: https://example.com",
         }
@@ -264,8 +264,8 @@ def test_on_mouse_moved_continues_past_non_hit_rect(
             x = 5
             y = 5
 
-        pane._on_mouse_moved(_Evt())  # type: ignore[arg-type]  # noqa: SLF001
-        assert pane._current_uri == "https://example.com"  # noqa: SLF001
+        pane._on_mouse_moved(_Evt())  # type: ignore[arg-type]
+        assert pane._current_uri == "https://example.com"
     finally:
         doc.close()
 
@@ -286,15 +286,15 @@ def test_on_mouse_moved_skips_canvas_when_canvas_none(
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
         # Force canvas back to None for this branch.
-        pane._canvas = None  # noqa: SLF001
-        pane._rect_map = {}  # noqa: SLF001
+        pane._canvas = None
+        pane._rect_map = {}
 
         class _Evt:
             x = 1
             y = 1
 
         # Should not raise even though canvas is missing.
-        pane._on_mouse_moved(_Evt())  # type: ignore[arg-type]  # noqa: SLF001
+        pane._on_mouse_moved(_Evt())  # type: ignore[arg-type]
     finally:
         doc.close()
 

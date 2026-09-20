@@ -125,7 +125,7 @@ def _patch_loader_to_fake_doc(monkeypatch, fake_doc):
     """Patch ``PDDocument.load`` to return ``fake_doc`` directly."""
     from pypdfbox.pdmodel import pd_document as _pd_doc_module
 
-    def _patched(cls, source, password=None):  # noqa: ARG001
+    def _patched(cls, source, password=None):
         return fake_doc
 
     monkeypatch.setattr(

@@ -144,7 +144,7 @@ class TriangleBasedShadingContext(ShadingContext):
         (TriangleBasedShadingContext.java line 199) — writes only where
         ``getValueFromArray`` returns a non-negative RGB; pixels outside
         the table read as transparent."""
-        from PIL import Image  # noqa: PLC0415
+        from PIL import Image
 
         out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         if self.is_data_empty() and self.get_background() is None:

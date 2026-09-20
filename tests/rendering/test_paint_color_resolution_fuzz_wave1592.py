@@ -47,8 +47,8 @@ from pypdfbox.rendering.page_drawer import PageDrawer
 def _make_renderer() -> PDFRenderer:
     doc = PDDocument()
     renderer = PDFRenderer(doc)
-    renderer._gs_stack = [pr._GState()]  # noqa: SLF001
-    renderer._resources = None  # noqa: SLF001
+    renderer._gs_stack = [pr._GState()]
+    renderer._resources = None
     return renderer
 
 
@@ -136,10 +136,10 @@ def test_fill_device_rgb_to_device_bytes(
     r: float, g: float, b: float, expected: tuple[int, int, int]
 ) -> None:
     rndr = _make_renderer()
-    rndr._op_set_fill_rgb(None, _ops(r, g, b))  # noqa: SLF001
-    assert rndr._gs.fill_rgb == expected  # noqa: SLF001
+    rndr._op_set_fill_rgb(None, _ops(r, g, b))
+    assert rndr._gs.fill_rgb == expected
     # The stroking colour must be untouched (default black).
-    assert rndr._gs.stroke_rgb == (0, 0, 0)  # noqa: SLF001
+    assert rndr._gs.stroke_rgb == (0, 0, 0)
 
 
 @pytest.mark.parametrize(
@@ -156,8 +156,8 @@ def test_fill_device_gray_replicated(
     gray: float, expected: tuple[int, int, int]
 ) -> None:
     rndr = _make_renderer()
-    rndr._op_set_fill_gray(None, _ops(gray))  # noqa: SLF001
-    rgb = rndr._gs.fill_rgb  # noqa: SLF001
+    rndr._op_set_fill_gray(None, _ops(gray))
+    rgb = rndr._gs.fill_rgb
     assert rgb == expected
     # Gray replicates to all three channels.
     assert rgb[0] == rgb[1] == rgb[2]
@@ -181,8 +181,8 @@ def test_fill_device_cmyk_converted(
     c: float, m: float, y: float, k: float, expected: tuple[int, int, int]
 ) -> None:
     rndr = _make_renderer()
-    rndr._op_set_fill_cmyk(None, _ops(c, m, y, k))  # noqa: SLF001
-    assert rndr._gs.fill_rgb == expected  # noqa: SLF001
+    rndr._op_set_fill_cmyk(None, _ops(c, m, y, k))
+    assert rndr._gs.fill_rgb == expected
 
 
 # ---------------------------------------------------------------------------
@@ -192,32 +192,32 @@ def test_fill_device_cmyk_converted(
 
 def test_stroke_color_does_not_touch_fill() -> None:
     rndr = _make_renderer()
-    rndr._op_set_stroke_rgb(None, _ops(1.0, 0.0, 0.0))  # noqa: SLF001
-    assert rndr._gs.stroke_rgb == (255, 0, 0)  # noqa: SLF001
-    assert rndr._gs.fill_rgb == (0, 0, 0)  # noqa: SLF001
+    rndr._op_set_stroke_rgb(None, _ops(1.0, 0.0, 0.0))
+    assert rndr._gs.stroke_rgb == (255, 0, 0)
+    assert rndr._gs.fill_rgb == (0, 0, 0)
 
 
 def test_fill_and_stroke_independent() -> None:
     rndr = _make_renderer()
-    rndr._op_set_fill_rgb(None, _ops(1.0, 0.0, 0.0))  # noqa: SLF001
-    rndr._op_set_stroke_rgb(None, _ops(0.0, 0.0, 1.0))  # noqa: SLF001
-    assert rndr._gs.fill_rgb == (255, 0, 0)  # noqa: SLF001
-    assert rndr._gs.stroke_rgb == (0, 0, 255)  # noqa: SLF001
+    rndr._op_set_fill_rgb(None, _ops(1.0, 0.0, 0.0))
+    rndr._op_set_stroke_rgb(None, _ops(0.0, 0.0, 1.0))
+    assert rndr._gs.fill_rgb == (255, 0, 0)
+    assert rndr._gs.stroke_rgb == (0, 0, 255)
 
 
 def test_stroke_gray_and_cmyk_route_to_stroke_rgb() -> None:
     rndr = _make_renderer()
-    rndr._op_set_stroke_gray(None, _ops(0.5))  # noqa: SLF001
-    assert rndr._gs.stroke_rgb == (128, 128, 128)  # noqa: SLF001
-    assert rndr._gs.fill_rgb == (0, 0, 0)  # noqa: SLF001
-    rndr._op_set_stroke_cmyk(None, _ops(1.0, 0.0, 0.0, 0.0))  # noqa: SLF001
-    assert rndr._gs.stroke_rgb == (0, 255, 255)  # noqa: SLF001
+    rndr._op_set_stroke_gray(None, _ops(0.5))
+    assert rndr._gs.stroke_rgb == (128, 128, 128)
+    assert rndr._gs.fill_rgb == (0, 0, 0)
+    rndr._op_set_stroke_cmyk(None, _ops(1.0, 0.0, 0.0, 0.0))
+    assert rndr._gs.stroke_rgb == (0, 255, 255)
 
 
 def test_get_paint_bridge_uses_resolver_when_present() -> None:
     rndr = _make_renderer()
     drawer = _make_drawer(rndr)
-    rndr._resolve_color_to_rgb = lambda c: ("RESOLVED", c)  # type: ignore[attr-defined]  # noqa: SLF001
+    rndr._resolve_color_to_rgb = lambda c: ("RESOLVED", c)  # type: ignore[attr-defined]
     sentinel = object()
     assert drawer.get_paint(sentinel) == ("RESOLVED", sentinel)
 
@@ -225,8 +225,8 @@ def test_get_paint_bridge_uses_resolver_when_present() -> None:
 def test_get_non_stroking_vs_stroking_paint() -> None:
     rndr = _make_renderer()
     drawer = _make_drawer(rndr)
-    rndr._op_set_fill_rgb(None, _ops(1.0, 0.0, 0.0))  # noqa: SLF001
-    rndr._op_set_stroke_rgb(None, _ops(0.0, 1.0, 0.0))  # noqa: SLF001
+    rndr._op_set_fill_rgb(None, _ops(1.0, 0.0, 0.0))
+    rndr._op_set_stroke_rgb(None, _ops(0.0, 1.0, 0.0))
     assert drawer.get_non_stroking_paint() == (255, 0, 0)
     assert drawer.get_stroking_paint() == (0, 255, 0)
 
@@ -240,13 +240,13 @@ def test_separation_tint_applied_via_to_rgb() -> None:
     # A Separation that maps tint t -> alternate Gray (1-t) -> RGB.
     sep = _FakeCS(lambda c: (1.0 - c[0], 1.0 - c[0], 1.0 - c[0]), n_components=1)
     rndr = _make_renderer()
-    rndr._gs.fill_color_space = sep  # noqa: SLF001
-    rndr._op_set_fill_color_n(None, _ops(0.0))  # noqa: SLF001
-    assert rndr._gs.fill_rgb == (255, 255, 255)  # noqa: SLF001
-    rndr._op_set_fill_color_n(None, _ops(1.0))  # noqa: SLF001
-    assert rndr._gs.fill_rgb == (0, 0, 0)  # noqa: SLF001
-    rndr._op_set_fill_color_n(None, _ops(0.5))  # noqa: SLF001
-    assert rndr._gs.fill_rgb == (128, 128, 128)  # noqa: SLF001
+    rndr._gs.fill_color_space = sep
+    rndr._op_set_fill_color_n(None, _ops(0.0))
+    assert rndr._gs.fill_rgb == (255, 255, 255)
+    rndr._op_set_fill_color_n(None, _ops(1.0))
+    assert rndr._gs.fill_rgb == (0, 0, 0)
+    rndr._op_set_fill_color_n(None, _ops(0.5))
+    assert rndr._gs.fill_rgb == (128, 128, 128)
     # The tint component (not a fixed value) actually reached the CS.
     assert sep.calls[-1] == (0.5,)
 
@@ -254,20 +254,20 @@ def test_separation_tint_applied_via_to_rgb() -> None:
 def test_separation_stroke_uses_stroke_color_space() -> None:
     sep = _FakeCS(lambda c: (c[0], 0.0, 0.0), n_components=1)
     rndr = _make_renderer()
-    rndr._gs.stroke_color_space = sep  # noqa: SLF001
-    rndr._op_set_stroke_color_n(None, _ops(1.0))  # noqa: SLF001
-    assert rndr._gs.stroke_rgb == (255, 0, 0)  # noqa: SLF001
-    assert rndr._gs.fill_rgb == (0, 0, 0)  # noqa: SLF001
+    rndr._gs.stroke_color_space = sep
+    rndr._op_set_stroke_color_n(None, _ops(1.0))
+    assert rndr._gs.stroke_rgb == (255, 0, 0)
+    assert rndr._gs.fill_rgb == (0, 0, 0)
 
 
 def test_separation_to_rgb_failure_leaves_color_unchanged() -> None:
     # to_rgb returns None (conversion failed) -> fill_rgb stays at default.
     sep = _FakeCS(lambda c: None, n_components=1)
     rndr = _make_renderer()
-    rndr._gs.fill_color_space = sep  # noqa: SLF001
-    rndr._gs.fill_rgb = (10, 20, 30)  # noqa: SLF001
-    rndr._op_set_fill_color_n(None, _ops(0.7))  # noqa: SLF001
-    assert rndr._gs.fill_rgb == (10, 20, 30)  # noqa: SLF001
+    rndr._gs.fill_color_space = sep
+    rndr._gs.fill_rgb = (10, 20, 30)
+    rndr._op_set_fill_color_n(None, _ops(0.7))
+    assert rndr._gs.fill_rgb == (10, 20, 30)
 
 
 # ---------------------------------------------------------------------------
@@ -284,13 +284,13 @@ def test_indexed_palette_lookup() -> None:
 
     idx = _FakeCS(lookup, n_components=1)
     rndr = _make_renderer()
-    rndr._gs.fill_color_space = idx  # noqa: SLF001
-    rndr._op_set_fill_color_n(None, _ops(1))  # noqa: SLF001
-    assert rndr._gs.fill_rgb == (255, 0, 0)  # noqa: SLF001
-    rndr._op_set_fill_color_n(None, _ops(2))  # noqa: SLF001
-    assert rndr._gs.fill_rgb == (0, 255, 0)  # noqa: SLF001
-    rndr._op_set_fill_color_n(None, _ops(0))  # noqa: SLF001
-    assert rndr._gs.fill_rgb == (10, 20, 30)  # noqa: SLF001
+    rndr._gs.fill_color_space = idx
+    rndr._op_set_fill_color_n(None, _ops(1))
+    assert rndr._gs.fill_rgb == (255, 0, 0)
+    rndr._op_set_fill_color_n(None, _ops(2))
+    assert rndr._gs.fill_rgb == (0, 255, 0)
+    rndr._op_set_fill_color_n(None, _ops(0))
+    assert rndr._gs.fill_rgb == (10, 20, 30)
 
 
 # ---------------------------------------------------------------------------
@@ -307,28 +307,28 @@ def _renderer_with_pattern(name: str, pattern_obj: Any) -> PDFRenderer:
             return None
 
     rndr = _make_renderer()
-    rndr._resources = _Res()  # noqa: SLF001
+    rndr._resources = _Res()
     return rndr
 
 
 def test_pattern_fill_sets_pattern_not_solid() -> None:
     pat = object()
     rndr = _renderer_with_pattern("P0", pat)
-    rndr._gs.fill_rgb = (5, 5, 5)  # noqa: SLF001
-    rndr._op_set_fill_color_n(None, [_name("P0")])  # noqa: SLF001
-    assert rndr._gs.fill_pattern is pat  # noqa: SLF001
+    rndr._gs.fill_rgb = (5, 5, 5)
+    rndr._op_set_fill_color_n(None, [_name("P0")])
+    assert rndr._gs.fill_pattern is pat
     # Solid fill_rgb is left as-is (the pattern paints its own colours).
-    assert rndr._gs.fill_rgb == (5, 5, 5)  # noqa: SLF001
+    assert rndr._gs.fill_rgb == (5, 5, 5)
     # No tint for a colored (Type 1) pattern — only the name was supplied.
-    assert rndr._gs.fill_pattern_tint is None  # noqa: SLF001
+    assert rndr._gs.fill_pattern_tint is None
 
 
 def test_pattern_stroke_sets_stroke_pattern() -> None:
     pat = object()
     rndr = _renderer_with_pattern("P1", pat)
-    rndr._op_set_stroke_color_n(None, [_name("P1")])  # noqa: SLF001
-    assert rndr._gs.stroke_pattern is pat  # noqa: SLF001
-    assert rndr._gs.fill_pattern is None  # noqa: SLF001
+    rndr._op_set_stroke_color_n(None, [_name("P1")])
+    assert rndr._gs.stroke_pattern is pat
+    assert rndr._gs.fill_pattern is None
 
 
 def test_uncolored_pattern_tint_resolved_via_underlying() -> None:
@@ -342,12 +342,12 @@ def test_uncolored_pattern_tint_resolved_via_underlying() -> None:
             return under
 
     rndr = _renderer_with_pattern("P2", pat)
-    rndr._gs.fill_color_space = _PatternCS()  # noqa: SLF001
-    rndr._op_set_fill_color_n(  # noqa: SLF001
+    rndr._gs.fill_color_space = _PatternCS()
+    rndr._op_set_fill_color_n(
         None, [_num(1.0), _name("P2")]
     )
-    assert rndr._gs.fill_pattern is pat  # noqa: SLF001
-    assert rndr._gs.fill_pattern_tint == (255, 255, 255)  # noqa: SLF001
+    assert rndr._gs.fill_pattern is pat
+    assert rndr._gs.fill_pattern_tint == (255, 255, 255)
     assert under.calls[-1] == (1.0,)
 
 
@@ -355,9 +355,9 @@ def test_pattern_only_zero_components_no_tint() -> None:
     # Only a /Name operand (0 numeric components) -> tint is None.
     pat = object()
     rndr = _renderer_with_pattern("P3", pat)
-    rndr._op_set_fill_color_n(None, [_name("P3")])  # noqa: SLF001
-    assert rndr._gs.fill_pattern is pat  # noqa: SLF001
-    assert rndr._gs.fill_pattern_tint is None  # noqa: SLF001
+    rndr._op_set_fill_color_n(None, [_name("P3")])
+    assert rndr._gs.fill_pattern is pat
+    assert rndr._gs.fill_pattern_tint is None
 
 
 def test_reselecting_pattern_cs_keeps_active_pattern() -> None:
@@ -367,39 +367,39 @@ def test_reselecting_pattern_cs_keeps_active_pattern() -> None:
     # no-op for the pattern slot here.
     pat = object()
     rndr = _renderer_with_pattern("P5", pat)
-    rndr._op_set_fill_color_space(None, [_name("Pattern")])  # noqa: SLF001
-    rndr._op_set_fill_color_n(None, [_name("P5")])  # noqa: SLF001
-    assert rndr._gs.fill_pattern is pat  # noqa: SLF001
+    rndr._op_set_fill_color_space(None, [_name("Pattern")])
+    rndr._op_set_fill_color_n(None, [_name("P5")])
+    assert rndr._gs.fill_pattern is pat
     # Re-selecting the Pattern CS keeps the active pattern.
-    rndr._op_set_fill_color_space(None, [_name("Pattern")])  # noqa: SLF001
-    assert rndr._gs.fill_pattern is pat  # noqa: SLF001
+    rndr._op_set_fill_color_space(None, [_name("Pattern")])
+    assert rndr._gs.fill_pattern is pat
     # Switching to a concrete (non-Pattern) CS clears it.
-    rndr._op_set_fill_color_space(None, [_name("DeviceRGB")])  # noqa: SLF001
-    assert rndr._gs.fill_pattern is None  # noqa: SLF001
+    rndr._op_set_fill_color_space(None, [_name("DeviceRGB")])
+    assert rndr._gs.fill_pattern is None
 
 
 def test_reselecting_stroke_pattern_cs_keeps_active_pattern() -> None:
     pat = object()
     rndr = _renderer_with_pattern("P6", pat)
-    rndr._op_set_stroke_color_space(None, [_name("Pattern")])  # noqa: SLF001
-    rndr._op_set_stroke_color_n(None, [_name("P6")])  # noqa: SLF001
-    assert rndr._gs.stroke_pattern is pat  # noqa: SLF001
-    rndr._op_set_stroke_color_space(None, [_name("Pattern")])  # noqa: SLF001
-    assert rndr._gs.stroke_pattern is pat  # noqa: SLF001
-    rndr._op_set_stroke_color_space(None, [_name("DeviceRGB")])  # noqa: SLF001
-    assert rndr._gs.stroke_pattern is None  # noqa: SLF001
+    rndr._op_set_stroke_color_space(None, [_name("Pattern")])
+    rndr._op_set_stroke_color_n(None, [_name("P6")])
+    assert rndr._gs.stroke_pattern is pat
+    rndr._op_set_stroke_color_space(None, [_name("Pattern")])
+    assert rndr._gs.stroke_pattern is pat
+    rndr._op_set_stroke_color_space(None, [_name("DeviceRGB")])
+    assert rndr._gs.stroke_pattern is None
 
 
 def test_switching_from_pattern_back_to_solid_clears_pattern() -> None:
     pat = object()
     rndr = _renderer_with_pattern("P4", pat)
-    rndr._op_set_fill_color_n(None, [_name("P4")])  # noqa: SLF001
-    assert rndr._gs.fill_pattern is pat  # noqa: SLF001
+    rndr._op_set_fill_color_n(None, [_name("P4")])
+    assert rndr._gs.fill_pattern is pat
     # Now a numeric scn (DeviceRGB default for 3 comps) clears the pattern.
-    rndr._gs.fill_color_space = PDDeviceRGB.INSTANCE  # noqa: SLF001
-    rndr._op_set_fill_color_n(None, _ops(1.0, 0.0, 0.0))  # noqa: SLF001
-    assert rndr._gs.fill_pattern is None  # noqa: SLF001
-    assert rndr._gs.fill_rgb == (255, 0, 0)  # noqa: SLF001
+    rndr._gs.fill_color_space = PDDeviceRGB.INSTANCE
+    rndr._op_set_fill_color_n(None, _ops(1.0, 0.0, 0.0))
+    assert rndr._gs.fill_pattern is None
+    assert rndr._gs.fill_rgb == (255, 0, 0)
 
 
 # ---------------------------------------------------------------------------
@@ -422,15 +422,15 @@ def test_out_of_range_components_clamped(
 ) -> None:
     cs = _FakeCS(lambda c: (over, over, over), n_components=1)
     rndr = _make_renderer()
-    rndr._gs.fill_color_space = cs  # noqa: SLF001
-    rndr._op_set_fill_color_n(None, _ops(0.5))  # noqa: SLF001
-    assert rndr._gs.fill_rgb == expected  # noqa: SLF001
+    rndr._gs.fill_color_space = cs
+    rndr._op_set_fill_color_n(None, _ops(0.5))
+    assert rndr._gs.fill_rgb == expected
 
 
 def test_device_rgb_out_of_range_clamped() -> None:
     rndr = _make_renderer()
-    rndr._op_set_fill_rgb(None, _ops(2.0, -1.0, 0.5))  # noqa: SLF001
-    assert rndr._gs.fill_rgb == (255, 0, 128)  # noqa: SLF001
+    rndr._op_set_fill_rgb(None, _ops(2.0, -1.0, 0.5))
+    assert rndr._gs.fill_rgb == (255, 0, 128)
 
 
 # ---------------------------------------------------------------------------
@@ -441,28 +441,28 @@ def test_device_rgb_out_of_range_clamped() -> None:
 def test_components_to_rgb_default_cs_by_arity() -> None:
     rndr = _make_renderer()
     # 1 comp with no CS -> DeviceGray.
-    assert rndr._color_components_to_rgb((0.5,), None) == (128, 128, 128)  # noqa: SLF001
+    assert rndr._color_components_to_rgb((0.5,), None) == (128, 128, 128)
     # 3 comps with no CS -> DeviceRGB.
-    assert rndr._color_components_to_rgb(  # noqa: SLF001
+    assert rndr._color_components_to_rgb(
         (1.0, 0.0, 0.0), None
     ) == (255, 0, 0)
     # 4 comps with no CS -> DeviceCMYK.
-    assert rndr._color_components_to_rgb(  # noqa: SLF001
+    assert rndr._color_components_to_rgb(
         (0.0, 0.0, 0.0, 0.0), None
     ) == (255, 255, 255)
     # 2 comps with no CS -> no default -> None.
-    assert rndr._color_components_to_rgb((0.5, 0.5), None) is None  # noqa: SLF001
+    assert rndr._color_components_to_rgb((0.5, 0.5), None) is None
 
 
 def test_components_to_rgb_uses_explicit_device_singletons() -> None:
     rndr = _make_renderer()
-    assert rndr._color_components_to_rgb(  # noqa: SLF001
+    assert rndr._color_components_to_rgb(
         (0.25,), PDDeviceGray.INSTANCE
     ) == (64, 64, 64)
-    assert rndr._color_components_to_rgb(  # noqa: SLF001
+    assert rndr._color_components_to_rgb(
         (0.0, 1.0, 0.0), PDDeviceRGB.INSTANCE
     ) == (0, 255, 0)
-    assert rndr._color_components_to_rgb(  # noqa: SLF001
+    assert rndr._color_components_to_rgb(
         (1.0, 0.0, 0.0, 0.0), PDDeviceCMYK.INSTANCE
     ) == (0, 255, 255)
 
@@ -471,7 +471,7 @@ def test_components_to_rgb_short_output_returns_none() -> None:
     # A to_rgb that returns < 3 channels is rejected (None), not padded.
     cs = _FakeCS(lambda c: (0.5,), n_components=1)
     rndr = _make_renderer()
-    assert rndr._color_components_to_rgb((0.3,), cs) is None  # noqa: SLF001
+    assert rndr._color_components_to_rgb((0.3,), cs) is None
 
 
 def test_components_to_rgb_exception_returns_none() -> None:
@@ -480,4 +480,4 @@ def test_components_to_rgb_exception_returns_none() -> None:
 
     cs = _FakeCS(boom, n_components=1)
     rndr = _make_renderer()
-    assert rndr._color_components_to_rgb((0.3,), cs) is None  # noqa: SLF001
+    assert rndr._color_components_to_rgb((0.3,), cs) is None

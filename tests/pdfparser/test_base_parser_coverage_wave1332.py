@@ -574,9 +574,9 @@ def test_parse_cos_dictionary_skips_invalid_cosinteger(
     OUT_OF_RANGE sentinel through normal parsing (unlike Java). We
     drive the branch by monkey-patching ``COSInteger.is_valid`` to
     return ``False`` once during the dict parse."""
-    from pypdfbox.cos.cos_integer import COSInteger as _CI
+    from pypdfbox.cos.cos_integer import COSInteger
 
-    monkeypatch.setattr(_CI, "is_valid", lambda self: False)
+    monkeypatch.setattr(COSInteger, "is_valid", lambda self: False)
 
     p = _parser(b"<< /Foo 1 >>")
     d = p.parse_cos_dictionary()

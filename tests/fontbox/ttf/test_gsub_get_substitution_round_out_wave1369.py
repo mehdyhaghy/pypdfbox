@@ -42,11 +42,11 @@ def _gsub_with_single_substitution(
     state has one script with one feature, one lookup of ``lookup_type``,
     and a single-substitution ``mapping``."""
     table = GlyphSubstitutionTable()
-    table._glyph_order = list(glyph_order)  # noqa: SLF001
-    table._glyph_name_to_gid = {n: i for i, n in enumerate(glyph_order)}  # noqa: SLF001
-    table._script_tags = [script_tag]  # noqa: SLF001
-    table._feature_tags = [feature_tag]  # noqa: SLF001
-    table._gsub_table = SimpleNamespace(  # noqa: SLF001
+    table._glyph_order = list(glyph_order)
+    table._glyph_name_to_gid = {n: i for i, n in enumerate(glyph_order)}
+    table._script_tags = [script_tag]
+    table._feature_tags = [feature_tag]
+    table._gsub_table = SimpleNamespace(
         ScriptList=SimpleNamespace(
             ScriptRecord=[
                 SimpleNamespace(
@@ -123,11 +123,11 @@ def test_get_substitution_caches_result() -> None:
     first = table.get_substitution(0, ["latn"], ["liga"])
     assert first == 1
     # Cache is populated.
-    assert table._lookup_cache[0] == 1  # noqa: SLF001
+    assert table._lookup_cache[0] == 1
     # Poison the underlying single-sub mapping. If the second call
     # re-ran the lookup walk it would now resolve "a" -> "a.alt2",
     # which doesn't exist in the glyph order and would return 0.
-    table._gsub_table.LookupList.Lookup[0].SubTable[0].mapping = {  # noqa: SLF001
+    table._gsub_table.LookupList.Lookup[0].SubTable[0].mapping = {
         "a": "ghost",
     }
     second = table.get_substitution(0, ["latn"], ["liga"])
@@ -179,7 +179,7 @@ def test_get_substitution_invalid_feature_index_skipped() -> None:
     silently skipped — mirrors upstream's bounds check."""
     table = _gsub_with_single_substitution(("a", "a.alt"), {"a": "a.alt"})
     # Replace the DefaultLangSys to reference a non-existent feature.
-    table._gsub_table.ScriptList.ScriptRecord[0].Script.DefaultLangSys.FeatureIndex = [  # noqa: SLF001
+    table._gsub_table.ScriptList.ScriptRecord[0].Script.DefaultLangSys.FeatureIndex = [
         99,
         0,
     ]
@@ -191,7 +191,7 @@ def test_get_substitution_invalid_lookup_index_skipped() -> None:
     table = _gsub_with_single_substitution(("a", "a.alt"), {"a": "a.alt"})
     # Reference a non-existent lookup *before* the valid one — the
     # invalid one is skipped, the valid one still fires.
-    table._gsub_table.FeatureList.FeatureRecord[  # noqa: SLF001
+    table._gsub_table.FeatureList.FeatureRecord[
         0
     ].Feature.LookupListIndex = [99, 0]
     assert table.get_substitution(0, ["latn"], ["liga"]) == 1
@@ -220,8 +220,8 @@ def test_get_substitution_empty_script_tags_falls_back_to_first_script() -> None
     # Both [] and None should work the same way.
     assert table.get_substitution(0, [], ["liga"]) == 1
     # Reset the cache so the second call really re-runs the lookup.
-    table._lookup_cache.clear()  # noqa: SLF001
-    table._reverse_lookup.clear()  # noqa: SLF001
+    table._lookup_cache.clear()
+    table._reverse_lookup.clear()
     assert table.get_substitution(0, None, ["liga"]) == 1
 
 

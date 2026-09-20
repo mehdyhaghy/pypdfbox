@@ -21,16 +21,16 @@ def _make_doc(width: float = 6.0, height: float = 6.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (6, 6)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -67,14 +67,14 @@ def test_shading_metadata_helpers_use_defaults_for_bad_inputs() -> None:
         def to_float_array(self) -> list[float]:
             raise RuntimeError("array")
 
-    assert PDFRenderer._shading_domain_2d(_Missing()) == (0.0, 1.0, 0.0, 1.0)  # noqa: SLF001
-    assert PDFRenderer._shading_domain_2d(_Raising()) == (0.0, 1.0, 0.0, 1.0)  # noqa: SLF001
-    assert PDFRenderer._shading_matrix(_Missing()) == (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: E501, SLF001
-    assert PDFRenderer._shading_matrix(_Raising()) == (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: E501, SLF001
-    assert PDFRenderer._shading_domain(_Missing()) == (0.0, 1.0)  # noqa: SLF001
-    assert PDFRenderer._shading_domain(_Raising()) == (0.0, 1.0)  # noqa: SLF001
-    assert PDFRenderer._shading_extend(_Missing()) == (False, False)  # noqa: SLF001
-    assert PDFRenderer._shading_extend(_Raising()) == (False, False)  # noqa: SLF001
+    assert PDFRenderer._shading_domain_2d(_Missing()) == (0.0, 1.0, 0.0, 1.0)
+    assert PDFRenderer._shading_domain_2d(_Raising()) == (0.0, 1.0, 0.0, 1.0)
+    assert PDFRenderer._shading_matrix(_Missing()) == (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+    assert PDFRenderer._shading_matrix(_Raising()) == (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+    assert PDFRenderer._shading_domain(_Missing()) == (0.0, 1.0)
+    assert PDFRenderer._shading_domain(_Raising()) == (0.0, 1.0)
+    assert PDFRenderer._shading_extend(_Missing()) == (False, False)
+    assert PDFRenderer._shading_extend(_Raising()) == (False, False)
 
     class _BadDomain:
         def get_domain(self) -> _BadArray:
@@ -84,8 +84,8 @@ def test_shading_metadata_helpers_use_defaults_for_bad_inputs() -> None:
         def get_matrix(self) -> _BadArray:
             return _BadArray()
 
-    assert PDFRenderer._shading_domain_2d(_BadDomain()) == (0.0, 1.0, 0.0, 1.0)  # noqa: E501, SLF001
-    assert PDFRenderer._shading_matrix(_BadMatrix()) == (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: E501, SLF001
+    assert PDFRenderer._shading_domain_2d(_BadDomain()) == (0.0, 1.0, 0.0, 1.0)
+    assert PDFRenderer._shading_matrix(_BadMatrix()) == (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
 
 
 def test_shading_metadata_helpers_parse_arrays_and_tuple_extend() -> None:
@@ -99,10 +99,10 @@ def test_shading_metadata_helpers_parse_arrays_and_tuple_extend() -> None:
         def get_extend(self) -> tuple[bool, bool]:
             return (True, False)
 
-    assert PDFRenderer._shading_domain_2d(_Shading()) == (2.0, 4.0, 6.0, 8.0)  # noqa: SLF001
-    assert PDFRenderer._shading_domain(_Shading()) == (2.0, 4.0)  # noqa: SLF001
-    assert PDFRenderer._shading_matrix(_Shading()) == (1.0, 2.0, 3.0, 4.0, 5.0, 6.0)  # noqa: E501, SLF001
-    assert PDFRenderer._shading_extend(_Shading()) == (True, False)  # noqa: SLF001
+    assert PDFRenderer._shading_domain_2d(_Shading()) == (2.0, 4.0, 6.0, 8.0)
+    assert PDFRenderer._shading_domain(_Shading()) == (2.0, 4.0)
+    assert PDFRenderer._shading_matrix(_Shading()) == (1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
+    assert PDFRenderer._shading_extend(_Shading()) == (True, False)
 
     class _COSArrayExtend:
         def get_extend(self) -> COSArray:
@@ -111,22 +111,22 @@ def test_shading_metadata_helpers_parse_arrays_and_tuple_extend() -> None:
             array.add(COSBoolean.TRUE)
             return array
 
-    assert PDFRenderer._shading_extend(_COSArrayExtend()) == (False, True)  # noqa: SLF001
+    assert PDFRenderer._shading_extend(_COSArrayExtend()) == (False, True)
 
 
 def test_function_output_matrix_and_bezier_helpers_cover_edge_values() -> None:
-    assert PDFRenderer._function_output_to_rgb([], None) == (0, 0, 0)  # noqa: SLF001
-    assert PDFRenderer._function_output_to_rgb([0.5], "DeviceGray") == (128, 128, 128)  # noqa: E501, SLF001
-    assert PDFRenderer._function_output_to_rgb([0.0, 1.0, 0.0, 0.5], "DeviceCMYK") == (128, 0, 128)  # noqa: E501, SLF001
-    assert PDFRenderer._function_output_to_rgb([1.0, 0.5], None) == (255, 128, 0)  # noqa: E501, SLF001
+    assert PDFRenderer._function_output_to_rgb([], None) == (0, 0, 0)
+    assert PDFRenderer._function_output_to_rgb([0.5], "DeviceGray") == (128, 128, 128)
+    assert PDFRenderer._function_output_to_rgb([0.0, 1.0, 0.0, 0.5], "DeviceCMYK") == (128, 0, 128)
+    assert PDFRenderer._function_output_to_rgb([1.0, 0.5], None) == (255, 128, 0)
 
-    assert PDFRenderer._invert_matrix((1.0, 0.0, 0.0, 0.0, 2.0, 3.0)) is None  # noqa: E501, SLF001
-    inv = PDFRenderer._invert_matrix((2.0, 0.0, 0.0, 4.0, 10.0, 20.0))  # noqa: SLF001
+    assert PDFRenderer._invert_matrix((1.0, 0.0, 0.0, 0.0, 2.0, 3.0)) is None
+    inv = PDFRenderer._invert_matrix((2.0, 0.0, 0.0, 4.0, 10.0, 20.0))
     assert inv == (0.5, -0.0, -0.0, 0.25, -5.0, -5.0)
-    assert PDFRenderer._apply((2.0, 3.0), (2.0, 0.0, 1.0, 2.0, 5.0, 7.0)) == (12.0, 13.0)  # noqa: E501, SLF001
-    assert PDFRenderer._approx_scale((2.0, 0.0, 0.0, 8.0, 0.0, 0.0)) == 4.0  # noqa: SLF001
-    assert PDFRenderer._approx_scale((0.0, 0.0, 0.0, 0.0, 0.0, 0.0)) == 1.0  # noqa: SLF001
-    assert _bezier_point(0.0, 0.0, 0.0, 6.0, 6.0, 6.0, 6.0, 0.0, 0.5) == (3.0, 4.5)  # noqa: E501
+    assert PDFRenderer._apply((2.0, 3.0), (2.0, 0.0, 1.0, 2.0, 5.0, 7.0)) == (12.0, 13.0)
+    assert PDFRenderer._approx_scale((2.0, 0.0, 0.0, 8.0, 0.0, 0.0)) == 4.0
+    assert PDFRenderer._approx_scale((0.0, 0.0, 0.0, 0.0, 0.0, 0.0)) == 1.0
+    assert _bezier_point(0.0, 0.0, 0.0, 6.0, 6.0, 6.0, 6.0, 0.0, 0.5) == (3.0, 4.5)
 
 
 def test_paste_image_with_alpha_and_clip_uses_combined_mask() -> None:
@@ -137,17 +137,17 @@ def test_paste_image_with_alpha_and_clip_uses_combined_mask() -> None:
         clip = Image.new("L", (6, 6), 0)
         clip.paste(255, (1, 1, 2, 3))
 
-        renderer._gs.ctm = (2.0, 0.0, 0.0, 2.0, 1.0, 1.0)  # noqa: SLF001
-        renderer._gs.clip_mask = clip  # noqa: SLF001
-        renderer._paste_image(source)  # noqa: SLF001
+        renderer._gs.ctm = (2.0, 0.0, 0.0, 2.0, 1.0, 1.0)
+        renderer._gs.clip_mask = clip
+        renderer._paste_image(source)
         _finish(renderer)
 
         # Image row 0 (opaque red) maps to the top of the painted box
         # (device y=1) and row 1 (the transparent pixel) to device y=2 —
         # the spec-correct orientation matching PDFBox (no extra y-flip).
-        assert renderer._image.getpixel((1, 1)) == (255, 0, 0)  # noqa: SLF001
-        assert renderer._image.getpixel((1, 2)) == (255, 255, 255)  # noqa: SLF001
-        assert renderer._image.getpixel((2, 2)) == (255, 255, 255)  # noqa: SLF001
-        assert renderer._draw is not None  # noqa: SLF001
+        assert renderer._image.getpixel((1, 1)) == (255, 0, 0)
+        assert renderer._image.getpixel((1, 2)) == (255, 255, 255)
+        assert renderer._image.getpixel((2, 2)) == (255, 255, 255)
+        assert renderer._draw is not None
     finally:
         doc.close()

@@ -404,7 +404,7 @@ class Splitter:
             # ``_annot_dict_map`` reflects every page in the chunk.
             try:
                 self._finalize_annotation_links()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _LOG.exception(
                     "annotation linkage finalisation failed for chunk %d; "
                     "popup/markup back-pointers may dangle",
@@ -416,7 +416,7 @@ class Splitter:
                 # the upstream-private ``_clone_structure_tree`` and have
                 # the override picked up.
                 self._clone_structure_tree(destination_document)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _LOG.exception(
                     "structure-tree clone failed for chunk %d; chunk will "
                     "ship without /StructTreeRoot",
@@ -424,7 +424,7 @@ class Splitter:
                 )
             try:
                 self._fix_destinations(destination_document)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _LOG.exception(
                     "destination fix-up failed for chunk %d; cross-chunk "
                     "/Dest links may dangle",
@@ -432,7 +432,7 @@ class Splitter:
                 )
             try:
                 self._scrub_acroform(destination_document)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _LOG.exception(
                     "AcroForm scrub failed for chunk %d; signature flags "
                     "may persist in chunk catalog",
@@ -569,15 +569,15 @@ class Splitter:
         # whole split.
         try:
             imported.set_crop_box(page.get_crop_box())
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _LOG.debug("set_crop_box failed during split: %s", exc)
         try:
             imported.set_media_box(page.get_media_box())
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _LOG.debug("set_media_box failed during split: %s", exc)
         try:
             imported.set_rotation(page.get_rotation())
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _LOG.debug("set_rotation failed during split: %s", exc)
 
         # Mirror upstream: if the source page had a /Resources but the
@@ -586,7 +586,7 @@ class Splitter:
         # is self-sufficient.
         try:
             page_resources = page.get_resources()
-        except Exception:  # noqa: BLE001
+        except Exception:
             page_resources = None
         if (
             page_resources is not None
@@ -595,7 +595,7 @@ class Splitter:
             try:
                 imported.set_resources(page_resources)
                 _LOG.info("Resources imported in Splitter")
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
         if imported.get_cos_object().contains_key(_B):
@@ -606,7 +606,7 @@ class Splitter:
 
         try:
             self._prune_page_resources(imported)
-        except Exception:  # noqa: BLE001 - pruning must never break a split
+        except Exception:
             _LOG.exception(
                 "resource pruning failed for page %d; full resource "
                 "dictionary kept",
@@ -698,7 +698,7 @@ class Splitter:
 
         try:
             annotations = imported.get_annotations()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return
         if not annotations:
             return
@@ -835,10 +835,10 @@ class Splitter:
         entry when the markup annotation didn't follow the split, per
         upstream's ``setItem(PARENT, null)`` behaviour for orphan markups.
         """
-        from pypdfbox.pdmodel.interactive.annotation.pd_annotation_markup import (  # noqa: E501
+        from pypdfbox.pdmodel.interactive.annotation.pd_annotation_markup import (
             PDAnnotationMarkup,
         )
-        from pypdfbox.pdmodel.interactive.annotation.pd_annotation_popup import (  # noqa: E501
+        from pypdfbox.pdmodel.interactive.annotation.pd_annotation_popup import (
             PDAnnotationPopup,
         )
 
@@ -1254,7 +1254,7 @@ class Splitter:
 
         try:
             src_destination = resolution_link.get_destination()
-        except Exception:  # noqa: BLE001
+        except Exception:
             _LOG.warning(
                 "Incorrect destination in link annotation on page %d "
                 "is removed",
@@ -1267,12 +1267,12 @@ class Splitter:
         if src_destination is None:
             try:
                 action = resolution_link.get_action()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 action = None
             if isinstance(action, PDActionGoTo):
                 try:
                     src_destination = action.get_destination()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     _LOG.warning(
                         "GoToAction with incorrect destination in link "
                         "annotation on page %d is removed",
@@ -1300,7 +1300,7 @@ class Splitter:
             try:
                 src_catalog = self.get_source_document().get_document_catalog()
                 resolved = src_catalog.find_named_destination_page(src_destination)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 resolved = None
             src_destination = resolved
 
@@ -1323,7 +1323,7 @@ class Splitter:
             candidate_target = src_destination.get_page()
             if isinstance(candidate_target, COSDictionary):
                 source_target_page_dict = candidate_target
-        except Exception:  # noqa: BLE001
+        except Exception:
             source_target_page_dict = None
 
         # Clone destination as a flat shallow array (just rewrite /D[0]
@@ -1333,7 +1333,7 @@ class Splitter:
             cloned_array.add(src_dest_array.get(i))
         try:
             cloned_destination = PDDestination.create(cloned_array)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return
         if cloned_destination is None:
             return
@@ -1345,7 +1345,7 @@ class Splitter:
         if action is not None:
             try:
                 cloned_action = link.get_action()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 cloned_action = None
 
         if isinstance(action, PDActionGoTo):
@@ -1456,7 +1456,7 @@ class Splitter:
             return False
         try:
             resolved = resolver(source_target_page_dict)
-        except Exception:  # noqa: BLE001 - defensive: resolver is caller code
+        except Exception:
             _LOG.exception(
                 "cross_chunk_destination_resolver raised for target page; "
                 "falling back to null-out"
@@ -1540,7 +1540,7 @@ class Splitter:
         ``/ParentTree``, ``/IDTree``, ``/RoleMap``, and ``/ClassMap`` for
         the chunk.
         """
-        from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_tree_root import (  # noqa: E501
+        from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_tree_root import (
             PDStructureElementNameTreeNode,
             PDStructureElementNumberTreeNode,
             PDStructureTreeRoot,
@@ -1584,7 +1584,7 @@ class Splitter:
                     id(page.get_cos_object()): idx
                     for idx, page in enumerate(pages)
                 }
-            except Exception:  # noqa: BLE001 - foreign page object; use index_of
+            except Exception:
                 page_index_map = None
         if page_index_map is not None:
             self._page_index_by_id = page_index_map
@@ -1621,18 +1621,18 @@ class Splitter:
         for page in pages:
             try:
                 sp1 = page.get_struct_parents()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 sp1 = -1
             if sp1 != -1:
                 self.clone_tree_element(src_numbers, dst_numbers, sp1)
             try:
                 annots = page.get_annotations()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 annots = []
             for ann in annots:
                 try:
                     sp2 = ann.get_struct_parent()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     sp2 = -1
                 if sp2 != -1:
                     self.clone_tree_element(src_numbers, dst_numbers, sp2)
@@ -1641,12 +1641,12 @@ class Splitter:
                 # stream resources for /StructParent links.
                 try:
                     normal_app = ann.get_normal_appearance_stream()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     normal_app = None
                 if normal_app is not None:
                     try:
                         app_resources = normal_app.get_resources()
-                    except Exception:  # noqa: BLE001
+                    except Exception:
                         app_resources = None
                     self.process_resources(
                         app_resources, src_numbers, dst_numbers, set()
@@ -1655,7 +1655,7 @@ class Splitter:
             # references used by Form/Image XObjects (Java line 235).
             try:
                 page_resources = page.get_resources()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 page_resources = None
             self.process_resources(
                 page_resources, src_numbers, dst_numbers, set()
@@ -1958,7 +1958,7 @@ class Splitter:
         src_id_map = self._get_id_tree_as_map(src_id_tree)
         if not src_id_map:
             return
-        from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_element import (  # noqa: E501
+        from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_element import (
             PDStructureElement,
         )
 
@@ -1992,7 +1992,7 @@ class Splitter:
     def _walk_number_tree(node: Any, out: dict[int, COSBase]) -> None:
         try:
             numbers = node.get_numbers()
-        except Exception:  # noqa: BLE001
+        except Exception:
             numbers = None
         if numbers:
             for key, value in numbers.items():
@@ -2001,7 +2001,7 @@ class Splitter:
             return
         try:
             kids = node.get_kids()
-        except Exception:  # noqa: BLE001
+        except Exception:
             kids = None
         if kids:
             for child in kids:
@@ -2019,14 +2019,14 @@ class Splitter:
     def _walk_id_tree(node: Any, out: dict[str, Any]) -> None:
         try:
             names = node.get_names()
-        except Exception:  # noqa: BLE001
+        except Exception:
             names = None
         if names:
             out.update(names)
             return
         try:
             kids = node.get_kids()
-        except Exception:  # noqa: BLE001
+        except Exception:
             kids = None
         if kids:
             for child in kids:
@@ -2062,12 +2062,12 @@ class Splitter:
 
         try:
             x_object_names = resources.get_xobject_names()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return
         for name in x_object_names:
             try:
                 x_object = resources.get_x_object(name)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 continue
             sp = -1
             # Form XObjects carry /StructParents (note plural) and have
@@ -2082,17 +2082,17 @@ class Splitter:
             if isinstance(x_object, PDFormXObject):
                 try:
                     sp = x_object.get_struct_parents()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     sp = -1
                 try:
                     nested = x_object.get_resources()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     nested = None
                 self.process_resources(nested, src_numbers, dst_numbers, visited)
             elif isinstance(x_object, PDImageXObject):
                 try:
                     sp = x_object.get_struct_parent()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     sp = -1
             if sp != -1:
                 self.clone_tree_element(src_numbers, dst_numbers, sp)

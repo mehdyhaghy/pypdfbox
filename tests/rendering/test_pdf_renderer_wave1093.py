@@ -28,7 +28,7 @@ def test_parity_make_doc_removes_preexisting_pages(
 ) -> None:
     monkeypatch.setattr(parity_tests, "PDDocument", _DocWithExistingPages)
 
-    doc, page = parity_tests._make_doc()  # noqa: SLF001
+    doc, page = parity_tests._make_doc()
 
     assert isinstance(doc, _DocWithExistingPages)
     assert doc.removed_indices == [0, 0]

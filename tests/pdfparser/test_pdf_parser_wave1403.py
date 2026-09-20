@@ -39,7 +39,7 @@ def test_parse_with_none_trailer_skips_set_trailer() -> None:
     """Closes 207->209: a clean parse reaches line 206 where ``get_trailer``
     is patched to None; ``set_trailer`` is skipped and parse completes."""
     parser = PDFParser(RandomAccessReadBuffer(_minimal_pdf()))
-    parser._resolver.get_trailer = lambda: None  # type: ignore[assignment,method-assign]  # noqa: SLF001
+    parser._resolver.get_trailer = lambda: None  # type: ignore[assignment,method-assign]
 
     doc = parser.parse()
     # No trailer was assigned via the line-208 path.

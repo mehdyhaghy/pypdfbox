@@ -63,7 +63,7 @@ def test_create_multi_widgets_form_set_widgets_fallback(
 
     original = pd_terminal_field.PDTerminalField.set_widgets
 
-    def _raises(self, widgets):  # noqa: ANN001 - pytest monkeypatch
+    def _raises(self, widgets):
         raise RuntimeError("simulated upstream gap")
 
     monkeypatch.setattr(
@@ -95,7 +95,7 @@ def test_create_simple_form_set_value_fallback(
     is exercised."""
     from pypdfbox.pdmodel.interactive.form import pd_text_field
 
-    def _raises(self, value):  # noqa: ANN001
+    def _raises(self, value):
         raise RuntimeError("simulated set_value failure")
 
     monkeypatch.setattr(pd_text_field.PDTextField, "set_value", _raises)
@@ -147,7 +147,7 @@ def test_tsa_client_falls_back_to_urlopen_when_no_transport() -> None:
     while still covering lines 104-106."""
     received: dict[str, object] = {}
 
-    def fake_urlopen(req, timeout=None):  # noqa: ANN001
+    def fake_urlopen(req, timeout=None):
         received["url"] = req.full_url
         received["data"] = req.data
         received["timeout"] = timeout
@@ -201,7 +201,7 @@ def test_export_fdf_attribute_error_branch(
     the OSError-translation branch."""
     src = _build_form_pdf(tmp_path / "form.pdf")
 
-    def _raise_attr(self):  # noqa: ANN001
+    def _raise_attr(self):
         raise AttributeError("simulated missing export_fdf")
 
     monkeypatch.setattr(PDAcroForm, "export_fdf", _raise_attr)
@@ -244,7 +244,7 @@ def test_export_xfdf_attribute_error_branch(
     trip the OSError-translation branch."""
     src = _build_form_pdf(tmp_path / "form.pdf")
 
-    def _raise_ni(self):  # noqa: ANN001
+    def _raise_ni(self):
         raise NotImplementedError("simulated")
 
     monkeypatch.setattr(PDAcroForm, "export_fdf", _raise_ni)
@@ -306,7 +306,7 @@ def test_overlay_pdf_close_oserror_branch(
 
     original_close = overlay_mod.Overlay.close
 
-    def _raises(self):  # noqa: ANN001
+    def _raises(self):
         # Run the real close to keep handles tidy, then raise so the
         # OverlayPDF wrapper's finally block trips the error branch.
         try:

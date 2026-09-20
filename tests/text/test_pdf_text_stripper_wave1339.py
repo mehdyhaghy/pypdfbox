@@ -51,7 +51,7 @@ def test_wave1339_compute_avg_advance_returns_user_space_value_for_known_font() 
             return 500.0
 
     font = PositiveAvgFont()
-    advance = PDFTextStripper._compute_avg_advance(font, 12.0)  # noqa: SLF001
+    advance = PDFTextStripper._compute_avg_advance(font, 12.0)
 
     assert advance is not None
     # 500/1000 * 12 = 6.0
@@ -67,8 +67,8 @@ def test_wave1339_has_font_or_size_changed_returns_true_when_font_names_differ()
     """Two distinct fonts with distinct names → change."""
     f1 = SimpleNamespace(get_name=lambda: "F1")
     f2 = SimpleNamespace(get_name=lambda: "F2")
-    a = TextPosition(text="x", x=0.0, y=0.0, font_size=12.0, font=cast(Any, f1))
-    b = TextPosition(text="x", x=0.0, y=0.0, font_size=12.0, font=cast(Any, f2))
+    a = TextPosition(text="x", x=0.0, y=0.0, font_size=12.0, font=cast("Any", f1))
+    b = TextPosition(text="x", x=0.0, y=0.0, font_size=12.0, font=cast("Any", f2))
     assert PDFTextStripper.has_font_or_size_changed(b, a) is True
 
 
@@ -76,8 +76,8 @@ def test_wave1339_has_font_or_size_changed_returns_false_when_names_match() -> N
     """Distinct font objects but matching names → no change."""
     f1 = SimpleNamespace(get_name=lambda: "Helv")
     f2 = SimpleNamespace(get_name=lambda: "Helv")
-    a = TextPosition(text="x", x=0.0, y=0.0, font_size=12.0, font=cast(Any, f1))
-    b = TextPosition(text="x", x=0.0, y=0.0, font_size=12.0, font=cast(Any, f2))
+    a = TextPosition(text="x", x=0.0, y=0.0, font_size=12.0, font=cast("Any", f1))
+    b = TextPosition(text="x", x=0.0, y=0.0, font_size=12.0, font=cast("Any", f2))
     assert PDFTextStripper.has_font_or_size_changed(b, a) is False
 
 
@@ -85,8 +85,8 @@ def test_wave1339_has_font_or_size_changed_when_only_last_has_name() -> None:
     """``cur`` has no name but ``last`` does → upstream returns True."""
     cur_font = SimpleNamespace(get_name=lambda: None)
     last_font = SimpleNamespace(get_name=lambda: "F0")
-    cur = TextPosition(text="x", x=0.0, y=0.0, font_size=12.0, font=cast(Any, cur_font))
-    last = TextPosition(text="x", x=0.0, y=0.0, font_size=12.0, font=cast(Any, last_font))
+    cur = TextPosition(text="x", x=0.0, y=0.0, font_size=12.0, font=cast("Any", cur_font))
+    last = TextPosition(text="x", x=0.0, y=0.0, font_size=12.0, font=cast("Any", last_font))
     assert PDFTextStripper.has_font_or_size_changed(cur, last) is True
 
 
@@ -96,8 +96,8 @@ def test_wave1339_has_font_or_size_changed_falls_back_to_identity_when_both_name
     same nameless contract differ by identity."""
     cur_font = SimpleNamespace(get_name=lambda: None)
     last_font = SimpleNamespace(get_name=lambda: None)
-    cur = TextPosition(text="x", x=0.0, y=0.0, font_size=12.0, font=cast(Any, cur_font))
-    last = TextPosition(text="x", x=0.0, y=0.0, font_size=12.0, font=cast(Any, last_font))
+    cur = TextPosition(text="x", x=0.0, y=0.0, font_size=12.0, font=cast("Any", cur_font))
+    last = TextPosition(text="x", x=0.0, y=0.0, font_size=12.0, font=cast("Any", last_font))
     assert PDFTextStripper.has_font_or_size_changed(cur, last) is True
 
 
@@ -134,10 +134,10 @@ def test_wave1339_fill_bead_rectangles_collects_rect_from_each_bead() -> None:
     page = SimpleNamespace(get_thread_beads=lambda: [bead_a, bead_b, bead_c])
     s = PDFTextStripper()
 
-    rects = s.fill_bead_rectangles(cast(Any, page))
+    rects = s.fill_bead_rectangles(cast("Any", page))
 
     assert rects == [(10.0, 20.0, 110.0, 220.0)]
-    assert s._bead_rectangles == [(10.0, 20.0, 110.0, 220.0)]  # noqa: SLF001
+    assert s._bead_rectangles == [(10.0, 20.0, 110.0, 220.0)]
 
 
 def test_wave1339_fill_bead_rectangles_skips_bead_whose_get_rectangle_raises() -> None:
@@ -151,7 +151,7 @@ def test_wave1339_fill_bead_rectangles_skips_bead_whose_get_rectangle_raises() -
     page = SimpleNamespace(get_thread_beads=lambda: [bead])
     s = PDFTextStripper()
 
-    rects = s.fill_bead_rectangles(cast(Any, page))
+    rects = s.fill_bead_rectangles(cast("Any", page))
 
     assert rects == []
 
@@ -166,7 +166,7 @@ def test_wave1339_fill_bead_rectangles_swallows_get_thread_beads_exception() -> 
     page = SimpleNamespace(get_thread_beads=_boom)
     s = PDFTextStripper()
 
-    assert s.fill_bead_rectangles(cast(Any, page)) == []
+    assert s.fill_bead_rectangles(cast("Any", page)) == []
 
 
 # ---------------------------------------------------------------------------
@@ -194,14 +194,14 @@ def test_wave1339_process_pages_resolves_start_and_end_bookmarks() -> None:
             get_cos_object=lambda: object(),
         )
         s = PDFTextStripper()
-        s._active_document = doc  # noqa: SLF001
-        s.set_start_bookmark(cast(Any, start))
-        s.set_end_bookmark(cast(Any, end))
+        s._active_document = doc
+        s.set_start_bookmark(cast("Any", start))
+        s.set_end_bookmark(cast("Any", end))
 
         s.process_pages([p1, p2, p3])
 
-        assert s._start_bookmark_page_number == 2  # noqa: SLF001
-        assert s._end_bookmark_page_number == 3  # noqa: SLF001
+        assert s._start_bookmark_page_number == 2
+        assert s._end_bookmark_page_number == 3
     finally:
         doc.close()
 
@@ -221,14 +221,14 @@ def test_wave1339_process_pages_collapses_to_empty_for_identical_unresolved_book
             get_cos_object=lambda: shared_cos,
         )
         s = PDFTextStripper()
-        s._active_document = doc  # noqa: SLF001
-        s.set_start_bookmark(cast(Any, bookmark))
-        s.set_end_bookmark(cast(Any, bookmark))
+        s._active_document = doc
+        s.set_start_bookmark(cast("Any", bookmark))
+        s.set_end_bookmark(cast("Any", bookmark))
 
         s.process_pages([p1])
 
-        assert s._start_bookmark_page_number == 0  # noqa: SLF001
-        assert s._end_bookmark_page_number == 0  # noqa: SLF001
+        assert s._start_bookmark_page_number == 0
+        assert s._end_bookmark_page_number == 0
     finally:
         doc.close()
 
@@ -245,7 +245,7 @@ def test_wave1339_process_pages_invokes_process_page_for_each_page() -> None:
         p2 = PDPage(PDRectangle(0.0, 0.0, 612.0, 792.0))
         doc.add_page(p2)
         s = PDFTextStripper()
-        s._active_document = doc  # noqa: SLF001
+        s._active_document = doc
         calls: list[PDPage] = []
         original = s.process_page
 
@@ -280,7 +280,7 @@ def test_wave1339_write_page_renders_each_article_through_emit_group() -> None:
     s = PDFTextStripper()
     a = TextPosition(text="hi", x=0.0, y=0.0, font_size=12.0, width=10.0)
     b = TextPosition(text="!", x=12.0, y=0.0, font_size=12.0, width=4.0)
-    s._characters_by_article = [[a, b]]  # noqa: SLF001
+    s._characters_by_article = [[a, b]]
 
     out = s.write_page()
 
@@ -389,7 +389,7 @@ def test_wave1339_begin_marked_content_sequence_swallows_get_string_exception() 
     s.begin_marked_content_sequence(COSName.get_pdf_name("Span"), bad)
 
     # Stack entry was pushed; actual text is None.
-    assert len(s._marked_content_stack) == 1  # noqa: SLF001
+    assert len(s._marked_content_stack) == 1
     assert s._actual_text is None
     s.end_marked_content_sequence()
-    assert s._marked_content_stack == []  # noqa: SLF001
+    assert s._marked_content_stack == []

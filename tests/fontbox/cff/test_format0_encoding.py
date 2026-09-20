@@ -12,7 +12,7 @@ def test_n_codes_is_stored() -> None:
 
 
 def test_n_codes_coerces_to_int() -> None:
-    enc = Format0Encoding(True)  # noqa: FBT003 — verifying coercion only
+    enc = Format0Encoding(True)
     assert enc.n_codes == 1
     assert isinstance(enc.n_codes, int) and not isinstance(enc.n_codes, bool)
 

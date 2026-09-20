@@ -34,7 +34,7 @@ def test_content_stream_segments_swallows_non_oserror(
     # Patch the from_bytes constructor so .parse() never runs (the
     # exception fires earlier, but still on the broad-except arm).
     monkeypatch.setattr(sp_mod.PDFStreamParser, "from_bytes", _explode)
-    assert pane._content_stream_segments(b"junk") is None  # noqa: SLF001
+    assert pane._content_stream_segments(b"junk") is None
 
 
 # ---------- _ContentStreamEmitter.write_token broad-except ----------

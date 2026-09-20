@@ -22,16 +22,16 @@ def _make_doc(width: float = 3.0, height: float = 3.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (3, 3)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -58,18 +58,18 @@ class _SoftMask:
 def test_soft_mask_backdrop_rgb_defaults_and_color_space_shapes() -> None:
     doc, renderer = _prepared_renderer()
     try:
-        assert renderer._soft_mask_backdrop_rgb(_SoftMask(None)) == (0, 0, 0)  # noqa: SLF001
-        assert renderer._soft_mask_backdrop_rgb(_SoftMask(_Backdrop(None))) == (0, 0, 0)  # noqa: SLF001
-        assert renderer._soft_mask_backdrop_rgb(  # noqa: SLF001
+        assert renderer._soft_mask_backdrop_rgb(_SoftMask(None)) == (0, 0, 0)
+        assert renderer._soft_mask_backdrop_rgb(_SoftMask(_Backdrop(None))) == (0, 0, 0)
+        assert renderer._soft_mask_backdrop_rgb(
             _SoftMask(_Backdrop([0.5]))
         ) == (128, 128, 128)
-        assert renderer._soft_mask_backdrop_rgb(  # noqa: SLF001
+        assert renderer._soft_mask_backdrop_rgb(
             _SoftMask(_Backdrop([1.2, 0.25]))
         ) == (255, 64, 0)
-        assert renderer._soft_mask_backdrop_rgb(  # noqa: SLF001
+        assert renderer._soft_mask_backdrop_rgb(
             _SoftMask(_Backdrop([0.0, 1.0, 0.0, 0.5]))
         ) == (128, 0, 128)
-        assert renderer._soft_mask_backdrop_rgb(  # noqa: SLF001
+        assert renderer._soft_mask_backdrop_rgb(
             _SoftMask(_Backdrop([1.0], broken=True))
         ) == (0, 0, 0)
     finally:
@@ -78,8 +78,8 @@ def test_soft_mask_backdrop_rgb_defaults_and_color_space_shapes() -> None:
 
 
 def test_build_transfer_lookup_identity_and_default_names_skip_remap() -> None:
-    assert PDFRenderer._build_transfer_lookup(COSName.get_pdf_name("Identity")) is None  # noqa: SLF001
-    assert PDFRenderer._build_transfer_lookup(COSName.get_pdf_name("Default")) is None  # noqa: SLF001
+    assert PDFRenderer._build_transfer_lookup(COSName.get_pdf_name("Identity")) is None
+    assert PDFRenderer._build_transfer_lookup(COSName.get_pdf_name("Default")) is None
 
 
 def test_decode_inline_image_uses_long_keys_and_ignores_non_name_filter_entries() -> None:
@@ -92,7 +92,7 @@ def test_decode_inline_image_uses_long_keys_and_ignores_non_name_filter_entries(
     filters.add(COSInteger.get(7))
     params.set_item(COSName.get_pdf_name("Filter"), filters)
 
-    image = PDFRenderer._decode_inline_image(params, b"\x11\x22\x33")  # noqa: SLF001
+    image = PDFRenderer._decode_inline_image(params, b"\x11\x22\x33")
 
     assert image is not None
     assert image.mode == "RGB"
@@ -107,7 +107,7 @@ def test_decode_inline_image_unknown_filter_name_is_deferred() -> None:
     params.set_item(COSName.get_pdf_name("CS"), COSName.get_pdf_name("RGB"))
     params.set_item(COSName.get_pdf_name("F"), COSName.get_pdf_name("Fl"))
 
-    assert PDFRenderer._decode_inline_image(params, b"\x11\x22\x33") is None  # noqa: SLF001
+    assert PDFRenderer._decode_inline_image(params, b"\x11\x22\x33") is None
 
 
 def test_show_inline_image_logs_helper_and_legacy_decode_failures(
@@ -131,7 +131,7 @@ def test_show_inline_image_logs_helper_and_legacy_decode_failures(
 
         assert "cannot decode inline image (helper): helper boom" in caplog.text
         assert "cannot decode inline image:" in caplog.text
-        assert renderer._image.getpixel((1, 1)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image.getpixel((1, 1)) == (255, 255, 255)
     finally:
         _finish(renderer)
         doc.close()
@@ -140,7 +140,7 @@ def test_show_inline_image_logs_helper_and_legacy_decode_failures(
 def test_render_soft_mask_alpha_rejects_untyped_soft_mask() -> None:
     doc, renderer = _prepared_renderer()
     try:
-        assert renderer._render_soft_mask_alpha(object(), (2, 2)) is None  # noqa: SLF001
+        assert renderer._render_soft_mask_alpha(object(), (2, 2)) is None
     finally:
         _finish(renderer)
         doc.close()

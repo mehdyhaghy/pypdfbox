@@ -424,7 +424,7 @@ class PDType0Font(PDFont):
             return True  # no GSUB → harmless default; features won't fire anyway
         try:
             scripts = gsub.get_supported_script_tags()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return True
         if not scripts:
             return True
@@ -442,13 +442,13 @@ class PDType0Font(PDFont):
             return None
         try:
             ttf = get_ttf()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         if ttf is None:
             return None
         try:
             return ttf.get_gsub()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
 
     def apply_gsub_features(self, glyph_ids: list[int]) -> list[int]:
@@ -766,7 +766,7 @@ class PDType0Font(PDFont):
                 # PDFBOX-5331 fallback: avoid the descendant's substitute-font
                 # GID path and use the CMap-resolved CID directly.
                 gid = descendant.code_to_cid(cid)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         if gid <= 0:
             return None
@@ -936,7 +936,7 @@ class PDType0Font(PDFont):
         if callable(get_unicode):
             try:
                 return get_unicode()
-            except Exception:  # noqa: BLE001 — defensive: malformed cmap
+            except Exception:
                 return None
         # Fall back to fontTools' best cmap. Reverse map glyph-name -> cp.
         inner = getattr(ttf, "_tt", None)
@@ -1310,14 +1310,14 @@ class PDType0Font(PDFont):
         name = (name_getter() or "") if callable(name_getter) else ""
         if not name.startswith("Identity"):
             return False
-        from .pd_cid_font_type2 import PDCIDFontType2  # noqa: PLC0415
+        from .pd_cid_font_type2 import PDCIDFontType2
 
         descendant = self.get_descendant_font()
         if not isinstance(descendant, PDCIDFontType2):
             return False
         try:
             return bool(descendant.is_embedded())
-        except Exception:  # noqa: BLE001 — defensive: missing /FontFile2 etc.
+        except Exception:
             return False
 
     def _encode_embedded_codepoint(self, cp: int, cmap: CMap | None) -> bytes:
@@ -1351,7 +1351,7 @@ class PDType0Font(PDFont):
             if callable(getter):
                 try:
                     cid = int(getter(cp) or 0)
-                except Exception:  # noqa: BLE001 — odd cmaps / surrogate inputs
+                except Exception:
                     cid = -1
         if cid in (-1, 0):
             # Parent /ToUnicode reverse lookup — upstream's ``cmap == null``
@@ -1360,7 +1360,7 @@ class PDType0Font(PDFont):
             if to_unicode is not None:
                 try:
                     codes = to_unicode.get_codes_from_unicode(chr(cp))
-                except Exception:  # noqa: BLE001 — lenient parsers / odd CMaps
+                except Exception:
                     codes = None
                 if codes is not None:
                     return bytes(codes)
@@ -1374,7 +1374,7 @@ class PDType0Font(PDFont):
         unicode cmap (e.g. a symbolic font with only a ``(3,0)`` cmap that
         does not resolve the requested codepoint, or no cmap at all).
         """
-        from .pd_cid_font_type2 import PDCIDFontType2  # noqa: PLC0415
+        from .pd_cid_font_type2 import PDCIDFontType2
 
         descendant = self.get_descendant_font()
         if not isinstance(descendant, PDCIDFontType2):
@@ -1448,7 +1448,7 @@ class PDType0Font(PDFont):
         # Try the CMap's own reverse mapping first.
         try:
             codes = cmap.get_codes_from_unicode(chr(cp))
-        except Exception:  # noqa: BLE001 — defensive: lenient parsers / odd CMaps
+        except Exception:
             codes = None
         if codes is not None:
             return bytes(codes)
@@ -1617,7 +1617,7 @@ class PDType0Font(PDFont):
                 for cp in codepoints:
                     try:
                         gid = int(getter(cp) or 0)
-                    except Exception:  # noqa: BLE001
+                    except Exception:
                         gid = 0
                     if gid:
                         original_gids.add(gid)
@@ -1655,7 +1655,7 @@ class PDType0Font(PDFont):
         self._rebuild_subset_widths(descendant, old_to_new, ttf)
         # Mirror the tag onto our own /BaseFont — per PDF 32000-1 §9.7.6.2
         # the parent and descendant must share the tagged PostScript name.
-        from .pd_true_type_font import _BASE_FONT  # noqa: PLC0415
+        from .pd_true_type_font import _BASE_FONT
 
         current_base = self.get_name()
         if current_base:
@@ -1672,7 +1672,7 @@ class PDType0Font(PDFont):
 
         # Drop the descendant's parsed-TTF cache so subsequent metric
         # lookups re-read the subset bytes.
-        descendant._ttf = None  # noqa: SLF001
+        descendant._ttf = None
         self._subset_codepoints.clear()
         self._subset_glyph_ids.clear()
         # Subset has been emitted — clear the flag so a second call
@@ -1718,7 +1718,7 @@ class PDType0Font(PDFont):
         default-width entries (1000) are dropped and contiguous CIDs are
         grouped into ``c [w...]`` form-1 runs. CID 0 (.notdef) is included.
         """
-        from pypdfbox.cos import COSInteger as _COSInteger  # noqa: PLC0415
+        from pypdfbox.cos import COSInteger as _COSInteger
 
         header_getter = getattr(original_ttf, "get_header", None)
         if not callable(header_getter):
@@ -2001,16 +2001,16 @@ def _build_to_unicode_stream_for_gids(ttf: Any) -> COSStream | None:
     glyph id, so the ToUnicode CMap is keyed by glyph id. Returns ``None`` when
     the font has no usable cmap (nothing to map).
     """
-    import io as _io  # noqa: PLC0415
+    import io as _io
 
-    from .to_unicode_writer import ToUnicodeWriter  # noqa: PLC0415
+    from .to_unicode_writer import ToUnicodeWriter
 
     cmap_getter = getattr(ttf, "get_unicode_cmap_subtable", None)
     if not callable(cmap_getter):
         return None
     try:
         cmap = cmap_getter()
-    except Exception:  # noqa: BLE001 — defensive against malformed cmaps
+    except Exception:
         cmap = None
     if cmap is None:
         return None
@@ -2020,7 +2020,7 @@ def _build_to_unicode_stream_for_gids(ttf: Any) -> COSStream | None:
     for gid in range(1, num_glyphs):
         try:
             codes = cmap.get_char_codes(gid)
-        except Exception:  # noqa: BLE001 — defensive against odd cmaps
+        except Exception:
             codes = None
         if codes:
             writer.add(gid, chr(codes[0]))
@@ -2057,7 +2057,7 @@ def _ps_name_from_ttf(ttf: Any, fallback: str) -> str:
         return fallback
     try:
         text = record.toUnicode()
-    except Exception:  # noqa: BLE001 — record.toUnicode may raise on bad encodings
+    except Exception:
         return fallback
     text = text.strip()
     return text if text else fallback

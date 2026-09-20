@@ -95,7 +95,7 @@ def test_parse_table_headers_new_font_error_caught() -> None:
     instead of propagating (lines 359-361)."""
 
     class _Parser(TTFParser):
-        def new_font(self, data: Any) -> Any:  # noqa: ARG002
+        def new_font(self, data: Any) -> Any:
             raise RuntimeError("simulated parse failure")
 
     parser = _Parser()
@@ -134,7 +134,7 @@ def test_parse_table_headers_naming_raises_handled(ttf_bytes: bytes) -> None:
             return True
 
     class _Parser(TTFParser):
-        def new_font(self, data: Any) -> Any:  # noqa: ARG002
+        def new_font(self, data: Any) -> Any:
             return _FlakyFont()
 
     parser = _Parser()
@@ -151,7 +151,7 @@ def test_parse_table_headers_otf_is_post_script_attribute_error() -> None:
     from pypdfbox.fontbox.ttf.open_type_font import OpenTypeFont
 
     class _BadOTF(OpenTypeFont):
-        def __init__(self) -> None:  # noqa: D401 — minimal
+        def __init__(self) -> None:
             pass
 
         def get_naming(self):
@@ -163,11 +163,11 @@ def test_parse_table_headers_otf_is_post_script_attribute_error() -> None:
         def has_table(self, _tag: str) -> bool:
             return True
 
-        def is_post_script(self) -> bool:  # noqa: D401
+        def is_post_script(self) -> bool:
             raise AttributeError("no _cff_table")
 
     class _Parser(TTFParser):
-        def new_font(self, data: Any) -> Any:  # noqa: ARG002
+        def new_font(self, data: Any) -> Any:
             return _BadOTF()
 
     parser = _Parser()
@@ -194,7 +194,7 @@ def test_parse_table_headers_non_otf_with_cff_table_errors() -> None:
             return tag == "CFF "
 
     class _Parser(TTFParser):
-        def new_font(self, data: Any) -> Any:  # noqa: ARG002
+        def new_font(self, data: Any) -> Any:
             return _FontWithCff()
 
     parser = _Parser()
@@ -225,7 +225,7 @@ def test_parse_table_headers_missing_mandatory_table_errors() -> None:
             return tag != "head"
 
     class _Parser(TTFParser):
-        def new_font(self, data: Any) -> Any:  # noqa: ARG002
+        def new_font(self, data: Any) -> Any:
             return _FontMissingHead()
 
     parser = _Parser()

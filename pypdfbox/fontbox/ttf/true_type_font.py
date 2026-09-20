@@ -144,7 +144,7 @@ class TrueTypeFont:
         raw = self._read_all_bytes(data)
         # Lazy import — fontTools is heavy and most pypdfbox use does not
         # touch it.
-        import fontTools.ttLib as ttLib  # type: ignore[import-untyped]  # noqa: PLC0415
+        from fontTools import ttLib  # type: ignore[import-untyped]
 
         self._tt: Any = ttLib.TTFont(io.BytesIO(raw), lazy=True)
         # Populated lazily on first access; cached because each call into
@@ -407,23 +407,23 @@ class TrueTypeFont:
             return None
         ft = self._tt["head"]
         h = HeaderTable()
-        h._version = float(ft.tableVersion)  # noqa: SLF001
-        h._font_revision = float(ft.fontRevision)  # noqa: SLF001
-        h._check_sum_adjustment = int(ft.checkSumAdjustment)  # noqa: SLF001
-        h._magic_number = int(ft.magicNumber)  # noqa: SLF001
-        h._flags = int(ft.flags)  # noqa: SLF001
-        h._units_per_em = int(ft.unitsPerEm)  # noqa: SLF001
-        h._created = self._long_datetime(int(ft.created))  # noqa: SLF001
-        h._modified = self._long_datetime(int(ft.modified))  # noqa: SLF001
-        h._x_min = int(ft.xMin)  # noqa: SLF001
-        h._y_min = int(ft.yMin)  # noqa: SLF001
-        h._x_max = int(ft.xMax)  # noqa: SLF001
-        h._y_max = int(ft.yMax)  # noqa: SLF001
-        h._mac_style = int(ft.macStyle)  # noqa: SLF001
-        h._lowest_rec_ppem = int(ft.lowestRecPPEM)  # noqa: SLF001
-        h._font_direction_hint = int(ft.fontDirectionHint)  # noqa: SLF001
-        h._index_to_loc_format = int(ft.indexToLocFormat)  # noqa: SLF001
-        h._glyph_data_format = int(ft.glyphDataFormat)  # noqa: SLF001
+        h._version = float(ft.tableVersion)
+        h._font_revision = float(ft.fontRevision)
+        h._check_sum_adjustment = int(ft.checkSumAdjustment)
+        h._magic_number = int(ft.magicNumber)
+        h._flags = int(ft.flags)
+        h._units_per_em = int(ft.unitsPerEm)
+        h._created = self._long_datetime(int(ft.created))
+        h._modified = self._long_datetime(int(ft.modified))
+        h._x_min = int(ft.xMin)
+        h._y_min = int(ft.yMin)
+        h._x_max = int(ft.xMax)
+        h._y_max = int(ft.yMax)
+        h._mac_style = int(ft.macStyle)
+        h._lowest_rec_ppem = int(ft.lowestRecPPEM)
+        h._font_direction_hint = int(ft.fontDirectionHint)
+        h._index_to_loc_format = int(ft.indexToLocFormat)
+        h._glyph_data_format = int(ft.glyphDataFormat)
         h.initialized = True
         self._head = h
         return h
@@ -437,18 +437,18 @@ class TrueTypeFont:
         t = HorizontalHeaderTable()
         # fontTools stores hhea.tableVersion as a raw uint32 ("L"), so
         # convert back to the 16.16 fixed-point float upstream exposes.
-        t._version = self._fixed_16_16(int(ft.tableVersion))  # noqa: SLF001
-        t._ascender = int(ft.ascent)  # noqa: SLF001
-        t._descender = int(ft.descent)  # noqa: SLF001
-        t._line_gap = int(ft.lineGap)  # noqa: SLF001
-        t._advance_width_max = int(ft.advanceWidthMax)  # noqa: SLF001
-        t._min_left_side_bearing = int(ft.minLeftSideBearing)  # noqa: SLF001
-        t._min_right_side_bearing = int(ft.minRightSideBearing)  # noqa: SLF001
-        t._x_max_extent = int(ft.xMaxExtent)  # noqa: SLF001
-        t._caret_slope_rise = int(ft.caretSlopeRise)  # noqa: SLF001
-        t._caret_slope_run = int(ft.caretSlopeRun)  # noqa: SLF001
-        t._metric_data_format = int(ft.metricDataFormat)  # noqa: SLF001
-        t._number_of_h_metrics = int(ft.numberOfHMetrics)  # noqa: SLF001
+        t._version = self._fixed_16_16(int(ft.tableVersion))
+        t._ascender = int(ft.ascent)
+        t._descender = int(ft.descent)
+        t._line_gap = int(ft.lineGap)
+        t._advance_width_max = int(ft.advanceWidthMax)
+        t._min_left_side_bearing = int(ft.minLeftSideBearing)
+        t._min_right_side_bearing = int(ft.minRightSideBearing)
+        t._x_max_extent = int(ft.xMaxExtent)
+        t._caret_slope_rise = int(ft.caretSlopeRise)
+        t._caret_slope_run = int(ft.caretSlopeRun)
+        t._metric_data_format = int(ft.metricDataFormat)
+        t._number_of_h_metrics = int(ft.numberOfHMetrics)
         t.initialized = True
         self._hhea = t
         return t
@@ -463,24 +463,24 @@ class TrueTypeFont:
         # maxp.tableVersion is a signed int32 in fontTools — re-encode to
         # the 16.16 fixed-point float upstream exposes (0x00005000 -> 0.3125,
         # 0x00010000 -> 1.0).
-        t._version = self._fixed_16_16(int(ft.tableVersion) & 0xFFFFFFFF)  # noqa: SLF001
-        t._num_glyphs = int(ft.numGlyphs)  # noqa: SLF001
-        if t._version >= 1.0:  # noqa: SLF001
-            t._max_points = int(getattr(ft, "maxPoints", 0))  # noqa: SLF001
-            t._max_contours = int(getattr(ft, "maxContours", 0))  # noqa: SLF001
-            t._max_composite_points = int(getattr(ft, "maxCompositePoints", 0))  # noqa: SLF001
-            t._max_composite_contours = int(getattr(ft, "maxCompositeContours", 0))  # noqa: SLF001
-            t._max_zones = int(getattr(ft, "maxZones", 0))  # noqa: SLF001
-            t._max_twilight_points = int(getattr(ft, "maxTwilightPoints", 0))  # noqa: SLF001
-            t._max_storage = int(getattr(ft, "maxStorage", 0))  # noqa: SLF001
-            t._max_function_defs = int(getattr(ft, "maxFunctionDefs", 0))  # noqa: SLF001
-            t._max_instruction_defs = int(getattr(ft, "maxInstructionDefs", 0))  # noqa: SLF001
-            t._max_stack_elements = int(getattr(ft, "maxStackElements", 0))  # noqa: SLF001
-            t._max_size_of_instructions = int(getattr(ft, "maxSizeOfInstructions", 0))  # noqa: SLF001
-            t._max_component_elements = int(getattr(ft, "maxComponentElements", 0))  # noqa: SLF001
+        t._version = self._fixed_16_16(int(ft.tableVersion) & 0xFFFFFFFF)
+        t._num_glyphs = int(ft.numGlyphs)
+        if t._version >= 1.0:
+            t._max_points = int(getattr(ft, "maxPoints", 0))
+            t._max_contours = int(getattr(ft, "maxContours", 0))
+            t._max_composite_points = int(getattr(ft, "maxCompositePoints", 0))
+            t._max_composite_contours = int(getattr(ft, "maxCompositeContours", 0))
+            t._max_zones = int(getattr(ft, "maxZones", 0))
+            t._max_twilight_points = int(getattr(ft, "maxTwilightPoints", 0))
+            t._max_storage = int(getattr(ft, "maxStorage", 0))
+            t._max_function_defs = int(getattr(ft, "maxFunctionDefs", 0))
+            t._max_instruction_defs = int(getattr(ft, "maxInstructionDefs", 0))
+            t._max_stack_elements = int(getattr(ft, "maxStackElements", 0))
+            t._max_size_of_instructions = int(getattr(ft, "maxSizeOfInstructions", 0))
+            t._max_component_elements = int(getattr(ft, "maxComponentElements", 0))
             depth = int(getattr(ft, "maxComponentDepth", 0))
             # PDFBOX-6105 — clamp 0 to 1.
-            t._max_component_depth = depth if depth != 0 else 1  # noqa: SLF001
+            t._max_component_depth = depth if depth != 0 else 1
         t.initialized = True
         self._maxp = t
         return t
@@ -503,13 +503,13 @@ class TrueTypeFont:
         lsbs = [int(ft_metrics[n][1]) for n in glyph_order]
 
         t = HorizontalMetricsTable()
-        t._num_h_metrics = num_h_metrics  # noqa: SLF001
+        t._num_h_metrics = num_h_metrics
         # First num_h_metrics entries carry both advance and LSB; the
         # remaining glyphs share the last advance and have a trailing
         # LSB-only block in the on-disk table.
-        t._advance_width = advances[:num_h_metrics]  # noqa: SLF001
-        t._left_side_bearing = lsbs[:num_h_metrics]  # noqa: SLF001
-        t._non_horizontal_left_side_bearing = lsbs[num_h_metrics:]  # noqa: SLF001
+        t._advance_width = advances[:num_h_metrics]
+        t._left_side_bearing = lsbs[:num_h_metrics]
+        t._non_horizontal_left_side_bearing = lsbs[num_h_metrics:]
         t.initialized = True
         self._hmtx = t
         return t
@@ -528,19 +528,19 @@ class TrueTypeFont:
         t = VerticalHeaderTable()
         # vhea.tableVersion is a raw uint32 ("L") in fontTools — convert
         # back to the 16.16 fixed-point float upstream exposes.
-        t._version = self._fixed_16_16(int(ft.tableVersion) & 0xFFFFFFFF)  # noqa: SLF001
-        t._ascender = int(ft.ascent)  # noqa: SLF001
-        t._descender = int(ft.descent)  # noqa: SLF001
-        t._line_gap = int(ft.lineGap)  # noqa: SLF001
-        t._advance_height_max = int(ft.advanceHeightMax)  # noqa: SLF001
-        t._min_top_side_bearing = int(ft.minTopSideBearing)  # noqa: SLF001
-        t._min_bottom_side_bearing = int(ft.minBottomSideBearing)  # noqa: SLF001
-        t._y_max_extent = int(ft.yMaxExtent)  # noqa: SLF001
-        t._caret_slope_rise = int(ft.caretSlopeRise)  # noqa: SLF001
-        t._caret_slope_run = int(ft.caretSlopeRun)  # noqa: SLF001
-        t._caret_offset = int(ft.caretOffset)  # noqa: SLF001
-        t._metric_data_format = int(ft.metricDataFormat)  # noqa: SLF001
-        t._number_of_v_metrics = int(ft.numberOfVMetrics)  # noqa: SLF001
+        t._version = self._fixed_16_16(int(ft.tableVersion) & 0xFFFFFFFF)
+        t._ascender = int(ft.ascent)
+        t._descender = int(ft.descent)
+        t._line_gap = int(ft.lineGap)
+        t._advance_height_max = int(ft.advanceHeightMax)
+        t._min_top_side_bearing = int(ft.minTopSideBearing)
+        t._min_bottom_side_bearing = int(ft.minBottomSideBearing)
+        t._y_max_extent = int(ft.yMaxExtent)
+        t._caret_slope_rise = int(ft.caretSlopeRise)
+        t._caret_slope_run = int(ft.caretSlopeRun)
+        t._caret_offset = int(ft.caretOffset)
+        t._metric_data_format = int(ft.metricDataFormat)
+        t._number_of_v_metrics = int(ft.numberOfVMetrics)
         t.initialized = True
         self._vhea = t
         return t
@@ -566,13 +566,13 @@ class TrueTypeFont:
         tsbs = [int(ft_metrics[n][1]) for n in glyph_order]
 
         t = VerticalMetricsTable()
-        t._num_v_metrics = num_v_metrics  # noqa: SLF001
+        t._num_v_metrics = num_v_metrics
         # First num_v_metrics entries carry both advance and TSB; the
         # remaining glyphs share the last advance and have a trailing
         # TSB-only block in the on-disk table.
-        t._advance_height = advances[:num_v_metrics]  # noqa: SLF001
-        t._top_side_bearing = tsbs[:num_v_metrics]  # noqa: SLF001
-        t._additional_top_side_bearing = tsbs[num_v_metrics:]  # noqa: SLF001
+        t._advance_height = advances[:num_v_metrics]
+        t._top_side_bearing = tsbs[:num_v_metrics]
+        t._additional_top_side_bearing = tsbs[num_v_metrics:]
         t.initialized = True
         self._vmtx = t
         return t
@@ -591,10 +591,10 @@ class TrueTypeFont:
             return self._glyph_table
         if "glyf" not in self._tt:
             return None
-        from .glyph_table import GlyphTable  # noqa: PLC0415
+        from .glyph_table import GlyphTable
 
         gt = GlyphTable()
-        gt._bind(self)  # noqa: SLF001
+        gt._bind(self)
         self._glyph_table = gt
         return gt
 
@@ -655,7 +655,7 @@ class TrueTypeFont:
         if "kern" not in self._tt:
             self._kern = None
             return None
-        from .kerning_table import KerningTable  # noqa: PLC0415
+        from .kerning_table import KerningTable
 
         ft_kern = self._tt["kern"]
         self._kern = KerningTable.from_fonttools(ft_kern, self)
@@ -697,7 +697,7 @@ class TrueTypeFont:
         """
         return self._enable_gsub
 
-    def set_enable_gsub(self, enable: bool) -> None:  # noqa: FBT001
+    def set_enable_gsub(self, enable: bool) -> None:
         """Enable or disable the GSUB table for this font.
 
         Mirrors upstream's ``setEnableGsub(boolean)``.
@@ -933,7 +933,7 @@ class TrueTypeFont:
         Convenience wrapper over :meth:`get_table_map` for callers that
         only care about which optional tables exist.
         """
-        return {tag: True for tag in self.get_table_map()}
+        return dict.fromkeys(self.get_table_map(), True)
 
     def has_table(self, tag: str) -> bool:
         """``True`` iff the SFNT directory contains a table with ``tag``."""
@@ -1000,7 +1000,7 @@ class TrueTypeFont:
             if gid is not None:
                 char_to_gid[code] = gid
 
-        from .cmap_subtable import CmapSubtable  # noqa: PLC0415
+        from .cmap_subtable import CmapSubtable
 
         view = CmapSubtable()
         view.set_platform_id(int(chosen.platformID))
@@ -1008,10 +1008,10 @@ class TrueTypeFont:
         # Reuse the existing subtable's storage: ``_character_code_to_glyph_id``
         # is what ``get_glyph_id`` reads; ``_glyph_id_to_character_code`` /
         # ``_multiple`` power ``get_char_codes``.
-        view._character_code_to_glyph_id = char_to_gid  # noqa: SLF001
+        view._character_code_to_glyph_id = char_to_gid
         max_gid = max(char_to_gid.values(), default=-1)
         if max_gid >= 0:
-            view._build_glyph_id_to_character_code_lookup(max_gid)  # noqa: SLF001
+            view._build_glyph_id_to_character_code_lookup(max_gid)
         self._cmap_subtable = view
         return view
 
@@ -1025,7 +1025,7 @@ class TrueTypeFont:
         """
         return self.get_unicode_cmap_subtable()
 
-    def get_unicode_cmap_lookup(self, is_strict: bool = True) -> CmapLookup | None:  # noqa: FBT001, FBT002
+    def get_unicode_cmap_lookup(self, is_strict: bool = True) -> CmapLookup | None:
         """Return a Unicode :class:`CmapLookup` for this font.
 
         Mirrors upstream's ``getUnicodeCmapLookup()`` /
@@ -1087,15 +1087,15 @@ class TrueTypeFont:
             if gid is not None:
                 char_to_gid[code] = gid
 
-        from .cmap_subtable import CmapSubtable  # noqa: PLC0415
+        from .cmap_subtable import CmapSubtable
 
         view = CmapSubtable()
         view.set_platform_id(int(chosen.platformID))
         view.set_platform_encoding_id(int(chosen.platEncID))
-        view._character_code_to_glyph_id = char_to_gid  # noqa: SLF001
+        view._character_code_to_glyph_id = char_to_gid
         max_gid = max(char_to_gid.values(), default=-1)
         if max_gid >= 0:
-            view._build_glyph_id_to_character_code_lookup(max_gid)  # noqa: SLF001
+            view._build_glyph_id_to_character_code_lookup(max_gid)
         return view
 
     def get_gsub_data(self) -> GsubData:
@@ -1315,7 +1315,7 @@ class TrueTypeFont:
             if isinstance(raw, bytes | bytearray):
                 charset = NamingTable.get_charset(nr)
                 try:
-                    value = NamingTable._decode_string(bytes(raw), charset)  # noqa: SLF001
+                    value = NamingTable._decode_string(bytes(raw), charset)
                 except LookupError:
                     value = bytes(raw).decode("latin-1")
                 nr.set_string_length(len(raw))
@@ -1333,9 +1333,9 @@ class TrueTypeFont:
             if value is not None:
                 nr.set_string(value)
             records.append(nr)
-        nt._name_records = records  # noqa: SLF001
-        nt._fill_lookup_table()  # noqa: SLF001
-        nt._read_interesting_strings()  # noqa: SLF001
+        nt._name_records = records
+        nt._fill_lookup_table()
+        nt._read_interesting_strings()
         nt.initialized = True
         return nt
 
@@ -1349,15 +1349,15 @@ class TrueTypeFont:
             return None
         ft_post = self._tt["post"]
         t = PostScriptTable()
-        t._format_type = float(ft_post.formatType)  # noqa: SLF001
-        t._italic_angle = float(ft_post.italicAngle)  # noqa: SLF001
-        t._underline_position = int(ft_post.underlinePosition)  # noqa: SLF001
-        t._underline_thickness = int(ft_post.underlineThickness)  # noqa: SLF001
-        t._is_fixed_pitch = int(ft_post.isFixedPitch)  # noqa: SLF001
-        t._min_mem_type42 = int(ft_post.minMemType42)  # noqa: SLF001
-        t._max_mem_type42 = int(ft_post.maxMemType42)  # noqa: SLF001
-        t._mim_mem_type1 = int(ft_post.minMemType1)  # noqa: SLF001
-        t._max_mem_type1 = int(ft_post.maxMemType1)  # noqa: SLF001
+        t._format_type = float(ft_post.formatType)
+        t._italic_angle = float(ft_post.italicAngle)
+        t._underline_position = int(ft_post.underlinePosition)
+        t._underline_thickness = int(ft_post.underlineThickness)
+        t._is_fixed_pitch = int(ft_post.isFixedPitch)
+        t._min_mem_type42 = int(ft_post.minMemType42)
+        t._max_mem_type42 = int(ft_post.maxMemType42)
+        t._mim_mem_type1 = int(ft_post.minMemType1)
+        t._max_mem_type1 = int(ft_post.maxMemType1)
         # Only formats that actually carry a glyph-name table populate the
         # name list — upstream ``PostScriptTable.read`` leaves the names
         # ``null`` for format 3.0 (and 1.0, whose names are the implicit Mac
@@ -1367,7 +1367,7 @@ class TrueTypeFont:
         # returns 0 there (PDFBox-shaped ``nameToGID`` never consults a
         # synthetic order). Gate on the format so a 3.0 ``post`` carries no
         # names, exactly as upstream.
-        if t._format_type in (2.0, 2.5, 4.0):  # noqa: SLF001, PLR2004
+        if t._format_type in (2.0, 2.5, 4.0):
             glyph_names = getattr(ft_post, "glyphOrder", None)
             if glyph_names is None:  # pragma: no cover - fontTools sets glyphOrder
                 try:
@@ -1375,7 +1375,7 @@ class TrueTypeFont:
                 except (AttributeError, KeyError):
                     glyph_names = None
             if glyph_names is not None:
-                t._glyph_names = list(glyph_names)  # noqa: SLF001
+                t._glyph_names = list(glyph_names)
         t.initialized = True
         self._post = t
         return t
@@ -1395,27 +1395,27 @@ class TrueTypeFont:
             return None
         ft = self._tt["OS/2"]
         t = OS2WindowsMetricsTable()
-        t._version = int(ft.version)  # noqa: SLF001
-        t._average_char_width = int(ft.xAvgCharWidth)  # noqa: SLF001
-        t._weight_class = int(ft.usWeightClass)  # noqa: SLF001
-        t._width_class = int(ft.usWidthClass)  # noqa: SLF001
-        t._fs_type = int(ft.fsType)  # noqa: SLF001
-        t._subscript_x_size = int(ft.ySubscriptXSize)  # noqa: SLF001
-        t._subscript_y_size = int(ft.ySubscriptYSize)  # noqa: SLF001
-        t._subscript_x_offset = int(ft.ySubscriptXOffset)  # noqa: SLF001
-        t._subscript_y_offset = int(ft.ySubscriptYOffset)  # noqa: SLF001
-        t._superscript_x_size = int(ft.ySuperscriptXSize)  # noqa: SLF001
-        t._superscript_y_size = int(ft.ySuperscriptYSize)  # noqa: SLF001
-        t._superscript_x_offset = int(ft.ySuperscriptXOffset)  # noqa: SLF001
-        t._superscript_y_offset = int(ft.ySuperscriptYOffset)  # noqa: SLF001
-        t._strikeout_size = int(ft.yStrikeoutSize)  # noqa: SLF001
-        t._strikeout_position = int(ft.yStrikeoutPosition)  # noqa: SLF001
-        t._family_class = int(ft.sFamilyClass)  # noqa: SLF001
+        t._version = int(ft.version)
+        t._average_char_width = int(ft.xAvgCharWidth)
+        t._weight_class = int(ft.usWeightClass)
+        t._width_class = int(ft.usWidthClass)
+        t._fs_type = int(ft.fsType)
+        t._subscript_x_size = int(ft.ySubscriptXSize)
+        t._subscript_y_size = int(ft.ySubscriptYSize)
+        t._subscript_x_offset = int(ft.ySubscriptXOffset)
+        t._subscript_y_offset = int(ft.ySubscriptYOffset)
+        t._superscript_x_size = int(ft.ySuperscriptXSize)
+        t._superscript_y_size = int(ft.ySuperscriptYSize)
+        t._superscript_x_offset = int(ft.ySuperscriptXOffset)
+        t._superscript_y_offset = int(ft.ySuperscriptYOffset)
+        t._strikeout_size = int(ft.yStrikeoutSize)
+        t._strikeout_position = int(ft.yStrikeoutPosition)
+        t._family_class = int(ft.sFamilyClass)
         # ``panose`` in fontTools is a Panose() object with named fields;
         # serialise back to a 10-byte buffer for upstream parity.
         panose = getattr(ft, "panose", None)
         if panose is not None:
-            t._panose = bytes(  # noqa: SLF001
+            t._panose = bytes(
                 int(getattr(panose, attr, 0)) & 0xFF
                 for attr in (
                     "bFamilyType",
@@ -1430,32 +1430,32 @@ class TrueTypeFont:
                     "bXHeight",
                 )
             )
-        t._unicode_range1 = int(ft.ulUnicodeRange1)  # noqa: SLF001
-        t._unicode_range2 = int(ft.ulUnicodeRange2)  # noqa: SLF001
-        t._unicode_range3 = int(ft.ulUnicodeRange3)  # noqa: SLF001
-        t._unicode_range4 = int(ft.ulUnicodeRange4)  # noqa: SLF001
+        t._unicode_range1 = int(ft.ulUnicodeRange1)
+        t._unicode_range2 = int(ft.ulUnicodeRange2)
+        t._unicode_range3 = int(ft.ulUnicodeRange3)
+        t._unicode_range4 = int(ft.ulUnicodeRange4)
         # achVendID may come back as bytes; coerce defensively.
         ach = ft.achVendID
         if isinstance(ach, (bytes, bytearray)):
             ach = ach.decode("ascii", errors="replace")
-        t._ach_vend_id = str(ach)  # noqa: SLF001
-        t._fs_selection = int(ft.fsSelection)  # noqa: SLF001
-        t._first_char_index = int(ft.usFirstCharIndex)  # noqa: SLF001
-        t._last_char_index = int(ft.usLastCharIndex)  # noqa: SLF001
-        t._typo_ascender = int(ft.sTypoAscender)  # noqa: SLF001
-        t._typo_descender = int(ft.sTypoDescender)  # noqa: SLF001
-        t._typo_line_gap = int(ft.sTypoLineGap)  # noqa: SLF001
-        t._win_ascent = int(ft.usWinAscent)  # noqa: SLF001
-        t._win_descent = int(ft.usWinDescent)  # noqa: SLF001
-        if t._version >= 1:  # noqa: SLF001
-            t._code_page_range1 = int(getattr(ft, "ulCodePageRange1", 0))  # noqa: SLF001
-            t._code_page_range2 = int(getattr(ft, "ulCodePageRange2", 0))  # noqa: SLF001
-        if t._version >= 2:  # noqa: SLF001
-            t._sx_height = int(getattr(ft, "sxHeight", 0))  # noqa: SLF001
-            t._s_cap_height = int(getattr(ft, "sCapHeight", 0))  # noqa: SLF001
-            t._us_default_char = int(getattr(ft, "usDefaultChar", 0))  # noqa: SLF001
-            t._us_break_char = int(getattr(ft, "usBreakChar", 0))  # noqa: SLF001
-            t._us_max_context = int(getattr(ft, "usMaxContext", 0))  # noqa: SLF001
+        t._ach_vend_id = str(ach)
+        t._fs_selection = int(ft.fsSelection)
+        t._first_char_index = int(ft.usFirstCharIndex)
+        t._last_char_index = int(ft.usLastCharIndex)
+        t._typo_ascender = int(ft.sTypoAscender)
+        t._typo_descender = int(ft.sTypoDescender)
+        t._typo_line_gap = int(ft.sTypoLineGap)
+        t._win_ascent = int(ft.usWinAscent)
+        t._win_descent = int(ft.usWinDescent)
+        if t._version >= 1:
+            t._code_page_range1 = int(getattr(ft, "ulCodePageRange1", 0))
+            t._code_page_range2 = int(getattr(ft, "ulCodePageRange2", 0))
+        if t._version >= 2:
+            t._sx_height = int(getattr(ft, "sxHeight", 0))
+            t._s_cap_height = int(getattr(ft, "sCapHeight", 0))
+            t._us_default_char = int(getattr(ft, "usDefaultChar", 0))
+            t._us_break_char = int(getattr(ft, "usBreakChar", 0))
+            t._us_max_context = int(getattr(ft, "usMaxContext", 0))
         t.initialized = True
         self._os2 = t
         return t
@@ -1621,7 +1621,7 @@ class TrueTypeFont:
         and produces identical output (fontTools' ``save`` writes the
         same SFNT regardless of destination).
         """
-        import os as _os  # noqa: PLC0415
+        import os as _os
 
         sink = io.BytesIO()
         self._tt.save(sink, reorderTables=True)
@@ -1737,7 +1737,7 @@ class TrueTypeFont:
         """
         return TrueTypeFont._parse_uni_name(name)
 
-    def get_unicode_cmap_impl(self, is_strict: bool = True) -> CmapSubtable | None:  # noqa: FBT001, FBT002
+    def get_unicode_cmap_impl(self, is_strict: bool = True) -> CmapSubtable | None:
         """Public spelling of :meth:`_get_unicode_cmap_impl`.
 
         Mirrors upstream's private ``getUnicodeCmapImpl(boolean)``

@@ -60,11 +60,11 @@ def _load_ttf() -> TTFont:
 
 class _StubVhea:
     ascent = 880
-    advanceHeightMax = 1000  # noqa: N815 — fontTools naming
+    advanceHeightMax = 1000
 
 
 class _StubGlyph:
-    yMax = 700  # noqa: N815 — fontTools naming
+    yMax = 700
 
 
 class _SyntheticVerticalTTF:
@@ -98,7 +98,7 @@ class _SyntheticVerticalTTF:
     def __contains__(self, name: str) -> bool:
         return name in self._tables
 
-    def getGlyphName(self, gid: int) -> str:  # noqa: N802 — fontTools naming
+    def getGlyphName(self, gid: int) -> str:
         return f"glyph{gid}"
 
     def getGlyphID(self, name: str) -> int:  # noqa: N802 — fontTools naming
@@ -137,15 +137,15 @@ def test_create_cid_font_vertical_does_not_raise_attribute_error() -> None:
     # Erase the binding the constructor created so we can prove the
     # reordering inside ``_create_cid_font`` re-establishes it BEFORE
     # the vertical builder fires.
-    del embedder._cid_font  # noqa: SLF001
-    embedder._ttf = _SyntheticVerticalTTF()  # noqa: SLF001
-    rebuilt = embedder._create_cid_font()  # noqa: SLF001 — under-test
+    del embedder._cid_font
+    embedder._ttf = _SyntheticVerticalTTF()
+    rebuilt = embedder._create_cid_font()
     # /W2 must have been written into the rebuilt CIDFont dict via
     # ``self._cid_font.set_item`` (line 463) — confirms the vertical
     # branch executed past the self-reference site without raising.
     assert rebuilt.get_item(COSName.get_pdf_name("W2")) is not None
     # And ``self._cid_font`` is now bound to the rebuilt dict.
-    assert embedder._cid_font is rebuilt  # noqa: SLF001
+    assert embedder._cid_font is rebuilt
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +166,7 @@ def test_pd_cid_font_type2_constructor_accepts_ttf_argument() -> None:
     cid_font = PDCIDFontType2(font_dict, parent, fake_ttf)
     # The supplied TTF object is cached so the lazy /FontFile2 parse
     # short-circuits — confirms the argument flows through.
-    assert cid_font._ttf is fake_ttf  # noqa: SLF001
+    assert cid_font._ttf is fake_ttf
 
 
 def test_embedder_get_cid_font_returns_pd_cid_font_type2() -> None:
@@ -187,9 +187,9 @@ def test_pd_cid_font_type2_constructor_zero_args_still_supported() -> None:
     """The new optional argument must remain backward-compatible: the
     no-arg constructor (and the original 2-arg form) keeps working."""
     cid_font = PDCIDFontType2()
-    assert cid_font._ttf is None  # noqa: SLF001
+    assert cid_font._ttf is None
     cid_font_two = PDCIDFontType2(COSDictionary(), PDType0Font())
-    assert cid_font_two._ttf is None  # noqa: SLF001
+    assert cid_font_two._ttf is None
 
 
 def test_pd_cid_font_type2_constructor_accepts_real_ttf_instance(

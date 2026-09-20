@@ -46,7 +46,7 @@ def test_charstring_decrypt_rejects_seed_mismatch() -> None:
     ids=["leniv_0", "leniv_1", "leniv_2", "leniv_4_default", "leniv_8", "leniv_16"],
 )
 def test_charstring_lenIV_round_trip(len_iv: int) -> None:
-    plain = bytes(range(0, 32))  # spans a control / non-control mix
+    plain = bytes(range(32))  # spans a control / non-control mix
     cipher = Type1FontUtil.charstring_encrypt(plain, len_iv=len_iv)
     assert Type1FontUtil.charstring_decrypt(cipher, len_iv=len_iv) == plain
 

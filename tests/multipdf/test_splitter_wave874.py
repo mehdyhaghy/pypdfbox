@@ -34,10 +34,10 @@ def test_wave874_clone_id_tree_uses_wave654_helper_stubs_for_retained_name() -> 
     destination = _Root()
     source.id_tree = _IdTree("kept", source_struct)
     splitter = Splitter()
-    splitter._id_set = {"kept"}  # noqa: SLF001
-    splitter._struct_dict_map = {id(source_struct): cloned_struct}  # noqa: SLF001
+    splitter._id_set = {"kept"}
+    splitter._struct_dict_map = {id(source_struct): cloned_struct}
 
-    splitter._clone_id_tree(source, destination, _IdentityNameTree)  # noqa: SLF001
+    splitter._clone_id_tree(source, destination, _IdentityNameTree)
 
     assert isinstance(destination.id_tree, _IdentityNameTree)
     assert list(destination.id_tree.names) == ["kept"]

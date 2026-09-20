@@ -200,7 +200,7 @@ class SoftPaintContext:
             transfer_cache[g] = val
             return val
 
-        import numpy as np  # noqa: PLC0415
+        import numpy as np
 
         # Vectorised equivalent of the former per-pixel loop. The RGB
         # bands pass through untouched; only the alpha band is scaled by

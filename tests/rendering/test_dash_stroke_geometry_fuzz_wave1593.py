@@ -393,7 +393,7 @@ def test_make_stroke_paint_odd_length_duplicated() -> None:
     error and carries a path effect."""
     mod, draw = _make_draw()
     pen = mod.Pen((0, 0, 0), width=2.0, dash=((3.0,), 0.0))
-    paint = draw._make_stroke_paint_from_pen(pen)  # noqa: SLF001
+    paint = draw._make_stroke_paint_from_pen(pen)
     assert paint.getPathEffect() is not None
 
 
@@ -401,7 +401,7 @@ def test_make_stroke_paint_even_length_kept() -> None:
     """An even-length array keeps its dash effect too (no duplication needed)."""
     mod, draw = _make_draw()
     pen = mod.Pen((0, 0, 0), width=2.0, dash=((5.0, 2.0), 1.0))
-    paint = draw._make_stroke_paint_from_pen(pen)  # noqa: SLF001
+    paint = draw._make_stroke_paint_from_pen(pen)
     assert paint.getPathEffect() is not None
 
 
@@ -410,7 +410,7 @@ def test_make_stroke_paint_all_zero_skips_effect() -> None:
     stays solid rather than vanishing into a degenerate dash)."""
     mod, draw = _make_draw()
     pen = mod.Pen((0, 0, 0), width=2.0, dash=((0.0, 0.0), 0.0))
-    paint = draw._make_stroke_paint_from_pen(pen)  # noqa: SLF001
+    paint = draw._make_stroke_paint_from_pen(pen)
     assert paint.getPathEffect() is None
 
 
@@ -418,7 +418,7 @@ def test_make_stroke_paint_no_dash_no_effect() -> None:
     """A pen with ``dash=None`` produces a solid stroke (no path effect)."""
     mod, draw = _make_draw()
     pen = mod.Pen((0, 0, 0), width=2.0)
-    paint = draw._make_stroke_paint_from_pen(pen)  # noqa: SLF001
+    paint = draw._make_stroke_paint_from_pen(pen)
     assert paint.getPathEffect() is None
 
 

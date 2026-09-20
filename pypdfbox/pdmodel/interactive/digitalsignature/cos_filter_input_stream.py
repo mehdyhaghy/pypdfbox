@@ -52,7 +52,7 @@ class COSFilterInputStream:
         else:
             first = byte_range[0]
             if isinstance(first, (list, tuple)):
-                nested = cast(Sequence[Sequence[int]], byte_range)
+                nested = cast("Sequence[Sequence[int]]", byte_range)
                 for entry in nested:
                     if len(entry) != 2:
                         raise ValueError(
@@ -61,7 +61,7 @@ class COSFilterInputStream:
                         )
                     pairs.append((int(entry[0]), int(entry[1])))
             else:
-                flat = list(cast(Sequence[int], byte_range))
+                flat = list(cast("Sequence[int]", byte_range))
                 if len(flat) % 2 != 0:
                     raise ValueError(
                         "COSFilterInputStream: flat byte_range must have an "

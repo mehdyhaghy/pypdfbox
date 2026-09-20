@@ -25,7 +25,7 @@ from pypdfbox.tools.imageio.image_io_util import ImageIOUtil
 
 
 @contextlib.contextmanager
-def _open_doc(infile, password):  # noqa: ANN001
+def _open_doc(infile, password):
     """Open ``infile`` and yield a :class:`PDDocument`. See
     :func:`pypdfbox.tools.extract_text._open_doc`."""
     result = Loader.load_pdf(infile, password)
@@ -139,7 +139,7 @@ class PDFToImage:
         return 0
 
     @staticmethod
-    def change_crop_box(document, a: float, b: float, c: float, d: float) -> None:  # noqa: ANN001
+    def change_crop_box(document, a: float, b: float, c: float, d: float) -> None:
         """Mirror of upstream private static ``changeCropBox``."""
         for page in document.get_pages():
             rect = PDRectangle()

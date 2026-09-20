@@ -18,9 +18,9 @@ def _make_doc(width: float = 6.0, height: float = 6.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer() -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc()
     renderer = PDFRenderer(doc)
-    renderer._draw = object()  # type: ignore[assignment]  # noqa: SLF001
-    renderer._image = object()  # type: ignore[assignment]  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
+    renderer._draw = object()  # type: ignore[assignment]
+    renderer._image = object()  # type: ignore[assignment]
+    renderer._gs_stack = [_GState()]
     return doc, renderer
 
 
@@ -45,14 +45,14 @@ def test_inline_image_operator_ignores_missing_parameters_or_data(
             lambda _image: (_ for _ in ()).throw(AssertionError("shown")),
         )
 
-        renderer._op_inline_image(_InlineOperator(b"abc"), [])  # noqa: SLF001
-        renderer._op_inline_image(_InlineOperator(None), [])  # noqa: SLF001
+        renderer._op_inline_image(_InlineOperator(b"abc"), [])
+        renderer._op_inline_image(_InlineOperator(None), [])
     finally:
         doc.close()
 
 
 def test_type1_command_builder_returns_none_for_move_only_path() -> None:
-    path = PDFRenderer._build_aggdraw_path_from_commands(  # noqa: SLF001
+    path = PDFRenderer._build_aggdraw_path_from_commands(
         [("moveto", 10.0, 20.0)],
         scale=0.5,
     )
@@ -75,4 +75,4 @@ def test_aggdraw_pen_single_quadratic_marks_segment_after_move() -> None:
     pen.q_curve_to((2.0, 2.0))
 
     assert pen.has_segments is True
-    assert pen._last == (2.0, 2.0)  # noqa: SLF001
+    assert pen._last == (2.0, 2.0)

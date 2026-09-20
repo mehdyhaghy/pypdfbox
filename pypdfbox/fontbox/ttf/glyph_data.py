@@ -429,9 +429,9 @@ class GlyphData:
     def init_data(
         self,
         glyph_table: Any,
-        data: Any,  # noqa: ARG002 - upstream signature parity
-        left_side_bearing: int,  # noqa: ARG002 - upstream signature parity
-        level: int,  # noqa: ARG002 - upstream signature parity
+        data: Any,
+        left_side_bearing: int,
+        level: int,
     ) -> None:
         """Bind this record to a parent ``glyf`` table and re-resolve.
 
@@ -508,7 +508,7 @@ class _GlyphRenderer:
         self._glyph_data = glyph_data
 
     def get_path(self) -> RecordingPen:
-        from fontTools.pens.recordingPen import RecordingPen  # noqa: PLC0415
+        from fontTools.pens.recordingPen import RecordingPen
 
         pen = RecordingPen()
         gd = self._glyph_data

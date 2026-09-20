@@ -59,12 +59,12 @@ def _reset_menus() -> Iterator[None]:
     from pypdfbox.debugger.ui.zoom_menu import ZoomMenu
 
     def _wipe() -> None:
-        ZoomMenu._reset_instance()  # noqa: SLF001
-        RotationMenu._reset_instance()  # noqa: SLF001
-        RenderDestinationMenu._reset_instance()  # noqa: SLF001
-        ViewMenu._reset_instance()  # noqa: SLF001
-        ImageTypeMenu._reset_for_testing()  # noqa: SLF001
-        TextStripperMenu._reset_for_testing()  # noqa: SLF001
+        ZoomMenu._reset_instance()
+        RotationMenu._reset_instance()
+        RenderDestinationMenu._reset_instance()
+        ViewMenu._reset_instance()
+        ImageTypeMenu._reset_for_testing()
+        TextStripperMenu._reset_for_testing()
 
     _wipe()
     try:
@@ -89,7 +89,7 @@ def test_collect_link_location_swallows_get_action_attribute_error(
         page_dict = doc.get_page(0).get_cos_object()
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
-        before = dict(pane._rect_map)  # noqa: SLF001
+        before = dict(pane._rect_map)
         link = PDAnnotationLink()
         link.set_rectangle(PDRectangle(0.0, 0.0, 10.0, 10.0))
 
@@ -99,7 +99,7 @@ def test_collect_link_location_swallows_get_action_attribute_error(
         link.get_action = _boom  # type: ignore[method-assign]
         pane.collect_link_location(link)
         # No new entries.
-        assert pane._rect_map == before  # noqa: SLF001
+        assert pane._rect_map == before
     finally:
         doc.close()
 
@@ -134,7 +134,7 @@ def test_collect_link_location_with_pd_action_go_to_page_destination(
                 return fake
 
         pane.collect_link_location(_FakeLink())
-        labels = list(pane._rect_map.values())  # noqa: SLF001
+        labels = list(pane._rect_map.values())
         assert any("Page destination: 3" in label for label in labels)
     finally:
         doc.close()
@@ -145,7 +145,7 @@ def test_collect_link_location_named_destination_resolved_via_catalog(
 ) -> None:
     """A named destination -> catalog ``find_named_destination_page`` resolution."""
     from pypdfbox.pdmodel.interactive.action.pd_action_go_to import PDActionGoTo
-    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (  # noqa: E501
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (
         PDNamedDestination,
     )
     from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_fit_destination import (  # noqa: E501
@@ -179,7 +179,7 @@ def test_collect_link_location_named_destination_resolved_via_catalog(
                 return fake
 
         pane.collect_link_location(_FakeLink())
-        labels = list(pane._rect_map.values())  # noqa: SLF001
+        labels = list(pane._rect_map.values())
         assert any("Page destination" in label for label in labels)
     finally:
         doc.close()
@@ -256,10 +256,10 @@ def test_collect_link_location_page_destination_with_invalid_page_returns(
                 fake_action.get_destination = lambda: destination  # type: ignore[method-assign]
                 return fake_action
 
-        before = dict(pane._rect_map)  # noqa: SLF001
+        before = dict(pane._rect_map)
         pane.collect_link_location(_FakeLink())
         # No new entry.
-        assert pane._rect_map == before  # noqa: SLF001
+        assert pane._rect_map == before
     finally:
         doc.close()
 
@@ -300,7 +300,7 @@ def test_collect_link_location_non_goto_action_falls_back_to_link_get_destinatio
                 return destination
 
         pane.collect_link_location(_LinkWithDestination())
-        labels = list(pane._rect_map.values())  # noqa: SLF001
+        labels = list(pane._rect_map.values())
         assert any("Page destination" in label for label in labels)
     finally:
         doc.close()
@@ -324,9 +324,9 @@ def test_collect_link_location_no_link_get_destination_returns_none(
             def get_action(self) -> Any:
                 return object()  # neither PDActionGoTo nor PDActionURI
 
-        before = dict(pane._rect_map)  # noqa: SLF001
+        before = dict(pane._rect_map)
         pane.collect_link_location(_NoDestLink())
-        assert pane._rect_map == before  # noqa: SLF001
+        assert pane._rect_map == before
     finally:
         doc.close()
 
@@ -357,9 +357,9 @@ def test_collect_link_location_page_destination_returning_negative_one_skipped(
                 fake_action.get_destination = lambda: destination  # type: ignore[method-assign]
                 return fake_action
 
-        before = dict(pane._rect_map)  # noqa: SLF001
+        before = dict(pane._rect_map)
         pane.collect_link_location(_FakeLink())
-        assert pane._rect_map == before  # noqa: SLF001
+        assert pane._rect_map == before
     finally:
         doc.close()
 

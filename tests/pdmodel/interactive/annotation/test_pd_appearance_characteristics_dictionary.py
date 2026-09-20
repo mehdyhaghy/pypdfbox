@@ -323,7 +323,7 @@ def test_text_position_default_zero() -> None:
 
 
 def test_text_position_all_seven_codes_round_trip() -> None:
-    for tp in range(0, 7):
+    for tp in range(7):
         mk = PDAppearanceCharacteristicsDictionary()
         mk.set_text_position(tp)
         assert mk.get_text_position() == tp

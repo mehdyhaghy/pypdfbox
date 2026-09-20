@@ -22,7 +22,7 @@ def _build_pdf_with_embedded_files(out_path: Path) -> None:
     """Build a tiny PDF carrying a single attachment under
     ``/Catalog/Names/EmbeddedFiles`` (names-leaf form). The attachment
     payload is the bytestring ``b"hello"``."""
-    from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (  # noqa: E501
+    from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (
         PDComplexFileSpecification,
     )
     from pypdfbox.pdmodel.common.filespecification.pd_embedded_file import (
@@ -94,7 +94,7 @@ def test_main_extracts_payload_to_directory(tmp_path: Path) -> None:
 
 def test_extract_files_handles_none() -> None:
     # Branch coverage: ``extract_files(None, ...)`` is the upstream early-out.
-    ExtractEmbeddedFiles.extract_files(None, "/tmp")  # noqa: S108 - not used
+    ExtractEmbeddedFiles.extract_files(None, "/tmp")
 
 
 def test_extract_files_skips_specs_without_embedded_payload(
@@ -134,8 +134,8 @@ def test_extract_files_uses_key_when_filename_missing(tmp_path: Path) -> None:
 
 def test_extract_file_short_circuits_on_none() -> None:
     # Both arguments None — must return without raising.
-    ExtractEmbeddedFiles.extract_file(None, None, "/tmp")  # noqa: S108
-    ExtractEmbeddedFiles.extract_file("name", None, "/tmp")  # noqa: S108
+    ExtractEmbeddedFiles.extract_file(None, None, "/tmp")
+    ExtractEmbeddedFiles.extract_file("name", None, "/tmp")
 
 
 def test_extract_file_falls_back_to_bytes(tmp_path: Path) -> None:
@@ -200,7 +200,7 @@ def test_extract_files_from_ef_tree_returns_for_none_kids() -> None:
             return None
 
     # No names + no kids → silent early return.
-    ExtractEmbeddedFiles.extract_files_from_ef_tree(_Node(), "/tmp")  # noqa: S108
+    ExtractEmbeddedFiles.extract_files_from_ef_tree(_Node(), "/tmp")
 
 
 def test_extract_files_from_ef_tree_descends_into_kids(tmp_path: Path) -> None:
@@ -248,13 +248,13 @@ def test_extract_files_from_page_skips_non_file_attachment_annotations(
 def test_extract_files_from_page_extracts_file_attachment(
     tmp_path: Path,
 ) -> None:
-    from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (  # noqa: E501
+    from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (
         PDComplexFileSpecification,
     )
     from pypdfbox.pdmodel.common.filespecification.pd_embedded_file import (
         PDEmbeddedFile,
     )
-    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_file_attachment import (  # noqa: E501
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_file_attachment import (
         PDAnnotationFileAttachment,
     )
     from pypdfbox.pdmodel.pd_document import PDDocument
@@ -280,10 +280,10 @@ def test_extract_files_from_page_extracts_file_attachment(
 def test_extract_files_from_page_skips_simple_file_spec(
     tmp_path: Path,
 ) -> None:
-    from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification import (  # noqa: E501
+    from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification import (
         PDSimpleFileSpecification,
     )
-    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_file_attachment import (  # noqa: E501
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_file_attachment import (
         PDAnnotationFileAttachment,
     )
     from pypdfbox.pdmodel.pd_page import PDPage

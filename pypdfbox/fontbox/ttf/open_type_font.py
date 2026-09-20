@@ -71,7 +71,7 @@ class OpenTypeFont(TrueTypeFont):
         # incoming float the same way so synthetic test vectors match
         # upstream bit-for-bit.
         try:
-            import struct  # noqa: PLC0415
+            import struct
 
             bits = struct.unpack(">I", struct.pack(">f", float(version_value)))[0]
         except (struct.error, OverflowError, ValueError):
@@ -216,7 +216,7 @@ class OpenTypeFont(TrueTypeFont):
         # tree shapes — the bytes round-trip cleanly through CFFFont.
         try:
             cff_bytes = cff_table.compile(self._tt)
-        except Exception:  # noqa: BLE001
+        except Exception:
             # Some malformed embedded subsets refuse to recompile; fall
             # back to the cached raw bytes that fontTools recorded
             # during decompile.
@@ -236,11 +236,11 @@ class OpenTypeFont(TrueTypeFont):
                 is_cid = True
 
         if is_cid:
-            from pypdfbox.fontbox.cff.cff_cid_font import CFFCIDFont  # noqa: PLC0415
+            from pypdfbox.fontbox.cff.cff_cid_font import CFFCIDFont
 
             self._cff = CFFCIDFont.from_bytes(cff_bytes)
         else:
-            from pypdfbox.fontbox.cff.cff_type1_font import CFFType1Font  # noqa: PLC0415
+            from pypdfbox.fontbox.cff.cff_type1_font import CFFType1Font
 
             self._cff = CFFType1Font.from_bytes(cff_bytes)
         return self._cff

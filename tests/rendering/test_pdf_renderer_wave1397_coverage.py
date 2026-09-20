@@ -404,7 +404,7 @@ def test_build_transfer_lookup_returns_none_for_invalid_tr() -> None:
     """Direct cover of ``_build_transfer_lookup`` returning None for a
     /TR value that can't be parsed by ``PDFunction.create`` — the
     enabling condition for the 5783->5786 branch above."""
-    out = PDFRenderer._build_transfer_lookup(object())  # noqa: SLF001
+    out = PDFRenderer._build_transfer_lookup(object())
     assert out is None
 
 
@@ -1065,14 +1065,14 @@ def test_get_true_type_font_descendant_descriptor_none() -> None:
     from pypdfbox.pdmodel.font.pd_type0_font import PDType0Font
 
     class _Type0NoDescendant(PDType0Font):
-        def __init__(self) -> None:  # noqa: D401
+        def __init__(self) -> None:
             pass
 
         def get_descendant_font(self) -> Any:
             return None
 
     r = _bare_renderer()
-    ttf, gs = r._get_ttf_glyph_set(_Type0NoDescendant())  # noqa: SLF001
+    ttf, gs = r._get_ttf_glyph_set(_Type0NoDescendant())
     assert ttf is None and gs is None
 
 
@@ -1088,7 +1088,7 @@ def test_get_true_type_font_descendant_has_descriptor_none() -> None:
             return _StubType0Descendant(has_descriptor=False, has_font_file2=False)
 
     r = _bare_renderer()
-    ttf, gs = r._get_ttf_glyph_set(_Type0())  # noqa: SLF001
+    ttf, gs = r._get_ttf_glyph_set(_Type0())
     assert ttf is None and gs is None
 
 
@@ -1104,7 +1104,7 @@ def test_get_true_type_font_descriptor_no_font_file2() -> None:
             return _StubType0Descendant(has_descriptor=True, has_font_file2=False)
 
     r = _bare_renderer()
-    ttf, gs = r._get_ttf_glyph_set(_Type0())  # noqa: SLF001
+    ttf, gs = r._get_ttf_glyph_set(_Type0())
     assert ttf is None and gs is None
 
 
@@ -1132,7 +1132,7 @@ def test_resolve_font_program_type1c_returns_none_falls_to_mappers() -> None:
             return None
 
     r = _bare_renderer()
-    out = r._resolve_font_program(_Type1CWithoutCFF())  # noqa: SLF001
+    out = r._resolve_font_program(_Type1CWithoutCFF())
     # Result may be None or some substitute font; we just need the branch
     # exercise. No exception is the assertion.
     assert out is None or hasattr(out, "get_glyph_width") or out is not None
@@ -1168,7 +1168,7 @@ def test_fallback_advance_units_returns_zero_keeps_default() -> None:
         def get_glyph_width(self, _code: int) -> float:
             return 0.0  # zero advance → upgraded == 0.0 → <= 0.0
 
-    upgraded = PDFRenderer._fallback_advance_units(  # noqa: SLF001
+    upgraded = PDFRenderer._fallback_advance_units(
         _SubNoMetric(), 65, default_units=500.0,
     )
     # Helper returns default when its lookup yields <= 0.

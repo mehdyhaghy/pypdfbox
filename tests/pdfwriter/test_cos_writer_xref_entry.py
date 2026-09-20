@@ -17,7 +17,7 @@ def test_frozen_immutable() -> None:
     e = COSWriterXRefEntry(offset=42, key=COSObjectKey(3, 0))
     try:
         e.offset = 100  # type: ignore[misc]
-    except Exception:  # noqa: BLE001
+    except Exception:
         return
     raise AssertionError("expected frozen dataclass to forbid attribute mutation")
 

@@ -275,7 +275,7 @@ def test_multiply_arrays_static_matches_instance_multiply() -> None:
 
 def test_equality_with_self_short_circuits_true() -> None:
     m = Matrix()
-    assert m == m  # noqa: PLR0124 - exercising __eq__ self-shortcut
+    assert m == m
 
 
 def test_equality_with_non_matrix_returns_false() -> None:

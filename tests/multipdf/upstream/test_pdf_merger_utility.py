@@ -149,7 +149,7 @@ def test_pdf_merger_open_action(tmp_path: Path) -> None:
     We rebuild the same shape synthetically and assert the same
     invariant.
     """
-    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: E501
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (
         PDPageDestination,
     )
     from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_fit_destination import (  # noqa: E501
@@ -677,7 +677,7 @@ def test_split_with_structure_tree_and_destinations() -> None:
     from pypdfbox.pdmodel.interactive.action.pd_action_go_to import (
         PDActionGoTo,
     )
-    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: E501
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (
         PDPageDestination,
     )
 
@@ -754,7 +754,7 @@ def test_single_page_split() -> None:
     from pypdfbox.pdmodel.interactive.action.pd_action_go_to import (
         PDActionGoTo,
     )
-    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: E501
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (
         PDPageDestination,
     )
 
@@ -869,10 +869,10 @@ def test_split_with_named_destinations() -> None:
     from pypdfbox.pdmodel.interactive.action.pd_action_go_to import (
         PDActionGoTo,
     )
-    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (  # noqa: E501
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (
         PDNamedDestination,
     )
-    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: E501
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (
         PDPageDestination,
     )
 

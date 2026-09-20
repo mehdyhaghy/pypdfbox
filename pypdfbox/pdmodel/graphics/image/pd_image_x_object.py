@@ -148,10 +148,10 @@ class PDImageXObject(PDXObject):
         factory; TIFF routes through CCITTFactory (with PNG fallback);
         JPEG routes through JPEGFactory.
         """
-        from pypdfbox.pdmodel.graphics.image.ccitt_factory import CCITTFactory  # noqa: PLC0415
-        from pypdfbox.pdmodel.graphics.image.jpeg_factory import JPEGFactory  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.image.ccitt_factory import CCITTFactory
+        from pypdfbox.pdmodel.graphics.image.jpeg_factory import JPEGFactory
         from pypdfbox.pdmodel.graphics.image.lossless_factory import (
-            LosslessFactory,  # noqa: PLC0415
+            LosslessFactory,
         )
 
         path = Path(file)
@@ -215,10 +215,10 @@ class PDImageXObject(PDXObject):
         ``create_from_byte_array(document, byte_array)`` and is preferred
         over the default Pillow + ``LosslessFactory`` path.
         """
-        from pypdfbox.pdmodel.graphics.image.ccitt_factory import CCITTFactory  # noqa: PLC0415
-        from pypdfbox.pdmodel.graphics.image.jpeg_factory import JPEGFactory  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.image.ccitt_factory import CCITTFactory
+        from pypdfbox.pdmodel.graphics.image.jpeg_factory import JPEGFactory
         from pypdfbox.pdmodel.graphics.image.lossless_factory import (
-            LosslessFactory,  # noqa: PLC0415
+            LosslessFactory,
         )
 
         if not isinstance(byte_array, (bytes, bytearray, memoryview)):
@@ -333,7 +333,7 @@ class PDImageXObject(PDXObject):
             self._color_space = PDColorSpace.create(value, self._resources)
             return self._color_space
         if self.is_stencil():
-            from pypdfbox.pdmodel.graphics.color import PDDeviceGray  # noqa: PLC0415
+            from pypdfbox.pdmodel.graphics.color import PDDeviceGray
 
             self._color_space = PDDeviceGray.INSTANCE
             return self._color_space
@@ -670,7 +670,7 @@ class PDImageXObject(PDXObject):
         """Typed ``/Metadata`` XMP wrapper; ``None`` when absent."""
         # Local import to avoid an import cycle with PDMetadata's PDDocument
         # dependency at package import time.
-        from pypdfbox.pdmodel.common.pd_metadata import PDMetadata  # noqa: PLC0415
+        from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
 
         value = self.get_cos_object().get_dictionary_object(_METADATA)
         if isinstance(value, COSStream):
@@ -695,7 +695,7 @@ class PDImageXObject(PDXObject):
         or carries an unrecognised /Type."""
         # Local import to avoid an import cycle with the optionalcontent
         # subpackage (which itself imports image-cluster types in places).
-        from pypdfbox.pdmodel.graphics.pd_property_list import PDPropertyList  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.pd_property_list import PDPropertyList
 
         value = self.get_cos_object().get_dictionary_object(_OC)
         if isinstance(value, COSDictionary):
@@ -895,7 +895,7 @@ class PDImageXObject(PDXObject):
         soft_mask = None
         try:
             soft_mask = self.get_soft_mask()
-        except Exception:  # noqa: BLE001 - best-effort; opaque raster on failure
+        except Exception:
             soft_mask = None
         if soft_mask is not None:
             # /SMask replaces the alpha band wholesale (Java applyMask line 679),
@@ -905,7 +905,7 @@ class PDImageXObject(PDXObject):
         explicit_mask = None
         try:
             explicit_mask = self.get_mask()
-        except Exception:  # noqa: BLE001
+        except Exception:
             explicit_mask = None
         if explicit_mask is not None:
             # Stencil /Mask likewise replaces band 3 (Java line 663/679),
@@ -915,7 +915,7 @@ class PDImageXObject(PDXObject):
         color_key = None
         try:
             color_key = self.get_color_key_mask()
-        except Exception:  # noqa: BLE001
+        except Exception:
             color_key = None
         if color_key:
             return _apply_color_key_mask(image, color_key, self)
@@ -1010,7 +1010,7 @@ class PDImageXObject(PDXObject):
             return matte
         try:
             rgb = cs_to_rgb(list(matte[:n]))
-        except Exception:  # noqa: BLE001
+        except Exception:
             return matte
         if rgb is None:
             return matte
@@ -1027,7 +1027,7 @@ class PDImageXObject(PDXObject):
         is rendering-cluster work that has not yet been ported. The
         method is provided as an API-parity stub so callers that wire
         their own JPX decoder do not have to subclass to add it."""
-        return None
+        return
 
     def apply_mask(
         self,
@@ -1309,7 +1309,7 @@ def _apply_soft_mask(
     unchanged."""
     try:
         mask_image = smask.to_pil_image()
-    except Exception:  # noqa: BLE001 - best-effort; opaque raster on failure
+    except Exception:
         return image
     if mask_image is None:
         return image
@@ -1322,7 +1322,7 @@ def _apply_soft_mask(
         # the SMask explicitly requests it.
         try:
             interpolate = bool(smask.get_interpolate())
-        except Exception:  # noqa: BLE001
+        except Exception:
             interpolate = False
         resample = Image.BICUBIC if interpolate else Image.NEAREST
         mask_image = mask_image.resize(image.size, resample)
@@ -1349,12 +1349,12 @@ def _unpremultiply_matte(
     absent matte (or any resolution failure) returns ``rgba`` unchanged."""
     try:
         matte = base.extract_matte(smask)
-    except Exception:  # noqa: BLE001 - best-effort
+    except Exception:
         return rgba
     if not matte or len(matte) < 3:
         return rgba
     m = [max(0.0, min(255.0, float(c) * 255.0)) for c in matte[:3]]
-    import numpy as np  # noqa: PLC0415
+    import numpy as np
 
     # Vectorised equivalent of the former per-pixel loop:
     #   c = m + (c' - m) * (255 / a)   (alpha 0 left untouched; every
@@ -1392,12 +1392,12 @@ def _apply_explicit_mask(image: Image.Image, mask: PDImageXObject) -> Image.Imag
         samples = _unpack_sub_byte_samples(data, mw, mh, 1)
         if samples is None:
             return image
-    except Exception:  # noqa: BLE001 - best-effort; opaque raster on failure
+    except Exception:
         return image
 
     try:
         decode = mask.get_decode()
-    except Exception:  # noqa: BLE001
+    except Exception:
         decode = None
     masked_sample = 1
     if decode is not None and len(decode) >= 2 and decode[0] > decode[1]:
@@ -1456,7 +1456,7 @@ def _apply_color_key_mask(
     if len(samples) < width * height * components:
         return image
 
-    import numpy as np  # noqa: PLC0415
+    import numpy as np
 
     pair_lo = ranges[0::2]
     pair_hi = ranges[1::2]
@@ -1855,7 +1855,7 @@ def _decode_devicen_to_rgb(
             try:
                 components = [b / 255.0 for b in sample]
                 triple = cs_to_rgb(components)
-            except Exception:  # noqa: BLE001 - defensive: any eval/alt-space failure
+            except Exception:
                 triple = None
             if triple is None:
                 fallback_used = True

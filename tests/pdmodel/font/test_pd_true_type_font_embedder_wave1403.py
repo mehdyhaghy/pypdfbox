@@ -28,14 +28,14 @@ if not hasattr(COSName, "ENCODING"):
 if not hasattr(COSName, "FONT_DESC"):
     COSName.FONT_DESC = COSName.get_pdf_name("FontDescriptor")  # type: ignore[attr-defined]
 
-from pypdfbox.pdmodel.font.encoding.encoding import Encoding  # noqa: E402
-from pypdfbox.pdmodel.font.encoding.win_ansi_encoding import (  # noqa: E402
+from pypdfbox.pdmodel.font.encoding.encoding import Encoding
+from pypdfbox.pdmodel.font.encoding.win_ansi_encoding import (
     WinAnsiEncoding,
 )
-from pypdfbox.pdmodel.font.pd_true_type_font_embedder import (  # noqa: E402
+from pypdfbox.pdmodel.font.pd_true_type_font_embedder import (
     PDTrueTypeFontEmbedder,
 )
-from pypdfbox.pdmodel.pd_document import PDDocument  # noqa: E402
+from pypdfbox.pdmodel.pd_document import PDDocument
 
 _TTF_DIR = Path(__file__).resolve().parents[2].parent / "pypdfbox" / "resources" / "ttf"
 _LIBERATION_SANS = _TTF_DIR / "LiberationSans-Regular.ttf"

@@ -54,9 +54,9 @@ def test_pdf_xref_stream_parser_close_when_src_already_none() -> None:
     parser.close()
     # Force _src to None so the second close exercises the (154 → 156)
     # branch where the close is skipped.
-    parser._src = None  # noqa: SLF001
+    parser._src = None
     parser.close()
-    assert parser._document is None  # noqa: SLF001
+    assert parser._document is None
     doc.close()
 
 
@@ -74,10 +74,10 @@ def test_bit_reader_align_to_byte_noop_when_aligned() -> None:
     # Read exactly 16 bits → cursor lands on a byte boundary (16).
     reader.read(8)
     reader.read(8)
-    pos_before = reader._bit_pos  # noqa: SLF001
+    pos_before = reader._bit_pos
     assert pos_before % 8 == 0
     reader.align_to_byte()
-    assert reader._bit_pos == pos_before  # noqa: SLF001 - unchanged
+    assert reader._bit_pos == pos_before
 
 
 def test_bit_reader_align_to_byte_advances_when_misaligned() -> None:
@@ -85,9 +85,9 @@ def test_bit_reader_align_to_byte_advances_when_misaligned() -> None:
     align_to_byte rounds it up."""
     reader = _BitReader(b"\xff\xff")
     reader.read(3)
-    assert reader._bit_pos == 3  # noqa: SLF001
+    assert reader._bit_pos == 3
     reader.align_to_byte()
-    assert reader._bit_pos == 8  # noqa: SLF001
+    assert reader._bit_pos == 8
 
 
 # ----------------------------------------------------------------------
@@ -108,7 +108,7 @@ def test_operator_get_operator_double_check_cache_hit() -> None:
 
     Closes branch (88 → 91)."""
     op_name = "WAVE_1400_TEST_OP"
-    Operator._operators.pop(op_name, None)  # noqa: SLF001
+    Operator._operators.pop(op_name, None)
     # The contended-cache-hit branch happens when one thread populates
     # the cache while another is waiting on the lock. We simulate this
     # by populating the cache in the main thread *before* invoking
@@ -116,7 +116,7 @@ def test_operator_get_operator_double_check_cache_hit() -> None:
     #
     # That's not directly possible without monkeypatching, so we use a
     # subclass of dict that pre-seeds the cache on the second get().
-    real_dict = Operator._operators  # noqa: SLF001
+    real_dict = Operator._operators
 
     class _RaceDict(dict):
         """Dict that emulates a contended cache hit: the second
@@ -143,14 +143,14 @@ def test_operator_get_operator_double_check_cache_hit() -> None:
 
     race = _RaceDict(real_dict, op_name)
     try:
-        Operator._operators = race  # noqa: SLF001
+        Operator._operators = race
         result = Operator.get_operator(op_name)
         # The inner-lock cache hit produced the sentinel — that's the
         # closed branch.
         assert result is race._sentinel
     finally:
-        Operator._operators = real_dict  # noqa: SLF001
-        Operator._operators.pop(op_name, None)  # noqa: SLF001
+        Operator._operators = real_dict
+        Operator._operators.pop(op_name, None)
 
 
 def test_operator_get_operator_inline_image_bypasses_cache() -> None:
@@ -174,7 +174,7 @@ def test_pdf_stream_parser_skip_linebreak_lone_cr() -> None:
 
     Closes branch (517 → 519)."""
     parser = PDFStreamParser.from_bytes(b"\rX")  # lone CR followed by 'X'
-    consumed = parser._skip_linebreak()  # noqa: SLF001
+    consumed = parser._skip_linebreak()
     assert consumed is True
     # The lone CR was consumed; the next byte should be 'X'.
     assert parser.peek_byte() == ord("X")
@@ -183,7 +183,7 @@ def test_pdf_stream_parser_skip_linebreak_lone_cr() -> None:
 def test_pdf_stream_parser_skip_linebreak_lf_only() -> None:
     """LF alone consumed."""
     parser = PDFStreamParser.from_bytes(b"\nrest")
-    consumed = parser._skip_linebreak()  # noqa: SLF001
+    consumed = parser._skip_linebreak()
     assert consumed is True
     assert parser.peek_byte() == ord("r")
 
@@ -191,7 +191,7 @@ def test_pdf_stream_parser_skip_linebreak_lf_only() -> None:
 def test_pdf_stream_parser_skip_linebreak_crlf() -> None:
     """CRLF consumed as a unit."""
     parser = PDFStreamParser.from_bytes(b"\r\ntail")
-    consumed = parser._skip_linebreak()  # noqa: SLF001
+    consumed = parser._skip_linebreak()
     assert consumed is True
     assert parser.peek_byte() == ord("t")
 
@@ -200,5 +200,5 @@ def test_pdf_stream_parser_skip_linebreak_no_eol_returns_false() -> None:
     """When the cursor isn't on an EOL byte, the helper returns False
     and doesn't move the cursor."""
     parser = PDFStreamParser.from_bytes(b"abc")
-    assert parser._skip_linebreak() is False  # noqa: SLF001
+    assert parser._skip_linebreak() is False
     assert parser.peek_byte() == ord("a")

@@ -102,7 +102,7 @@ def _hash_cos(
                         if not chunk:
                             break
                         hasher.update(chunk)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 raise _HashAbort from exc
         return
     if isinstance(value, COSDictionary):
@@ -647,7 +647,7 @@ class PDFMergerUtility:
                     if owns:
                         try:
                             source_doc.close()
-                        except Exception:  # noqa: BLE001
+                        except Exception:
                             _LOG.exception("error closing source PDDocument")
                         else:
                             # Only release ownership on a clean close so
@@ -672,13 +672,13 @@ class PDFMergerUtility:
         finally:
             try:
                 destination.close()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _LOG.exception("error closing destination PDDocument")
             for src_doc, still_owned in opened_sources:
                 if still_owned:
                     try:
                         src_doc.close()
-                    except Exception:  # noqa: BLE001
+                    except Exception:
                         _LOG.exception("error closing source PDDocument")
 
     # ---------- optimize-mode resource hashing ----------
@@ -795,7 +795,7 @@ class PDFMergerUtility:
                     if owns:
                         try:
                             source_doc.close()
-                        except Exception:  # noqa: BLE001 — best-effort close
+                        except Exception:
                             _LOG.exception("error closing source PDDocument")
                         else:
                             # Only release ownership on a clean close so
@@ -820,13 +820,13 @@ class PDFMergerUtility:
         finally:
             try:
                 destination.close()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _LOG.exception("error closing destination PDDocument")
             for src_doc, still_owned in opened_sources:
                 if still_owned:
                     try:
                         src_doc.close()
-                    except Exception:  # noqa: BLE001
+                    except Exception:
                         _LOG.exception("error closing source PDDocument")
 
     @staticmethod
@@ -903,7 +903,7 @@ class PDFMergerUtility:
             src_version = float(source.get_version())
             if dest_version < src_version:
                 destination.set_version(src_version)
-        except Exception:  # noqa: BLE001 — version lookup may fail on minimal docs
+        except Exception:
             _LOG.debug("PDF version bump skipped", exc_info=True)
 
         dest_catalog = destination.get_document_catalog()
@@ -1093,7 +1093,7 @@ class PDFMergerUtility:
         if callable(is_dynamic):
             try:
                 return bool(is_dynamic())
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return False
         return False
 
@@ -1133,7 +1133,7 @@ class PDFMergerUtility:
                 self._acro_form_legacy_mode(cloner, dest_form, src_form)
             else:
                 self._acro_form_join_fields_mode(cloner, dest_form, src_form)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             if not self._ignore_acro_form_errors:
                 raise OSError(str(exc)) from exc
             _LOG.warning("AcroForm merge error ignored", exc_info=True)
@@ -1214,7 +1214,7 @@ class PDFMergerUtility:
             assert isinstance(cloned, COSDictionary)
             try:
                 fqn = src_field.get_fully_qualified_name()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 fqn = None
             if use_fqn_set:
                 collides = fqn is not None and fqn in existing_fqns
@@ -1272,7 +1272,7 @@ class PDFMergerUtility:
 
         try:
             root = PDFieldFactory.create_field(dest_form, field_cos, None)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return
         if root is None:
             return
@@ -1286,7 +1286,7 @@ class PDFMergerUtility:
             seen.add(key)
             try:
                 fqn = field.get_fully_qualified_name()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 fqn = None
             if fqn is not None:
                 out.add(fqn)
@@ -1328,7 +1328,7 @@ class PDFMergerUtility:
                 if cloned is not None:
                     dest_dict.set_item(_NAMES, cloned)
             else:
-                cloner._clone_merge_cos_base(  # noqa: SLF001
+                cloner._clone_merge_cos_base(
                     src_names_dict, dest_names_dict, set()
                 )
 
@@ -1351,7 +1351,7 @@ class PDFMergerUtility:
                 if cloned is not None:
                     dest_dict.set_item(_DESTS, cloned)
             else:
-                cloner._clone_merge_cos_base(  # noqa: SLF001
+                cloner._clone_merge_cos_base(
                     src_dests, dest_dests, set()
                 )
 
@@ -1471,7 +1471,7 @@ class PDFMergerUtility:
             cloned = cloner.clone_for_new_document(src_metadata)
             if cloned is not None:
                 dest_dict.set_item(_METADATA, cloned)
-        except Exception:  # noqa: BLE001
+        except Exception:
             _LOG.exception("Metadata skipped because it could not be read")
 
     def _merge_oc_properties(
@@ -1489,7 +1489,7 @@ class PDFMergerUtility:
             if cloned is not None:
                 dest_catalog.get_cos_object().set_item(_OC_PROPERTIES, cloned)
             return
-        cloner._clone_merge_cos_base(src_dict, dest_dict, set())  # noqa: SLF001
+        cloner._clone_merge_cos_base(src_dict, dest_dict, set())
 
     def _merge_output_intents(
         self,
@@ -2216,7 +2216,7 @@ class PDFMergerUtility:
             try:
                 if bool(getter()) or bool(d_getter()):
                     d_setter(True)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _LOG.debug("viewer-prefs toggle merge skipped", exc_info=True)
 
         _maybe("get_hide_toolbar", "set_hide_toolbar")

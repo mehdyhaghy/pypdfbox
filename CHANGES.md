@@ -5150,6 +5150,10 @@ than "False arm missing".
   upstream: PDFBox 3.0 branch `org.apache.pdfbox.pdmodel.PDAbstractContentStream#showTextWithPositioning` / `#showText` (PDFBOX-4951, commit `be4341e0`)
   reason: forward-port from the post-3.0.8 upstream branch.
 
+- **PDFBOX-6255 now applies to the rendering path.** `PDFRenderer._op_concat_matrix` (the handler registered for `cm` in the renderer's dispatch table) multiplied plain float tuples through `_matmul` with no `Matrix.checkFloatValues` equivalent, so a `cm` whose product overflows to `inf` / `NaN` went straight into the CTM and poisoned every later transform on the page. It now runs the shared `pypdfbox.contentstream.operator.state.concatenate.check_concatenation` guard, which delegates to `Matrix.concatenate` — single precision, so the rejection boundary is `Float.MAX_VALUE` as upstream's is, not the much wider double range — and rethrows its `ValueError` as `OSError`. `graphics.ConcatenateMatrix` carries the same `ValueError` → `OSError` translation so the third `cm` entry point cannot drift. A singular (all-zero) matrix is finite and stays legal on every path. Divergence from upstream: upstream's `PDFStreamEngine.operatorException` rethrows this `IOException` and aborts the page render, whereas pypdfbox's renderer triages every operator error to log-and-continue, so the bad `cm` is dropped and the CTM keeps its previous finite value while the page still paints.
+  upstream: PDFBox 3.0 branch `org.apache.pdfbox.contentstream.operator.state.Concatenate#process` (PDFBOX-6255, commit `88a0c56d`) + `org.apache.pdfbox.util.Matrix#checkFloatValues`
+  reason: wave 1605 ported the fix onto the parity-surface `Concatenate` class only; the renderer and the generic-engine handler have their own `cm`.
+
 ## See also
 
 - [`PROVENANCE.md`](PROVENANCE.md) — per-file upstream porting provenance (Apache 2.0 §4(b)).

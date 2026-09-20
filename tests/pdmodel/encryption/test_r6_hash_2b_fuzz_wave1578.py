@@ -29,7 +29,7 @@ import pytest
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from pypdfbox.pdmodel.encryption.standard_security_handler import (
-    StandardSecurityHandler as SSH,
+    StandardSecurityHandler,
 )
 
 
@@ -67,7 +67,7 @@ def _reference_hash_2b(
 
 
 def _prod(input_data: bytes, password: bytes, user_key: bytes | None) -> bytes:
-    return SSH._compute_hash_r5_r6(  # noqa: SLF001
+    return StandardSecurityHandler._compute_hash_r5_r6(
         bytes(input_data),
         bytes(password),
         bytes(user_key) if user_key is not None else b"",
@@ -130,7 +130,7 @@ def test_compute_hash_2b_alias_matches_reference(
 ) -> None:
     input_data = password + salt + uk
     expected = _reference_hash_2b(input_data, password, uk)
-    got = SSH.compute_hash_2b(input_data, password, uk if uk else None)
+    got = StandardSecurityHandler.compute_hash_2b(input_data, password, uk if uk else None)
     assert got == expected
     assert len(got) == 32
 
@@ -267,20 +267,20 @@ def test_unicode_password_bytes_hash_deterministically(password_str: str) -> Non
 def test_compute_hash_2a_user_path() -> None:
     password = b"user-pw"
     salt = b"\x01\x02\x03\x04\x05\x06\x07\x08"
-    truncated = SSH.truncate_127(password)
+    truncated = StandardSecurityHandler.truncate_127(password)
     expected = _reference_hash_2b(truncated + salt, truncated, b"")
-    assert SSH.compute_hash_2a(password, salt, b"") == expected
+    assert StandardSecurityHandler.compute_hash_2a(password, salt, b"") == expected
 
 
 def test_compute_hash_2a_owner_path_includes_u() -> None:
     password = b"owner-pw"
     salt = b"\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10"
     u_entry = bytes(range(48))
-    truncated = SSH.truncate_127(password)
+    truncated = StandardSecurityHandler.truncate_127(password)
     expected = _reference_hash_2b(
         truncated + salt + u_entry, truncated, u_entry
     )
-    assert SSH.compute_hash_2a(password, salt, u_entry) == expected
+    assert StandardSecurityHandler.compute_hash_2a(password, salt, u_entry) == expected
 
 
 def test_compute_hash_2a_truncates_password_at_127() -> None:
@@ -288,9 +288,9 @@ def test_compute_hash_2a_truncates_password_at_127() -> None:
     a 200-byte and its 127-byte prefix must produce the same 2.A hash."""
     salt = b"\xab" * 8
     long_pw = bytes((i % 251) + 1 for i in range(200))
-    assert SSH.compute_hash_2a(long_pw, salt, b"") == SSH.compute_hash_2a(
-        long_pw[:127], salt, b""
-    )
+    assert StandardSecurityHandler.compute_hash_2a(
+        long_pw, salt, b""
+    ) == StandardSecurityHandler.compute_hash_2a(long_pw[:127], salt, b"")
 
 
 # --------------------------------------------------------------------------- #
@@ -300,7 +300,7 @@ def test_r5_is_plain_sha256_no_rounds() -> None:
     password = b"pw"
     salt = b"\x01\x02\x03\x04\x05\x06\x07\x08"
     data = password + salt
-    got = SSH._compute_hash_r5_r6(data, password, b"", 5)  # noqa: SLF001
+    got = StandardSecurityHandler._compute_hash_r5_r6(data, password, b"", 5)
     assert got == hashlib.sha256(data).digest()
     # r6 over the same input must differ (it applies the hardened rounds).
     assert got != _prod(data, password, b"")

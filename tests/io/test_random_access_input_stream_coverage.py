@@ -174,7 +174,7 @@ def test_read_into_logs_when_inner_returns_minus_one(
 
     import logging
 
-    import pytest  # noqa: PLC0415
+    import pytest
 
     caplog_fix: pytest.LogCaptureFixture = caplog  # type: ignore[assignment]
     with caplog_fix.at_level(

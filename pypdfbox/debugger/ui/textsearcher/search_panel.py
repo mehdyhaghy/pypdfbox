@@ -251,7 +251,7 @@ class SearchPanel:
         else:
             self.re_focus()
 
-    def action_performed(self, event: Any | None = None) -> None:  # noqa: ARG002
+    def action_performed(self, event: Any | None = None) -> None:
         """Toggle the search panel visibility from a menu / accelerator action.
 
         Mirrors the two anonymous ``ActionListener.actionPerformed``

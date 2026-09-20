@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName
-from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: E501
+from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (
     PDPageDestination,
 )
 

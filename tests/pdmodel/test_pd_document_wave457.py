@@ -74,9 +74,9 @@ def test_write_bytes_to_target_accepts_path_and_stream_wave457(tmp_path) -> None
 
 def test_external_signing_support_sets_signature_once_and_clears_staging_wave457() -> None:
     doc = PDDocument()
-    doc._pending_signature = object()  # type: ignore[assignment]  # noqa: SLF001
-    doc._pending_signature_interface = object()  # type: ignore[assignment]  # noqa: SLF001
-    doc._pending_signature_options = object()  # noqa: SLF001
+    doc._pending_signature = object()  # type: ignore[assignment]
+    doc._pending_signature_interface = object()  # type: ignore[assignment]
+    doc._pending_signature_options = object()
     output = io.BytesIO()
     handle = ExternalSigningSupport(
         document=doc,

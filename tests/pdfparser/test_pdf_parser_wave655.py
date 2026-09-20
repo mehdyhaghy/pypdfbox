@@ -23,20 +23,20 @@ def _parser(data: bytes = b"") -> PDFParser:
 
 def _ready_parser(data: bytes) -> tuple[PDFParser, COSDocument]:
     parser = _parser(data)
-    doc = parser._document = COSDocument()  # noqa: SLF001
-    parser._cos_parser = COSParser(parser._src, document=doc)  # noqa: SLF001
+    doc = parser._document = COSDocument()
+    parser._cos_parser = COSParser(parser._src, document=doc)
     return parser, doc
 
 
 def test_wave655_linearization_detection_ignores_bad_indirect_headers() -> None:
     parser = _parser(b"%PDF-1.7\n1 nope")
     parser.parse_header()
-    parser._detect_linearization()  # noqa: SLF001
+    parser._detect_linearization()
     assert parser.get_linearization_dictionary() is None
 
     parser = _parser(b"%PDF-1.7\n1 0 nope")
     parser.parse_header()
-    parser._detect_linearization()  # noqa: SLF001
+    parser._detect_linearization()
     assert parser.get_linearization_dictionary() is None
 
 
@@ -62,12 +62,12 @@ def test_wave655_document_id_rejects_empty_or_non_string_id_arrays() -> None:
 def test_wave655_security_handler_short_circuits_cached_and_missing_trailer() -> None:
     parser = _parser()
     handler = object()
-    parser._security_handler = handler  # noqa: SLF001
-    assert parser._prepare_security_handler_if_needed() is handler  # noqa: SLF001
+    parser._security_handler = handler
+    assert parser._prepare_security_handler_if_needed() is handler
 
     parser = _parser()
     parser.set_password(b"secret")
-    assert parser._prepare_security_handler_if_needed() is None  # noqa: SLF001
+    assert parser._prepare_security_handler_if_needed() is None
 
 
 def test_wave655_resolve_dict_entry_returns_none_for_unknown_indirect_object() -> None:
@@ -77,7 +77,7 @@ def test_wave655_resolve_dict_entry_returns_none_for_unknown_indirect_object() -
         missing = doc.get_object_from_pool(COSObjectKey(9, 0))
         container.set_item(COSName.ENCRYPT, missing)
 
-        assert parser._resolve_dict_entry(container, COSName.ENCRYPT) is None  # noqa: SLF001
+        assert parser._resolve_dict_entry(container, COSName.ENCRYPT) is None
     finally:
         doc.close()
 
@@ -89,15 +89,15 @@ def test_wave655_recover_xref_offset_keeps_original_when_search_misses() -> None
             return 2
 
     parser = _parser(b"not xref")
-    parser._cos_parser = Searcher()  # type: ignore[assignment]  # noqa: SLF001
+    parser._cos_parser = Searcher()  # type: ignore[assignment]
 
-    assert parser._recover_xref_offset_if_needed(0) == 0  # noqa: SLF001
+    assert parser._recover_xref_offset_if_needed(0) == 0
 
 
 def test_wave655_xref_shape_check_rejects_indirect_without_obj_keyword() -> None:
     parser, doc = _ready_parser(b"1 0 nope")
     try:
-        assert parser._xref_section_starts_at(0) is False  # noqa: SLF001
+        assert parser._xref_section_starts_at(0) is False
     finally:
         doc.close()
 
@@ -106,7 +106,7 @@ def test_wave655_xref_stream_rejects_stream_like_wrong_keyword() -> None:
     parser, doc = _ready_parser(b"1 0 obj << /Type /XRef /Length 0 >> stuff")
     try:
         with pytest.raises(PDFParseError, match="expected 'stream'"):
-            parser._handle_xref_stream_at(0)  # noqa: SLF001
+            parser._handle_xref_stream_at(0)
     finally:
         doc.close()
 
@@ -114,7 +114,7 @@ def test_wave655_xref_stream_rejects_stream_like_wrong_keyword() -> None:
 def test_wave655_decode_xref_stream_rejects_missing_w_and_bad_index_entries() -> None:
     parser = _parser()
     with pytest.raises(PDFParseError, match="/W"):
-        parser._decode_xref_stream_entries(COSStream())  # noqa: SLF001
+        parser._decode_xref_stream_entries(COSStream())
 
     stream = COSStream()
     stream.set_item("W", COSArray([COSInteger.get(1), COSInteger.get(1), COSInteger.get(1)]))
@@ -122,17 +122,17 @@ def test_wave655_decode_xref_stream_rejects_missing_w_and_bad_index_entries() ->
     stream.set_raw_data(b"\x01\x00\x00")
 
     with pytest.raises(PDFParseError, match="/Index entries"):
-        parser._decode_xref_stream_entries(stream)  # noqa: SLF001
+        parser._decode_xref_stream_entries(stream)
 
 
 def test_wave655_traditional_xref_rejects_bad_keywords_and_eof() -> None:
     parser = _parser(b"notxref")
     with pytest.raises(PDFParseError, match="expected 'xref'"):
-        parser._parse_traditional_xref_section()  # noqa: SLF001
+        parser._parse_traditional_xref_section()
 
     parser = _parser(b"xref\n")
     with pytest.raises(PDFParseError, match="unexpected EOF"):
-        parser._parse_traditional_xref_section()  # noqa: SLF001
+        parser._parse_traditional_xref_section()
 
     # A keyword that is present but not exactly 'trailer' is a hard error only
     # in STRICT mode; lenient mode recovers (the trailer is rebuilt by the
@@ -141,7 +141,7 @@ def test_wave655_traditional_xref_rejects_bad_keywords_and_eof() -> None:
     parser.set_lenient(False)
     try:
         with pytest.raises(PDFParseError, match="expected 'trailer'"):
-            parser._parse_traditional_xref_section()  # noqa: SLF001
+            parser._parse_traditional_xref_section()
     finally:
         doc.close()
 
@@ -154,7 +154,7 @@ def test_wave655_compressed_loader_rejects_non_stream_object_stream() -> None:
         target = doc.get_object_from_pool(COSObjectKey(8, 0))
 
         with pytest.raises(PDFParseError, match="not a stream"):
-            parser._load_compressed_object(7, 0, target)  # noqa: SLF001
+            parser._load_compressed_object(7, 0, target)
     finally:
         doc.close()
 
@@ -164,7 +164,7 @@ def test_wave655_indirect_loader_rejects_bad_object_and_end_markers() -> None:
     try:
         obj = doc.get_object_from_pool(COSObjectKey(1, 0))
         with pytest.raises(PDFParseError, match="expected 'obj'"):
-            parser._load_indirect_object_at(0, obj)  # noqa: SLF001
+            parser._load_indirect_object_at(0, obj)
     finally:
         doc.close()
 
@@ -175,7 +175,7 @@ def test_wave655_indirect_loader_rejects_bad_object_and_end_markers() -> None:
     try:
         obj = doc.get_object_from_pool(COSObjectKey(1, 0))
         with pytest.raises(PDFParseError, match="does not end with 'endobj'"):
-            parser._load_indirect_object_at(0, obj)  # noqa: SLF001
+            parser._load_indirect_object_at(0, obj)
     finally:
         doc.close()
 
@@ -184,7 +184,7 @@ def test_wave655_indirect_loader_rejects_bad_object_and_end_markers() -> None:
     try:
         obj = doc.get_object_from_pool(COSObjectKey(1, 0))
         with pytest.raises(PDFParseError, match="does not end with 'endobj'"):
-            parser._load_indirect_object_at(0, obj)  # noqa: SLF001
+            parser._load_indirect_object_at(0, obj)
     finally:
         doc.close()
 
@@ -195,7 +195,7 @@ def test_wave655_indirect_loader_lenient_warns_on_wrong_endobj() -> None:
     parser, doc = _ready_parser(b"1 0 obj 42 nope")
     try:
         obj = doc.get_object_from_pool(COSObjectKey(1, 0))
-        result = parser._load_indirect_object_at(0, obj)  # noqa: SLF001
+        result = parser._load_indirect_object_at(0, obj)
         assert isinstance(result, COSInteger)
         assert result.value == 42
     finally:
@@ -208,12 +208,12 @@ def test_wave655_read_stream_body_rejects_truncated_body() -> None:
     stream.set_item(COSName.LENGTH, COSInteger.get(3))
 
     with pytest.raises(PDFParseError, match="stream body truncated"):
-        parser._read_stream_body(stream)  # noqa: SLF001
+        parser._read_stream_body(stream)
 
 
 def test_wave655_populate_document_skips_free_xref_entries() -> None:
     parser = _parser()
-    doc = parser._document = COSDocument()  # noqa: SLF001
+    doc = parser._document = COSDocument()
     try:
         resolver = parser.get_xref_trailer_resolver()
         resolver.begin_section(0)

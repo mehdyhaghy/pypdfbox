@@ -44,7 +44,7 @@ class _FakeResources:
     def __init__(self, xobject: object | None) -> None:
         self._xo = xobject
 
-    def get_x_object(self, name):  # noqa: ANN001
+    def get_x_object(self, name):
         return self._xo
 
 
@@ -62,7 +62,7 @@ class _FakeContext:
         self.increase_calls = 0
         self.decrease_calls = 0
 
-    def get_resources(self):  # noqa: ANN201
+    def get_resources(self):
         return self._resources
 
     def draw_image(self, image: object) -> None:

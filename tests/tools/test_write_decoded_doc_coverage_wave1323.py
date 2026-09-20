@@ -227,7 +227,6 @@ def test_process_object_oserror_without_get_key_uses_placeholder(
 
         # Need this so isinstance(base, COSStream) is True after
         # process_object's unwrap step.
-        pass
 
     inner = _OSErrorStream()
     inner.set_item(COSName.FILTER, COSName.FLATE_DECODE)

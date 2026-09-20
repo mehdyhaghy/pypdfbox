@@ -190,10 +190,10 @@ def test_wave404_merge_helpers_install_missing_catalog_arrays_and_dicts() -> Non
 
     util = PDFMergerUtility()
     cloner = _IdentityCloner()
-    util._merge_threads(cloner, src_catalog, dest_catalog)  # noqa: SLF001
-    util._merge_names(cloner, src_catalog, dest_catalog)  # noqa: SLF001
-    util._merge_oc_properties(cloner, src_catalog, dest_catalog)  # noqa: SLF001
-    util._merge_output_intents(cloner, src_catalog, dest_catalog)  # noqa: SLF001
+    util._merge_threads(cloner, src_catalog, dest_catalog)
+    util._merge_names(cloner, src_catalog, dest_catalog)
+    util._merge_oc_properties(cloner, src_catalog, dest_catalog)
+    util._merge_output_intents(cloner, src_catalog, dest_catalog)
 
     merged = dest_catalog.get_cos_object()
     assert merged.get_dictionary_object(_THREADS) is threads
@@ -219,7 +219,7 @@ def test_wave404_metadata_is_copied_only_when_destination_is_missing() -> None:
 
     destination = _make_doc(0)
     try:
-        PDFMergerUtility()._merge_metadata(  # noqa: SLF001
+        PDFMergerUtility()._merge_metadata(
             _IdentityCloner(), src_catalog, dest_catalog, destination
         )
     finally:

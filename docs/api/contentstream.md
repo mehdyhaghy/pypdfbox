@@ -64,7 +64,7 @@ class FontCounter(PDFStreamEngine):
             self.fonts.add(font_name)
         super().process_operator(operator, operands)
 
-with Loader.load_pdf("in.pdf") as doc:
+with Loader.load_pdf("input.pdf") as doc:
     engine = FontCounter()
     for page in doc.get_pages():
         engine.process_page(page)

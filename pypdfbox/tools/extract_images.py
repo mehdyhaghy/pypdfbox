@@ -77,7 +77,7 @@ def _is_device_gray(pd_image: Any) -> bool:
 
 
 @contextlib.contextmanager
-def _open_doc(infile, password):  # noqa: ANN001
+def _open_doc(infile, password):
     """Open ``infile`` and yield a :class:`PDDocument`. See
     :func:`pypdfbox.tools.extract_text._open_doc`."""
     result = Loader.load_pdf(infile, password)
@@ -152,7 +152,7 @@ class ImageGraphicsEngine(PDFGraphicsStreamEngine):
         self.write2file(pd_image, name, self._outer.use_direct_jpeg, self._outer.no_color_convert)
 
     # --- empty overrides (mirror upstream "Empty: ..." stubs) ----------
-    def append_rectangle(self, p0, p1, p2, p3) -> None: ...  # noqa: ANN001,E704
+    def append_rectangle(self, p0, p1, p2, p3) -> None: ...
     def clip(self, winding_rule: int) -> None: ...  # noqa: E704
     def move_to(self, x: float, y: float) -> None: ...  # noqa: E704
     def line_to(self, x: float, y: float) -> None: ...  # noqa: E704
@@ -167,7 +167,7 @@ class ImageGraphicsEngine(PDFGraphicsStreamEngine):
     def end_path(self) -> None: ...  # noqa: E704
     def shading_fill(self, shading_name: COSName) -> None: ...  # noqa: E704
 
-    def show_glyph(self, text_rendering_matrix, font, code: int, displacement) -> None:  # noqa: ANN001
+    def show_glyph(self, text_rendering_matrix, font, code: int, displacement) -> None:
         try:
             state = self.get_graphics_state()
             rm = state.get_text_state().get_rendering_mode()

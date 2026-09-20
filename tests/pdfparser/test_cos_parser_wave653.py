@@ -83,8 +83,8 @@ def test_wave653_peek_two_bytes_handles_eof_and_single_remaining_byte() -> None:
     empty = _parser(b"")
     single = _parser(b"X")
 
-    assert empty._peek_two_bytes() == (-1, -1)  # noqa: SLF001
-    assert single._peek_two_bytes() == (ord("X"), -1)  # noqa: SLF001
+    assert empty._peek_two_bytes() == (-1, -1)
+    assert single._peek_two_bytes() == (ord("X"), -1)
     assert single.position == 0
 
 
@@ -105,7 +105,7 @@ def test_wave653_read_all_bytes_stops_when_source_ends_before_reported_length() 
     parser = COSParser(_ShortLengthBuffer(b"abc"))
     parser.seek(2)
 
-    assert parser._read_all_bytes() == b"abc"  # noqa: SLF001
+    assert parser._read_all_bytes() == b"abc"
     assert parser.position == 2
 
 
@@ -151,7 +151,7 @@ def test_wave653_build_stream_from_dict_preserves_entries_without_document() -> 
     src = COSDictionary()
     src.set_item("Length", COSInteger.get(0))
 
-    stream = _parser(b"")._build_stream_from_dict(src)  # noqa: SLF001
+    stream = _parser(b"")._build_stream_from_dict(src)
 
     assert isinstance(stream, COSStream)
     assert stream.get_int("Length") == 0

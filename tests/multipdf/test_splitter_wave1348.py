@@ -343,7 +343,7 @@ def test_stage_link_destination_get_page_raises_is_tolerated() -> None:
     link_dict.set_item(COSName.get_pdf_name("Dest"), COSString("BoomDest"))
     link = PDAnnotationLink(link_dict)
 
-    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: E501
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (
         PDPageDestination,
     )
 
@@ -479,7 +479,7 @@ def test_clone_structure_tree_walks_annotation_struct_parent() -> None:
         PDStructureElement,
         PDStructureTreeRoot,
     )
-    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_tree_root import (  # noqa: E501
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_tree_root import (
         PDStructureElementNumberTreeNode,
     )
 
@@ -553,25 +553,25 @@ def test_split_with_non_dict_entry_in_source_annots_array() -> None:
     # (a stray COSName) to the source /Annots array. The cloned page's
     # /Annots starts at index 0 with the markup, so the source-side walk
     # has to skip past index 0 (the COSName) without crashing.
-    from pypdfbox.cos import COSName as _N
+    from pypdfbox.cos import COSName
 
     markup = COSDictionary()
-    markup.set_item(_N.get_pdf_name("Type"), _N.get_pdf_name("Annot"))
-    markup.set_item(_N.get_pdf_name("Subtype"), _N.get_pdf_name("Text"))
-    markup.set_item(_N.get_pdf_name("P"), page.get_cos_object())
+    markup.set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("Annot"))
+    markup.set_item(COSName.get_pdf_name("Subtype"), COSName.get_pdf_name("Text"))
+    markup.set_item(COSName.get_pdf_name("P"), page.get_cos_object())
     popup = COSDictionary()
-    popup.set_item(_N.get_pdf_name("Type"), _N.get_pdf_name("Annot"))
-    popup.set_item(_N.get_pdf_name("Subtype"), _N.get_pdf_name("Popup"))
-    popup.set_item(_N.get_pdf_name("P"), page.get_cos_object())
-    popup.set_item(_N.get_pdf_name("Parent"), markup)
-    markup.set_item(_N.get_pdf_name("Popup"), popup)
+    popup.set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("Annot"))
+    popup.set_item(COSName.get_pdf_name("Subtype"), COSName.get_pdf_name("Popup"))
+    popup.set_item(COSName.get_pdf_name("P"), page.get_cos_object())
+    popup.set_item(COSName.get_pdf_name("Parent"), markup)
+    markup.set_item(COSName.get_pdf_name("Popup"), popup)
 
     arr = COSArray()
     # Prepend a stray name (non-dict). Annotation iteration skips it.
-    arr.add(_N.get_pdf_name("Junk"))
+    arr.add(COSName.get_pdf_name("Junk"))
     arr.add(markup)
     arr.add(popup)
-    page.get_cos_object().set_item(_N.get_pdf_name("Annots"), arr)
+    page.get_cos_object().set_item(COSName.get_pdf_name("Annots"), arr)
 
     chunks = Splitter().split(src)
     assert len(chunks) == 1
@@ -588,7 +588,7 @@ def test_clone_structure_tree_walks_annotation_appearance_resources() -> None:
         PDStructureElement,
         PDStructureTreeRoot,
     )
-    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_tree_root import (  # noqa: E501
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_tree_root import (
         PDStructureElementNumberTreeNode,
     )
 
@@ -655,7 +655,7 @@ def test_clone_structure_tree_appearance_get_resources_raises() -> None:
         PDStructureElement,
         PDStructureTreeRoot,
     )
-    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_tree_root import (  # noqa: E501
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_tree_root import (
         PDStructureElementNumberTreeNode,
     )
     from pypdfbox.pdmodel.interactive.annotation.pd_annotation import (

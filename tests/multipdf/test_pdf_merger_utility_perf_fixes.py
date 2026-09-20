@@ -167,7 +167,7 @@ def _run_tagged_merge(source_bytes: bytes, appends: int, disable_cache: bool):
     m = PDFMergerUtility()
     if disable_cache:
         # Neutralise the cache -> force a fresh flatten on every append.
-        m._cached_dest_parent_tree_map = (  # type: ignore[method-assign]  # noqa: SLF001
+        m._cached_dest_parent_tree_map = (  # type: ignore[method-assign]
             lambda st, pt: PDFMergerUtility.get_number_tree_as_map(pt)
         )
     dest = PDDocument.load(source_bytes)
@@ -216,12 +216,12 @@ def test_fix2_cache_keyed_by_struct_root_identity() -> None:
     if data is None:
         pytest.skip("no bundled tagged PDF with a /ParentTree available")
     m = PDFMergerUtility()
-    assert m._parent_tree_map_cache is None  # noqa: SLF001
+    assert m._parent_tree_map_cache is None
     dest = PDDocument.load(data)
     src = PDDocument.load(data)
     m.append_document(dest, src)
     src.close()
-    cache = m._parent_tree_map_cache  # noqa: SLF001
+    cache = m._parent_tree_map_cache
     assert cache is not None
     root_cos = dest.get_document_catalog().get_struct_tree_root().get_cos_object()
     # cache key is the destination StructTreeRoot COS object identity.
@@ -238,10 +238,10 @@ def test_fix3_memo_digest_matches_unmemoized() -> None:
     d = COSDictionary()
     d.set_item(_n("BaseFont"), _n("Helvetica"))
     d.set_item(_n("Subtype"), _n("Type1"))
-    plain = PDFMergerUtility._canonical_resource_hash(d)  # noqa: SLF001
+    plain = PDFMergerUtility._canonical_resource_hash(d)
     memo: dict[int, bytes | None] = {}
-    first = PDFMergerUtility._canonical_resource_hash(d, memo)  # noqa: SLF001
-    second = PDFMergerUtility._canonical_resource_hash(d, memo)  # noqa: SLF001
+    first = PDFMergerUtility._canonical_resource_hash(d, memo)
+    second = PDFMergerUtility._canonical_resource_hash(d, memo)
     assert plain == first == second
     assert id(d) in memo
 
@@ -252,12 +252,12 @@ def test_fix3_memo_caches_unhashable_as_none() -> None:
     arr.add(cyc)
     cyc.set_item(_n("Self"), arr)  # cycle -> unhashable
     memo: dict[int, bytes | None] = {}
-    result = PDFMergerUtility._canonical_resource_hash(cyc, memo)  # noqa: SLF001
+    result = PDFMergerUtility._canonical_resource_hash(cyc, memo)
     assert result is None
     assert id(cyc) in memo
     assert memo[id(cyc)] is None
     # a second call is served from the memo and still returns None
-    assert PDFMergerUtility._canonical_resource_hash(cyc, memo) is None  # noqa: SLF001
+    assert PDFMergerUtility._canonical_resource_hash(cyc, memo) is None
 
 
 def _optimize_source_bytes() -> bytes:

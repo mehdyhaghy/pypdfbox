@@ -28,7 +28,7 @@ def test_type3_make_doc_removes_existing_page_before_adding_new_one(
 ) -> None:
     monkeypatch.setattr(type3_font, "PDDocument", _DocWithExistingPage)
 
-    doc, page = type3_font._make_doc(21.0, 23.0)  # noqa: SLF001
+    doc, page = type3_font._make_doc(21.0, 23.0)
 
     assert isinstance(doc, _DocWithExistingPage)
     assert doc.removed_indices == [0]

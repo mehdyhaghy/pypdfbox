@@ -178,7 +178,7 @@ def test_state0_and_6_and_14_share_qe_5601():
 def test_nmps_is_monotone_nondecreasing_in_index_region():
     # NMPS climbs the table toward the more-skewed states; never points backward
     # except the terminal/clamped rows (45 -> 45, 46 -> 46).
-    for i in range(0, 44):
+    for i in range(44):
         assert QE[i][1] >= i  # NMPS moves to a >= index (more skewed) or stays
 
 

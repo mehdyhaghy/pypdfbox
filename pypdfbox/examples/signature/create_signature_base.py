@@ -61,7 +61,7 @@ class CreateSignatureBase(SignatureInterface):
         self._external_signing: bool = False
 
     # ----- properties --------------------------------------------------
-    def set_private_key(self, private_key) -> None:  # noqa: ANN001
+    def set_private_key(self, private_key) -> None:
         self._private_key = private_key
 
     def set_certificate_chain(self, chain: Sequence[x509.Certificate]) -> None:

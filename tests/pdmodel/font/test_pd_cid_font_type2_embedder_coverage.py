@@ -116,7 +116,7 @@ def test_constructor_full_embed_attaches_descendant_fonts_array(
     descendants = dict_.get_item(COSName.get_pdf_name("DescendantFonts"))
     assert isinstance(descendants, COSArray)
     assert len(descendants) == 1
-    assert descendants[0] is embedder._cid_font  # noqa: SLF001 — internal cross-check
+    assert descendants[0] is embedder._cid_font
 
 
 def test_constructor_full_embed_writes_to_unicode_cmap(sans_ttf: TTFont) -> None:
@@ -136,7 +136,7 @@ def test_constructor_subset_skips_initial_to_unicode_cmap(sans_ttf: TTFont) -> N
 
 def test_descendant_cid_font_has_cidfonttype2_subtype(sans_ttf: TTFont) -> None:
     embedder, _dict, _doc, _parent = _new_embedder(sans_ttf)
-    cid_font = embedder._cid_font  # noqa: SLF001
+    cid_font = embedder._cid_font
     assert cid_font.get_name("Subtype") == "CIDFontType2"
 
 
@@ -144,7 +144,7 @@ def test_descendant_cid_font_has_adobe_identity_cidsysteminfo(
     sans_ttf: TTFont,
 ) -> None:
     embedder, _dict, _doc, _parent = _new_embedder(sans_ttf)
-    cid_font = embedder._cid_font  # noqa: SLF001
+    cid_font = embedder._cid_font
     info = cid_font.get_item(COSName.get_pdf_name("CIDSystemInfo"))
     assert isinstance(info, COSDictionary)
     assert info.get_string(COSName.get_pdf_name("Registry")) == "Adobe"
@@ -156,13 +156,13 @@ def test_descendant_cid_font_full_embed_uses_identity_cid_to_gid_map(
     sans_ttf: TTFont,
 ) -> None:
     embedder, _dict, _doc, _parent = _new_embedder(sans_ttf)
-    cid_font = embedder._cid_font  # noqa: SLF001
+    cid_font = embedder._cid_font
     assert cid_font.get_name("CIDToGIDMap") == "Identity"
 
 
 def test_descendant_cid_font_full_embed_has_widths(sans_ttf: TTFont) -> None:
     embedder, _dict, _doc, _parent = _new_embedder(sans_ttf)
-    widths = embedder._cid_font.get_item(COSName.get_pdf_name("W"))  # noqa: SLF001
+    widths = embedder._cid_font.get_item(COSName.get_pdf_name("W"))
     assert isinstance(widths, COSArray)
     assert len(widths) >= 2  # at least one (cid, [w]) pair
 
@@ -185,7 +185,7 @@ def test_build_subset_replaces_cid_to_gid_map_with_stream(sans_ttf: TTFont) -> N
     sans_ttf.save(buf)
     buf.seek(0)
     embedder.build_subset(buf, "ABCDEF", {1: 1, 2: 2, 3: 3})
-    cid_to_gid_map = embedder._cid_font.get_item(  # noqa: SLF001
+    cid_to_gid_map = embedder._cid_font.get_item(
         COSName.get_pdf_name("CIDToGIDMap")
     )
     # Once a subset is built, CIDToGIDMap is a stream (not Identity).
@@ -229,7 +229,7 @@ def test_build_subset_writes_cid_set_on_descriptor(sans_ttf: TTFont) -> None:
 def test_build_widths_for_subset_emits_W_array(sans_ttf: TTFont) -> None:
     embedder, _dict, _doc, _parent = _new_embedder(sans_ttf, embed_subset=True)
     embedder.build_widths({1: 1, 2: 2, 3: 3, 100: 100})
-    widths = embedder._cid_font.get_item(COSName.get_pdf_name("W"))  # noqa: SLF001
+    widths = embedder._cid_font.get_item(COSName.get_pdf_name("W"))
     assert isinstance(widths, COSArray)
 
 
@@ -246,7 +246,7 @@ def test_build_widths_dispatch_to_full_for_cos_dict(sans_ttf: TTFont) -> None:
 def test_build_cid_to_gid_map_writes_stream(sans_ttf: TTFont) -> None:
     embedder, _dict, _doc, _parent = _new_embedder(sans_ttf, embed_subset=True)
     embedder.build_cid_to_gid_map({1: 7, 2: 9, 5: 42})
-    stream = embedder._cid_font.get_item(  # noqa: SLF001
+    stream = embedder._cid_font.get_item(
         COSName.get_pdf_name("CIDToGIDMap")
     )
     assert stream is not None
@@ -287,7 +287,7 @@ def test_add_name_tag_prefixes_base_font_and_descriptor(sans_ttf: TTFont) -> Non
     embedder.add_name_tag("ZZZZZZ+")
     assert dict_.get_name("BaseFont").startswith("ZZZZZZ+")
     assert embedder.font_descriptor.get_font_name().startswith("ZZZZZZ+")
-    assert embedder._cid_font.get_name("BaseFont").startswith("ZZZZZZ+")  # noqa: SLF001
+    assert embedder._cid_font.get_name("BaseFont").startswith("ZZZZZZ+")
 
 
 # --- to_cid_system_info / get_widths / get_vertical_metrics --------------
@@ -330,7 +330,7 @@ def test_get_widths_with_no_head_table_uses_unit_scaling(
         def __getitem__(self, name: str) -> Any:
             raise KeyError(name)
 
-    embedder._ttf = _StubTTF()  # noqa: SLF001
+    embedder._ttf = _StubTTF()
     arr = embedder.get_widths([10, 250, 11, 300, 12, 350])
     py = _cos_to_python(arr)
     assert py == [10, [250, 300, 350]]
@@ -346,7 +346,7 @@ def test_get_vertical_metrics_with_no_head_table_uses_unit_scaling(
         def __getitem__(self, name: str) -> Any:
             raise KeyError(name)
 
-    embedder._ttf = _StubTTF()  # noqa: SLF001
+    embedder._ttf = _StubTTF()
     arr = embedder.get_vertical_metrics([1, 500, 2, 500, 3, 500])
     py = _cos_to_python(arr)
     assert py == [1, 3, 500]
@@ -399,7 +399,7 @@ def test_create_cid_font_returns_fresh_dictionary(sans_ttf: TTFont) -> None:
     snapshot the original reference before the rebuild and compare.
     """
     embedder, _dict, _doc, _parent = _new_embedder(sans_ttf, embed_subset=True)
-    first = embedder._cid_font  # noqa: SLF001 — snapshot before rebuild
+    first = embedder._cid_font
     second = embedder.create_cid_font()
     assert isinstance(second, COSDictionary)
     # Each call builds a fresh dict; the public alias is not memoised.
@@ -502,7 +502,7 @@ def test_check_for_cid_gid_identity_with_cff_no_charset(sans_ttf: TTFont) -> Non
     class _StubCFF:
         cff = type("_Inner", (), {"charset": None})()
 
-    real_get = embedder._ttf.__getitem__  # noqa: SLF001
+    real_get = embedder._ttf.__getitem__
 
     class _Proxy:
         def __getitem__(self, name: str) -> Any:
@@ -510,7 +510,7 @@ def test_check_for_cid_gid_identity_with_cff_no_charset(sans_ttf: TTFont) -> Non
                 return _StubCFF()
             return real_get(name)
 
-    embedder._ttf = _Proxy()  # noqa: SLF001
+    embedder._ttf = _Proxy()
     embedder.check_for_cid_gid_identity()
 
 
@@ -532,7 +532,7 @@ def test_check_for_cid_gid_identity_raises_on_mismatch(sans_ttf: TTFont) -> None
                 return _Maxp()
             raise KeyError(name)
 
-    embedder._ttf = _Proxy()  # noqa: SLF001
+    embedder._ttf = _Proxy()
     with pytest.raises(RuntimeError, match="CID and GID not identical"):
         embedder.check_for_cid_gid_identity()
 
@@ -561,7 +561,7 @@ def test_check_for_cid_gid_identity_charset_bad_index_no_raise(
                 return _Maxp()
             raise KeyError(name)
 
-    embedder._ttf = _Proxy()  # noqa: SLF001
+    embedder._ttf = _Proxy()
     embedder.check_for_cid_gid_identity()
 
 
@@ -584,7 +584,7 @@ def test_build_vertical_header_writes_w2_when_vhea_present(sans_ttf: TTFont) -> 
         def __getitem__(self, name: str) -> Any:
             return type("_G", (), {"yMax": 800})()
 
-    real_get = embedder._ttf.__getitem__  # noqa: SLF001
+    real_get = embedder._ttf.__getitem__
 
     class _Proxy:
         def __getitem__(self, name: str) -> Any:
@@ -596,7 +596,7 @@ def test_build_vertical_header_writes_w2_when_vhea_present(sans_ttf: TTFont) -> 
                 return _Glyf()
             return real_get(name)
 
-    embedder._ttf = _Proxy()  # noqa: SLF001
+    embedder._ttf = _Proxy()
     cid_font = COSDictionary()
     result = embedder.build_vertical_header(cid_font)
     assert result is True
@@ -623,7 +623,7 @@ def test_build_vertical_metrics_full_writes_w2_for_all_glyphs(
     class _Maxp:
         numGlyphs = 4
 
-    real_get = embedder._ttf.__getitem__  # noqa: SLF001
+    real_get = embedder._ttf.__getitem__
 
     class _Proxy:
         def __getitem__(self, name: str) -> Any:
@@ -637,12 +637,12 @@ def test_build_vertical_metrics_full_writes_w2_for_all_glyphs(
                 return _Maxp()
             return real_get(name)
 
-    embedder._ttf = _Proxy()  # noqa: SLF001
+    embedder._ttf = _Proxy()
     cid_font = COSDictionary()
-    embedder._build_vertical_metrics_full(cid_font)  # noqa: SLF001
+    embedder._build_vertical_metrics_full(cid_font)
     # ``/W2`` is written on the *embedder*'s descendant dict, not the
     # locally passed cid_font (delegation collapses to subset signature).
-    w2 = embedder._cid_font.get_item(COSName.get_pdf_name("W2"))  # noqa: SLF001
+    w2 = embedder._cid_font.get_item(COSName.get_pdf_name("W2"))
     assert w2 is not None
 
 
@@ -679,9 +679,9 @@ def test_build_widths_full_missing_head_returns_early(sans_ttf: TTFont) -> None:
         def __getitem__(self, name: str) -> Any:
             raise KeyError(name)
 
-    embedder._ttf = _StubTTF()  # noqa: SLF001
+    embedder._ttf = _StubTTF()
     cid_font = COSDictionary()
-    embedder._build_widths_full(cid_font)  # noqa: SLF001
+    embedder._build_widths_full(cid_font)
     assert cid_font.get_item(COSName.get_pdf_name("W")) is None
 
 
@@ -695,9 +695,9 @@ def test_build_widths_for_subset_missing_head_returns_early(
         def __getitem__(self, name: str) -> Any:
             raise KeyError(name)
 
-    embedder._ttf = _StubTTF()  # noqa: SLF001
+    embedder._ttf = _StubTTF()
     # Should be a silent no-op (no /W mutation, no exception).
-    embedder._build_widths_for_subset({1: 1, 2: 2})  # noqa: SLF001
+    embedder._build_widths_for_subset({1: 1, 2: 2})
 
 
 # --- _get_unicode_cmap_reverse fallback ----------------------------------
@@ -713,8 +713,8 @@ def test_get_unicode_cmap_reverse_returns_empty_when_no_cmap(
         def __getitem__(self, name: str) -> Any:
             raise KeyError(name)
 
-    embedder._ttf = _StubTTF()  # noqa: SLF001
-    result = embedder._get_unicode_cmap_reverse()  # noqa: SLF001
+    embedder._ttf = _StubTTF()
+    result = embedder._get_unicode_cmap_reverse()
     assert result == {}
 
 

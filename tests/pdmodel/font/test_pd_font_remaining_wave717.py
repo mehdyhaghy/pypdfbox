@@ -86,7 +86,7 @@ class _ZeroAdvanceTTF:
 
 
 class _MissingGlyphNameTable:
-    def getGlyphName(self, _gid: int) -> str:  # noqa: N802 - fontTools API
+    def getGlyphName(self, _gid: int) -> str:
         raise KeyError("missing")
 
 

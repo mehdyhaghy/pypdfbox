@@ -26,7 +26,7 @@ class _TypedFontPage:
 def test_get_font_for_accepts_typed_resource_cache_entries() -> None:
     font = PDType1Font()
     stripper = PDFTextStripper()
-    stripper._active_page = cast(Any, _TypedFontPage(_TypedFontResources(font)))
+    stripper._active_page = cast("Any", _TypedFontPage(_TypedFontResources(font)))
 
     assert stripper._get_font_for("F1") is font
     assert stripper._get_font_for("F1") is font
@@ -35,7 +35,7 @@ def test_get_font_for_accepts_typed_resource_cache_entries() -> None:
 def test_get_cmap_for_font_accepts_typed_resource_cache_entries() -> None:
     font = PDType1Font()
     stripper = PDFTextStripper()
-    stripper._active_page = cast(Any, _TypedFontPage(_TypedFontResources(font)))
+    stripper._active_page = cast("Any", _TypedFontPage(_TypedFontResources(font)))
 
     assert stripper._get_cmap_for_font("F1") is None
     assert "F1" in stripper._cmap_cache

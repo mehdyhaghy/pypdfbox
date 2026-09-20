@@ -218,7 +218,7 @@ def test_class_map_wraps_existing_cos_dictionary_with_array_entry() -> None:
 
     cm = PDStructureClassMap(raw_dict)
     defs = cm.get_class_definitions()
-    assert list(defs["Multi"][i].get_owner() for i in range(2)) == ["Layout", "List"]
+    assert [defs["Multi"][i].get_owner() for i in range(2)] == ["Layout", "List"]
 
 
 def test_class_map_skips_non_dictionary_array_entries() -> None:

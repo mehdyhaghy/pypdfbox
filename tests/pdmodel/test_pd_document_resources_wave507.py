@@ -61,7 +61,7 @@ def test_wave507_deep_copy_breaks_cycles_and_preserves_scalar_instances() -> Non
     parent.set_item(COSName.get_pdf_name("Marker"), marker)
     child.add(parent)
 
-    copied = doc._deep_copy_cos(parent, set())  # noqa: SLF001
+    copied = doc._deep_copy_cos(parent, set())
 
     copied_child = copied.get_dictionary_object(COSName.get_pdf_name("Child"))
     assert isinstance(copied_child, COSArray)
@@ -72,27 +72,27 @@ def test_wave507_deep_copy_breaks_cycles_and_preserves_scalar_instances() -> Non
 
 def test_wave507_signature_helpers_splice_extract_and_write_to_random_access() -> None:
     buffer = bytearray(b"abc000000def")
-    signed = PDDocument._splice_signature(buffer, (3, 9), b"\x01\xaf")  # noqa: SLF001
+    signed = PDDocument._splice_signature(buffer, (3, 9), b"\x01\xaf")
 
     assert signed == b"abc01AF00def"
-    assert PDDocument._extract_bracketed(signed, [0, 4, 9, 3]) == b"abc0def"  # noqa: SLF001
+    assert PDDocument._extract_bracketed(signed, [0, 4, 9, 3]) == b"abc0def"
 
     sink = _BufferWrite()
-    PDDocument._write_bytes_to_target(b"written", sink)  # noqa: SLF001
+    PDDocument._write_bytes_to_target(b"written", sink)
 
     assert bytes(sink.data) == b"written"
 
 
 def test_wave507_signature_splice_rejects_oversized_der() -> None:
     with pytest.raises(ValueError, match="larger than reserved"):
-        PDDocument._splice_signature(bytearray(b"0000"), (0, 4), b"\x00\x01\x02")  # noqa: SLF001
+        PDDocument._splice_signature(bytearray(b"0000"), (0, 4), b"\x00\x01\x02")
 
 
 def test_wave507_external_signing_support_is_single_use_and_clears_staging() -> None:
     doc = PDDocument()
-    doc._pending_signature = object()  # type: ignore[assignment]  # noqa: SLF001
-    doc._pending_signature_interface = object()  # type: ignore[assignment]  # noqa: SLF001
-    doc._pending_signature_options = object()  # noqa: SLF001
+    doc._pending_signature = object()  # type: ignore[assignment]
+    doc._pending_signature_interface = object()  # type: ignore[assignment]
+    doc._pending_signature_options = object()
     output = io.BytesIO()
     handle = ExternalSigningSupport(
         document=doc,

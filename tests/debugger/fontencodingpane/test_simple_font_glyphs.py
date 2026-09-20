@@ -34,7 +34,7 @@ def test_get_glyphs_returns_256_row_table(tk_root) -> None:
 
 def test_get_glyphs_underscore_alias_matches_public(tk_root) -> None:
     """The legacy ``_get_glyphs`` name should resolve to the promoted method."""
-    assert SimpleFont._get_glyphs is SimpleFont.get_glyphs  # noqa: SLF001
+    assert SimpleFont._get_glyphs is SimpleFont.get_glyphs
 
 
 def test_get_glyphs_first_row_is_code_zero(tk_root) -> None:

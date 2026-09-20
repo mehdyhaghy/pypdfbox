@@ -85,7 +85,7 @@ class _BlitRecorder:
     def install(self, rdr) -> None:
         recorder = self
 
-        def fake_paste(im, box=None, mask=None):  # noqa: ANN001
+        def fake_paste(im, box=None, mask=None):
             recorder.calls.append(
                 {
                     "image": im,
@@ -284,7 +284,7 @@ def test_paste_image_interpolate_selects_resample(
     captured = {}
     orig_resize = Image.Image.resize
 
-    def spy_resize(self, size, resample=None, *a, **k):  # noqa: ANN001
+    def spy_resize(self, size, resample=None, *a, **k):
         captured["resample"] = resample
         return orig_resize(self, size, resample, *a, **k)
 
@@ -324,7 +324,7 @@ def _stencil_capture(fill_rgb, sample_bytes, decode=None, width=4, height=4):
     captured = {}
     orig = rdr._paste_image
 
-    def spy(pil_image, interpolate=True):  # noqa: ANN001
+    def spy(pil_image, interpolate=True):
         captured["rgba"] = pil_image.copy()
         captured["interpolate"] = interpolate
 
@@ -412,7 +412,7 @@ def test_stencil_threads_interpolate_flag(interpolate_flag) -> None:
     doc, rdr = _renderer_with_canvas(60, 60)
     captured = {}
 
-    def spy(pil_image, interpolate=True):  # noqa: ANN001
+    def spy(pil_image, interpolate=True):
         captured["interpolate"] = interpolate
 
     rdr._paste_image = spy  # type: ignore[method-assign]
@@ -435,7 +435,7 @@ def test_stencil_reports_1bpc_even_with_bpc_set() -> None:
     doc, rdr = _renderer_with_canvas(60, 60)
     called = {"n": 0}
 
-    def spy(pil_image, interpolate=True):  # noqa: ANN001
+    def spy(pil_image, interpolate=True):
         called["n"] += 1
 
     rdr._paste_image = spy  # type: ignore[method-assign]
@@ -455,7 +455,7 @@ def test_stencil_zero_size_is_noop() -> None:
     doc, rdr = _renderer_with_canvas(60, 60)
     called = {"n": 0}
 
-    def spy(pil_image, interpolate=True):  # noqa: ANN001
+    def spy(pil_image, interpolate=True):
         called["n"] += 1
 
     rdr._paste_image = spy  # type: ignore[method-assign]

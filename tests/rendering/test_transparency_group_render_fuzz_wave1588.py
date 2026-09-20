@@ -91,7 +91,7 @@ class _ConstFn:
     def is_identity(self) -> bool:
         return False
 
-    def eval(self, inp: list[float]) -> list[float]:  # noqa: ARG002
+    def eval(self, inp: list[float]) -> list[float]:
         return [self._c]
 
 
@@ -295,7 +295,7 @@ def test_softmask_identity_transfer_treated_as_none() -> None:
         bbox_device=(0, 0),
         transfer_function=_IdentityFn(),
     )
-    assert sm._transfer_function is None  # noqa: SLF001
+    assert sm._transfer_function is None
 
 
 def test_softmask_zero_size_raster_returns_min_image() -> None:
@@ -359,49 +359,49 @@ def _ready_renderer(size: tuple[int, int] = (60, 60)) -> PDFRenderer:
     :meth:`_render_soft_mask_alpha` requires (an active canvas, a draw
     handle, a one-entry GS stack and resources). Mirrors the state the
     page-render loop establishes before any soft-mask is rasterised."""
-    from pypdfbox.rendering import _aggdraw_compat as aggdraw  # noqa: PLC0415
-    from pypdfbox.rendering.pdf_renderer import _GState  # noqa: PLC0415
+    from pypdfbox.rendering import _aggdraw_compat as aggdraw
+    from pypdfbox.rendering.pdf_renderer import _GState
 
     rdr = _renderer()
     img = Image.new("RGB", size, (255, 255, 255))
-    rdr._image = img  # noqa: SLF001
-    rdr._draw = aggdraw.Draw(img)  # noqa: SLF001
-    rdr._gs_stack = [_GState()]  # noqa: SLF001
-    rdr._resources = PDResources()  # noqa: SLF001
+    rdr._image = img
+    rdr._draw = aggdraw.Draw(img)
+    rdr._gs_stack = [_GState()]
+    rdr._resources = PDResources()
     return rdr
 
 
 def test_backdrop_rgb_default_black_when_absent() -> None:
     rdr = _renderer()
     sm = _smask("Luminosity", _group_form(b""))
-    assert rdr._soft_mask_backdrop_rgb(sm) == (0, 0, 0)  # noqa: SLF001
+    assert rdr._soft_mask_backdrop_rgb(sm) == (0, 0, 0)
 
 
 def test_backdrop_rgb_gray_single_component() -> None:
     rdr = _renderer()
     sm = _smask("Luminosity", _group_form(b""), bc=[1.0])
-    r, g, b = rdr._soft_mask_backdrop_rgb(sm)  # noqa: SLF001
+    r, g, b = rdr._soft_mask_backdrop_rgb(sm)
     assert r == g == b == 255
 
 
 def test_backdrop_rgb_three_component_white() -> None:
     rdr = _renderer()
     sm = _smask("Luminosity", _group_form(b""), bc=[1.0, 1.0, 1.0])
-    assert rdr._soft_mask_backdrop_rgb(sm) == (255, 255, 255)  # noqa: SLF001
+    assert rdr._soft_mask_backdrop_rgb(sm) == (255, 255, 255)
 
 
 def test_backdrop_rgb_cmyk_four_component() -> None:
     rdr = _renderer()
     # CMYK (0,0,0,0) -> white-ish.
     sm = _smask("Luminosity", _group_form(b""), bc=[0.0, 0.0, 0.0, 0.0])
-    r, g, b = rdr._soft_mask_backdrop_rgb(sm)  # noqa: SLF001
+    r, g, b = rdr._soft_mask_backdrop_rgb(sm)
     assert r > 200 and g > 200 and b > 200
 
 
 def test_backdrop_rgb_cmyk_full_black() -> None:
     rdr = _renderer()
     sm = _smask("Luminosity", _group_form(b""), bc=[0.0, 0.0, 0.0, 1.0])
-    r, g, b = rdr._soft_mask_backdrop_rgb(sm)  # noqa: SLF001
+    r, g, b = rdr._soft_mask_backdrop_rgb(sm)
     assert r < 40 and g < 40 and b < 40
 
 
@@ -412,7 +412,7 @@ def test_backdrop_rgb_cmyk_full_black() -> None:
 
 def test_render_soft_mask_alpha_none_for_non_softmask() -> None:
     rdr = _ready_renderer((60, 60))
-    assert rdr._render_soft_mask_alpha(object(), (10, 10)) is None  # noqa: SLF001
+    assert rdr._render_soft_mask_alpha(object(), (10, 10)) is None
 
 
 def test_render_soft_mask_alpha_none_for_missing_group() -> None:
@@ -421,7 +421,7 @@ def test_render_soft_mask_alpha_none_for_missing_group() -> None:
     d.set_item(COSName.get_pdf_name("S"), COSName.get_pdf_name("Alpha"))
     sm = PDSoftMask.create(d)
     assert sm is not None
-    assert rdr._render_soft_mask_alpha(sm, (10, 10)) is None  # noqa: SLF001
+    assert rdr._render_soft_mask_alpha(sm, (10, 10)) is None
 
 
 def test_render_soft_mask_alpha_alpha_subtype_returns_plane() -> None:
@@ -432,7 +432,7 @@ def test_render_soft_mask_alpha_alpha_subtype_returns_plane() -> None:
         b"1 1 1 rg\n10 10 20 20 re\nf\n", size=60.0
     )
     sm = _smask("Alpha", group)
-    plane = rdr._render_soft_mask_alpha(sm, (60, 60))  # noqa: SLF001
+    plane = rdr._render_soft_mask_alpha(sm, (60, 60))
     assert plane is not None
     assert plane.mode == "L"
     assert plane.size == (60, 60)
@@ -448,7 +448,7 @@ def test_render_soft_mask_alpha_luminosity_white_fill_opaque() -> None:
     rdr = _ready_renderer((60, 60))
     group = _group_form(b"1 1 1 rg\n0 0 60 60 re\nf\n", size=60.0)
     sm = _smask("Luminosity", group)
-    plane = rdr._render_soft_mask_alpha(sm, (60, 60))  # noqa: SLF001
+    plane = rdr._render_soft_mask_alpha(sm, (60, 60))
     assert plane is not None
     assert plane.getextrema()[1] > 200
 
@@ -459,7 +459,7 @@ def test_render_soft_mask_alpha_luminosity_black_fill_transparent() -> None:
     rdr = _ready_renderer((60, 60))
     group = _group_form(b"0 0 0 rg\n0 0 60 60 re\nf\n", size=60.0)
     sm = _smask("Luminosity", group)
-    plane = rdr._render_soft_mask_alpha(sm, (60, 60))  # noqa: SLF001
+    plane = rdr._render_soft_mask_alpha(sm, (60, 60))
     assert plane is not None
     assert plane.getextrema()[1] < 40
 
@@ -471,7 +471,7 @@ def test_render_soft_mask_alpha_empty_group_luminosity_zero() -> None:
     rdr = _ready_renderer((40, 40))
     group = _group_form(b"", size=40.0)
     sm = _smask("Luminosity", group, bc=[1.0, 1.0, 1.0])
-    plane = rdr._render_soft_mask_alpha(sm, (40, 40))  # noqa: SLF001
+    plane = rdr._render_soft_mask_alpha(sm, (40, 40))
     assert plane is not None
     assert plane.getextrema()[1] == 0
 
@@ -482,7 +482,7 @@ def test_render_soft_mask_alpha_tr_inversion_remaps() -> None:
     rdr = _ready_renderer((40, 40))
     group = _group_form(b"1 1 1 rg\n0 0 40 40 re\nf\n", size=40.0)
     # Type-2 exponential function acting as inversion: C0=[1], C1=[0], N=1.
-    from pypdfbox.cos import COSInteger  # noqa: PLC0415
+    from pypdfbox.cos import COSInteger
 
     tr = COSDictionary()
     tr.set_item(COSName.get_pdf_name("FunctionType"), COSInteger.get(2))
@@ -498,7 +498,7 @@ def test_render_soft_mask_alpha_tr_inversion_remaps() -> None:
     tr.set_item(COSName.get_pdf_name("C1"), c1)
     tr.set_item(COSName.get_pdf_name("N"), COSFloat(1.0))
     sm = _smask("Luminosity", group, tr=tr)
-    plane = rdr._render_soft_mask_alpha(sm, (40, 40))  # noqa: SLF001
+    plane = rdr._render_soft_mask_alpha(sm, (40, 40))
     assert plane is not None
     # white-fill luminance ~255 inverted -> ~0.
     assert plane.getextrema()[1] < 40
@@ -509,7 +509,7 @@ def test_render_soft_mask_alpha_identity_tr_no_remap() -> None:
     rdr = _ready_renderer((40, 40))
     group = _group_form(b"1 1 1 rg\n0 0 40 40 re\nf\n", size=40.0)
     sm = _smask("Luminosity", group, tr=COSName.get_pdf_name("Identity"))
-    plane = rdr._render_soft_mask_alpha(sm, (40, 40))  # noqa: SLF001
+    plane = rdr._render_soft_mask_alpha(sm, (40, 40))
     assert plane is not None
     assert plane.getextrema()[1] > 200
 
@@ -531,11 +531,11 @@ def _render_group_page(
     grp = form.get_group()
     if isolated:
         grp.set_item(COSName.get_pdf_name("I"), COSName.get_pdf_name("true"))
-        from pypdfbox.cos import COSBoolean  # noqa: PLC0415
+        from pypdfbox.cos import COSBoolean
 
         grp.set_item(COSName.get_pdf_name("I"), COSBoolean.TRUE)
     if knockout:
-        from pypdfbox.cos import COSBoolean  # noqa: PLC0415
+        from pypdfbox.cos import COSBoolean
 
         grp.set_item(COSName.get_pdf_name("K"), COSBoolean.TRUE)
     resources = PDResources()
@@ -620,7 +620,7 @@ def test_group_graphics_backdrop_removal_subtracts() -> None:
     gg = GroupGraphics(image=img)
     gg.set_background((50, 30, 10))
     gg.backdrop_removal()
-    px = gg._image.getpixel((0, 0))  # noqa: SLF001
+    px = gg._image.getpixel((0, 0))
     assert px == (150, 70, 40)
 
 
@@ -628,7 +628,7 @@ def test_group_graphics_backdrop_removal_no_background_noop() -> None:
     img = Image.new("RGB", (4, 4), (200, 100, 50))
     gg = GroupGraphics(image=img)
     gg.backdrop_removal()  # no background set -> no-op
-    assert gg._image.getpixel((0, 0)) == (200, 100, 50)  # noqa: SLF001
+    assert gg._image.getpixel((0, 0)) == (200, 100, 50)
 
 
 def test_group_graphics_clip_rect_intersection() -> None:

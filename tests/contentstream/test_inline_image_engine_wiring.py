@@ -60,7 +60,7 @@ class _RecordingGraphicsEngine(PDFGraphicsStreamEngine):
 
     # Path / paint hooks — not exercised here; provide no-ops so the
     # abstract method NotImplementedError never fires for the BI route.
-    def append_rectangle(self, p0, p1, p2, p3) -> None:  # noqa: ANN001, D401
+    def append_rectangle(self, p0, p1, p2, p3) -> None:
         return
 
     def draw_image(self, pd_image: Any) -> None:
@@ -127,7 +127,7 @@ def test_bi_id_ei_invokes_show_inline_image_with_pdinlineimage() -> None:
     width / height / colour-space / bytes, and forwards it to
     :meth:`show_inline_image`."""
     engine = _RecordingEngine()
-    engine._process_bytes(_INLINE_STREAM)  # noqa: SLF001 — test introspection
+    engine._process_bytes(_INLINE_STREAM)
     assert len(engine.inline_images) == 1
     image = engine.inline_images[0]
     assert isinstance(image, PDInlineImage)
@@ -146,7 +146,7 @@ def test_bi_id_ei_drives_draw_image_through_graphics_engine() -> None:
     delegating to :meth:`draw_image` — verify the subclass receives
     exactly one image with the expected geometry."""
     engine = _RecordingGraphicsEngine()
-    engine._process_bytes(_INLINE_STREAM)  # noqa: SLF001 — test introspection
+    engine._process_bytes(_INLINE_STREAM)
     assert len(engine.drawn) == 1
     image = engine.drawn[0]
     assert isinstance(image, PDInlineImage)
@@ -164,12 +164,12 @@ def test_inline_image_dispatch_passes_engine_resources() -> None:
 
     engine = _RecordingEngine()
     resources = PDResources()
-    engine._resources = resources  # noqa: SLF001 — test introspection
-    engine._process_bytes(_INLINE_STREAM)  # noqa: SLF001 — test introspection
+    engine._resources = resources
+    engine._process_bytes(_INLINE_STREAM)
     assert len(engine.inline_images) == 1
     # PDInlineImage stores resources in a private slot; access via the
     # public surface is deliberately limited, so peek under the hood.
-    assert engine.inline_images[0]._resources is resources  # noqa: SLF001
+    assert engine.inline_images[0]._resources is resources
 
 
 def test_bi_with_missing_data_does_not_raise() -> None:

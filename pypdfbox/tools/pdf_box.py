@@ -76,7 +76,7 @@ def _debug_class():
     callers can invoke ``pdfbox debug …`` from the CLI; the import error
     surfaces only when the command is actually executed.
     """
-    from pypdfbox.debugger.pd_debugger import PDFDebugger  # noqa: PLC0415
+    from pypdfbox.debugger.pd_debugger import PDFDebugger
 
     return PDFDebugger
 

@@ -24,16 +24,16 @@ def _make_doc(width: float = 12.0, height: float = 12.0) -> tuple[PDDocument, PD
 def _prepared_renderer(size: tuple[int, int] = (12, 12)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -57,15 +57,15 @@ def test_show_type3_string_without_encoding_advances_by_spacing_only() -> None:
 
     doc, renderer = _prepared_renderer()
     try:
-        renderer._gs.text_font_size = 10.0  # noqa: SLF001
-        renderer._gs.text_charspace = 2.0  # noqa: SLF001
-        renderer._gs.text_wordspace = 3.0  # noqa: SLF001
+        renderer._gs.text_font_size = 10.0
+        renderer._gs.text_charspace = 2.0
+        renderer._gs.text_wordspace = 3.0
 
-        renderer._show_type3_string(_Font(), b" A")  # noqa: SLF001
+        renderer._show_type3_string(_Font(), b" A")
 
-        assert renderer._gs.text_matrix[4] == 7.0  # noqa: SLF001
-        assert renderer._image.getbbox() == (0, 0, 12, 12)  # noqa: SLF001
-        assert renderer._image.getpixel((6, 6)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._gs.text_matrix[4] == 7.0
+        assert renderer._image.getbbox() == (0, 0, 12, 12)
+        assert renderer._image.getpixel((6, 6)) == (255, 255, 255)
     finally:
         _finish(renderer)
         doc.close()
@@ -86,29 +86,29 @@ def test_render_type3_charproc_logs_unreadable_stream_and_restores_scope(
     font_resources = object()
     original_resources = object()
     original_path = [[("M", 1.0, 1.0)]]
-    renderer._resources = original_resources  # noqa: SLF001
-    renderer._subpaths = original_path  # noqa: SLF001
-    renderer._current_subpath = original_path[0]  # noqa: SLF001
-    renderer._current_point = (1.0, 1.0)  # noqa: SLF001
-    renderer._pending_clip = "W"  # noqa: SLF001
-    renderer._gs.ctm = (2.0, 0.0, 0.0, 2.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._resources = original_resources
+    renderer._subpaths = original_path
+    renderer._current_subpath = original_path[0]
+    renderer._current_point = (1.0, 1.0)
+    renderer._pending_clip = "W"
+    renderer._gs.ctm = (2.0, 0.0, 0.0, 2.0, 0.0, 0.0)
     try:
         caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
 
-        renderer._render_type3_charproc(  # noqa: SLF001
+        renderer._render_type3_charproc(
             _Font(),
             _BadCharProc(),
             [0.001, 0.0, 0.0, 0.001, 0.0, 0.0],
         )
 
         assert "cannot read Type 3 charproc: charproc boom" in caplog.text
-        assert renderer._resources is original_resources  # noqa: SLF001
-        assert renderer._subpaths is original_path  # noqa: SLF001
-        assert renderer._current_subpath is original_path[0]  # noqa: SLF001
-        assert renderer._current_point == (1.0, 1.0)  # noqa: SLF001
-        assert renderer._pending_clip == "W"  # noqa: SLF001
-        assert len(renderer._gs_stack) == 1  # noqa: SLF001
-        assert renderer._gs.ctm == (2.0, 0.0, 0.0, 2.0, 0.0, 0.0)  # noqa: SLF001
+        assert renderer._resources is original_resources
+        assert renderer._subpaths is original_path
+        assert renderer._current_subpath is original_path[0]
+        assert renderer._current_point == (1.0, 1.0)
+        assert renderer._pending_clip == "W"
+        assert len(renderer._gs_stack) == 1
+        assert renderer._gs.ctm == (2.0, 0.0, 0.0, 2.0, 0.0, 0.0)
     finally:
         _finish(renderer)
         doc.close()

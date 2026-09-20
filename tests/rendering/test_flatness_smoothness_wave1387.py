@@ -294,7 +294,7 @@ def _render_curve_with_flatness(flatness: float) -> Image.Image:
     page.set_resources(res)
 
     # ExtGState carrying the chosen /FL.
-    from pypdfbox.cos import COSDictionary  # noqa: PLC0415
+    from pypdfbox.cos import COSDictionary
     ext = COSDictionary()
     ext.set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("ExtGState"))
     ext.set_item(COSName.get_pdf_name("FL"), COSFloat(flatness))
@@ -473,7 +473,7 @@ def _render_coons_with_smoothness(smoothness: float) -> Image.Image:
     page.set_resources(res)
 
     # ExtGState with /SM.
-    from pypdfbox.cos import COSDictionary  # noqa: PLC0415
+    from pypdfbox.cos import COSDictionary
     ext = COSDictionary()
     ext.set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("ExtGState"))
     ext.set_item(COSName.get_pdf_name("SM"), COSFloat(smoothness))

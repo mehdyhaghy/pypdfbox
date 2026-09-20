@@ -66,9 +66,9 @@ def _normalize_language(language: object) -> str:
     # Late import to avoid pulling the ``model`` package at module load
     # time (and to keep the worker layer dependency-light).
     try:
-        from ..model.language import Language  # noqa: PLC0415
+        from ..model.language import Language
     except ImportError:
-        Language = None  # type: ignore[assignment]
+        Language = None  # type: ignore[assignment]  # noqa: N806 (import fallback)
     if Language is not None and isinstance(language, Language):
         return language.name.upper()
     return str(language).strip().upper()

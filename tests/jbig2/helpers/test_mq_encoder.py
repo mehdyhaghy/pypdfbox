@@ -168,7 +168,7 @@ def test_refinement_template1_roundtrip(target_name):
     procedure, assert the decoded bitmap equals the target."""
     from pypdfbox.jbig2.bitmap import Bitmap
     from pypdfbox.jbig2.decoder.generic_refinement_region_decoding_procedure import (
-        GenericRefinementRegionDecodingProcedure as GRR,
+        GenericRefinementRegionDecodingProcedure,
     )
 
     w = h = 8
@@ -197,6 +197,8 @@ def test_refinement_template1_roundtrip(target_name):
 
     dec = ArithmeticDecoder(ImageInputStream(data))
     dec_cx = CX(65536, 1)
-    out = GRR.decode(dec, dec_cx, w, h, 1, False, ref, 0, 0, None, None)
+    out = GenericRefinementRegionDecodingProcedure.decode(
+        dec, dec_cx, w, h, 1, False, ref, 0, 0, None, None
+    )
     decoded = [[out.get_pixel(x, y) for x in range(w)] for y in range(h)]
     assert decoded == target

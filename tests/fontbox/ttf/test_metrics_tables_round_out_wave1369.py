@@ -60,7 +60,7 @@ class _StubTTF:
 
 
 def _ttf(stub: _StubTTF) -> TrueTypeFont:
-    return cast(TrueTypeFont, stub)
+    return cast("TrueTypeFont", stub)
 
 
 def _pack_h(advance: int, lsb: int) -> bytes:

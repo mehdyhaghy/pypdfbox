@@ -350,7 +350,7 @@ def test_detect_possible_signature_no_op_for_non_dictionary() -> None:
         # behaviour (the visitor never calls it with non-dicts but the
         # method tolerates anything).
         w.detect_possible_signature(None)  # type: ignore[arg-type]
-        assert w._reached_signature is False  # noqa: SLF001
+        assert w._reached_signature is False
 
 
 def test_detect_possible_signature_skips_non_signature_dicts() -> None:
@@ -361,7 +361,7 @@ def test_detect_possible_signature_skips_non_signature_dicts() -> None:
         d = COSDictionary()
         d.set_name(COSName.TYPE, "Catalog")  # type: ignore[attr-defined]
         w.detect_possible_signature(d)
-        assert w._reached_signature is False  # noqa: SLF001
+        assert w._reached_signature is False
 
 
 def test_write_array_emits_inline_when_direct() -> None:
@@ -403,9 +403,9 @@ def test_add_object_to_write_queues_object() -> None:
         d = COSDictionary()
         # In non-incremental mode `_add_object_to_write` queues unseen
         # actuals directly. We verify via the underlying queue length.
-        before = len(w._objects_to_write)  # noqa: SLF001
+        before = len(w._objects_to_write)
         w.add_object_to_write(d)
-        after = len(w._objects_to_write)  # noqa: SLF001
+        after = len(w._objects_to_write)
         assert after == before + 1
 
 
@@ -419,7 +419,7 @@ def test_do_write_objects_drains_queue() -> None:
         w.add_object_to_write(d)
         # Mint a key for the dict so the indirect-frame emit succeeds.
         w.do_write_objects()
-        assert len(w._objects_to_write) == 0  # noqa: SLF001
+        assert len(w._objects_to_write) == 0
     out = sink.getvalue()
     # Indirect-object frame markers must appear.
     assert b"obj" in out

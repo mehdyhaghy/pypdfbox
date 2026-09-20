@@ -36,7 +36,7 @@ def test_get_stream_skips_set_direct_when_value_resolves_to_none() -> None:
         try:
             xs.add_entry(NormalXReference(0, COSObjectKey(1, 0), body_stream))
             # Stash a key whose value resolves to None (COSNull).
-            xs._stream.set_item(  # noqa: SLF001
+            xs._stream.set_item(
                 COSName.get_pdf_name("MyNullEntry"), COSNull.NULL
             )
             # Must not raise — set_direct should be skipped for the None
@@ -62,7 +62,7 @@ def test_get_stream_calls_set_direct_on_non_none_entries() -> None:
             xs.add_entry(NormalXReference(0, COSObjectKey(1, 0), body_stream))
             extra = COSDictionary()
             extra.set_int("Extra", 7)
-            xs._stream.set_item(  # noqa: SLF001
+            xs._stream.set_item(
                 COSName.get_pdf_name("MyExtra"), extra
             )
             xs.get_stream()

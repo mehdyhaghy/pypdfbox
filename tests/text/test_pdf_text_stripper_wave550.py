@@ -151,7 +151,7 @@ def test_wave550_tj_array_ignores_non_text_and_non_number_entries() -> None:
     state.ctm = Matrix()
     positions: list[TextPosition] = []
 
-    stripper._emit_tj_array(  # noqa: SLF001
+    stripper._emit_tj_array(
         COSArray(
             [
                 COSString(b"A"),

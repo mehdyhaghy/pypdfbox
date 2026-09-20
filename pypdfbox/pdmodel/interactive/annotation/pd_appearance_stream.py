@@ -50,7 +50,7 @@ class PDAppearanceStream(PDFormXObject):
         # callers don't silently end up with a half-initialised form
         # XObject. ``PDDocument`` is imported lazily to avoid a cycle
         # (PDDocument → PDPage → PDResources → …).
-        from pypdfbox.pdmodel.pd_document import PDDocument  # noqa: PLC0415
+        from pypdfbox.pdmodel.pd_document import PDDocument
 
         if not isinstance(stream, (COSStream, PDStream, PDDocument)):
             raise TypeError(
@@ -122,7 +122,7 @@ class PDAppearanceStream(PDFormXObject):
         """
         cos = self._stream.get_cos_object()
         if not cos.has_data():
-            import io as _io  # noqa: PLC0415
+            import io as _io
 
             return _io.BytesIO(b"")
         return cos.create_input_stream()
@@ -132,7 +132,7 @@ class PDAppearanceStream(PDFormXObject):
 
         Overrides the inherited :meth:`PDFormXObject.get_contents_for_random_access`
         for the empty-body case (see :meth:`get_contents`)."""
-        from pypdfbox.io.random_access_read_buffer import (  # noqa: PLC0415
+        from pypdfbox.io.random_access_read_buffer import (
             RandomAccessReadBuffer,
         )
 

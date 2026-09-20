@@ -389,8 +389,8 @@ class TestCFFTable:
         # exact upstream contract: read_bytes(get_length()) → CFFParser
         # → cff_font is populated and initialized flips to True.
         try:
-            from fontTools.fontBuilder import FontBuilder  # noqa: PLC0415
-            from fontTools.misc.psCharStrings import T2CharString  # noqa: PLC0415
+            from fontTools.fontBuilder import FontBuilder
+            from fontTools.misc.psCharStrings import T2CharString
         except ImportError:
             pytest.skip("fontTools FontBuilder / T2CharString unavailable")
 
@@ -438,7 +438,7 @@ class TestCFFTable:
         # Feed the raw CFF payload through CFFTable.read with a memory
         # data stream and the declared length — this is the surface
         # CFFTable.java L50-L59 exercises.
-        from pypdfbox.fontbox.ttf.ttf_data_stream import (  # noqa: PLC0415
+        from pypdfbox.fontbox.ttf.ttf_data_stream import (
             MemoryTTFDataStream,
         )
 

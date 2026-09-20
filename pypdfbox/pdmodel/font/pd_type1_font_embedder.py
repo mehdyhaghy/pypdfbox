@@ -106,7 +106,7 @@ class PDType1FontEmbedder:
         # fontTools' full PostScript interpreter so per-glyph widths and
         # outlines are available (``create_with_pfb`` uses the in-house
         # header-only parser, which can't render glyphs → width 0).
-        from pypdfbox.fontbox.type1.type1_font import Type1Font  # noqa: PLC0415
+        from pypdfbox.fontbox.type1.type1_font import Type1Font
 
         # fontTools raises its own ``T1Error`` (a bare ``Exception``) on a
         # malformed PostScript program, alongside the structural errors;
@@ -114,9 +114,9 @@ class PDType1FontEmbedder:
         # /FontFile degrades to a name-less descriptor rather than crashing
         # the embed.
         try:
-            from fontTools.t1Lib import T1Error  # noqa: PLC0415
+            from fontTools.t1Lib import T1Error
         except ImportError:  # pragma: no cover - fontTools always present
-            T1Error = ()  # type: ignore[assignment, misc]
+            T1Error = ()  # type: ignore[assignment, misc]  # noqa: N806 (import fallback)
 
         type1: Any
         try:

@@ -25,7 +25,7 @@ def test_make_doc_removes_default_pages_before_adding_requested_page(
 
     monkeypatch.setattr(wave552, "PDDocument", _Document)
 
-    doc, page = wave552._make_doc(17.0, 19.0)  # noqa: SLF001
+    doc, page = wave552._make_doc(17.0, 19.0)
 
     assert doc.removed_indexes == [0]
     assert doc.added_pages == [page]

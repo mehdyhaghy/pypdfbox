@@ -62,6 +62,6 @@ def test_legacy_private_aliases_still_work() -> None:
     model = HexModel(b"x")
     rec = _Recorder()
     model.add_hex_model_change_listener(rec)
-    model._fire_model_changed(0)  # noqa: SLF001
+    model._fire_model_changed(0)
     assert len(rec.events) == 1
-    assert HexModel._is_ascii_printable("A")  # noqa: SLF001
+    assert HexModel._is_ascii_printable("A")

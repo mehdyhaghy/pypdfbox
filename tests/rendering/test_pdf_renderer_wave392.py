@@ -34,16 +34,16 @@ def _make_doc(width: float = 20.0, height: float = 20.0) -> tuple[PDDocument, PD
 def _prepared_renderer(size: tuple[int, int] = (20, 20)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -84,17 +84,17 @@ def test_do_operator_handles_resource_and_image_decode_failures(
 
         renderer.process_operator("Do", [])
         renderer.process_operator("Do", [COSFloat(1.0)])
-        renderer._resources = None  # noqa: SLF001
+        renderer._resources = None
         renderer.process_operator("Do", [COSName.get_pdf_name("Im0")])
 
-        renderer._resources = _RaisingResources()  # noqa: SLF001
+        renderer._resources = _RaisingResources()
         renderer.process_operator("Do", [COSName.get_pdf_name("Im0")])
         assert "cannot resolve XObject Im0: xobject boom" in caplog.text
 
-        renderer._resources = _NoneResources()  # noqa: SLF001
+        renderer._resources = _NoneResources()
         renderer.process_operator("Do", [COSName.get_pdf_name("Im0")])
 
-        renderer._resources = _ImageResources()  # noqa: SLF001
+        renderer._resources = _ImageResources()
         monkeypatch.setattr(
             renderer,
             "_decode_image_xobject",
@@ -142,13 +142,13 @@ def test_inline_image_operator_and_show_inline_image_defensive_paths(
     doc, renderer = _prepared_renderer()
     try:
         caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
-        renderer._op_inline_image(_Op(None, b"\x00"), [])  # noqa: SLF001
-        renderer._op_inline_image(_Op(COSDictionary(), None), [])  # noqa: SLF001
+        renderer._op_inline_image(_Op(None, b"\x00"), [])
+        renderer._op_inline_image(_Op(COSDictionary(), None), [])
 
         import pypdfbox.pdmodel.graphics.image.pd_inline_image as inline_mod
 
         monkeypatch.setattr(inline_mod, "PDInlineImage", _BadInlineCtor)
-        renderer._op_inline_image(_Op(COSDictionary(), b"\x00"), [])  # noqa: SLF001
+        renderer._op_inline_image(_Op(COSDictionary(), b"\x00"), [])
         assert "cannot construct inline image: inline ctor boom" in caplog.text
 
         renderer.show_inline_image(_BadInlineImage())
@@ -189,33 +189,33 @@ def test_smask_application_backdrop_and_transfer_defensive_paths(
     source = Image.new("RGB", (2, 2), (10, 20, 30))
     try:
         caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
-        assert renderer._apply_smask(source, _RaisingSMaskImage()) is source  # noqa: SLF001
+        assert renderer._apply_smask(source, _RaisingSMaskImage()) is source
         assert "cannot decode SMask: smask image boom" in caplog.text
-        assert renderer._apply_smask(source, _NoneSMaskImage()) is source  # noqa: SLF001
+        assert renderer._apply_smask(source, _NoneSMaskImage()) is source
 
-        rgba = renderer._apply_smask(source, _RGBSMaskImage())  # noqa: SLF001
+        rgba = renderer._apply_smask(source, _RGBSMaskImage())
         assert rgba.mode == "RGBA"
         assert rgba.getpixel((1, 1))[3] == 255
 
-        assert renderer._soft_mask_backdrop_rgb(_Backdrop(None)) == (0, 0, 0)  # noqa: SLF001
-        assert renderer._soft_mask_backdrop_rgb(_Backdrop(_BadArray())) == (0, 0, 0)  # noqa: E501, SLF001
+        assert renderer._soft_mask_backdrop_rgb(_Backdrop(None)) == (0, 0, 0)
+        assert renderer._soft_mask_backdrop_rgb(_Backdrop(_BadArray())) == (0, 0, 0)
 
         gray = COSArray()
         gray.add(COSFloat(0.5))
-        assert renderer._soft_mask_backdrop_rgb(_Backdrop(gray)) == (128, 128, 128)  # noqa: E501, SLF001
+        assert renderer._soft_mask_backdrop_rgb(_Backdrop(gray)) == (128, 128, 128)
 
         cmyk = COSArray()
         for value in (0.0, 1.0, 0.0, 0.5):
             cmyk.add(COSFloat(value))
-        assert renderer._soft_mask_backdrop_rgb(_Backdrop(cmyk)) == (128, 0, 128)  # noqa: E501, SLF001
+        assert renderer._soft_mask_backdrop_rgb(_Backdrop(cmyk)) == (128, 0, 128)
 
-        assert renderer._render_soft_mask_alpha(object(), (2, 2)) is None  # noqa: SLF001
+        assert renderer._render_soft_mask_alpha(object(), (2, 2)) is None
         missing_group = PDSoftMask(COSDictionary())
-        assert renderer._render_soft_mask_alpha(missing_group, (2, 2)) is None  # noqa: SLF001
+        assert renderer._render_soft_mask_alpha(missing_group, (2, 2)) is None
         assert "soft mask /G missing or malformed" in caplog.text
 
-        assert PDFRenderer._build_transfer_lookup(COSName.get_pdf_name("Identity")) is None  # noqa: E501, SLF001
-        assert PDFRenderer._build_transfer_lookup(object()) is None  # noqa: SLF001
+        assert PDFRenderer._build_transfer_lookup(COSName.get_pdf_name("Identity")) is None
+        assert PDFRenderer._build_transfer_lookup(object()) is None
     finally:
         _finish(renderer)
         doc.close()
@@ -233,44 +233,44 @@ def test_text_state_ops_spacing_arrays_and_font_resolution_cache() -> None:
     sentinel_font = object()
     doc, renderer = _prepared_renderer()
     try:
-        renderer._gs.text_matrix = (2.0, 0.0, 0.0, 2.0, 5.0, 6.0)  # noqa: SLF001
+        renderer._gs.text_matrix = (2.0, 0.0, 0.0, 2.0, 5.0, 6.0)
         renderer.process_operator("BT", [])
-        assert renderer._gs.text_matrix == (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+        assert renderer._gs.text_matrix == (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
 
         renderer.process_operator("Tc", [COSFloat(2.0)])
         renderer.process_operator("Tw", [COSFloat(3.0)])
         renderer.process_operator("TL", [COSFloat(4.0)])
         renderer.process_operator("Tz", [COSFloat(50.0)])
         renderer.process_operator("Ts", [COSFloat(1.5)])
-        assert renderer._gs.text_charspace == 2.0  # noqa: SLF001
-        assert renderer._gs.text_wordspace == 3.0  # noqa: SLF001
-        assert renderer._gs.text_leading == 4.0  # noqa: SLF001
-        assert renderer._gs.text_horizontal_scaling == 50.0  # noqa: SLF001
-        assert renderer._gs.text_rise == 1.5  # noqa: SLF001
+        assert renderer._gs.text_charspace == 2.0
+        assert renderer._gs.text_wordspace == 3.0
+        assert renderer._gs.text_leading == 4.0
+        assert renderer._gs.text_horizontal_scaling == 50.0
+        assert renderer._gs.text_rise == 1.5
 
         renderer.process_operator("Td", [COSFloat(10.0), COSFloat(5.0)])
-        assert renderer._gs.text_matrix[4:] == (10.0, 5.0)  # noqa: SLF001
+        assert renderer._gs.text_matrix[4:] == (10.0, 5.0)
         renderer.process_operator("TD", [COSFloat(1.0), COSFloat(-7.0)])
-        assert renderer._gs.text_leading == 7.0  # noqa: SLF001
+        assert renderer._gs.text_leading == 7.0
         renderer.process_operator("Tm", [COSFloat(v) for v in (1, 2, 3, 4, 5, 6)])
-        assert renderer._gs.text_line_matrix == (1.0, 2.0, 3.0, 4.0, 5.0, 6.0)  # noqa: E501, SLF001
+        assert renderer._gs.text_line_matrix == (1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
         renderer.process_operator("T*", [])
-        assert renderer._gs.text_matrix[5] == -22.0  # noqa: SLF001
+        assert renderer._gs.text_matrix[5] == -22.0
 
         renderer.process_operator("Tj", [COSString(b"ignored-no-font")])
-        renderer._gs.text_font_size = 10.0  # noqa: SLF001
-        renderer._gs.text_matrix = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+        renderer._gs.text_font_size = 10.0
+        renderer._gs.text_matrix = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
         renderer.process_operator("TJ", [COSString(b"not-array")])
         arr = COSArray()
         arr.add(COSFloat(200.0))
         renderer.process_operator("TJ", [arr])
-        assert renderer._gs.text_matrix[4] == -1.0  # noqa: SLF001
+        assert renderer._gs.text_matrix[4] == -1.0
 
         resources = _Resources()
-        renderer._resources = resources  # noqa: SLF001
+        renderer._resources = resources
         font_name = COSName.get_pdf_name("F0")
-        assert renderer._resolve_font(font_name) is sentinel_font  # noqa: SLF001
-        assert renderer._resolve_font(font_name) is sentinel_font  # noqa: SLF001
+        assert renderer._resolve_font(font_name) is sentinel_font
+        assert renderer._resolve_font(font_name) is sentinel_font
         assert resources.calls == 1
     finally:
         _finish(renderer)
@@ -293,16 +293,16 @@ def test_form_group_detection_and_knockout_restore_edge_branches() -> None:
 
     doc, renderer = _prepared_renderer()
     try:
-        assert PDFRenderer._is_transparency_group(_HelperRaises()) is True  # noqa: SLF001
-        assert PDFRenderer._is_transparency_group(_GroupRaises()) is False  # noqa: SLF001
+        assert PDFRenderer._is_transparency_group(_HelperRaises()) is True
+        assert PDFRenderer._is_transparency_group(_GroupRaises()) is False
 
-        renderer._knockout_snapshot = None  # noqa: SLF001
-        renderer._restore_knockout_snapshot()  # noqa: SLF001
+        renderer._knockout_snapshot = None
+        renderer._restore_knockout_snapshot()
 
-        renderer._knockout_snapshot = Image.new("RGB", (20, 20), (1, 2, 3))  # noqa: SLF001
-        renderer._image.paste((9, 9, 9), (0, 0, 20, 20))  # noqa: SLF001
-        renderer._restore_knockout_snapshot()  # noqa: SLF001
+        renderer._knockout_snapshot = Image.new("RGB", (20, 20), (1, 2, 3))
+        renderer._image.paste((9, 9, 9), (0, 0, 20, 20))
+        renderer._restore_knockout_snapshot()
         _finish(renderer)
-        assert renderer._image.getpixel((5, 5)) == (1, 2, 3)  # noqa: SLF001
+        assert renderer._image.getpixel((5, 5)) == (1, 2, 3)
     finally:
         doc.close()

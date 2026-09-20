@@ -101,7 +101,7 @@ class CreateMultiWidgetsForm:
 
             try:
                 text_box.set_widgets([widget1, widget2])
-            except Exception:  # noqa: BLE001
+            except Exception:
                 # set_widgets may not be exposed yet — fall back to direct
                 # access.
                 text_box.get_widgets().extend([widget1, widget2])

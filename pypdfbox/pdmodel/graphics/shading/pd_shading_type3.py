@@ -199,7 +199,7 @@ class PDShadingType3(PDShading):
         Mirrors upstream ``PDShadingType3.toPaint(Matrix)`` which returns
         ``new RadialShadingPaint(this, matrix)``.
         """
-        from .radial_shading_paint import RadialShadingPaint  # noqa: PLC0415
+        from .radial_shading_paint import RadialShadingPaint
 
         return RadialShadingPaint(self, matrix)
 

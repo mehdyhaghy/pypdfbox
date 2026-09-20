@@ -128,10 +128,10 @@ def test_format6_empty_entries_returns_without_build() -> None:
     sub = CmapSubtable()
     # Pre-seed something distinguishable so we can verify nothing was
     # overwritten.
-    sub._character_code_to_glyph_id = {99: 99}  # noqa: SLF001
+    sub._character_code_to_glyph_id = {99: 99}
     sub.process_subtype6(MemoryTTFDataStream(_fmt6_empty()), 10)
     # Function returned early; the pre-seeded entry survives untouched.
-    assert sub._character_code_to_glyph_id == {99: 99}  # noqa: SLF001
+    assert sub._character_code_to_glyph_id == {99: 99}
 
 
 def _fmt8_one_group_two_entries() -> bytes:
@@ -162,10 +162,10 @@ def test_format8_empty_groups_skips_build_call() -> None:
     (line 221 → -193 = function exit)."""
     body = bytes(8192) + struct.pack(">I", 0)
     sub = CmapSubtable()
-    sub._glyph_id_to_character_code = [42]  # noqa: SLF001 — sentinel
+    sub._glyph_id_to_character_code = [42]
     sub.process_subtype8(MemoryTTFDataStream(body), num_glyphs=10)
     # Build was skipped; sentinel survives.
-    assert sub._glyph_id_to_character_code == [42]  # noqa: SLF001
+    assert sub._glyph_id_to_character_code == [42]
 
 
 def test_format10_glyph_id_lte_max_skips_update() -> None:
@@ -211,11 +211,11 @@ def test_format13_all_groups_invalid_leaves_empty_map() -> None:
     # glyph_id=99 but num_glyphs=10 → out of bounds (strict > break).
     body += struct.pack(">III", 100, 102, 99)
     sub = CmapSubtable()
-    sub._glyph_id_to_character_code = [77]  # noqa: SLF001 — sentinel
+    sub._glyph_id_to_character_code = [77]
     sub.process_subtype13(MemoryTTFDataStream(body), num_glyphs=10)
     # Array reset to all -1 up front (upstream parity); no code recorded.
-    assert sub._glyph_id_to_character_code == [-1] * 10  # noqa: SLF001
-    assert sub._character_code_to_glyph_id == {}  # noqa: SLF001
+    assert sub._glyph_id_to_character_code == [-1] * 10
+    assert sub._character_code_to_glyph_id == {}
 
 
 def test_format2_glyph_p_zero_falls_through_without_delta_math() -> None:
@@ -309,7 +309,7 @@ def test_get_name_int_inner_loop_skips_en_us_entry() -> None:
     from pypdfbox.fontbox.ttf.naming_table import NamingTable
 
     t = NamingTable()
-    t._lookup_table = {  # noqa: SLF001
+    t._lookup_table = {
         NameRecord.NAME_FULL_FONT_NAME: {
             NameRecord.PLATFORM_WINDOWS: {
                 NameRecord.ENCODING_WINDOWS_UNICODE_BMP: {
@@ -319,8 +319,8 @@ def test_get_name_int_inner_loop_skips_en_us_entry() -> None:
             },
         },
     }
-    t._name_records = []  # noqa: SLF001
-    assert t._get_name_by_id(NameRecord.NAME_FULL_FONT_NAME) == "DE_VAL"  # noqa: SLF001
+    t._name_records = []
+    assert t._get_name_by_id(NameRecord.NAME_FULL_FONT_NAME) == "DE_VAL"
 
 
 def test_get_name_int_inner_loop_only_en_us_returns_none() -> None:
@@ -331,7 +331,7 @@ def test_get_name_int_inner_loop_only_en_us_returns_none() -> None:
     from pypdfbox.fontbox.ttf.naming_table import NamingTable
 
     t = NamingTable()
-    t._lookup_table = {  # noqa: SLF001
+    t._lookup_table = {
         NameRecord.NAME_FULL_FONT_NAME: {
             NameRecord.PLATFORM_WINDOWS: {
                 NameRecord.ENCODING_WINDOWS_UNICODE_BMP: {
@@ -340,12 +340,12 @@ def test_get_name_int_inner_loop_only_en_us_returns_none() -> None:
             },
         },
     }
-    t._name_records = []  # noqa: SLF001
+    t._name_records = []
     # The inner ``for`` runs but the only entry is EN_US which is
     # filtered by ``lang_id != EN_US``. Loop completes without return,
     # falls through to the (empty) Unicode-platform / Mac branches, and
     # ultimately returns None.
-    assert t._get_name_by_id(NameRecord.NAME_FULL_FONT_NAME) is None  # noqa: SLF001
+    assert t._get_name_by_id(NameRecord.NAME_FULL_FONT_NAME) is None
 
 
 def test_get_name_int_ms_no_unicode_bmp_encoding_falls_to_unicode_platform() -> None:
@@ -396,7 +396,7 @@ def test_lookup_by_language_skips_none_value_records() -> None:
     t = NamingTable()
     # Manually craft a lookup_table where one (lang) entry decodes to
     # None and another to a string.
-    t._lookup_table = {  # noqa: SLF001
+    t._lookup_table = {
         NameRecord.NAME_FULL_FONT_NAME: {
             NameRecord.PLATFORM_WINDOWS: {
                 NameRecord.ENCODING_WINDOWS_UNICODE_BMP: {0x0409: None},
@@ -404,8 +404,8 @@ def test_lookup_by_language_skips_none_value_records() -> None:
             },
         },
     }
-    t._name_records = []  # noqa: SLF001
-    v = t._lookup_by_language(NameRecord.NAME_FULL_FONT_NAME, 0x0409)  # noqa: SLF001
+    t._name_records = []
+    v = t._lookup_by_language(NameRecord.NAME_FULL_FONT_NAME, 0x0409)
     assert v == "OK"
 
 
@@ -448,7 +448,7 @@ def test_populate_from_fonttools_handles_missing_script_list() -> None:
         def __getitem__(self, key: str) -> Any:
             return self._data[key]
 
-        def getGlyphOrder(self) -> list[str]:  # noqa: N802 — fontTools API
+        def getGlyphOrder(self) -> list[str]:
             return [".notdef"]
 
     gsub = GlyphSubstitutionTable()
@@ -481,7 +481,7 @@ def test_populate_from_fonttools_handles_missing_feature_list() -> None:
         def __getitem__(self, key: str) -> Any:
             return self._data[key]
 
-        def getGlyphOrder(self) -> list[str]:  # noqa: N802
+        def getGlyphOrder(self) -> list[str]:
             return [".notdef"]
 
     gsub = GlyphSubstitutionTable()
@@ -511,7 +511,7 @@ def test_get_lang_sys_tables_omits_default_when_absent() -> None:
         FeatureList=None,
     )
     gsub = GlyphSubstitutionTable()
-    gsub._gsub_table = fake_table  # noqa: SLF001
+    gsub._gsub_table = fake_table
     result = gsub.get_lang_sys_tables("grek")
     assert result == [fake_lang_sys]  # no default appended
 
@@ -521,8 +521,8 @@ def test_project_gsub_data_with_no_gsub_table_returns_empty_features() -> None:
     from pypdfbox.fontbox.ttf.glyph_substitution_table import GlyphSubstitutionTable
 
     gsub = GlyphSubstitutionTable()
-    gsub._gsub_table = None  # noqa: SLF001
-    data = gsub._project_gsub_data("latn", "dflt")  # noqa: SLF001
+    gsub._gsub_table = None
+    data = gsub._project_gsub_data("latn", "dflt")
     assert data.feature_list == {}
     assert data.active_script_name == "latn"
 
@@ -544,8 +544,8 @@ def test_project_gsub_data_with_no_lang_sys_returns_empty_features() -> None:
         FeatureList=None,
     )
     gsub = GlyphSubstitutionTable()
-    gsub._gsub_table = fake_table  # noqa: SLF001
-    data = gsub._project_gsub_data("cyrl", "dflt")  # noqa: SLF001
+    gsub._gsub_table = fake_table
+    data = gsub._project_gsub_data("cyrl", "dflt")
     assert data.feature_list == {}
 
 
@@ -573,8 +573,8 @@ def test_project_gsub_data_skips_empty_feature_tag() -> None:
         ]),
     )
     gsub = GlyphSubstitutionTable()
-    gsub._gsub_table = fake_table  # noqa: SLF001
-    data = gsub._project_gsub_data("latn", "dflt")  # noqa: SLF001
+    gsub._gsub_table = fake_table
+    data = gsub._project_gsub_data("latn", "dflt")
     # Empty-tag feature filtered → no entry recorded.
     assert data.feature_list == {}
 
@@ -613,19 +613,19 @@ def _build_composite_with_one_component(point_count: int = 4,
 
     desc = GlyfCompositeDescript()
     comp = GlyfCompositeComp.__new__(GlyfCompositeComp)
-    comp._flags = 0  # noqa: SLF001
-    comp._glyph_index = 0  # noqa: SLF001
-    comp._x_translate = 0  # noqa: SLF001
-    comp._y_translate = 0  # noqa: SLF001
-    comp._first_index = 0  # noqa: SLF001
-    comp._first_contour = 0  # noqa: SLF001
-    comp._scale01 = 0.0  # noqa: SLF001
-    comp._scale10 = 0.0  # noqa: SLF001
-    comp._xscale = 1.0  # noqa: SLF001
-    comp._yscale = 1.0  # noqa: SLF001
-    desc._components = [comp]  # noqa: SLF001
-    desc._descriptions = {0: _FakeDescript()}  # noqa: SLF001
-    desc._resolved = True  # noqa: SLF001
+    comp._flags = 0
+    comp._glyph_index = 0
+    comp._x_translate = 0
+    comp._y_translate = 0
+    comp._first_index = 0
+    comp._first_contour = 0
+    comp._scale01 = 0.0
+    comp._scale10 = 0.0
+    comp._xscale = 1.0
+    comp._yscale = 1.0
+    desc._components = [comp]
+    desc._descriptions = {0: _FakeDescript()}
+    desc._resolved = True
     return desc
 
 
@@ -638,9 +638,9 @@ def test_get_end_pt_of_contours_missing_description_returns_zero() -> None:
     from pypdfbox.fontbox.ttf.glyf_composite_comp import GlyfCompositeComp
 
     rogue = GlyfCompositeComp.__new__(GlyfCompositeComp)
-    rogue._glyph_index = 999  # noqa: SLF001
-    rogue._first_index = 0  # noqa: SLF001
-    rogue._first_contour = 0  # noqa: SLF001
+    rogue._glyph_index = 999
+    rogue._first_index = 0
+    rogue._first_contour = 0
 
     # Force get_composite_comp_end_pt to return rogue regardless of i.
     desc.get_composite_comp_end_pt = lambda i: rogue  # type: ignore[method-assign]
@@ -654,9 +654,9 @@ def test_get_flags_missing_description_returns_zero() -> None:
     from pypdfbox.fontbox.ttf.glyf_composite_comp import GlyfCompositeComp
 
     rogue = GlyfCompositeComp.__new__(GlyfCompositeComp)
-    rogue._glyph_index = 999  # noqa: SLF001
-    rogue._first_index = 0  # noqa: SLF001
-    rogue._first_contour = 0  # noqa: SLF001
+    rogue._glyph_index = 999
+    rogue._first_index = 0
+    rogue._first_contour = 0
     desc.get_composite_comp = lambda i: rogue  # type: ignore[method-assign]
     assert desc.get_flags(0) == 0
 
@@ -667,9 +667,9 @@ def test_get_x_coordinate_missing_description_returns_zero() -> None:
     from pypdfbox.fontbox.ttf.glyf_composite_comp import GlyfCompositeComp
 
     rogue = GlyfCompositeComp.__new__(GlyfCompositeComp)
-    rogue._glyph_index = 999  # noqa: SLF001
-    rogue._first_index = 0  # noqa: SLF001
-    rogue._first_contour = 0  # noqa: SLF001
+    rogue._glyph_index = 999
+    rogue._first_index = 0
+    rogue._first_contour = 0
     desc.get_composite_comp = lambda i: rogue  # type: ignore[method-assign]
     assert desc.get_x_coordinate(0) == 0
 
@@ -680,9 +680,9 @@ def test_get_y_coordinate_missing_description_returns_zero() -> None:
     from pypdfbox.fontbox.ttf.glyf_composite_comp import GlyfCompositeComp
 
     rogue = GlyfCompositeComp.__new__(GlyfCompositeComp)
-    rogue._glyph_index = 999  # noqa: SLF001
-    rogue._first_index = 0  # noqa: SLF001
-    rogue._first_contour = 0  # noqa: SLF001
+    rogue._glyph_index = 999
+    rogue._first_index = 0
+    rogue._first_contour = 0
     desc.get_composite_comp = lambda i: rogue  # type: ignore[method-assign]
     assert desc.get_y_coordinate(0) == 0
 
@@ -690,14 +690,14 @@ def test_get_y_coordinate_missing_description_returns_zero() -> None:
 def test_get_point_count_uses_cached_value_when_already_resolved() -> None:
     """Branch [177, 191]: ``_point_count >= 0`` short-circuits computation."""
     desc = _build_composite_with_one_component()
-    desc._point_count = 42  # noqa: SLF001 — pre-cached
+    desc._point_count = 42
     assert desc.get_point_count() == 42  # uses cache
 
 
 def test_get_contour_count_uses_cached_value_when_already_resolved() -> None:
     """Branch [197, 212]: ``_contour_count_resolved >= 0`` skip recompute."""
     desc = _build_composite_with_one_component()
-    desc._contour_count_resolved = 17  # noqa: SLF001 — pre-cached
+    desc._contour_count_resolved = 17
     assert desc.get_contour_count() == 17
 
 
@@ -742,7 +742,7 @@ def test_meta_cache_reuses_weight() -> None:
     from pypdfbox.fontbox.type1.type1_font import Type1Font
 
     f = Type1Font.__new__(Type1Font)
-    f._meta_cache = {"weight": "Bold"}  # noqa: SLF001
+    f._meta_cache = {"weight": "Bold"}
     assert f.get_weight() == "Bold"  # served from cache
 
 
@@ -751,7 +751,7 @@ def test_meta_cache_reuses_ulpos() -> None:
     from pypdfbox.fontbox.type1.type1_font import Type1Font
 
     f = Type1Font.__new__(Type1Font)
-    f._meta_cache = {"ulpos": -50.0}  # noqa: SLF001
+    f._meta_cache = {"ulpos": -50.0}
     assert f.get_underline_position() == -50.0
 
 
@@ -760,7 +760,7 @@ def test_meta_cache_reuses_ulthick() -> None:
     from pypdfbox.fontbox.type1.type1_font import Type1Font
 
     f = Type1Font.__new__(Type1Font)
-    f._meta_cache = {"ulthick": 40.0}  # noqa: SLF001
+    f._meta_cache = {"ulthick": 40.0}
     assert f.get_underline_thickness() == 40.0
 
 
@@ -775,7 +775,7 @@ def test_call_subr_with_empty_sequence_does_not_pop_ret() -> None:
     from pypdfbox.fontbox.cff.type1_char_string_parser import Type1CharStringParser
 
     parser = Type1CharStringParser("test_font")
-    parser._current_glyph = "g"  # noqa: SLF001
+    parser._current_glyph = "g"
     # Operand 0 (valid index) is pushed; subr at index 0 is empty bytes →
     # _parse appends nothing → sequence stays empty after the recursive
     # call, exercising the False arm of ``if sequence:`` at line 110.
@@ -792,7 +792,7 @@ def test_call_other_subr_empty_sequence_after_othersubr_zero() -> None:
     from pypdfbox.fontbox.cff.type1_char_string_parser import Type1CharStringParser
 
     parser = Type1CharStringParser("test_font")
-    parser._current_glyph = "g"  # noqa: SLF001
+    parser._current_glyph = "g"
     # othersubr_num=0, num_args=0, plus the two integers we use as the
     # ``remove_integer`` results (= 0 each). Stack after pops: empty.
     sequence: list[Any] = [0, 0, 0, 0]
@@ -810,7 +810,7 @@ def test_call_other_subr_results_empty_skips_append() -> None:
     from pypdfbox.fontbox.cff.type1_char_string_parser import Type1CharStringParser
 
     parser = Type1CharStringParser("test_font")
-    parser._current_glyph = "g"  # noqa: SLF001
+    parser._current_glyph = "g"
     # othersubr_num=99 (default branch), num_args=0 → ``results`` empty.
     sequence: list[Any] = [0, 99]
     # Provide POP bytes following the callothersubr byte, then a non-POP
@@ -953,7 +953,7 @@ def test_cmap_read_code_from_bytes_invalid_sequence_without_warning_log() -> Non
     saved = logger.level
     logger.setLevel(logging.CRITICAL + 1)
     try:
-        code, length = c._read_code_from_bytes(b"\xFF\xFF", 0)  # noqa: SLF001
+        code, length = c._read_code_from_bytes(b"\xFF\xFF", 0)
         assert length >= 1
     finally:
         logger.setLevel(saved)
@@ -984,12 +984,12 @@ def test_encoding_overwrite_skips_reverse_when_old_code_mismatches() -> None:
 
     enc = Encoding()
     # Pre-build inconsistent state: code 65 → "A" forward; "A" → 99 reverse.
-    enc._code_to_name[65] = "A"  # noqa: SLF001
-    enc._name_to_code["A"] = 99  # noqa: SLF001 — points to different code
+    enc._code_to_name[65] = "A"
+    enc._name_to_code["A"] = 99
     enc.overwrite(65, "B")
     # The reverse mapping for "A" should NOT have been popped (because
     # old_code == 99 != 65).
-    assert enc._name_to_code.get("A") == 99  # noqa: SLF001
+    assert enc._name_to_code.get("A") == 99
 
 
 def test_encoding_name_lookup_for_unknown_code_returns_notdef() -> None:
@@ -1070,7 +1070,7 @@ def test_maximum_profile_version_below_one_skips_extended_fields() -> None:
     )
 
     tt = TrueTypeFont.__new__(TrueTypeFont)
-    tt._maxp = None  # noqa: SLF001
+    tt._maxp = None
     tt._tt = {"maxp": fake_maxp}  # type: ignore[assignment]
     mp = tt.get_maximum_profile()
     assert mp is not None

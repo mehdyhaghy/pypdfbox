@@ -59,7 +59,7 @@ def test_snapshot_is_independent_of_input_dict() -> None:
 def test_eq_self_identity_short_circuit() -> None:
     # Hits the ``self is other`` short-circuit branch in __eq__.
     feature = MapBackedScriptFeature("liga", {(1, 2): 9})
-    assert feature == feature  # noqa: PLR0124
+    assert feature == feature
 
 
 def test_equals_method_mirrors_python_eq() -> None:

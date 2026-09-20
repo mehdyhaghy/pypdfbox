@@ -27,11 +27,9 @@ _FIXTURE = (
 
 def _build_font_with_dsig(blocks: list[bytes], *, flag: int = 0) -> bytes:
     """Return a TTF byte buffer with a synthetic DSIG table appended."""
-    fontTools = pytest.importorskip("fontTools")
+    pytest.importorskip("fontTools")
     from fontTools.ttLib import TTFont
     from fontTools.ttLib.tables.D_S_I_G_ import SignatureRecord, table_D_S_I_G_
-
-    _ = fontTools  # silence unused-import lints — importorskip handles availability
     tt = TTFont(str(_FIXTURE), lazy=False)
     dsig = table_D_S_I_G_("DSIG")
     dsig.ulVersion = 1
@@ -186,7 +184,7 @@ def test_get_dsig_caches_negative_result() -> None:
     assert font.get_dsig() is None
     # Second call must not re-probe; the cache flag should stay set.
     assert font.get_dsig() is None
-    assert font._dsig_resolved is True  # noqa: SLF001 — cache invariant
+    assert font._dsig_resolved is True
 
 
 def test_get_dsig_reads_synthetic_table() -> None:

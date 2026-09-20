@@ -98,11 +98,11 @@ class OTFParser(TTFParser):
         """
         if tag in _OTF_OTL_TAGS:
             table = OTLTable()
-            table._tag = tag  # noqa: SLF001 — mirrors upstream constructor
+            table._tag = tag
             return table
         if tag == _OTF_CFF_TAG:
             cff = CFFTable()
-            cff._tag = tag  # noqa: SLF001 — mirrors upstream constructor
+            cff._tag = tag
             return cff
         return super().read_table(tag)
 

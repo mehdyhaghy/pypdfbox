@@ -52,7 +52,7 @@ class Type2CharStringParser:
         bytes_: bytes | bytearray | memoryview,
         global_subr_index: Sequence[bytes | bytearray] | None,
         local_subr_index: Sequence[bytes | bytearray] | None,
-        glyph_name: str,  # noqa: ARG002 - upstream takes it for log context
+        glyph_name: str,
     ) -> list[Any]:
         """Mirrors upstream ``parse(byte[], byte[][], byte[][], String)``
         (Type2CharStringParser.java:63)."""

@@ -51,7 +51,7 @@ class _FakeTTF:
             def __init__(self, names: list[str]) -> None:
                 self._names = names
 
-            def getGlyphOrder(self) -> list[str]:  # noqa: N802
+            def getGlyphOrder(self) -> list[str]:
                 return list(self._names)
 
         self._tt: Any = _Inner(glyph_order)
@@ -210,7 +210,7 @@ def test_liberation_sans_kerning_av_pair_is_negative() -> None:
     assert kt is not None
     sub = kt.get_horizontal_kerning_subtable()
     assert sub is not None
-    glyph_order = ttf._tt.getGlyphOrder()  # noqa: SLF001
+    glyph_order = ttf._tt.getGlyphOrder()
     gid_a = glyph_order.index("A")
     gid_v = glyph_order.index("V")
     # A and V kern toward each other in virtually every Latin font.

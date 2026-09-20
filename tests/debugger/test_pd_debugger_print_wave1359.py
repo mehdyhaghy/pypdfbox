@@ -42,13 +42,13 @@ def _reset_menu_singletons() -> None:
     from pypdfbox.debugger.ui.text_stripper_menu import TextStripperMenu
     from pypdfbox.debugger.ui.zoom_menu import ZoomMenu
 
-    ViewMenu._reset_instance()  # noqa: SLF001
-    ZoomMenu._reset_instance()  # noqa: SLF001
-    RotationMenu._reset_instance()  # noqa: SLF001
-    RenderDestinationMenu._reset_instance()  # noqa: SLF001
-    TreeViewMenu._reset_for_testing()  # noqa: SLF001
-    ImageTypeMenu._reset_for_testing()  # noqa: SLF001
-    TextStripperMenu._reset_for_testing()  # noqa: SLF001
+    ViewMenu._reset_instance()
+    ZoomMenu._reset_instance()
+    RotationMenu._reset_instance()
+    RenderDestinationMenu._reset_instance()
+    TreeViewMenu._reset_for_testing()
+    ImageTypeMenu._reset_for_testing()
+    TextStripperMenu._reset_for_testing()
 
 
 @pytest.fixture()
@@ -76,7 +76,7 @@ def debugger(tk_root: tk.Tk) -> Iterator[PDFDebugger]:
         yield instance
     finally:
         with contextlib.suppress(tk.TclError):
-            instance._main_frame.destroy()  # noqa: SLF001
+            instance._main_frame.destroy()
 
 
 @pytest.fixture()
@@ -85,11 +85,11 @@ def stub_render(monkeypatch: pytest.MonkeyPatch) -> None:
     from pypdfbox.rendering import pdf_renderer as _pdf_renderer
 
     def _render(
-        self: Any,  # noqa: ARG001 - matches the bound-method signature
-        page_index: int,  # noqa: ARG001
-        dpi: float = 72.0,  # noqa: ARG001
-        image_type: Any = None,  # noqa: ARG001
-        destination: Any = None,  # noqa: ARG001
+        self: Any,
+        page_index: int,
+        dpi: float = 72.0,
+        image_type: Any = None,
+        destination: Any = None,
     ) -> Image.Image:
         # 8x8 white RGB — small and cheap to encode to PDF.
         return Image.new("RGB", (8, 8), "white")
@@ -121,8 +121,8 @@ def test_print_no_document_is_silent(
         "pypdfbox.debugger.pd_debugger.messagebox.showerror",
         lambda *a, **kw: called.append(("error", a, kw)),
     )
-    assert debugger._document is None  # noqa: SLF001 - precondition
-    debugger._print_menu_item_action_performed()  # noqa: SLF001
+    assert debugger._document is None
+    debugger._print_menu_item_action_performed()
     assert called == []
 
 
@@ -132,7 +132,7 @@ def test_print_empty_document_shows_info_and_skips_spooler(
     """Zero-page document must not call the spooler hand-off helper."""
     doc = PDDocument()
     try:
-        debugger._document = doc  # noqa: SLF001
+        debugger._document = doc
         send_calls: list[int] = []
         info_calls: list[tuple[Any, ...]] = []
         monkeypatch.setattr(
@@ -143,12 +143,12 @@ def test_print_empty_document_shows_info_and_skips_spooler(
             "pypdfbox.debugger.pd_debugger.messagebox.showinfo",
             lambda *a, **kw: info_calls.append((a, kw)),
         )
-        debugger._print_menu_item_action_performed()  # noqa: SLF001
+        debugger._print_menu_item_action_performed()
         assert send_calls == []
         assert info_calls and "no pages" in info_calls[0][0][1].lower()
     finally:
         doc.close()
-        debugger._document = None  # noqa: SLF001
+        debugger._document = None
 
 
 def test_print_with_pages_dispatches_to_send_helper(
@@ -160,17 +160,17 @@ def test_print_with_pages_dispatches_to_send_helper(
         doc.add_page(PDPage())
         doc.add_page(PDPage())
         doc.add_page(PDPage())
-        debugger._document = doc  # noqa: SLF001
+        debugger._document = doc
         send_calls: list[int] = []
         monkeypatch.setattr(
             debugger, "_send_document_to_printer",
             lambda n: send_calls.append(n),
         )
-        debugger._print_menu_item_action_performed()  # noqa: SLF001
+        debugger._print_menu_item_action_performed()
         assert send_calls == [3]
     finally:
         doc.close()
-        debugger._document = None  # noqa: SLF001
+        debugger._document = None
 
 
 def test_print_propagates_helper_failure_to_messagebox(
@@ -180,7 +180,7 @@ def test_print_propagates_helper_failure_to_messagebox(
     doc = PDDocument()
     try:
         doc.add_page(PDPage())
-        debugger._document = doc  # noqa: SLF001
+        debugger._document = doc
         error_calls: list[tuple[Any, ...]] = []
 
         def _boom(n: int) -> None:
@@ -191,12 +191,12 @@ def test_print_propagates_helper_failure_to_messagebox(
             "pypdfbox.debugger.pd_debugger.messagebox.showerror",
             lambda *a, **kw: error_calls.append((a, kw)),
         )
-        debugger._print_menu_item_action_performed()  # noqa: SLF001
+        debugger._print_menu_item_action_performed()
         assert error_calls
         assert "boom on 1" in error_calls[0][0][1]
     finally:
         doc.close()
-        debugger._document = None  # noqa: SLF001
+        debugger._document = None
 
 
 def test_print_handles_get_number_of_pages_failure(
@@ -208,18 +208,18 @@ def test_print_handles_get_number_of_pages_failure(
         def get_number_of_pages(self) -> int:
             raise RuntimeError("xref corrupt")
 
-    debugger._document = _Boom()  # type: ignore[assignment]  # noqa: SLF001
+    debugger._document = _Boom()  # type: ignore[assignment]
     error_calls: list[tuple[Any, ...]] = []
     monkeypatch.setattr(
         "pypdfbox.debugger.pd_debugger.messagebox.showerror",
         lambda *a, **kw: error_calls.append((a, kw)),
     )
     try:
-        debugger._print_menu_item_action_performed()  # noqa: SLF001
+        debugger._print_menu_item_action_performed()
         assert error_calls
         assert "xref corrupt" in error_calls[0][0][1]
     finally:
-        debugger._document = None  # noqa: SLF001
+        debugger._document = None
 
 
 # ----------------------------------------------------------------------
@@ -245,7 +245,7 @@ def test_send_document_writes_temp_pdf_with_all_pages(
     try:
         for _ in range(3):
             doc.add_page(PDPage())
-        debugger._document = doc  # noqa: SLF001
+        debugger._document = doc
         # Force the POSIX ``lp`` branch.
         monkeypatch.setattr(
             "pypdfbox.debugger.pd_debugger.sys.platform", "linux",
@@ -256,7 +256,7 @@ def test_send_document_writes_temp_pdf_with_all_pages(
 
         monkeypatch.setattr("shutil.which", _which)
         monkeypatch.setattr(subprocess, "Popen", _FakePopen)
-        debugger._send_document_to_printer(3)  # noqa: SLF001
+        debugger._send_document_to_printer(3)
         assert captured_path, "spooler was not invoked"
         path = captured_path[0]
         assert path.endswith(".pdf")
@@ -271,7 +271,7 @@ def test_send_document_writes_temp_pdf_with_all_pages(
             os.unlink(path)
     finally:
         doc.close()
-        debugger._document = None  # noqa: SLF001
+        debugger._document = None
 
 
 def test_send_document_windows_uses_startfile(
@@ -283,7 +283,7 @@ def test_send_document_windows_uses_startfile(
     doc = PDDocument()
     try:
         doc.add_page(PDPage())
-        debugger._document = doc  # noqa: SLF001
+        debugger._document = doc
         monkeypatch.setattr(
             "pypdfbox.debugger.pd_debugger.sys.platform", "win32",
         )
@@ -294,7 +294,7 @@ def test_send_document_windows_uses_startfile(
 
         # ``os.startfile`` is POSIX-absent; install a stub for the test.
         monkeypatch.setattr(os, "startfile", _startfile, raising=False)
-        debugger._send_document_to_printer(1)  # noqa: SLF001
+        debugger._send_document_to_printer(1)
         assert startfile_calls
         path, op = startfile_calls[0]
         assert op == "print"
@@ -303,7 +303,7 @@ def test_send_document_windows_uses_startfile(
             os.unlink(path)
     finally:
         doc.close()
-        debugger._document = None  # noqa: SLF001
+        debugger._document = None
 
 
 def test_send_document_fallback_to_opener_when_no_spooler(
@@ -323,7 +323,7 @@ def test_send_document_fallback_to_opener_when_no_spooler(
 
     try:
         doc.add_page(PDPage())
-        debugger._document = doc  # noqa: SLF001
+        debugger._document = doc
         monkeypatch.setattr(
             "pypdfbox.debugger.pd_debugger.sys.platform", "darwin",
         )
@@ -334,13 +334,13 @@ def test_send_document_fallback_to_opener_when_no_spooler(
 
         monkeypatch.setattr("shutil.which", _which)
         monkeypatch.setattr(subprocess, "Popen", _FakePopen)
-        debugger._send_document_to_printer(1)  # noqa: SLF001
+        debugger._send_document_to_printer(1)
         assert popen_calls and popen_calls[0][0] == "open"
         with contextlib.suppress(OSError):
             os.unlink(popen_calls[0][1])
     finally:
         doc.close()
-        debugger._document = None  # noqa: SLF001
+        debugger._document = None
 
 
 def test_send_document_lp_oserror_falls_through_to_opener(
@@ -362,7 +362,7 @@ def test_send_document_lp_oserror_falls_through_to_opener(
 
     try:
         doc.add_page(PDPage())
-        debugger._document = doc  # noqa: SLF001
+        debugger._document = doc
         monkeypatch.setattr(
             "pypdfbox.debugger.pd_debugger.sys.platform", "linux",
         )
@@ -372,13 +372,13 @@ def test_send_document_lp_oserror_falls_through_to_opener(
 
         monkeypatch.setattr("shutil.which", _which)
         monkeypatch.setattr(subprocess, "Popen", _FakePopen)
-        debugger._send_document_to_printer(1)  # noqa: SLF001
+        debugger._send_document_to_printer(1)
         assert popen_calls and popen_calls[0][0] == "xdg-open"
         with contextlib.suppress(OSError):
             os.unlink(popen_calls[0][1])
     finally:
         doc.close()
-        debugger._document = None  # noqa: SLF001
+        debugger._document = None
 
 
 def test_send_document_no_spooler_no_opener_surfaces_path(
@@ -391,7 +391,7 @@ def test_send_document_no_spooler_no_opener_surfaces_path(
     info_calls: list[tuple[Any, ...]] = []
     try:
         doc.add_page(PDPage())
-        debugger._document = doc  # noqa: SLF001
+        debugger._document = doc
         monkeypatch.setattr(
             "pypdfbox.debugger.pd_debugger.sys.platform", "linux",
         )
@@ -400,10 +400,10 @@ def test_send_document_no_spooler_no_opener_surfaces_path(
             "pypdfbox.debugger.pd_debugger.messagebox.showinfo",
             lambda *a, **kw: info_calls.append((a, kw)),
         )
-        debugger._send_document_to_printer(1)  # noqa: SLF001
+        debugger._send_document_to_printer(1)
         assert info_calls
         body = info_calls[0][0][1]
         assert ".pdf" in body
     finally:
         doc.close()
-        debugger._document = None  # noqa: SLF001
+        debugger._document = None

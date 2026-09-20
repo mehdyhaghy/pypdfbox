@@ -91,7 +91,7 @@ def test_recipients_round_trip_preserves_key_and_permissions(
 ) -> None:
     try:
         cert, private_key = _build_self_signed_rsa()
-    except Exception:  # noqa: BLE001 — slow CI environments
+    except Exception:
         pytest.skip("cert generation too heavy in this environment")
 
     permissions = AccessPermission()
@@ -155,7 +155,7 @@ def test_wrong_private_key_raises_value_error() -> None:
     try:
         cert, _correct_key = _build_self_signed_rsa()
         _other_cert, wrong_key = _build_self_signed_rsa()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pytest.skip("cert generation too heavy in this environment")
 
     permissions = AccessPermission()
@@ -230,7 +230,7 @@ def test_recipient_holds_cert_and_permission() -> None:
 def test_create_der_for_recipient_round_trip() -> None:
     try:
         cert, _key = _build_self_signed_rsa()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pytest.skip("cert generation too heavy in this environment")
     handler = PublicKeySecurityHandler()
     blob = handler.create_der_for_recipient(b"\x00" * 24, cert)
@@ -242,7 +242,7 @@ def test_create_der_for_recipient_round_trip() -> None:
 def test_compute_recipient_info_round_trip() -> None:
     try:
         cert, _key = _build_self_signed_rsa()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pytest.skip("cert generation too heavy in this environment")
     handler = PublicKeySecurityHandler()
     blob = handler.compute_recipient_info(cert, b"\x42" * 16)
@@ -254,7 +254,7 @@ def test_compute_recipient_info_round_trip() -> None:
 def test_compute_recipients_field_round_trip() -> None:
     try:
         cert, _key = _build_self_signed_rsa()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pytest.skip("cert generation too heavy in this environment")
     policy = PublicKeyProtectionPolicy()
     policy.add_recipient(

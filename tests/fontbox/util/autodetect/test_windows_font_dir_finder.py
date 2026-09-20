@@ -147,13 +147,13 @@ def test_no_windir_drive_letter_probe_finds_fonts(
     # ``C:<sep>WINDOWS<sep>FONTS`` / ``C:<sep>PSFONTS`` — match by suffix.
     def _exists(self: Path) -> bool:
         s = str(self).upper().replace("\\", "/")
-        if s.endswith("C:/WINDOWS/FONTS") or s.endswith("C:/PSFONTS"):
+        if s.endswith(("C:/WINDOWS/FONTS", "C:/PSFONTS")):
             return True
         return real_exists(self)
 
     def _is_dir(self: Path) -> bool:
         s = str(self).upper().replace("\\", "/")
-        if s.endswith("C:/WINDOWS/FONTS") or s.endswith("C:/PSFONTS"):
+        if s.endswith(("C:/WINDOWS/FONTS", "C:/PSFONTS")):
             return True
         return real_is_dir(self)
 

@@ -135,5 +135,5 @@ def test_overlay_reuses_specific_page_documents_on_repeated_calls() -> None:
     second = overlay.overlay({})
 
     assert first is second is base
-    layout = cast(dict[int, object], overlay._specific_page_overlay_layout)  # noqa: SLF001
+    layout = cast("dict[int, object]", overlay._specific_page_overlay_layout)
     assert 1 in layout

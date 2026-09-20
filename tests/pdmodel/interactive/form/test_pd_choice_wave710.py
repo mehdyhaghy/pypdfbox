@@ -33,11 +33,11 @@ def test_pd_choice_base_top_index_set_clear_and_remove() -> None:
 
 
 def test_pd_choice_read_string_or_array_accepts_names_and_unknowns() -> None:
-    assert PDChoice._read_string_or_array(COSName.get_pdf_name("Export")) == [  # noqa: SLF001
+    assert PDChoice._read_string_or_array(COSName.get_pdf_name("Export")) == [
         "Export"
     ]
-    assert PDChoice._read_string_or_array(object()) == []  # noqa: SLF001
+    assert PDChoice._read_string_or_array(object()) == []
 
 
 def test_pd_choice_write_string_or_array_none_returns_none() -> None:
-    assert PDChoice._write_string_or_array(None) is None  # noqa: SLF001
+    assert PDChoice._write_string_or_array(None) is None

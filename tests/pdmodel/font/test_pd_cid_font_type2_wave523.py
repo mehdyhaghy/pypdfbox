@@ -17,7 +17,7 @@ class _SparseGlyphInner:
     def __contains__(self, key: str) -> bool:
         return key == "glyf"
 
-    def getGlyphOrder(self) -> list[str]:  # noqa: N802 - fontTools API
+    def getGlyphOrder(self) -> list[str]:
         return [".notdef"]
 
     def __getitem__(self, key: str) -> Any:

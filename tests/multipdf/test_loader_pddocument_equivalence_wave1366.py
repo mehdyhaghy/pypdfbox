@@ -40,7 +40,7 @@ def test_pddocument_load_and_loader_load_pdf_same_page_count() -> None:
     try:
         # Wrap non-owningly to read page count.
         pd = PDDocument(cos)
-        pd._owns_document = False  # noqa: SLF001
+        pd._owns_document = False
         loader_count = pd.get_number_of_pages()
     finally:
         cos.close()
@@ -61,7 +61,7 @@ def test_pddocument_load_and_loader_load_pdf_same_info_title(title: str) -> None
     cos = Loader.load_pdf(pdf)
     try:
         pd = PDDocument(cos)
-        pd._owns_document = False  # noqa: SLF001
+        pd._owns_document = False
         b = pd.get_document_information().get_title()
     finally:
         cos.close()
@@ -114,9 +114,9 @@ def test_loader_load_pdf_and_load_alias_are_equivalent() -> None:
             assert b.get_trailer() is not None
             # Same page count via non-owning PDDocument wrapper.
             pa = PDDocument(a)
-            pa._owns_document = False  # noqa: SLF001
+            pa._owns_document = False
             pb = PDDocument(b)
-            pb._owns_document = False  # noqa: SLF001
+            pb._owns_document = False
             assert pa.get_number_of_pages() == pb.get_number_of_pages()
         finally:
             b.close()
@@ -139,7 +139,7 @@ def test_pddocument_load_after_save_roundtrip_preserves_count(tmp_path: Path) ->
     cos = Loader.load_pdf(target)
     try:
         pd = PDDocument(cos)
-        pd._owns_document = False  # noqa: SLF001
+        pd._owns_document = False
         b = pd.get_number_of_pages()
     finally:
         cos.close()

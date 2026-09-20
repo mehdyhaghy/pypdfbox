@@ -44,5 +44,5 @@ class MetaUtil:
             )
             pretty = parseString(xml_str).toprettyxml(indent="  ")
             LOG.debug("\n%s", pretty)
-        except Exception as ex:  # noqa: BLE001
+        except Exception as ex:
             LOG.error(ex, exc_info=ex)

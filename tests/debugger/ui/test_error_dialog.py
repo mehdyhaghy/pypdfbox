@@ -159,7 +159,7 @@ def test_filtering_skips_suppressed_frames(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(tb_mod, "extract_tb", lambda tb: fake_frames)
     # Give the exception a traceback so extract_tb is called.
     try:
-        raise err  # noqa: TRY301
+        raise err
     except RuntimeError as e:
         out = dialog.generate_stack_trace(e)
     assert "java.awt.MyWidget" not in out

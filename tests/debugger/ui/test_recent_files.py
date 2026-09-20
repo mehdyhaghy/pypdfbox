@@ -180,7 +180,7 @@ def test_default_recent_files_path_posix(monkeypatch, tmp_path: Path) -> None:
 
     monkeypatch.setattr(recent_files.sys, "platform", "linux")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    path = recent_files._default_recent_files_path()  # noqa: SLF001
+    path = recent_files._default_recent_files_path()
     assert path == tmp_path / "pypdfbox" / "recent-files.json"
 
 
@@ -189,7 +189,7 @@ def test_default_recent_files_path_windows(monkeypatch, tmp_path: Path) -> None:
 
     monkeypatch.setattr(recent_files.sys, "platform", "win32")
     monkeypatch.setenv("APPDATA", str(tmp_path))
-    path = recent_files._default_recent_files_path()  # noqa: SLF001
+    path = recent_files._default_recent_files_path()
     assert path == tmp_path / "pypdfbox" / "recent-files.json"
 
 
@@ -198,7 +198,7 @@ def test_default_recent_files_path_windows_no_appdata(monkeypatch) -> None:
 
     monkeypatch.setattr(recent_files.sys, "platform", "win32")
     monkeypatch.delenv("APPDATA", raising=False)
-    path = recent_files._default_recent_files_path()  # noqa: SLF001
+    path = recent_files._default_recent_files_path()
     assert path.name == "recent-files.json"
     assert "pypdfbox" in path.parts
 
@@ -208,7 +208,7 @@ def test_default_recent_files_path_posix_no_xdg(monkeypatch) -> None:
 
     monkeypatch.setattr(recent_files.sys, "platform", "linux")
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    path = recent_files._default_recent_files_path()  # noqa: SLF001
+    path = recent_files._default_recent_files_path()
     assert path.name == "recent-files.json"
 
 

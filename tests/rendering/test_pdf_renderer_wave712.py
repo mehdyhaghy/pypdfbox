@@ -28,16 +28,16 @@ def _prepared_renderer(
 ) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -67,14 +67,14 @@ def test_unknown_shading_type_uses_evaluated_fallback_color() -> None:
 
     doc, renderer = _prepared_renderer(size=(1, 1))
     try:
-        renderer._paint_shading(  # noqa: SLF001
+        renderer._paint_shading(
             _UnknownShading(),
             region_mask=Image.new("L", (1, 1), 255),
         )
         _finish(renderer)
 
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((0, 0)) == (0, 255, 0)  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._image.getpixel((0, 0)) == (0, 255, 0)
     finally:
         doc.close()
 
@@ -86,8 +86,8 @@ def test_shading_extend_defaults_when_cosboolean_import_fails(
 
     def raising_import(
         name: str,
-        globals: dict[str, object] | None = None,  # noqa: A002
-        locals: dict[str, object] | None = None,  # noqa: A002
+        globals: dict[str, object] | None = None,
+        locals: dict[str, object] | None = None,
         fromlist: tuple[str, ...] = (),
         level: int = 0,
     ) -> object:
@@ -101,16 +101,16 @@ def test_shading_extend_defaults_when_cosboolean_import_fails(
         def get_extend(self) -> object:
             return object()
 
-    assert PDFRenderer._shading_extend(_Shading()) == (False, False)  # noqa: SLF001
+    assert PDFRenderer._shading_extend(_Shading()) == (False, False)
 
 
 def test_hsl_helpers_cover_tie_and_in_gamut_paths() -> None:
-    assert PDFRenderer._hsl_clip_color(0.25, 0.5, 0.75) == (  # noqa: SLF001
+    assert PDFRenderer._hsl_clip_color(0.25, 0.5, 0.75) == (
         0.25,
         0.5,
         0.75,
     )
-    assert PDFRenderer._hsl_set_sat(0.8, 0.2, 0.8, 0.4) == (  # noqa: SLF001
+    assert PDFRenderer._hsl_set_sat(0.8, 0.2, 0.8, 0.4) == (
         0.4,
         0.0,
         0.4,

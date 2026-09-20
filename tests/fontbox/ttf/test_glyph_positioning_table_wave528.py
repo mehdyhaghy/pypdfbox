@@ -15,7 +15,7 @@ class _FakeTTFont:
         assert key == "GPOS"
         return SimpleNamespace(table=self.gpos_table)
 
-    def getGlyphOrder(self) -> list[str]:  # noqa: N802 - fontTools API spelling
+    def getGlyphOrder(self) -> list[str]:
         return self.glyph_order
 
 

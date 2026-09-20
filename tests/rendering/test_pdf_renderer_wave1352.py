@@ -207,7 +207,7 @@ def test_create_page_drawer_falls_back_to_self_on_constructor_error(
         # Supply a real parameters-like object with get_page so we enter the
         # PageDrawer construction branch (not the legacy fallback).
         params = MagicMock()
-        params.get_page.return_value = renderer._document.get_pages()[0]  # noqa: SLF001
+        params.get_page.return_value = renderer._document.get_pages()[0]
         # set_annotation_filter is a real callable on the mock, but the
         # PageDrawer constructor needs to raise to exercise lines 873-874.
 
@@ -408,11 +408,11 @@ def test_stroke_via_aggdraw_delegates_to_draw_via_aggdraw(
     doc = _make_doc(8.0, 8.0)
     try:
         renderer = PDFRenderer(doc)
-        renderer._image = Image.new("RGB", (8, 8), (255, 255, 255))  # noqa: SLF001
-        renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-        renderer._draw.setantialias(True)  # noqa: SLF001
-        renderer._gs_stack = [_GState()]  # noqa: SLF001
-        renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+        renderer._image = Image.new("RGB", (8, 8), (255, 255, 255))
+        renderer._draw = aggdraw.Draw(renderer._image)
+        renderer._draw.setantialias(True)
+        renderer._gs_stack = [_GState()]
+        renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
 
         seen: dict[str, Any] = {}
 
@@ -422,7 +422,7 @@ def test_stroke_via_aggdraw_delegates_to_draw_via_aggdraw(
             seen["even_odd"] = even_odd
 
         monkeypatch.setattr(renderer, "_draw_via_aggdraw", _spy)
-        renderer._stroke_via_aggdraw()  # noqa: SLF001
+        renderer._stroke_via_aggdraw()
         assert seen == {"stroke": True, "fill": False, "even_odd": False}
     finally:
         doc.close()
@@ -438,9 +438,9 @@ def test_get_type1_units_per_em_returns_none_when_get_name_returns_none() -> Non
     from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
 
     font = MagicMock(spec=PDType1Font)
-    font._get_type1_font.return_value = None  # noqa: SLF001
+    font._get_type1_font.return_value = None
     font.get_name.return_value = None
-    assert PDFRenderer._get_type1_units_per_em(font) is None  # noqa: SLF001
+    assert PDFRenderer._get_type1_units_per_em(font) is None
 
 
 def test_get_type1_units_per_em_returns_none_when_no_substitute(
@@ -450,7 +450,7 @@ def test_get_type1_units_per_em_returns_none_when_no_substitute(
     from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
 
     font = MagicMock(spec=PDType1Font)
-    font._get_type1_font.return_value = None  # noqa: SLF001
+    font._get_type1_font.return_value = None
     font.get_name.return_value = "Symbol"
 
     monkeypatch.setattr(
@@ -458,7 +458,7 @@ def test_get_type1_units_per_em_returns_none_when_no_substitute(
         "get_substitute_ttf",
         classmethod(lambda _cls, _name: None),
     )
-    assert PDFRenderer._get_type1_units_per_em(font) is None  # noqa: SLF001
+    assert PDFRenderer._get_type1_units_per_em(font) is None
 
 
 def test_get_type1_units_per_em_returns_substitute_upem_when_present(
@@ -468,7 +468,7 @@ def test_get_type1_units_per_em_returns_substitute_upem_when_present(
     from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
 
     font = MagicMock(spec=PDType1Font)
-    font._get_type1_font.return_value = None  # noqa: SLF001
+    font._get_type1_font.return_value = None
     font.get_name.return_value = "Helvetica"
 
     class _Substitute:
@@ -480,7 +480,7 @@ def test_get_type1_units_per_em_returns_substitute_upem_when_present(
         "get_substitute_ttf",
         classmethod(lambda _cls, _name: _Substitute()),
     )
-    assert PDFRenderer._get_type1_units_per_em(font) == 2048  # noqa: SLF001
+    assert PDFRenderer._get_type1_units_per_em(font) == 2048
 
 
 def test_get_type1_units_per_em_returns_none_when_substitute_upem_raises(
@@ -490,7 +490,7 @@ def test_get_type1_units_per_em_returns_none_when_substitute_upem_raises(
     from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
 
     font = MagicMock(spec=PDType1Font)
-    font._get_type1_font.return_value = None  # noqa: SLF001
+    font._get_type1_font.return_value = None
     font.get_name.return_value = "Helvetica"
 
     class _Substitute:
@@ -502,7 +502,7 @@ def test_get_type1_units_per_em_returns_none_when_substitute_upem_raises(
         "get_substitute_ttf",
         classmethod(lambda _cls, _name: _Substitute()),
     )
-    assert PDFRenderer._get_type1_units_per_em(font) is None  # noqa: SLF001
+    assert PDFRenderer._get_type1_units_per_em(font) is None
 
 
 # ---------------------------------------------------------------------------

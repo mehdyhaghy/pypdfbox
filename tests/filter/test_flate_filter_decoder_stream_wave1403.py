@@ -32,8 +32,8 @@ def test_read_all_with_eof_set_and_buffered_tail_exits_via_condition() -> None:
     # loop's condition-exit handles (decoder is done but data is still queued).
     first = stream.read(4)
     assert first == raw[:4]
-    assert len(stream._buffer) > stream._buffer_pos  # noqa: SLF001 — bytes remain
-    stream._eof = True  # noqa: SLF001 — decoder exhausted, buffer not drained
+    assert len(stream._buffer) > stream._buffer_pos
+    stream._eof = True
 
     rest = stream.read(-1)
     # The buffered remainder is returned; no further fetch was attempted.

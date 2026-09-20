@@ -33,7 +33,7 @@ def test_wave651_make_doc_removes_existing_default_page(monkeypatch: Any) -> Non
 
     monkeypatch.setattr(wave651, "PDDocument", make_document)
 
-    doc, page = wave651._make_doc(width=8.0, height=9.0)  # noqa: SLF001
+    doc, page = wave651._make_doc(width=8.0, height=9.0)
 
     assert doc is created[0]
     assert doc.removed_indexes == [0]

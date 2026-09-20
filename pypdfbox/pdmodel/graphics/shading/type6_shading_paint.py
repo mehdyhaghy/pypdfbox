@@ -30,7 +30,7 @@ class Type6ShadingPaint(ShadingPaint):
         :class:`PatchMeshesShadingContext` (Type 6 / 7) parameterised by
         ``control_points=12`` (Coons)."""
         _ = (user_bounds, hints)
-        from .patch_meshes_shading_context import (  # noqa: PLC0415
+        from .patch_meshes_shading_context import (
             PatchMeshesShadingContext,
         )
 

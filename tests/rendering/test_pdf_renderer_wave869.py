@@ -32,7 +32,7 @@ def test_wave869_make_doc_exercises_existing_page_removal(monkeypatch) -> None:
 
 
 def test_wave869_tiling_test_local_stubs_are_consumed(monkeypatch) -> None:
-    def render_tiling_cell(  # noqa: ANN001
+    def render_tiling_cell(
         self, pattern, *, bbox, tile_size, cell_size=None,
     ):
         assert bbox.get_width() == 1.0

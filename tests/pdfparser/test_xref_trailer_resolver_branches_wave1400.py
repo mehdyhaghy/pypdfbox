@@ -66,7 +66,7 @@ def test_set_startxref_normal_prev_chain_loop_continues() -> None:
 
     r.set_startxref(3000)
     # All three sections' entries must be present in the resolved view.
-    rt = r._resolved_xref_table  # noqa: SLF001 - testing resolved state
+    rt = r._resolved_xref_table
     assert rt is not None
     assert COSObjectKey(1, 0) in rt
     assert COSObjectKey(2, 0) in rt
@@ -92,13 +92,13 @@ def test_set_startxref_chain_with_trailerless_older_section() -> None:
     # Deliberately omit set_trailer.
 
     r.set_startxref(2000)
-    rt = r._resolved_xref_table  # noqa: SLF001 - testing resolved state
+    rt = r._resolved_xref_table
     assert rt is not None
     # Both sections contributed entries even though the older one had
     # no trailer to merge.
     assert COSObjectKey(1, 0) in rt
     assert COSObjectKey(2, 0) in rt
-    resolved = r._resolved_trailer  # noqa: SLF001 - testing resolved state
+    resolved = r._resolved_trailer
     # Only the newer section's trailer made it through the merge.
     assert resolved is not None
     assert resolved.get_int("Size") == 5
@@ -121,7 +121,7 @@ def test_next_xref_obj_tolerates_subclass_dropping_current_section() -> None:
     r = _NoOpResolver()
     # Must not raise — the guard short-circuits the xref_type write.
     r.next_xref_obj(1234, XrefType.TABLE)
-    assert r._current is None  # noqa: SLF001
+    assert r._current is None
 
 
 def test_set_startxref_full_chain_hits_infinite_loop_guard() -> None:
@@ -143,4 +143,4 @@ def test_set_startxref_full_chain_hits_infinite_loop_guard() -> None:
 
     r.set_startxref(2000)
     # Guard must have fired — we got back a finite resolved view.
-    assert r._resolved_trailer is not None  # noqa: SLF001
+    assert r._resolved_trailer is not None

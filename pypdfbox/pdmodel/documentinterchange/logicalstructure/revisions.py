@@ -198,8 +198,8 @@ class Revisions[T]:
 
 def _to_cos(value: Any) -> COSBase:
     if hasattr(value, "get_cos_object"):
-        return cast(COSBase, value.get_cos_object())
-    return cast(COSBase, value)
+        return cast("COSBase", value.get_cos_object())
+    return cast("COSBase", value)
 
 
 __all__ = ["Revisions"]

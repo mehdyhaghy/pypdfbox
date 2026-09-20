@@ -62,7 +62,7 @@ def test_is_correct_method_non_string_annotation_mismatch_returns_false() -> Non
     # than the deferred string form. ``__future__ annotations`` makes
     # source-declared annotations strings, so synthesise the function
     # via ``exec`` + ``__annotations__`` injection.
-    def fn(a):  # noqa: ANN001
+    def fn(a):
         return None
 
     fn.__annotations__ = {"a": int}  # live class object, not "int"

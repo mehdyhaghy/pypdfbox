@@ -45,9 +45,7 @@ from pypdfbox.jbig2.decoder.arithmetic.cx import CX
 from pypdfbox.jbig2.decoder.generic_refinement_region_decoding_procedure import (
     _SLTP_CONTEXT_TEMPLATE0,
     _SLTP_CONTEXT_TEMPLATE1,
-)
-from pypdfbox.jbig2.decoder.generic_refinement_region_decoding_procedure import (
-    GenericRefinementRegionDecodingProcedure as GRRDP,
+    GenericRefinementRegionDecodingProcedure,
 )
 
 # --------------------------------------------------------------------------
@@ -177,7 +175,7 @@ _T1_OFFSETS = [
 def test_template1_context_matches_independent_reference(dx: int, dy: int) -> None:
     width, height = 9, 8
     ref = _make_ref(width, height, seed=100 + dx * 7 + dy * 3)
-    got = GRRDP.decode(
+    got = GenericRefinementRegionDecodingProcedure.decode(
         _CtxStub(), CX(8192, 1), width, height, 1, False, ref, dx, dy, None, None
     )
     expected = _naive_t1(width, height, ref, dx, dy, tpgron=False)
@@ -199,7 +197,7 @@ _T1_TPGR_OFFSETS = [(0, 0), (1, 1), (-1, -1), (3, -2), (-2, 0), (0, 2)]
 def test_template1_tpgron_matches_independent_reference(dx: int, dy: int) -> None:
     width, height = 10, 9
     ref = _make_ref(width, height, seed=500 + dx * 11 + dy * 5)
-    got = GRRDP.decode(
+    got = GenericRefinementRegionDecodingProcedure.decode(
         _CtxStub(), CX(8192, 1), width, height, 1, True, ref, dx, dy, None, None
     )
     expected = _naive_t1(width, height, ref, dx, dy, tpgron=True)
@@ -220,7 +218,7 @@ def test_template1_tpgron_uniform_zero_reference_copies_zero() -> None:
     width, height = 12, 6
     ref = Bitmap(width, height)  # all zero
     sltp = _SelStub(_SLTP_CONTEXT_TEMPLATE1)
-    got = GRRDP.decode(
+    got = GenericRefinementRegionDecodingProcedure.decode(
         sltp, CX(8192, 1), width, height, 1, True, ref, 0, 0, None, None
     )
     assert all(
@@ -239,7 +237,7 @@ def test_template1_tpgron_uniform_interior_skips_decoder() -> None:
     ref.fill_bitmap(0xFF)
 
     stub = _SelStub(_SLTP_CONTEXT_TEMPLATE1)
-    got = GRRDP.decode(
+    got = GenericRefinementRegionDecodingProcedure.decode(
         stub, CX(8192, 1), width, height, 1, True, ref, 0, 0, None, None
     )
     # Even (LTP=1) interior lines: uniform-1 neighbourhood copies centre -> 1.
@@ -263,7 +261,7 @@ def test_template0_constant_one_fills_bitmap() -> None:
 
     width, height = 13, 11
     ref = Bitmap(width, height)
-    got = GRRDP.decode(
+    got = GenericRefinementRegionDecodingProcedure.decode(
         _One(),
         CX(8192, 1),
         width,
@@ -290,7 +288,7 @@ def test_template0_offsets_do_not_crash_and_are_deterministic(
 ) -> None:
     width, height = 17, 9
     ref = _make_ref(width, height, seed=900 + dx * 13 + dy * 7)
-    a = GRRDP.decode(
+    a = GenericRefinementRegionDecodingProcedure.decode(
         _CtxStub(),
         CX(8192, 1),
         width,
@@ -302,7 +300,7 @@ def test_template0_offsets_do_not_crash_and_are_deterministic(
         dy,
         *_T0_AT_DEFAULT,
     )
-    b = GRRDP.decode(
+    b = GenericRefinementRegionDecodingProcedure.decode(
         _CtxStub(),
         CX(8192, 1),
         width,
@@ -324,7 +322,7 @@ def test_template0_tpgron_all_zero_reference_predicts_zero() -> None:
     width, height = 24, 8
     ref = Bitmap(width, height)
     stub = _SelStub(_SLTP_CONTEXT_TEMPLATE0)
-    got = GRRDP.decode(
+    got = GenericRefinementRegionDecodingProcedure.decode(
         stub, CX(8192, 1), width, height, 0, True, ref, 0, 0, *_T0_AT_DEFAULT
     )
     assert all(
@@ -340,7 +338,7 @@ def test_template0_tpgron_all_one_reference_predicts_one_on_ltp_lines() -> None:
     ref = Bitmap(width, height)
     ref.fill_bitmap(0xFF)
     stub = _SelStub(_SLTP_CONTEXT_TEMPLATE0)
-    got = GRRDP.decode(
+    got = GenericRefinementRegionDecodingProcedure.decode(
         stub, CX(8192, 1), width, height, 0, True, ref, 0, 0, *_T0_AT_DEFAULT
     )
     # Even lines (LTP=1), interior columns: predicted 1.
@@ -356,7 +354,7 @@ def test_template0_tpgron_all_one_reference_predicts_one_on_ltp_lines() -> None:
 
 def test_template0_default_at_disables_override() -> None:
     # Default AT positions (-1,-1) for both AT pixels -> override is OFF.
-    proc = GRRDP(_CtxStub(), CX(8192, 1))
+    proc = GenericRefinementRegionDecodingProcedure(_CtxStub(), CX(8192, 1))
     proc.template_id = 0
     proc.gr_at_x = [-1, -1]
     proc.gr_at_y = [-1, -1]
@@ -366,7 +364,7 @@ def test_template0_default_at_disables_override() -> None:
 
 
 def test_template0_custom_at_enables_override() -> None:
-    proc = GRRDP(_CtxStub(), CX(8192, 1))
+    proc = GenericRefinementRegionDecodingProcedure(_CtxStub(), CX(8192, 1))
     proc.template_id = 0
     proc.gr_at_x = [-1, 2]
     proc.gr_at_y = [-1, -2]
@@ -381,10 +379,10 @@ def test_template0_at_override_changes_decoded_bitmap() -> None:
     # context-sensitive stub).
     width, height = 12, 6
     ref = _make_ref(width, height, seed=4242)
-    default = GRRDP.decode(
+    default = GenericRefinementRegionDecodingProcedure.decode(
         _CtxStub(), CX(8192, 1), width, height, 0, False, ref, 0, 0, [-1, -1], [-1, -1]
     )
-    overridden = GRRDP.decode(
+    overridden = GenericRefinementRegionDecodingProcedure.decode(
         _CtxStub(), CX(8192, 1), width, height, 0, False, ref, 0, 0, [-2, 2], [3, -1]
     )
     assert default != overridden
@@ -413,13 +411,13 @@ def test_sltp_decode_uses_template_specific_index() -> None:
             seen.append(cx.index)
             return 0
 
-    proc0 = GRRDP(_Recorder(), CX(8192, 1))
+    proc0 = GenericRefinementRegionDecodingProcedure(_Recorder(), CX(8192, 1))
     proc0.template = T0
     proc0._decode_sltp()
     assert seen[-1] == _SLTP_CONTEXT_TEMPLATE0
 
     seen.clear()
-    proc1 = GRRDP(_Recorder(), CX(8192, 1))
+    proc1 = GenericRefinementRegionDecodingProcedure(_Recorder(), CX(8192, 1))
     proc1.template = T1
     proc1._decode_sltp()
     assert seen[-1] == _SLTP_CONTEXT_TEMPLATE1
@@ -436,10 +434,10 @@ def test_reference_smaller_than_region_reads_zero_outside() -> None:
     ref = Bitmap(2, 2)
     ref.set_pixel(0, 0, 1)
     ref.set_pixel(1, 1, 1)
-    got = GRRDP.decode(
+    got = GenericRefinementRegionDecodingProcedure.decode(
         _CtxStub(), CX(8192, 1), 6, 6, 1, False, ref, 0, 0, None, None
     )
-    again = GRRDP.decode(
+    again = GenericRefinementRegionDecodingProcedure.decode(
         _CtxStub(), CX(8192, 1), 6, 6, 1, False, ref, 0, 0, None, None
     )
     assert got == again
@@ -449,10 +447,10 @@ def test_reference_offset_pushes_reference_off_region() -> None:
     # A large positive offset moves the reference entirely outside the region's
     # sampling window: every reference read is 0. Template 1, no crash.
     ref = _make_ref(4, 4, seed=7)
-    got = GRRDP.decode(
+    got = GenericRefinementRegionDecodingProcedure.decode(
         _CtxStub(), CX(8192, 1), 5, 5, 1, False, ref, 100, 100, None, None
     )
-    again = GRRDP.decode(
+    again = GenericRefinementRegionDecodingProcedure.decode(
         _CtxStub(), CX(8192, 1), 5, 5, 1, False, ref, 100, 100, None, None
     )
     assert got == again

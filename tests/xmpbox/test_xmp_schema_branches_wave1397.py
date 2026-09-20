@@ -29,7 +29,7 @@ def test_init_without_namespace_or_prefix_skips_namespace_registration() -> None
     """Closes 79->exit: when the subclass exposes neither a namespace
     URI nor a preferred prefix, the ``_namespaces`` dict stays empty."""
     schema = _BareSchema(XMPMetadata.create_xmp_metadata())
-    assert schema._namespaces == {}  # noqa: SLF001
+    assert schema._namespaces == {}
 
 
 def test_set_unqualified_language_property_value_none_on_absent() -> None:
@@ -39,7 +39,7 @@ def test_set_unqualified_language_property_value_none_on_absent() -> None:
     # Property is absent — set with value=None.
     schema.set_unqualified_language_property_value("title", "en", None)
     # Still no value; no exception.
-    assert "title" not in schema._properties  # noqa: SLF001
+    assert "title" not in schema._properties
 
 
 def test_internal_add_bag_value_appends_to_existing_list() -> None:
@@ -48,6 +48,6 @@ def test_internal_add_bag_value_appends_to_existing_list() -> None:
     schema = _BareSchema(XMPMetadata.create_xmp_metadata())
     # Pre-populate the property with a list so the branch ``if not
     # isinstance(existing, list)`` evaluates False.
-    schema._properties["tag"] = ["first"]  # noqa: SLF001
+    schema._properties["tag"] = ["first"]
     schema.internal_add_bag_value("tag", "second")
-    assert schema._properties["tag"] == ["first", "second"]  # noqa: SLF001
+    assert schema._properties["tag"] == ["first", "second"]

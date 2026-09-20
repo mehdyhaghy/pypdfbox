@@ -37,7 +37,7 @@ def test_build_array_of_text_skips_non_string_items() -> None:
     dc = _dc()
     # Stash a heterogeneous list directly on _properties so the array
     # builder iterates over mixed types.
-    dc._properties["creator"] = ["Alice", 99, "Bob"]  # noqa: SLF001
+    dc._properties["creator"] = ["Alice", 99, "Bob"]
     prop = dc.get_creators_property()
     assert prop is not None
     # The non-string was filtered out — only two text-typed children remain.
@@ -50,7 +50,7 @@ def test_build_array_of_date_skips_non_str_datetime_items() -> None:
     Closes False arm at line 137.
     """
     dc = _dc()
-    dc._properties["date"] = [datetime(2024, 1, 1, tzinfo=UTC), 12345]  # noqa: SLF001
+    dc._properties["date"] = [datetime(2024, 1, 1, tzinfo=UTC), 12345]
     prop = dc.get_dates_property()
     assert prop is not None
     assert len(prop.get_all_properties()) == 1
@@ -83,7 +83,7 @@ def test_get_dates_skips_non_string_datetime_items() -> None:
     Closes False arm at line 485.
     """
     dc = _dc()
-    dc._properties["date"] = ["2024-01-01T00:00:00Z", 99]  # noqa: SLF001
+    dc._properties["date"] = ["2024-01-01T00:00:00Z", 99]
     dates = dc.get_dates()
     assert dates is not None
     assert len(dates) == 1

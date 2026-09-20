@@ -42,8 +42,8 @@ class KerningTable(TTFTable):
         upstream API surface.
         """
         view = cls()
-        view._version = ft_kern.version  # noqa: SLF001
-        view._subtables = [  # noqa: SLF001
+        view._version = ft_kern.version
+        view._subtables = [
             KerningSubtable(sub, ttf) for sub in (ft_kern.kernTables or [])
         ]
         view.initialized = True

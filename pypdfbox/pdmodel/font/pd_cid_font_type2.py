@@ -108,7 +108,7 @@ class PDCIDFontType2(PDCIDFont):
             try:
                 if otf.is_post_script():
                     return int(cid)
-            except Exception:  # noqa: BLE001 — defensive: malformed CFF table
+            except Exception:
                 pass
         ttf = self.get_true_type_font()
         if ttf is None:
@@ -118,7 +118,7 @@ class PDCIDFontType2(PDCIDFont):
             return int(cid)
         try:
             num_glyphs = ttf.get_number_of_glyphs()
-        except Exception:  # noqa: BLE001 — defensive: malformed maxp table
+        except Exception:
             return int(cid)
         return int(cid) if cid < num_glyphs else 0
 
@@ -271,7 +271,7 @@ class PDCIDFontType2(PDCIDFont):
             self._ttf = self.get_parser(raw, is_embedded=True).parse_embedded(
                 raw
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             _LOG.exception("failed to parse font program for %s", self.get_name())
             self._ttf = False
             return None
@@ -292,7 +292,7 @@ class PDCIDFontType2(PDCIDFont):
         ``glyf`` and CFF outline paths — exposing it as a getter keeps
         callers from re-implementing the upstream selection.
         """
-        from pypdfbox.fontbox.ttf.open_type_font import (  # noqa: PLC0415
+        from pypdfbox.fontbox.ttf.open_type_font import (
             OpenTypeFont,
         )
 
@@ -302,7 +302,7 @@ class PDCIDFontType2(PDCIDFont):
         try:
             if not ttf.is_supported_otf():
                 return None
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         return ttf
 
@@ -327,8 +327,8 @@ class PDCIDFontType2(PDCIDFont):
         if not callable(getter):
             return None
         try:
-            return getter(False)  # noqa: FBT003 — mirror Java boolean
-        except Exception:  # noqa: BLE001
+            return getter(False)
+        except Exception:
             return None
 
     def get_no_mapping(self) -> set[int]:
@@ -417,7 +417,7 @@ class PDCIDFontType2(PDCIDFont):
             gid = self.cid_to_gid(cid)
             advance = ttf.get_advance_width(gid)
             units_per_em = ttf.get_units_per_em()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return 0.0
         if units_per_em <= 0:
             return 0.0
@@ -437,7 +437,7 @@ class PDCIDFontType2(PDCIDFont):
             return super().get_height(cid)
         try:
             gid = self.cid_to_gid(cid)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return super().get_height(cid)
         if gid <= 0:
             return super().get_height(cid)
@@ -477,7 +477,7 @@ class PDCIDFontType2(PDCIDFont):
             return super().get_average_font_width()
         try:
             advances = ttf.advance_widths
-        except Exception:  # noqa: BLE001
+        except Exception:
             return super().get_average_font_width()
         positive = [w for w in advances if w > 0]
         if not positive:
@@ -498,7 +498,7 @@ class PDCIDFontType2(PDCIDFont):
         if ttf is not None:
             try:
                 upem = ttf.get_units_per_em()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 upem = _DEFAULT_UNITS_PER_EM
             if upem <= 0:
                 upem = _DEFAULT_UNITS_PER_EM
@@ -552,7 +552,7 @@ class PDCIDFontType2(PDCIDFont):
         if ttf is not None:
             try:
                 x_min, y_min, x_max, y_max = ttf.get_font_bbox()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return super().get_bounding_box()
             return PDRectangle(
                 float(x_min),
@@ -573,7 +573,7 @@ class PDCIDFontType2(PDCIDFont):
         if ttf is not None:
             try:
                 gid = self.cid_to_gid(cid)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return super().has_glyph(cid)
             return gid > 0
         return super().has_glyph(cid)
@@ -593,12 +593,12 @@ class PDCIDFontType2(PDCIDFont):
             return []
         try:
             gid = self.cid_to_gid(cid)
-            glyph_name = ttf._tt.getGlyphName(gid)  # noqa: SLF001
-            glyph_set = ttf._tt.getGlyphSet()  # noqa: SLF001
+            glyph_name = ttf._tt.getGlyphName(gid)
+            glyph_set = ttf._tt.getGlyphSet()
             glyph = glyph_set[glyph_name]
-        except Exception:  # noqa: BLE001
+        except Exception:
             return []
-        from pypdfbox.fontbox.type1.type1_font import _make_path_pen  # noqa: PLC0415
+        from pypdfbox.fontbox.type1.type1_font import _make_path_pen
 
         # Pass the glyph set so a composite glyph (numberOfContours < 0,
         # e.g. an accented ``eacute`` = ``e`` + ``acute``) decomposes
@@ -608,7 +608,7 @@ class PDCIDFontType2(PDCIDFont):
         pen = _make_path_pen(glyph_set)
         try:
             glyph.draw(pen)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return []
         return list(pen.commands)
 
@@ -651,7 +651,7 @@ class PDCIDFontType2(PDCIDFont):
         else:
             try:
                 gid = self.cid_to_gid(cid)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return []
             # Acrobat draws no notdef for substitute (non-embedded) fonts.
             if gid == 0 and not self.is_embedded():
@@ -726,19 +726,19 @@ class PDCIDFontType2(PDCIDFont):
             return None
         try:
             gid = self.code_to_gid(code)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         # OpenType-PostScript programs expose Type 2 charstrings via the
         # CFF table; pypdfbox routes through fontTools' glyph-set draw
         # protocol exactly the way the TrueType path does — the glyph
         # set abstracts the outline format away.
         try:
-            glyph_name = ttf._tt.getGlyphName(gid)  # noqa: SLF001
-            glyph_set = ttf._tt.getGlyphSet()  # noqa: SLF001
+            glyph_name = ttf._tt.getGlyphName(gid)
+            glyph_set = ttf._tt.getGlyphSet()
             glyph = glyph_set[glyph_name]
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
-        from pypdfbox.fontbox.type1.type1_font import _make_path_pen  # noqa: PLC0415
+        from pypdfbox.fontbox.type1.type1_font import _make_path_pen
 
         # Pass the glyph set so a composite glyph decomposes through its
         # component lookups (see get_glyph_path); without it fontTools'
@@ -746,7 +746,7 @@ class PDCIDFontType2(PDCIDFont):
         pen = _make_path_pen(glyph_set)
         try:
             glyph.draw(pen)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         commands = list(pen.commands)
         return commands if commands else None
@@ -774,7 +774,7 @@ class PDCIDFontType2(PDCIDFont):
         the caller should never see GID 0 for unicode it knows the font
         covers.
         """
-        from pypdfbox.pdmodel.font.pd_type0_font import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.font.pd_type0_font import (
             PDType0Font,
         )
 
@@ -848,11 +848,11 @@ class PDCIDFontType2(PDCIDFont):
         fail-soft is the right behaviour (callers fall back to GID 0 /
         notdef rather than throwing).
         """
-        from pypdfbox.fontbox.font_mappers import FontMappers  # noqa: PLC0415
+        from pypdfbox.fontbox.font_mappers import FontMappers
 
         try:
             mapper = FontMappers.instance()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         get_cid_font = getattr(mapper, "get_cid_font", None)
         if not callable(get_cid_font):
@@ -863,7 +863,7 @@ class PDCIDFontType2(PDCIDFont):
                 self.get_font_descriptor(),
                 self.get_cid_system_info(),
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
 
     # ---------- OpenType wrapper predicates ----------
@@ -887,7 +887,7 @@ class PDCIDFontType2(PDCIDFont):
             return False
         try:
             return bool(is_post_script())
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
 
 

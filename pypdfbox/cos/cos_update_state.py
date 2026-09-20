@@ -89,9 +89,9 @@ class COSUpdateState:
 
     def _propagate_origin_to_children(self, *, dereferencing: bool) -> None:
         # Local imports avoid hard module cycles at import time.
-        from .cos_array import COSArray  # noqa: PLC0415
-        from .cos_dictionary import COSDictionary  # noqa: PLC0415
-        from .cos_object import COSObject  # noqa: PLC0415
+        from .cos_array import COSArray
+        from .cos_dictionary import COSDictionary
+        from .cos_object import COSObject
 
         update_info = self._update_info
         if isinstance(update_info, COSDictionary):

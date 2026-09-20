@@ -110,7 +110,7 @@ class AxialShadingContext(ShadingContext):
         pypdfbox returns an RGBA Pillow image; the upstream Java surface
         is a ``WritableRaster``. Transparent (alpha=0) pixels are emitted
         for the "continue" branches where no background colour is set."""
-        from PIL import Image  # noqa: PLC0415
+        from PIL import Image
 
         bg = self.get_background()
         rgb_bg = self.get_rgb_background()

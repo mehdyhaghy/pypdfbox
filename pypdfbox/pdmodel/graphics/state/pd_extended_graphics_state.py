@@ -550,7 +550,7 @@ class PDExtendedGraphicsState:
         return self._dict.get_name_as_string(_RI)
 
     def set_rendering_intent(self, ri: RenderingIntent | str | None) -> None:
-        from pypdfbox.pdmodel.graphics.state.rendering_intent import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.state.rendering_intent import (
             RenderingIntent,
         )
 
@@ -572,7 +572,7 @@ class PDExtendedGraphicsState:
         32000-1 §8.6.5.8, an unrecognised name is mapped to
         :attr:`RenderingIntent.RELATIVE_COLORIMETRIC`.
         """
-        from pypdfbox.pdmodel.graphics.state.rendering_intent import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.state.rendering_intent import (
             RenderingIntent,
         )
 
@@ -847,7 +847,7 @@ class PDExtendedGraphicsState:
         object for upstream-parity tests). Mirrors upstream
         ``PDExtendedGraphicsState.getSoftMask()``'s typed return.
         """
-        from pypdfbox.pdmodel.graphics.state.pd_soft_mask import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.state.pd_soft_mask import (
             PDSoftMask,
         )
 
@@ -919,7 +919,7 @@ class PDExtendedGraphicsState:
 
     @staticmethod
     def _resolve_transfer(base: COSBase | None) -> Any | None:
-        from pypdfbox.pdmodel.common.function.pd_function import PDFunction  # noqa: PLC0415
+        from pypdfbox.pdmodel.common.function.pd_function import PDFunction
 
         if base is None:
             return None
@@ -950,7 +950,7 @@ class PDExtendedGraphicsState:
         self._dict.set_item(_BG, function)
 
     def get_black_generation_typed(self) -> Any | None:
-        from pypdfbox.pdmodel.common.function.pd_function import PDFunction  # noqa: PLC0415
+        from pypdfbox.pdmodel.common.function.pd_function import PDFunction
 
         return PDFunction.create(self.get_black_generation())
 
@@ -967,7 +967,7 @@ class PDExtendedGraphicsState:
         self._dict.set_item(_BG2, function)
 
     def get_black_generation2_typed(self) -> Any | None:
-        from pypdfbox.pdmodel.common.function.pd_function import PDFunction  # noqa: PLC0415
+        from pypdfbox.pdmodel.common.function.pd_function import PDFunction
 
         base = self.get_black_generation2()
         if base is None:
@@ -992,7 +992,7 @@ class PDExtendedGraphicsState:
         self._dict.set_item(_UCR, function)
 
     def get_undercolor_removal_typed(self) -> Any | None:
-        from pypdfbox.pdmodel.common.function.pd_function import PDFunction  # noqa: PLC0415
+        from pypdfbox.pdmodel.common.function.pd_function import PDFunction
 
         return PDFunction.create(self.get_undercolor_removal())
 
@@ -1009,7 +1009,7 @@ class PDExtendedGraphicsState:
         self._dict.set_item(_UCR2, function)
 
     def get_undercolor_removal2_typed(self) -> Any | None:
-        from pypdfbox.pdmodel.common.function.pd_function import PDFunction  # noqa: PLC0415
+        from pypdfbox.pdmodel.common.function.pd_function import PDFunction
 
         base = self.get_undercolor_removal2()
         if base is None:

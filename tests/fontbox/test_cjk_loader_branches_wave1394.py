@@ -47,7 +47,7 @@ def _fake_opener_for(payload: bytes):
         def read(self) -> bytes:
             return self._data
 
-    def _opener(_req, timeout: int = 0):  # noqa: ARG001
+    def _opener(_req, timeout: int = 0):
         return _Resp(payload)
 
     return _opener
@@ -106,7 +106,7 @@ def test_extract_regular_finally_unlinks_partial_file(tmp_path: Path) -> None:
     try:
         _Path.replace = _boom_replace  # type: ignore[method-assign]
         with pytest.raises(PermissionError):
-            cjk_loader._extract_regular(  # noqa: SLF001
+            cjk_loader._extract_regular(
                 payload, "NotoSansCJK-Regular.ttc", target
             )
         # Partial file must have been cleaned up by the finally branch.
@@ -121,7 +121,7 @@ def test_extract_regular_success_leaves_target_only(tmp_path: Path) -> None:
     the target appears and no .partial straggler is left."""
     payload = _make_zip("NotoSansCJK-Regular.ttc", body=b"final-otf")
     target = tmp_path / "NotoSansCJK-Regular.ttc"
-    cjk_loader._extract_regular(  # noqa: SLF001
+    cjk_loader._extract_regular(
         payload, "NotoSansCJK-Regular.ttc", target
     )
     assert target.is_file()

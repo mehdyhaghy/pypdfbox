@@ -145,7 +145,7 @@ def test_hybrid_resolved_xref_type_is_table() -> None:
     """The hybrid section's primary type stays TABLE — the xref-stream
     fragment is supplementary, not a replacement for the parsed
     section's identity."""
-    from pypdfbox.pdfparser.xref_trailer_resolver import XrefType  # noqa: PLC0415
+    from pypdfbox.pdfparser.xref_trailer_resolver import XrefType
 
     pdf = _build_hybrid_pdf()
     parser = PDFParser(RandomAccessReadBuffer(pdf))

@@ -42,7 +42,7 @@ def test_show_form_skips_get_length_check_when_attribute_absent() -> None:
             dispatched.append("process_stream")
 
     engine = _RecordingEngine()
-    engine._current_page = PDPage()  # noqa: SLF001
+    engine._current_page = PDPage()
     form = _FakeForm(_FakeCosNoLength())
     engine.show_form(form)  # type: ignore[arg-type]
     assert dispatched == ["process_stream"]
@@ -66,7 +66,7 @@ def test_show_form_skips_when_get_length_raises_typeerror() -> None:
             raise AssertionError("process_stream must NOT run; length <= 0")
 
     engine = _Engine()
-    engine._current_page = PDPage()  # noqa: SLF001
+    engine._current_page = PDPage()
     engine.show_form(_FakeForm())  # type: ignore[arg-type]
 
 
@@ -82,7 +82,7 @@ def test_decode_codes_via_font_tuple_form_happy_path() -> None:
             # 1-byte single-byte font.
             return string[offset], 1
 
-    codes = PDFStreamEngine._decode_codes_via_font(b"AB", _TupleFont())  # noqa: SLF001
+    codes = PDFStreamEngine._decode_codes_via_font(b"AB", _TupleFont())
     assert codes == [0x41, 0x42]
 
 
@@ -94,7 +94,7 @@ def test_decode_codes_via_font_tuple_form_zero_consumed_breaks() -> None:
         def read_code(self, string: bytes, offset: int) -> tuple[int, int]:
             return string[offset], 0  # zero progress.
 
-    codes = PDFStreamEngine._decode_codes_via_font(b"AB", _LoopFont())  # noqa: SLF001
+    codes = PDFStreamEngine._decode_codes_via_font(b"AB", _LoopFont())
     assert codes == []
 
 
@@ -106,7 +106,7 @@ def test_decode_codes_via_font_returns_none_breaks() -> None:
         def read_code(self, _s: bytes, _o: int) -> None:
             return None
 
-    codes = PDFStreamEngine._decode_codes_via_font(b"AB", _NoneFont())  # noqa: SLF001
+    codes = PDFStreamEngine._decode_codes_via_font(b"AB", _NoneFont())
     assert codes == []
 
 
@@ -119,7 +119,7 @@ def test_decode_codes_via_font_two_arg_returns_int_treated_as_single_byte() -> N
         def read_code(self, string: bytes, offset: int) -> int:
             return string[offset]
 
-    codes = PDFStreamEngine._decode_codes_via_font(b"XYZ", _IntFont())  # noqa: SLF001
+    codes = PDFStreamEngine._decode_codes_via_font(b"XYZ", _IntFont())
     assert codes == [ord("X"), ord("Y"), ord("Z")]
 
 
@@ -131,5 +131,5 @@ def test_decode_codes_via_font_two_arg_raises_oserror_breaks() -> None:
         def read_code(self, _s: bytes, _o: int) -> tuple[int, int]:
             raise OSError("bad bytes in stream")
 
-    codes = PDFStreamEngine._decode_codes_via_font(b"AB", _BadFont())  # noqa: SLF001
+    codes = PDFStreamEngine._decode_codes_via_font(b"AB", _BadFont())
     assert codes == []

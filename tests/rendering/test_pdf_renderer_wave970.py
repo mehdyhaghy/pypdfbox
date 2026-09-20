@@ -27,7 +27,7 @@ def test_wave382_make_doc_removes_existing_pages(monkeypatch: Any) -> None:
     doc = _DocWithExistingPage()
     monkeypatch.setattr(wave382, "PDDocument", lambda: doc)
 
-    returned_doc, page = wave382._make_doc()  # noqa: SLF001
+    returned_doc, page = wave382._make_doc()
 
     assert returned_doc is doc
     assert doc.removed_indexes == [0]
@@ -36,6 +36,6 @@ def test_wave382_make_doc_removes_existing_pages(monkeypatch: Any) -> None:
 
 def test_wave382_tiling_pattern_returns_resources() -> None:
     resources = object()
-    pattern = wave382._TilingPattern(COSDictionary(), resources)  # noqa: SLF001
+    pattern = wave382._TilingPattern(COSDictionary(), resources)
 
     assert pattern.get_resources() is resources

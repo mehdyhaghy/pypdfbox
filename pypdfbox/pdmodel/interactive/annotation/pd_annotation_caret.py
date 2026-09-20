@@ -235,13 +235,13 @@ class PDAnnotationCaret(PDAnnotationMarkup):
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
-            return None
+            return
         from .handlers.pd_caret_appearance_handler import (
             PDCaretAppearanceHandler,
         )
 
         PDCaretAppearanceHandler(self, document).generate_appearance_streams()
-        return None
+        return
 
 
 __all__ = ["PDAnnotationCaret"]

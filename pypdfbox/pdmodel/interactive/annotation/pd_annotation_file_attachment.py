@@ -79,7 +79,7 @@ class PDAnnotationFileAttachment(PDAnnotationMarkup):
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
-            return None
+            return
         from .handlers.pd_file_attachment_appearance_handler import (
             PDFileAttachmentAppearanceHandler,
         )
@@ -87,7 +87,7 @@ class PDAnnotationFileAttachment(PDAnnotationMarkup):
         PDFileAttachmentAppearanceHandler(
             self, document
         ).generate_appearance_streams()
-        return None
+        return
 
     # ---------- /FS (file specification) ----------
 

@@ -132,13 +132,13 @@ def test_get_glyph_name_returns_notdef_when_to_unicode_empty() -> None:
     """Parent's ``to_unicode`` returns an empty string -> ``.notdef``
     (covers lines 589-591)."""
     font = PDCIDFontType0()
-    font._parent = _StubParent({0x41: ""})  # type: ignore[assignment]  # noqa: SLF001
+    font._parent = _StubParent({0x41: ""})  # type: ignore[assignment]
     assert font.get_glyph_name(0x41) == ".notdef"
 
 
 def test_get_glyph_name_returns_notdef_when_to_unicode_none() -> None:
     font = PDCIDFontType0()
-    font._parent = _StubParent({})  # type: ignore[assignment]  # noqa: SLF001
+    font._parent = _StubParent({})  # type: ignore[assignment]
     assert font.get_glyph_name(0x41) == ".notdef"
 
 
@@ -146,7 +146,7 @@ def test_get_glyph_name_returns_synthesised_uni_when_to_unicode_resolves() -> No
     """Happy path: parent maps code -> ``A``; we emit ``uni0041``
     (covers line 592)."""
     font = PDCIDFontType0()
-    font._parent = _StubParent({0x41: "A"})  # type: ignore[assignment]  # noqa: SLF001
+    font._parent = _StubParent({0x41: "A"})  # type: ignore[assignment]
     assert font.get_glyph_name(0x41) == "uni0041"
 
 

@@ -31,7 +31,7 @@ STD_ENCODING = "UTF-8"
 
 
 @contextlib.contextmanager
-def _open_doc(infile, password):  # noqa: ANN001
+def _open_doc(infile, password):
     """Open ``infile`` and yield a :class:`PDDocument`.
 
     ``Loader.load_pdf`` returns a low-level :class:`COSDocument` (mirrors
@@ -150,7 +150,7 @@ class ExtractText:
         """Mirror of upstream implicit ``Closeable`` surface — no-op here."""
         # ExtractText holds no long-lived resources; the doc/writer are
         # context-managed inside ``call``.
-        return None
+        return
 
     def __init__(self) -> None:
         self.always_next: bool = False

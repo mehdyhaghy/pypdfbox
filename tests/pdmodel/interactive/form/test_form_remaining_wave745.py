@@ -74,11 +74,11 @@ def test_wave745_choice_default_constructor_top_index_and_cos_helpers() -> None:
     assert choice.has_top_index() is False
     assert choice.get_top_index() == 0
 
-    assert PDChoice._read_string_or_array(COSName.get_pdf_name("Named")) == [  # noqa: SLF001
+    assert PDChoice._read_string_or_array(COSName.get_pdf_name("Named")) == [
         "Named"
     ]
-    assert PDChoice._read_string_or_array(object()) == []  # noqa: SLF001
-    assert PDChoice._write_string_or_array(None) is None  # noqa: SLF001
+    assert PDChoice._read_string_or_array(object()) == []
+    assert PDChoice._write_string_or_array(None) is None
 
 
 def test_wave745_signature_string_value_is_unsupported() -> None:

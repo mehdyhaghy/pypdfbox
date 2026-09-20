@@ -16,7 +16,7 @@ from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
     PDStructureElement,
     PDStructureTreeRoot,
 )
-from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_tree_root import (  # noqa: E501
+from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_tree_root import (
     PDStructureElementNumberTreeNode,
 )
 
@@ -75,7 +75,7 @@ def _make_structured_doc(n_pages: int = 4) -> PDDocument:
     struct_root.set_role_map({"P": "P", "Caption": "Caption"})
 
     # /IDTree with one entry per element.
-    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_tree_root import (  # noqa: E501
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_tree_root import (
         PDStructureElementNameTreeNode,
     )
 

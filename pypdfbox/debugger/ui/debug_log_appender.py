@@ -135,7 +135,7 @@ class DebugLogAppender(logging.Handler):
     def create_appender(
         cls,
         name: str = "DebugLogAppender",
-        filter: object | None = None,  # noqa: A002 — upstream parameter name
+        filter: object | None = None,
         layout: logging.Formatter | None = None,
         ignore_exceptions: bool = True,
         *,

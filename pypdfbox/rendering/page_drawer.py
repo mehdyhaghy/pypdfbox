@@ -146,11 +146,11 @@ class PageDrawer(PDFGraphicsStreamEngine):
         previous_filter = self._renderer.get_annotations_filter()
         try:
             self._renderer.set_annotations_filter(self._annotation_filter)
-            self._renderer._render_page_into(  # noqa: SLF001 — sibling class
+            self._renderer._render_page_into(
                 page=page,
                 image=g,
                 page_size=page_size,
-                scale=self._renderer._scale,  # noqa: SLF001
+                scale=self._renderer._scale,
             )
         finally:
             self._renderer.set_annotations_filter(previous_filter)
@@ -193,8 +193,8 @@ class PageDrawer(PDFGraphicsStreamEngine):
         # matrices when it sees the BT token; we record the event so
         # subclasses with custom text behaviour can mirror upstream's
         # ``beginText()`` override hook.
-        gs = self._renderer._gs  # noqa: SLF001 — sibling class
-        from pypdfbox.rendering.pdf_renderer import _IDENTITY  # noqa: PLC0415
+        gs = self._renderer._gs
+        from pypdfbox.rendering.pdf_renderer import _IDENTITY
 
         gs.text_matrix = _IDENTITY
         gs.text_line_matrix = _IDENTITY
@@ -214,7 +214,7 @@ class PageDrawer(PDFGraphicsStreamEngine):
         # of the content stream) needs the renderer path to grow too.
         rdr = self._renderer
         # Build a closed rect subpath in user space.
-        rdr._subpaths.append(  # noqa: SLF001 — sibling class
+        rdr._subpaths.append(
             [
                 ("M", p0.x, p0.y),
                 ("L", p1.x, p1.y),
@@ -223,11 +223,11 @@ class PageDrawer(PDFGraphicsStreamEngine):
                 ("Z",),
             ]
         )
-        rdr._current_subpath = None  # noqa: SLF001
+        rdr._current_subpath = None
 
     def stroke_path(self) -> None:
         """``S`` operator."""
-        self._renderer._paint(  # noqa: SLF001
+        self._renderer._paint(
             stroke=True, fill=False, even_odd=False
         )
         self._line_path.clear()
@@ -235,7 +235,7 @@ class PageDrawer(PDFGraphicsStreamEngine):
     def fill_path(self, winding_rule: int) -> None:
         """``f`` / ``f*`` operator."""
         even_odd = winding_rule == 0  # Path2D.WIND_EVEN_ODD
-        self._renderer._paint(  # noqa: SLF001
+        self._renderer._paint(
             stroke=False, fill=True, even_odd=even_odd
         )
         self._line_path.clear()
@@ -243,7 +243,7 @@ class PageDrawer(PDFGraphicsStreamEngine):
     def fill_and_stroke_path(self, winding_rule: int) -> None:
         """``B`` / ``B*`` operator."""
         even_odd = winding_rule == 0
-        self._renderer._paint(  # noqa: SLF001
+        self._renderer._paint(
             stroke=True, fill=True, even_odd=even_odd
         )
         self._line_path.clear()
@@ -254,7 +254,7 @@ class PageDrawer(PDFGraphicsStreamEngine):
         rule on the renderer's pending-clip flag so the next paint or
         ``n`` consumes it."""
         self._clip_winding_rule = winding_rule
-        self._renderer._pending_clip = (  # noqa: SLF001
+        self._renderer._pending_clip = (
             "W*" if winding_rule == 0 else "W"
         )
 
@@ -262,20 +262,20 @@ class PageDrawer(PDFGraphicsStreamEngine):
         """``m`` operator."""
         self._line_path.append(("M", x, y))
         rdr = self._renderer
-        if rdr._current_subpath is not None:  # noqa: SLF001
-            rdr._subpaths.append(rdr._current_subpath)  # noqa: SLF001
-        rdr._current_subpath = [("M", x, y)]  # noqa: SLF001
-        rdr._current_point = (x, y)  # noqa: SLF001
+        if rdr._current_subpath is not None:
+            rdr._subpaths.append(rdr._current_subpath)
+        rdr._current_subpath = [("M", x, y)]
+        rdr._current_point = (x, y)
 
     def line_to(self, x: float, y: float) -> None:
         """``l`` operator."""
         self._line_path.append(("L", x, y))
         rdr = self._renderer
-        if rdr._current_subpath is None:  # noqa: SLF001
-            rdr._current_subpath = [("M", x, y)]  # noqa: SLF001
+        if rdr._current_subpath is None:
+            rdr._current_subpath = [("M", x, y)]
         else:
-            rdr._current_subpath.append(("L", x, y))  # noqa: SLF001
-        rdr._current_point = (x, y)  # noqa: SLF001
+            rdr._current_subpath.append(("L", x, y))
+        rdr._current_point = (x, y)
 
     def curve_to(
         self, x1: float, y1: float, x2: float, y2: float, x3: float, y3: float
@@ -283,17 +283,17 @@ class PageDrawer(PDFGraphicsStreamEngine):
         """``c`` operator."""
         self._line_path.append(("C", x1, y1, x2, y2, x3, y3))
         rdr = self._renderer
-        if rdr._current_subpath is None:  # noqa: SLF001
-            rdr._current_subpath = [("M", x3, y3)]  # noqa: SLF001
+        if rdr._current_subpath is None:
+            rdr._current_subpath = [("M", x3, y3)]
         else:
-            rdr._current_subpath.append(  # noqa: SLF001
+            rdr._current_subpath.append(
                 ("C", x1, y1, x2, y2, x3, y3)
             )
-        rdr._current_point = (x3, y3)  # noqa: SLF001
+        rdr._current_point = (x3, y3)
 
     def get_current_point(self) -> Any:
         """Return the current path point or ``None``."""
-        rdr_point = self._renderer._current_point  # noqa: SLF001
+        rdr_point = self._renderer._current_point
         # The renderer initialises to (0, 0); preserve upstream's
         # ``null`` sentinel by returning None when we haven't issued
         # any path operator yet.
@@ -305,14 +305,14 @@ class PageDrawer(PDFGraphicsStreamEngine):
         """``h`` operator."""
         self._line_path.append(("Z",))
         rdr = self._renderer
-        if rdr._current_subpath is not None:  # noqa: SLF001
-            rdr._current_subpath.append(("Z",))  # noqa: SLF001
+        if rdr._current_subpath is not None:
+            rdr._current_subpath.append(("Z",))
 
     def end_path(self) -> None:
         """``n`` operator: discard path without painting."""
         rdr = self._renderer
-        rdr._apply_pending_clip(default_even_odd=False)  # noqa: SLF001
-        rdr._reset_path()  # noqa: SLF001
+        rdr._apply_pending_clip(default_even_odd=False)
+        rdr._reset_path()
         self._line_path.clear()
 
     def draw_image(self, pd_image: PDImage) -> None:
@@ -326,7 +326,7 @@ class PageDrawer(PDFGraphicsStreamEngine):
         if hasattr(pd_image, "get_image"):
             try:
                 pil_image = pd_image.get_image()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return
         if pil_image is None:
             return
@@ -347,13 +347,13 @@ class PageDrawer(PDFGraphicsStreamEngine):
         if resources is not None and hasattr(resources, "get_shading"):
             try:
                 shading = resources.get_shading(shading_name)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 shading = None
         if shading is None:
             return
         # No explicit path — clip to the current clip-mask (or the full
         # canvas if no clip is active), matching upstream's behaviour.
-        clip_mask = rdr._gs.clip_mask  # noqa: SLF001
+        clip_mask = rdr._gs.clip_mask
         helper = getattr(rdr, "_paint_shading", None)
         if callable(helper):
             try:
@@ -388,14 +388,14 @@ class PageDrawer(PDFGraphicsStreamEngine):
         form's content stream into it, and composites the result back
         onto the active canvas."""
         rdr = self._renderer
-        image = rdr._image  # noqa: SLF001
+        image = rdr._image
         if image is None:
             return
         # Build the group's off-screen buffer at the same size as the
         # active canvas; upstream uses the form's bbox in device space,
         # but a full-canvas buffer is simpler and a correct superset
         # (the form's own clip + matrix keeps painting within bounds).
-        from PIL import Image  # noqa: PLC0415
+        from PIL import Image
 
         group_canvas = Image.new("RGBA", image.size, (0, 0, 0, 0))
         group_graphics = GroupGraphics(image=group_canvas)
@@ -408,7 +408,7 @@ class PageDrawer(PDFGraphicsStreamEngine):
         # whole, not per-element. Snapshot them, reset the live alpha to
         # 1.0 so the group's interior paints render fully opaque, and
         # apply the saved constant alpha once at composite-back.
-        gs = rdr._gs  # noqa: SLF001 — sibling class
+        gs = rdr._gs
         group_alpha = gs.fill_alpha
         group_blend_mode = gs.blend_mode
         group_soft_mask = gs.soft_mask
@@ -420,29 +420,29 @@ class PageDrawer(PDFGraphicsStreamEngine):
         # group canvas so the form's content stream paints into the group
         # buffer (not the parent), mirroring upstream's group BufferedImage
         # capture. Restored before the composite-back below.
-        from pypdfbox.rendering import _aggdraw_compat as aggdraw  # noqa: PLC0415
+        from pypdfbox.rendering import _aggdraw_compat as aggdraw
 
-        prev_image = rdr._image  # noqa: SLF001
-        prev_draw = rdr._draw  # noqa: SLF001
-        rdr._image = group_canvas  # noqa: SLF001
-        rdr._draw = aggdraw.Draw(group_canvas)  # noqa: SLF001
-        rdr._draw.setantialias(True)  # noqa: SLF001
+        prev_image = rdr._image
+        prev_draw = rdr._draw
+        rdr._image = group_canvas
+        rdr._draw = aggdraw.Draw(group_canvas)
+        rdr._draw.setantialias(True)
         try:
             helper = getattr(rdr, "_render_form_xobject", None)
             if callable(helper):
                 helper(form)
             else:
                 self.show_form(form)
-            current_draw = rdr._draw  # noqa: SLF001
+            current_draw = rdr._draw
             if current_draw is not None:
                 current_draw.flush()
             # Pick up whatever buffer the form render left active (the
             # even-odd PIL path may swap ``rdr._image`` mid-paint).
-            group_canvas = rdr._image  # noqa: SLF001
+            group_canvas = rdr._image
             group_graphics = GroupGraphics(image=group_canvas)
             # Restore the parent target before compositing back onto it.
-            rdr._image = prev_image  # noqa: SLF001
-            rdr._draw = prev_draw  # noqa: SLF001
+            rdr._image = prev_image
+            rdr._draw = prev_draw
             # Composite the group onto the active canvas at the group's
             # overall opacity, blend mode and soft mask — this is the
             # §11.4.7 transparency-group composite-back.
@@ -454,7 +454,7 @@ class PageDrawer(PDFGraphicsStreamEngine):
                         soft_mask_alpha = renderer_helper(
                             group_soft_mask, group_canvas.size
                         )
-                    except Exception:  # noqa: BLE001
+                    except Exception:
                         soft_mask_alpha = None
             group_graphics.composite_onto(
                 image,
@@ -466,8 +466,8 @@ class PageDrawer(PDFGraphicsStreamEngine):
             # Always restore the parent draw target (the try body restores
             # it on the happy path before compositing; this catches the
             # error path where the form render raised mid-stream).
-            rdr._image = prev_image  # noqa: SLF001
-            rdr._draw = prev_draw  # noqa: SLF001
+            rdr._image = prev_image
+            rdr._draw = prev_draw
             gs.fill_alpha = saved_fill_alpha
             gs.stroke_alpha = saved_stroke_alpha
             self._transparency_group_stack.pop()
@@ -521,13 +521,13 @@ class PageDrawer(PDFGraphicsStreamEngine):
 
     def set_clip(self) -> None:
         """Apply the deferred clip path to the graphics."""
-        self._renderer._apply_pending_clip(  # noqa: SLF001
+        self._renderer._apply_pending_clip(
             default_even_odd=self._clip_winding_rule == 0
         )
 
     def transfer_clip(self, graphics: Any) -> None:
         """Copy the current clip onto ``graphics``."""
-        clip = self._renderer._gs.clip_mask  # noqa: SLF001
+        clip = self._renderer._gs.clip_mask
         if clip is None or graphics is None:
             return
         # Stamp the clip onto a target that supports ``set_clip``
@@ -546,24 +546,24 @@ class PageDrawer(PDFGraphicsStreamEngine):
         if callable(resolver):
             try:
                 return resolver(color)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
         return color
 
     def get_stroking_paint(self) -> Any:
         """Return the current stroking paint (RGB tuple)."""
-        return self._renderer._gs.stroke_rgb  # noqa: SLF001
+        return self._renderer._gs.stroke_rgb
 
     def get_non_stroking_paint(self) -> Any:
         """Return the current non-stroking paint (RGB tuple)."""
-        return self._renderer._gs.fill_rgb  # noqa: SLF001
+        return self._renderer._gs.fill_rgb
 
     def get_stroke(self) -> Any:
         """Return a record describing the current stroke. The lite
         backend stores stroke parameters individually on the graphics
         state; we surface them as a dict so callers can introspect a
         single value (the upstream method returns an AWT ``Stroke``)."""
-        gs = self._renderer._gs  # noqa: SLF001
+        gs = self._renderer._gs
         return {
             "line_width": gs.line_width,
         }
@@ -593,7 +593,7 @@ class PageDrawer(PDFGraphicsStreamEngine):
         if callable(helper):
             try:
                 return helper(image, transfer)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return image
         return image
 
@@ -632,23 +632,23 @@ class PageDrawer(PDFGraphicsStreamEngine):
         the form-XObject content stream walk so a custom target
         (e.g. GroupGraphics buffer) receives the painting."""
         rdr = self._renderer
-        prev_image = rdr._image  # noqa: SLF001
-        prev_draw = rdr._draw  # noqa: SLF001
+        prev_image = rdr._image
+        prev_draw = rdr._draw
         try:
-            from PIL import Image  # noqa: PLC0415
+            from PIL import Image
 
             if isinstance(graphics, Image.Image):
-                from pypdfbox.rendering import (  # noqa: PLC0415
+                from pypdfbox.rendering import (
                     _aggdraw_compat as aggdraw,
                 )
 
-                rdr._image = graphics  # noqa: SLF001
-                rdr._draw = aggdraw.Draw(graphics)  # noqa: SLF001
-                rdr._draw.setantialias(True)  # noqa: SLF001
+                rdr._image = graphics
+                rdr._draw = aggdraw.Draw(graphics)
+                rdr._draw.setantialias(True)
             self.show_form(form)
         finally:
-            rdr._image = prev_image  # noqa: SLF001
-            rdr._draw = prev_draw  # noqa: SLF001
+            rdr._image = prev_image
+            rdr._draw = prev_draw
 
     def get_inv_lookup_table(self) -> Any:
         """Return the cached inverted-alpha LookupTable. Lazily
@@ -667,7 +667,7 @@ class PageDrawer(PDFGraphicsStreamEngine):
         rdr = self._renderer
         text_clippings = getattr(rdr, "_text_clippings", None)
         if text_clippings is None or not isinstance(text_clippings, list):
-            rdr._text_clippings = []  # noqa: SLF001
+            rdr._text_clippings = []
 
     def end_text_clip(self) -> None:
         """Finalise the Tr=7 text clip — accumulate the captured glyph
@@ -675,7 +675,7 @@ class PageDrawer(PDFGraphicsStreamEngine):
         rdr = self._renderer
         text_clippings = getattr(rdr, "_text_clippings", None)
         if text_clippings:
-            rdr._text_clippings = []  # noqa: SLF001
+            rdr._text_clippings = []
 
     def draw_glyph(self, path: Any, font: Any, code: int, displacement: Any, at: Any) -> None:
         """Render a glyph path via the renderer's path rasteriser."""
@@ -691,14 +691,14 @@ class PageDrawer(PDFGraphicsStreamEngine):
         if callable(helper):
             # Without an explicit region mask, paint the whole canvas
             # (clipped to the current clip mask).
-            from PIL import Image  # noqa: PLC0415
+            from PIL import Image
 
-            if rdr._image is None:  # noqa: SLF001
+            if rdr._image is None:
                 return
-            mask = Image.new("L", rdr._image.size, 255)  # noqa: SLF001
-            clip_mask = rdr._gs.clip_mask  # noqa: SLF001
+            mask = Image.new("L", rdr._image.size, 255)
+            clip_mask = rdr._gs.clip_mask
             if clip_mask is not None:
-                from PIL import ImageChops  # noqa: PLC0415
+                from PIL import ImageChops
 
                 mask = ImageChops.multiply(mask, clip_mask)
             helper(pattern, region_mask=mask)
@@ -723,22 +723,22 @@ class PageDrawer(PDFGraphicsStreamEngine):
         if callable(getter):
             try:
                 values = getter()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return []
             return [float(v) for v in (values or [])]
         return []
 
     def has_blend_mode(self) -> bool:
         """Whether the current graphics state has a non-NORMAL blend mode."""
-        gs = self._renderer._gs  # noqa: SLF001
+        gs = self._renderer._gs
         blend = gs.blend_mode
         if blend is None:
             return False
         try:
-            from pypdfbox.pdmodel.graphics.blend_mode import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.graphics.blend_mode import (
                 BlendMode,
             )
-        except Exception:  # noqa: BLE001  # pragma: no cover -- defensive import guard
+        except Exception:  # pragma: no cover -- defensive import guard
             return True
         return blend is not BlendMode.NORMAL
 
@@ -769,7 +769,7 @@ class PageDrawer(PDFGraphicsStreamEngine):
             return False
         try:
             return not self._renderer.is_group_enabled(ocg)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
 
     def is_hidden_ocmd(self, ocmd: Any) -> bool:
@@ -903,7 +903,7 @@ class TransparencyGroup:
     def create2_byte_gray_alpha_image(self, width: int, height: int) -> Any:
         """Allocate a 2-byte (gray + alpha) image buffer. Mirrors
         upstream's private factory used by soft-mask groups."""
-        from PIL import Image  # noqa: PLC0415
+        from PIL import Image
 
         return Image.new("LA", (max(1, int(width)), max(1, int(height))), (0, 0))
 

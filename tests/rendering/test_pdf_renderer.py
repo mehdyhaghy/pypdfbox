@@ -579,11 +579,11 @@ def _build_type1c_cff_bytes() -> bytes:
     a 700x700 unit square at the origin. The bytes returned are exactly
     what a PDF ``/FontFile3 /Subtype /Type1C`` stream carries.
     """
-    import io as _io  # noqa: PLC0415
+    import io as _io
 
-    from fontTools.fontBuilder import FontBuilder  # noqa: PLC0415
-    from fontTools.misc.psCharStrings import T2CharString  # noqa: PLC0415
-    from fontTools.ttLib import TTFont  # noqa: PLC0415
+    from fontTools.fontBuilder import FontBuilder
+    from fontTools.misc.psCharStrings import T2CharString
+    from fontTools.ttLib import TTFont
 
     fb = FontBuilder(1000, isTTF=False)
     fb.setupGlyphOrder([".notdef", "A"])
@@ -635,7 +635,7 @@ def _build_type1_program_with_square_a():
     """Hand-roll a minimal :class:`Type1Font` whose glyph 'A' draws a
     700x700-unit square at the origin. Mirrors the test helper from
     ``test_type1_cff_glyph.py`` — no PFB encoding required."""
-    from pypdfbox.fontbox.type1.type1_font import Type1Font  # noqa: PLC0415
+    from pypdfbox.fontbox.type1.type1_font import Type1Font
 
     program = Type1Font()
 
@@ -644,7 +644,7 @@ def _build_type1_program_with_square_a():
             self.width = width
             self._commands = commands
 
-        def draw(self, pen) -> None:  # noqa: ANN001 — pen protocol
+        def draw(self, pen) -> None:
             for cmd in self._commands:
                 if cmd[0] == "moveTo":
                     pen.moveTo(cmd[1])
@@ -765,7 +765,7 @@ def test_type1_pfb_text_show_renders_filled_pixels() -> None:
     renderer = PDFRenderer(doc)
     original_resolve = renderer._resolve_font
 
-    def _resolve(font_name):  # noqa: ANN001
+    def _resolve(font_name):
         result = original_resolve(font_name)
         if isinstance(result, PDType1Font):
             result.set_font_program(font._get_type1_font())
@@ -792,7 +792,7 @@ def test_standard14_no_embedded_program_renders_without_warning(
     now resolve to a bundled substitute, so the placeholder debug log
     no longer fires for any Standard 14 reference.
     """
-    import logging  # noqa: PLC0415
+    import logging
 
     from pypdfbox.cos import COSDictionary, COSName
     from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
@@ -837,7 +837,7 @@ def test_standard14_symbol_renders_through_dejavu_substitute(
     domain). Rendering must complete without emitting the placeholder-
     rectangle debug log for the Symbol family.
     """
-    import logging  # noqa: PLC0415
+    import logging
 
     from pypdfbox.cos import COSDictionary, COSName
     from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font

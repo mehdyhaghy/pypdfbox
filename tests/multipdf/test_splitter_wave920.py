@@ -6,7 +6,7 @@ import tests.multipdf.test_splitter_wave387 as wave387
 def test_wave920_wave387_stream_cache_factory_stub_is_called(monkeypatch) -> None:
     original = wave387.Splitter.set_stream_cache_create_function
 
-    def set_stream_cache_and_call(self, factory):  # noqa: ANN001
+    def set_stream_cache_and_call(self, factory):
         assert factory() is not None
         return original(self, factory)
 
@@ -20,7 +20,7 @@ def test_wave920_wave387_stream_cache_factory_stub_is_called(monkeypatch) -> Non
 
 
 def test_wave920_wave387_leaf_tree_get_kids_stubs_are_called(monkeypatch) -> None:
-    def get_number_tree_as_map(node):  # noqa: ANN001
+    def get_number_tree_as_map(node):
         out = {}
         for child in node.get_kids():
             try:
@@ -32,7 +32,7 @@ def test_wave920_wave387_leaf_tree_get_kids_stubs_are_called(monkeypatch) -> Non
                 assert child.get_kids() is None
         return out
 
-    def get_id_tree_as_map(node):  # noqa: ANN001
+    def get_id_tree_as_map(node):
         out = {}
         for child in node.get_kids():
             try:

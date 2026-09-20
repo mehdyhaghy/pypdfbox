@@ -60,13 +60,13 @@ class PDAnnotationStrikeout(PDAnnotationTextMarkup):
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
-            return None
+            return
         from .handlers.pd_strikeout_appearance_handler import (
             PDStrikeoutAppearanceHandler,
         )
 
         PDStrikeoutAppearanceHandler(self, document).generate_appearance_streams()
-        return None
+        return
 
 
 __all__ = ["PDAnnotationStrikeout"]

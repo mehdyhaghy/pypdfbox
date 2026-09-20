@@ -214,7 +214,7 @@ class ZapfDingbatsEncoding(Encoding):
         """Return ``COSName("ZapfDingbatsEncoding")``. Mirrors upstream
         ``ZapfDingbatsEncoding.getCOSObject()``.
         """
-        from pypdfbox.cos.cos_name import COSName  # noqa: PLC0415
+        from pypdfbox.cos.cos_name import COSName
 
         return COSName.get_pdf_name("ZapfDingbatsEncoding")
 

@@ -152,16 +152,16 @@ def _remap(suffix_in: str) -> str:
         def get_suffix(self) -> str:
             return suffix_in
 
-        def get_color_space(self):  # noqa: ANN202
+        def get_color_space(self):
             return None
 
-        def get_image(self):  # noqa: ANN202
+        def get_image(self):
             return None
 
-        def get_mask(self):  # noqa: ANN202
+        def get_mask(self):
             return None
 
-        def get_soft_mask(self):  # noqa: ANN202
+        def get_soft_mask(self):
             return None
 
     import tempfile

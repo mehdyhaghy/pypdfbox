@@ -53,13 +53,13 @@ def test_wave1211_wave1201_capture_tracer_branches_and_target_body() -> None:
         f_locals = {"tracer": captured_tracers[0]}
 
     with pytest.raises(stop_capture_types[0]):
-        captured_tracers[0](cast(FrameType, MatchingWave1200Frame()), "line", None)
+        captured_tracers[0](cast("FrameType", MatchingWave1200Frame()), "line", None)
 
     class NonmatchingFrame:
         f_code = test_wave1211_wave1201_capture_tracer_branches_and_target_body.__code__
         f_locals: dict[str, object] = {}
 
-    assert captured_tracers[0](cast(FrameType, NonmatchingFrame()), "line", None) is (
+    assert captured_tracers[0](cast("FrameType", NonmatchingFrame()), "line", None) is (
         captured_tracers[0]
     )
     captured_targets[0]()

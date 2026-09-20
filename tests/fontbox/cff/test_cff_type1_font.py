@@ -25,7 +25,7 @@ _TYPE1_OTF_CANDIDATES = [
 
 def _load_type1_cff_bytes() -> bytes | None:
     try:
-        from fontTools.ttLib import TTFont  # noqa: PLC0415
+        from fontTools.ttLib import TTFont
     except ImportError:
         return None
     for candidate in _TYPE1_OTF_CANDIDATES:
@@ -43,7 +43,7 @@ def _load_type1_cff_bytes() -> bytes | None:
             buf = io.BytesIO()
             ttf["CFF "].cff.compile(buf, ttf, isCFF2=False)
             return buf.getvalue()
-        except Exception:  # noqa: BLE001
+        except Exception:
             continue
     return None
 
@@ -73,7 +73,7 @@ class TestCFFType1FontEmptyInstance:
 class TestCFFType1FontFromCIDFontRaises:
     def test_from_bytes_rejects_cid_keyed(self) -> None:
         try:
-            from fontTools.ttLib import TTFont  # noqa: PLC0415
+            from fontTools.ttLib import TTFont
         except ImportError:
             pytest.skip("fontTools not installed")
         candidates = [
@@ -93,7 +93,7 @@ class TestCFFType1FontFromCIDFontRaises:
                 ttf["CFF "].cff.compile(buf, ttf, isCFF2=False)
                 data = buf.getvalue()
                 break
-            except Exception:  # noqa: BLE001
+            except Exception:
                 continue
         if data is None:
             pytest.skip("no CIDKeyed font available")
@@ -146,8 +146,8 @@ def test_parsed_type1_code_to_name_predefined(type1_font: CFFType1Font) -> None:
 
 def test_from_cff_font_round_trip(type1_font: CFFType1Font) -> None:
     base = CFFFont()
-    base._fontset = type1_font._fontset  # noqa: SLF001
-    base._top = type1_font._top  # noqa: SLF001
+    base._fontset = type1_font._fontset
+    base._top = type1_font._top
     again = CFFType1Font.from_cff_font(base)
     assert again.is_cid_font() is False
     assert again.get_encoding() == type1_font.get_encoding()
@@ -159,10 +159,10 @@ def test_standard_encoding_predefined_resolves() -> None:
     # Construct a minimal "looks-like-standard-encoding" Type1 by stubbing.
     class _Top:
         Encoding = "StandardEncoding"
-        rawDict: dict = {}  # noqa: RUF012
+        rawDict: dict = {}
 
     f = CFFType1Font()
-    f._top = _Top()  # noqa: SLF001
+    f._top = _Top()
     assert f.is_standard_encoding() is True
     assert f.code_to_name(65) == "A"
     assert f.code_to_name(32) == "space"
@@ -176,10 +176,10 @@ def test_expert_encoding_predefined_resolves() -> None:
     Adobe Technote #5176 Appendix B (CFFExpertEncoding table)."""
     class _Top:
         Encoding = "ExpertEncoding"
-        rawDict: dict = {}  # noqa: RUF012
+        rawDict: dict = {}
 
     f = CFFType1Font()
-    f._top = _Top()  # noqa: SLF001
+    f._top = _Top()
     assert f.is_expert_encoding() is True
     assert f.code_to_name(65) == "asuperior"
     # Code 32 ("space") is in both Standard and Expert.
@@ -195,10 +195,10 @@ def test_custom_encoding_array_round_trip() -> None:
     code for a glyph name by linear scan."""
     class _Top:
         Encoding = [".notdef", "A", "B", "C"]
-        rawDict: dict = {}  # noqa: RUF012
+        rawDict: dict = {}
 
     f = CFFType1Font()
-    f._top = _Top()  # noqa: SLF001
+    f._top = _Top()
     assert f.is_custom_encoding() is True
     assert f.code_to_name(0) == ".notdef"
     assert f.code_to_name(1) == "A"
@@ -294,13 +294,13 @@ def test_add_to_private_dict_layers_over_parsed_dict() -> None:
     """When the font has a parsed Top.Private rawDict, the overlay
     layers on top — overlay wins on key collision."""
     class _Priv:
-        rawDict = {"defaultWidthX": 250, "nominalWidthX": 500}  # noqa: N815
+        rawDict = {"defaultWidthX": 250, "nominalWidthX": 500}
 
     class _Top:
         Private = _Priv
 
     f = CFFType1Font()
-    f._top = _Top()  # noqa: SLF001
+    f._top = _Top()
     base = f.get_private_dict()
     assert base == {"defaultWidthX": 250, "nominalWidthX": 500}
     # Overlay adds a new key.

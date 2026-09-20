@@ -124,7 +124,7 @@ class ASCII85Decode(Filter):
         #
         # Local import keeps the codec module free of a load-time dependency
         # on the output-stream wrapper (which itself imports base64 / io).
-        from .ascii85_output_stream import ASCII85OutputStream  # noqa: PLC0415
+        from .ascii85_output_stream import ASCII85OutputStream
 
         data = raw.read()
         sink = ASCII85OutputStream(encoded)

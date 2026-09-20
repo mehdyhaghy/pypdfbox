@@ -24,12 +24,12 @@ def test_begin_marked_content_sequence_skips_when_current_is_none() -> None:
     extractor = PDFMarkedContentExtractor()
     # Pre-populate the current stack with a None entry so the second
     # begin walks the else branch and finds top-of-stack == None.
-    extractor._current_marked_contents.append(None)  # noqa: SLF001
+    extractor._current_marked_contents.append(None)
     extractor.begin_marked_content_sequence(COSName.get_pdf_name("Span"), None)
     # The new marked-content was pushed onto _current_marked_contents.
-    assert len(extractor._current_marked_contents) == 2  # noqa: SLF001
+    assert len(extractor._current_marked_contents) == 2
     # _marked_contents stays empty because the else branch was taken.
-    assert extractor._marked_contents == []  # noqa: SLF001
+    assert extractor._marked_contents == []
 
 
 def test_dispatch_marked_skips_non_text_non_state_operator() -> None:
@@ -39,10 +39,10 @@ def test_dispatch_marked_skips_non_text_non_state_operator() -> None:
     extractor = PDFMarkedContentExtractor()
     # Use a path-state operator (q = save graphics state) — unknown to
     # the dispatcher. It should be silently ignored.
-    extractor._dispatch_marked("q", [], None)  # noqa: SLF001 — pass None state; the unknown branch never touches it
+    extractor._dispatch_marked("q", [], None)
     # No marked content collected.
-    assert extractor._marked_contents == []  # noqa: SLF001
-    assert len(extractor._current_marked_contents) == 0  # noqa: SLF001
+    assert extractor._marked_contents == []
+    assert len(extractor._current_marked_contents) == 0
 
 
 def test_resolve_bdc_properties_returns_none_for_unresolved_name() -> None:
@@ -51,15 +51,15 @@ def test_resolve_bdc_properties_returns_none_for_unresolved_name() -> None:
     extractor = PDFMarkedContentExtractor()
 
     class _Resources:
-        def get_property_list(self, name: Any) -> None:  # noqa: ARG002
+        def get_property_list(self, name: Any) -> None:
             return None
 
     class _Page:
         def get_resources(self) -> _Resources:
             return _Resources()
 
-    extractor._active_page = _Page()  # noqa: SLF001
-    result = extractor._resolve_bdc_properties(  # noqa: SLF001
+    extractor._active_page = _Page()
+    result = extractor._resolve_bdc_properties(
         [COSName.get_pdf_name("Span"), COSName.get_pdf_name("UnknownMC")]
     )
     assert result is None

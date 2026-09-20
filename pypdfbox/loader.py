@@ -124,7 +124,7 @@ class Loader:
             raise
         if owned:
             # Hand ownership to the document so doc.close() releases it.
-            document._source = access  # noqa: SLF001 — sibling-package handoff
+            document._source = access
         if scratch_file is not None:
             # Transfer scratch-file ownership to the COSDocument so
             # ``doc.close()`` releases the temp file / paged buffer the
@@ -133,14 +133,14 @@ class Loader:
             # to honour the "caller-supplied scratch file outlives the
             # document" upstream contract; the Loader, having allocated
             # the file itself, flips that flag back so close() cleans up.
-            document._owns_scratch = True  # noqa: SLF001 — sibling-package handoff
+            document._owns_scratch = True
 
         # Auto-decrypt path: only kick in when the document is actually
         # encrypted AND the caller passed a password (empty string counts —
         # plenty of documents are protected with a blank user password).
         if password is not None and document.is_encrypted():
             try:
-                from pypdfbox.pdmodel import PDDocument  # noqa: PLC0415
+                from pypdfbox.pdmodel import PDDocument
             except ImportError:
                 # pdmodel layer not installed yet — return the encrypted
                 # COSDocument and let the caller drive decryption manually.
@@ -149,7 +149,7 @@ class Loader:
             # The COSDocument is the loader's return value — the transient
             # wrapper must not assume ownership (a stray gc cycle could
             # close the document out from under the caller).
-            pd._owns_document = False  # noqa: SLF001
+            pd._owns_document = False
             try:
                 pd.decrypt(password)
             except BaseException:
@@ -164,8 +164,8 @@ class Loader:
             # would otherwise be lost between the transient decrypt-time
             # wrapper and the caller-visible wrapper.
             document_any: Any = document
-            document_any._loader_security_handler = pd._security_handler  # noqa: SLF001
-            document_any._loader_encryption = pd._encryption  # noqa: SLF001
+            document_any._loader_security_handler = pd._security_handler
+            document_any._loader_encryption = pd._encryption
         return document
 
     @staticmethod
@@ -239,8 +239,8 @@ class Loader:
         upstream (``Loader.java`` lines 120-155), which both eventually
         delegate to ``new FDFDocument(XMLUtil.parse(input))``.
         """
-        from pypdfbox.pdmodel.fdf import FDFDocument  # noqa: PLC0415
-        from pypdfbox.util.xml_util import XMLUtil  # noqa: PLC0415
+        from pypdfbox.pdmodel.fdf import FDFDocument
+        from pypdfbox.util.xml_util import XMLUtil
 
         # Read the source as bytes for XMLUtil.parse (which itself reads
         # via defusedxml). We use the same _coerce_source helper to
@@ -272,7 +272,7 @@ class Loader:
         delegates to :class:`pypdfbox.pdmodel.fdf.FDFDocument`'s loader and
         returns the high-level FDF wrapper.
         """
-        from pypdfbox.pdmodel.fdf import FDFDocument  # noqa: PLC0415
+        from pypdfbox.pdmodel.fdf import FDFDocument
 
         return FDFDocument.load(source)
 

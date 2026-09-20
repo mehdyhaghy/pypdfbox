@@ -115,7 +115,7 @@ def test_has_no_following_bin_data_restores_position() -> None:
     start = p.get_position()
 
     assert p.has_next_space_or_return() is True
-    assert p._has_no_following_bin_data() is True  # noqa: SLF001
+    assert p._has_no_following_bin_data() is True
 
     assert p.get_position() == start
     assert p.parse_next_token().get_name() == "Q"
@@ -125,7 +125,7 @@ def test_process_stream_temporarily_uses_child_resources() -> None:
     outer = PDResources()
     inner = PDResources()
     engine = PDFStreamEngine()
-    engine._resources = outer  # noqa: SLF001
+    engine._resources = outer
     probe = _ProbeProcessor("Tj")
     engine.add_operator(probe)
 
@@ -138,7 +138,7 @@ def test_process_stream_temporarily_uses_child_resources() -> None:
 def test_process_stream_preserves_resources_when_child_has_none() -> None:
     outer = PDResources()
     engine = PDFStreamEngine()
-    engine._resources = outer  # noqa: SLF001
+    engine._resources = outer
     probe = _ProbeProcessor("Tj")
     engine.add_operator(probe)
 
@@ -170,7 +170,7 @@ def test_set_resources_pushes_previous_resource_frame() -> None:
     engine.set_resources(second)
 
     assert engine.get_resources() is second
-    assert engine._resources_stack == [None, first]  # noqa: SLF001
+    assert engine._resources_stack == [None, first]
 
 
 def test_show_text_uses_text_state_font_and_displacement() -> None:
@@ -205,7 +205,7 @@ def test_show_text_uses_text_state_font_and_displacement() -> None:
             self.glyphs.append((font, code, displacement))
 
     engine = _Engine()
-    engine._graphics_stack.append(_GraphicsState())  # noqa: SLF001
+    engine._graphics_stack.append(_GraphicsState())
 
     engine.show_text(b"AB")
 
@@ -220,7 +220,7 @@ def test_decode_codes_stops_when_font_makes_no_progress() -> None:
         def read_code(self, src: Any) -> int:
             return 99
 
-    assert PDFStreamEngine._decode_codes_via_font(  # noqa: SLF001
+    assert PDFStreamEngine._decode_codes_via_font(
         b"abc", _NoProgressFont()
     ) == []
 
@@ -230,11 +230,11 @@ def test_glyph_displacement_swallows_font_errors() -> None:
         def get_displacement(self, code: int) -> object:
             raise ValueError("bad glyph")
 
-    assert PDFStreamEngine._glyph_displacement(_BadFont(), 1) is None  # noqa: SLF001
+    assert PDFStreamEngine._glyph_displacement(_BadFont(), 1) is None
 
 
 def test_require_min_operands_raises_missing_operand() -> None:
     with pytest.raises(MissingOperandException, match="too few operands"):
-        PDFStreamEngine._require_min_operands(  # noqa: SLF001
+        PDFStreamEngine._require_min_operands(
             EngineOperator.get_operator("Tj"), [], 1
         )

@@ -362,7 +362,7 @@ class SampledImageReader:
         plumbing is Pillow-based; the body is a stub that defers to the
         public ``get_rgb_image`` path.
         """
-        return None
+        return
 
     @staticmethod
     def from1_bit(

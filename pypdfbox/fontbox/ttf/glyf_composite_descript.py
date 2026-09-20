@@ -127,7 +127,7 @@ class GlyfCompositeDescript(GlyfDescript):
                     glyph = get_glyph(index)
                 if glyph is not None:
                     self._descriptions[index] = glyph.get_description()
-            except OSError as exc:  # noqa: PERF203
+            except OSError as exc:
                 _LOG.error("failed to load component description: %s", exc)
 
     # ---- accessors ---------------------------------------------------

@@ -40,29 +40,29 @@ def ttf_bytes() -> bytes:
 def test_check_scaler_accepts_truetype_magic() -> None:
     parser = TTFParser()
     # 0x00010000 is the canonical TrueType scaler; this should not raise.
-    parser._check_scaler_type(0x00010000)  # noqa: SLF001
+    parser._check_scaler_type(0x00010000)
 
 
 def test_check_scaler_accepts_true_magic() -> None:
     parser = TTFParser()
-    parser._check_scaler_type(0x74727565)  # 'true'  # noqa: SLF001
+    parser._check_scaler_type(0x74727565)  # 'true'
 
 
 def test_check_scaler_accepts_typ1_magic() -> None:
     parser = TTFParser()
-    parser._check_scaler_type(0x74797031)  # 'typ1'  # noqa: SLF001
+    parser._check_scaler_type(0x74797031)  # 'typ1'
 
 
 def test_check_scaler_rejects_otto_with_specific_message() -> None:
     parser = TTFParser()
     with pytest.raises(OSError, match="OTTO"):
-        parser._check_scaler_type(0x4F54544F)  # 'OTTO'  # noqa: SLF001
+        parser._check_scaler_type(0x4F54544F)  # 'OTTO'
 
 
 def test_check_scaler_rejects_unknown_with_hex_in_message() -> None:
     parser = TTFParser()
     with pytest.raises(OSError, match="0xCAFEBABE"):
-        parser._check_scaler_type(0xCAFEBABE)  # noqa: SLF001
+        parser._check_scaler_type(0xCAFEBABE)
 
 
 # ---------- _build_directory_entry -----------------------------------------
@@ -70,7 +70,7 @@ def test_check_scaler_rejects_unknown_with_hex_in_message() -> None:
 
 def test_build_directory_entry_sets_all_fields() -> None:
     parser = TTFParser()
-    table = parser._build_directory_entry("name", 0x12345678, 0x4000, 200)  # noqa: SLF001
+    table = parser._build_directory_entry("name", 0x12345678, 0x4000, 200)
     assert table is not None
     assert table.get_tag() == "name"
     assert table.get_check_sum() == 0x12345678
@@ -81,14 +81,14 @@ def test_build_directory_entry_sets_all_fields() -> None:
 def test_build_directory_entry_zero_length_non_glyf_returns_none() -> None:
     parser = TTFParser()
     # Tag 'fpgm' with length 0 — upstream's L394-L398 guard says drop it.
-    table = parser._build_directory_entry("fpgm", 0, 0, 0)  # noqa: SLF001
+    table = parser._build_directory_entry("fpgm", 0, 0, 0)
     assert table is None
 
 
 def test_build_directory_entry_zero_length_glyf_returned() -> None:
     parser = TTFParser()
     # 'glyf' is the only tag legal at length 0.
-    table = parser._build_directory_entry("glyf", 0, 0, 0)  # noqa: SLF001
+    table = parser._build_directory_entry("glyf", 0, 0, 0)
     assert table is not None
     assert table.get_tag() == "glyf"
     assert table.get_length() == 0
@@ -248,14 +248,14 @@ def test_check_tables_missing_required_raises() -> None:
 
     parser = TTFParser(is_embedded=False)
     with pytest.raises(OSError, match="missing required SFNT tables"):
-        parser._check_tables(StubFont())  # type: ignore[arg-type]  # noqa: SLF001
+        parser._check_tables(StubFont())  # type: ignore[arg-type]
 
 
 def test_check_tables_in_embedded_mode_skips_validation() -> None:
     class StubFont:
-        def has_table(self, tag: str) -> bool:  # noqa: ARG002
+        def has_table(self, tag: str) -> bool:
             return False
 
     parser = TTFParser(is_embedded=True)
     # No exception expected.
-    parser._check_tables(StubFont())  # type: ignore[arg-type]  # noqa: SLF001
+    parser._check_tables(StubFont())  # type: ignore[arg-type]

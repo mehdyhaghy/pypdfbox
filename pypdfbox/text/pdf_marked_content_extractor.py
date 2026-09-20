@@ -268,7 +268,7 @@ class PDFMarkedContentExtractor(PDFTextStripper):
                 )
                 if pl is not None:
                     return pl.get_cos_object()
-            except Exception:  # noqa: BLE001 — defensive: malformed resources
+            except Exception:
                 return None
         return None
 

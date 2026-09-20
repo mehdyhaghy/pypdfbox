@@ -22,16 +22,16 @@ def _make_doc(width: float = 4.0, height: float = 4.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (4, 4)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -48,20 +48,20 @@ def _soft_mask(subtype: str, stream_data: bytes) -> PDSoftMask:
 def test_render_soft_mask_alpha_uses_group_paint_alpha_and_restores_state() -> None:
     doc, renderer = _prepared_renderer()
     original_resources = object()
-    renderer._resources = original_resources  # noqa: SLF001
-    renderer._gs.fill_rgb = (10, 20, 30)  # noqa: SLF001
+    renderer._resources = original_resources
+    renderer._gs.fill_rgb = (10, 20, 30)
     try:
         mask = _soft_mask("Alpha", b"0 0 0 rg\n0 0 2 2 re\nf\n")
 
-        alpha = renderer._render_soft_mask_alpha(mask, (4, 4))  # noqa: SLF001
+        alpha = renderer._render_soft_mask_alpha(mask, (4, 4))
 
         assert alpha is not None
         assert alpha.mode == "L"
         assert alpha.getpixel((1, 1)) == 255
         assert alpha.getpixel((3, 3)) == 0
-        assert renderer._image.size == (4, 4)  # noqa: SLF001
-        assert renderer._resources is original_resources  # noqa: SLF001
-        assert renderer._gs.fill_rgb == (10, 20, 30)  # noqa: SLF001
+        assert renderer._image.size == (4, 4)
+        assert renderer._resources is original_resources
+        assert renderer._gs.fill_rgb == (10, 20, 30)
     finally:
         _finish(renderer)
         doc.close()
@@ -82,7 +82,7 @@ def test_render_soft_mask_luminosity_empty_group_masks_to_zero() -> None:
         backdrop.add(COSFloat(0.5))
         mask.set_backdrop_color(backdrop)
 
-        alpha = renderer._render_soft_mask_alpha(mask, (2, 2))  # noqa: SLF001
+        alpha = renderer._render_soft_mask_alpha(mask, (2, 2))
 
         assert alpha is not None
         assert {alpha.getpixel((x, y)) for x in range(2) for y in range(2)} == {

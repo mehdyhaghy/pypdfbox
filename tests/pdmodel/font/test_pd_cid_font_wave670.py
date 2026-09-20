@@ -41,10 +41,10 @@ def test_malformed_w_array_trailing_range_and_unknown_second_slots_are_ignored()
 
 def test_w2_lookup_with_manual_empty_cache_and_no_ranges_returns_none() -> None:
     font = PDCIDFontType2()
-    font._widths2 = {}  # noqa: SLF001
-    font._w2_ranges = None  # noqa: SLF001
+    font._widths2 = {}
+    font._w2_ranges = None
 
-    assert font._get_w2_metrics(12) is None  # noqa: SLF001
+    assert font._get_w2_metrics(12) is None
 
 
 def test_malformed_w2_array_trailing_and_unknown_entries_are_ignored() -> None:

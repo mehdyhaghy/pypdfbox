@@ -154,7 +154,7 @@ def test_apply_cross_chunk_destination_returns_true_for_orphan_destination(
     sp.set_cross_chunk_destination_resolver(
         lambda _dict: ("orphan.pdf", 7)
     )
-    sp._dest_to_link_map = {}  # noqa: SLF001
+    sp._dest_to_link_map = {}
     cloned = COSArray()
     cloned.add(COSInteger.get(0))   # slot 0 — will be overwritten
     cloned.add(COSInteger.get(0))   # filler
@@ -163,7 +163,7 @@ def test_apply_cross_chunk_destination_returns_true_for_orphan_destination(
     from pypdfbox.cos import COSDictionary
 
     src_page = COSDictionary()
-    rewritten = sp._rewrite_cross_chunk_destination(  # noqa: SLF001
+    rewritten = sp._rewrite_cross_chunk_destination(
         cloned, src_page
     )
     assert rewritten is True

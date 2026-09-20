@@ -18,7 +18,7 @@ def test_wave663_bruteforce_object_scan_skips_embedded_obj_substrings() -> None:
     offsets = parser.bf_search_for_objects()
 
     assert COSObjectKey(99, 1) not in offsets
-    assert offsets[COSObjectKey(2, 0)] == parser._read_all_bytes().index(b"2 0 obj")  # noqa: SLF001
+    assert offsets[COSObjectKey(2, 0)] == parser._read_all_bytes().index(b"2 0 obj")
 
 
 def test_wave663_bruteforce_xref_stream_scan_skips_bad_object_keyword() -> None:
@@ -36,8 +36,8 @@ def test_wave663_rebuild_trailer_skips_non_object_and_non_dictionary_candidates(
         def bf_search_for_objects(self) -> dict[COSObjectKey, int]:
             return {
                 COSObjectKey(1, 0): 0,
-                COSObjectKey(2, 0): self._read_all_bytes().index(b"2 0 obj"),  # noqa: SLF001
-                COSObjectKey(3, 0): self._read_all_bytes().index(b"3 0 obj"),  # noqa: SLF001
+                COSObjectKey(2, 0): self._read_all_bytes().index(b"2 0 obj"),
+                COSObjectKey(3, 0): self._read_all_bytes().index(b"3 0 obj"),
             }
 
     data = b"1 0 nope\n2 0 obj\n/Name\nendobj\n3 0 obj\n<4869>\nendobj\n"

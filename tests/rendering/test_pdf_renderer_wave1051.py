@@ -9,7 +9,7 @@ from tests.rendering import test_pdf_renderer_wave1041 as wave1041
 
 def test_wave1041_exposed_existing_handler_raises() -> None:
     with pytest.raises(AssertionError, match="existing handler"):
-        wave1041._raise_existing_handler(None, object(), [])  # noqa: SLF001
+        wave1041._raise_existing_handler(None, object(), [])
 
 
 def test_wave1041_restores_non_empty_original_handler(

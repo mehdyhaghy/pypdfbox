@@ -91,7 +91,7 @@ class CreateSimpleForm:
 
             try:
                 text_box.set_value("Sample field content")
-            except Exception:  # noqa: BLE001
+            except Exception:
                 # value generation may need a font dictionary not embedded
                 # by this minimal sample; smoke tests skip the appearance pass.
                 sys.stderr.write("warning: set_value skipped (appearance unavailable)\n")

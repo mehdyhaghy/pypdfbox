@@ -64,13 +64,13 @@ def _reset_menu_singletons() -> None:
     from pypdfbox.debugger.ui.text_stripper_menu import TextStripperMenu
     from pypdfbox.debugger.ui.zoom_menu import ZoomMenu
 
-    ViewMenu._reset_instance()  # noqa: SLF001
-    ZoomMenu._reset_instance()  # noqa: SLF001
-    RotationMenu._reset_instance()  # noqa: SLF001
-    RenderDestinationMenu._reset_instance()  # noqa: SLF001
-    TreeViewMenu._reset_for_testing()  # noqa: SLF001
-    ImageTypeMenu._reset_for_testing()  # noqa: SLF001
-    TextStripperMenu._reset_for_testing()  # noqa: SLF001
+    ViewMenu._reset_instance()
+    ZoomMenu._reset_instance()
+    RotationMenu._reset_instance()
+    RenderDestinationMenu._reset_instance()
+    TreeViewMenu._reset_for_testing()
+    ImageTypeMenu._reset_for_testing()
+    TextStripperMenu._reset_for_testing()
 
 
 @pytest.fixture()
@@ -110,7 +110,7 @@ def test_construction_with_no_document(tk_root: tk.Tk) -> None:
         # ``destroy`` on the toplevel would kill our session root; the
         # debugger frame is garbage-collected when ``debugger`` falls out
         # of scope.
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_initial_view_mode_accepts_structure(tk_root: tk.Tk) -> None:
@@ -118,7 +118,7 @@ def test_initial_view_mode_accepts_structure(tk_root: tk.Tk) -> None:
     try:
         assert debugger.get_tree_view_mode() == TreeViewMenu.VIEW_STRUCTURE
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_set_tree_view_mode_rejects_invalid(tk_root: tk.Tk) -> None:
@@ -130,7 +130,7 @@ def test_set_tree_view_mode_rejects_invalid(tk_root: tk.Tk) -> None:
         debugger.set_tree_view_mode(TreeViewMenu.VIEW_CROSS_REF_TABLE)
         assert debugger.get_tree_view_mode() == TreeViewMenu.VIEW_CROSS_REF_TABLE
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------
@@ -154,7 +154,7 @@ def test_open_document_loads_tree(tk_root: tk.Tk, synthetic_pdf: Path) -> None:
             with contextlib.suppress(Exception):
                 debugger.get_document().close()
         with contextlib.suppress(tk.TclError):
-            debugger._main_frame.destroy()  # noqa: SLF001
+            debugger._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------
@@ -177,17 +177,17 @@ def test_selection_route_stream_mounts_stream_pane(tk_root: tk.Tk) -> None:
         debugger.get_tree().register_node(iid, entry)
         debugger.get_tree().selection_set(iid)
         # Force the dispatch.
-        debugger._dispatch_selection(entry, None, iid, "")  # noqa: SLF001
+        debugger._dispatch_selection(entry, None, iid, "")
         widget = debugger.get_right_widget()
         # StreamPane.get_panel() returns a ttk.Frame; the actual class
         # behind it is recorded by checking the registered ``_panel``
         # reference. Easier: just check that the widget exists and is
         # mounted under the right_frame.
         assert widget is not None
-        assert widget.master is debugger._right_frame  # noqa: SLF001
+        assert widget.master is debugger._right_frame
     finally:
         with contextlib.suppress(tk.TclError):
-            debugger._main_frame.destroy()  # noqa: SLF001
+            debugger._main_frame.destroy()
 
 
 def test_selection_route_string_mounts_string_pane(tk_root: tk.Tk) -> None:
@@ -198,12 +198,12 @@ def test_selection_route_string_mounts_string_pane(tk_root: tk.Tk) -> None:
         node.set_value(COSString("hello"))
         iid = debugger.get_tree().insert("", "end", text="ID")
         debugger.get_tree().register_node(iid, node)
-        debugger._dispatch_selection(node, None, iid, "")  # noqa: SLF001
+        debugger._dispatch_selection(node, None, iid, "")
         widget = debugger.get_right_widget()
         assert widget is not None
     finally:
         with contextlib.suppress(tk.TclError):
-            debugger._main_frame.destroy()  # noqa: SLF001
+            debugger._main_frame.destroy()
 
 
 def test_selection_route_unknown_falls_back_to_text(tk_root: tk.Tk) -> None:
@@ -216,13 +216,13 @@ def test_selection_route_unknown_falls_back_to_text(tk_root: tk.Tk) -> None:
         entry.set_value(COSDictionary())
         iid = debugger.get_tree().insert("", "end", text="Bogus")
         debugger.get_tree().register_node(iid, entry)
-        debugger._dispatch_selection(entry, None, iid, "")  # noqa: SLF001
+        debugger._dispatch_selection(entry, None, iid, "")
         widget = debugger.get_right_widget()
         assert widget is not None
         assert isinstance(widget, tk.Text)
     finally:
         with contextlib.suppress(tk.TclError):
-            debugger._main_frame.destroy()  # noqa: SLF001
+            debugger._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------
@@ -233,7 +233,7 @@ def test_selection_route_unknown_falls_back_to_text(tk_root: tk.Tk) -> None:
 def test_menus_smoke_check(tk_root: tk.Tk) -> None:
     debugger = PDFDebugger(tk_root)
     try:
-        toplevel = debugger._toplevel  # noqa: SLF001
+        toplevel = debugger._toplevel
         menu_name = toplevel.cget("menu")
         assert menu_name  # Truthy means a menu was installed.
         menu = toplevel.nametowidget(menu_name)
@@ -261,7 +261,7 @@ def test_menus_smoke_check(tk_root: tk.Tk) -> None:
         assert "Find Previous" in find_labels
     finally:
         with contextlib.suppress(tk.TclError):
-            debugger._main_frame.destroy()  # noqa: SLF001
+            debugger._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------
@@ -274,20 +274,20 @@ def test_is_page_helper() -> None:
     d.set_item(COSName.TYPE, COSName.get_pdf_name("Page"))
     entry = MapEntry()
     entry.set_value(d)
-    assert PDFDebugger._is_page(entry) is True  # noqa: SLF001
-    assert PDFDebugger._is_page(MapEntry()) is False  # noqa: SLF001
+    assert PDFDebugger._is_page(entry) is True
+    assert PDFDebugger._is_page(MapEntry()) is False
 
 
 def test_is_stream_helper() -> None:
     entry = MapEntry()
     entry.set_value(COSStream())
-    assert PDFDebugger._is_stream(entry) is True  # noqa: SLF001
+    assert PDFDebugger._is_stream(entry) is True
 
 
 def test_first_array_name_returns_none_for_empty() -> None:
     entry = MapEntry()
     entry.set_value(COSDictionary())
-    assert PDFDebugger._first_array_name(entry) is None  # noqa: SLF001
+    assert PDFDebugger._first_array_name(entry) is None
 
 
 # ---- additional static helper coverage ----------------------------------
@@ -296,8 +296,8 @@ def test_first_array_name_returns_none_for_empty() -> None:
 def test_is_string_helper() -> None:
     entry = MapEntry()
     entry.set_value(COSString("hi"))
-    assert PDFDebugger._is_string(entry) is True  # noqa: SLF001
-    assert PDFDebugger._is_string(MapEntry()) is False  # noqa: SLF001
+    assert PDFDebugger._is_string(entry) is True
+    assert PDFDebugger._is_string(MapEntry()) is False
 
 
 def test_is_font_helper_with_font_dict() -> None:
@@ -306,7 +306,7 @@ def test_is_font_helper_with_font_dict() -> None:
     d.set_item(COSName.SUBTYPE, COSName.get_pdf_name("Type1"))
     entry = MapEntry()
     entry.set_value(d)
-    assert PDFDebugger._is_font(entry) is True  # noqa: SLF001
+    assert PDFDebugger._is_font(entry) is True
 
 
 def test_is_font_excludes_cid_subtypes() -> None:
@@ -315,13 +315,13 @@ def test_is_font_excludes_cid_subtypes() -> None:
     d.set_item(COSName.SUBTYPE, COSName.get_pdf_name("CIDFontType2"))
     entry = MapEntry()
     entry.set_value(d)
-    assert PDFDebugger._is_font(entry) is False  # noqa: SLF001
+    assert PDFDebugger._is_font(entry) is False
 
 
 def test_is_font_returns_false_for_non_dictionary() -> None:
     entry = MapEntry()
     entry.set_value(COSString("not a font"))
-    assert PDFDebugger._is_font(entry) is False  # noqa: SLF001
+    assert PDFDebugger._is_font(entry) is False
 
 
 def test_is_flag_node_matches_well_known_names() -> None:
@@ -331,7 +331,7 @@ def test_is_flag_node_matches_well_known_names() -> None:
     parent.set_value(parent_value)
     flag = MapEntry()
     flag.set_key(COSName.get_pdf_name("Flags"))
-    assert PDFDebugger._is_flag_node(flag, parent) is True  # noqa: SLF001
+    assert PDFDebugger._is_flag_node(flag, parent) is True
 
 
 def test_is_flag_node_panose_always_true() -> None:
@@ -339,18 +339,18 @@ def test_is_flag_node_panose_always_true() -> None:
     parent.set_value(COSDictionary())
     node = MapEntry()
     node.set_key(COSName.get_pdf_name("Panose"))
-    assert PDFDebugger._is_flag_node(node, parent) is True  # noqa: SLF001
+    assert PDFDebugger._is_flag_node(node, parent) is True
 
 
 def test_is_flag_node_rejects_non_map_entry() -> None:
-    assert PDFDebugger._is_flag_node(object(), object()) is False  # noqa: SLF001
+    assert PDFDebugger._is_flag_node(object(), object()) is False
 
 
 def test_is_flag_node_handles_null_key() -> None:
     parent = MapEntry()
     parent.set_value(COSDictionary())
     node = MapEntry()  # key is None
-    assert PDFDebugger._is_flag_node(node, parent) is False  # noqa: SLF001
+    assert PDFDebugger._is_flag_node(node, parent) is False
 
 
 def test_is_annot_helper() -> None:
@@ -358,7 +358,7 @@ def test_is_annot_helper() -> None:
     d.set_item(COSName.TYPE, COSName.get_pdf_name("Annot"))
     entry = MapEntry()
     entry.set_value(d)
-    assert PDFDebugger._is_annot(entry) is True  # noqa: SLF001
+    assert PDFDebugger._is_annot(entry) is True
 
 
 def test_is_font_descriptor_helper() -> None:
@@ -366,14 +366,14 @@ def test_is_font_descriptor_helper() -> None:
     d.set_item(COSName.TYPE, COSName.get_pdf_name("FontDescriptor"))
     entry = MapEntry()
     entry.set_value(d)
-    assert PDFDebugger._is_font_descriptor(entry) is True  # noqa: SLF001
+    assert PDFDebugger._is_font_descriptor(entry) is True
 
 
 def test_is_encrypt_helper() -> None:
     entry = MapEntry()
     entry.set_key(COSName.get_pdf_name("Encrypt"))
     entry.set_value(COSDictionary())
-    assert PDFDebugger._is_encrypt(entry) is True  # noqa: SLF001
+    assert PDFDebugger._is_encrypt(entry) is True
 
 
 def test_is_signature_helper() -> None:
@@ -384,7 +384,7 @@ def test_is_signature_helper() -> None:
     parent.set_value(parent_value)
     node = MapEntry()
     node.set_key(COSName.get_pdf_name("Contents"))
-    assert PDFDebugger._is_signature(node, parent) is True  # noqa: SLF001
+    assert PDFDebugger._is_signature(node, parent) is True
 
 
 def test_is_signature_rejects_when_parent_is_not_sig() -> None:
@@ -395,7 +395,7 @@ def test_is_signature_rejects_when_parent_is_not_sig() -> None:
     parent.set_value(parent_value)
     node = MapEntry()
     node.set_key(COSName.get_pdf_name("Contents"))
-    assert PDFDebugger._is_signature(node, parent) is False  # noqa: SLF001
+    assert PDFDebugger._is_signature(node, parent) is False
 
 
 def test_node_label_for_array_entry() -> None:
@@ -480,7 +480,7 @@ def test_selection_route_page_dispatch(tk_root: tk.Tk, synthetic_pdf) -> None:
             with contextlib.suppress(Exception):
                 debugger.get_document().close()
         with contextlib.suppress(tk.TclError):
-            debugger._main_frame.destroy()  # noqa: SLF001
+            debugger._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------
@@ -495,7 +495,7 @@ def test_init_tree_returns_early_without_document(tk_root: tk.Tk) -> None:
         debugger.init_tree()
         assert debugger.get_tree().get_children("") == ()
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_init_tree_cross_ref_table_mode(tk_root: tk.Tk, synthetic_pdf) -> None:
@@ -518,7 +518,7 @@ def test_init_tree_cross_ref_table_mode(tk_root: tk.Tk, synthetic_pdf) -> None:
             with contextlib.suppress(Exception):
                 debugger.get_document().close()
         with contextlib.suppress(tk.TclError):
-            debugger._main_frame.destroy()  # noqa: SLF001
+            debugger._main_frame.destroy()
 
 
 def test_init_tree_structure_mode(tk_root: tk.Tk, synthetic_pdf) -> None:
@@ -537,7 +537,7 @@ def test_init_tree_structure_mode(tk_root: tk.Tk, synthetic_pdf) -> None:
             with contextlib.suppress(Exception):
                 debugger.get_document().close()
         with contextlib.suppress(tk.TclError):
-            debugger._main_frame.destroy()  # noqa: SLF001
+            debugger._main_frame.destroy()
 
 
 def test_render_tree_handles_none_root_obj(tk_root: tk.Tk) -> None:
@@ -549,10 +549,10 @@ def test_render_tree_handles_none_root_obj(tk_root: tk.Tk) -> None:
         # should wipe the tree and bail.
         debugger.get_tree().insert("", "end", text="bogus")
         model = PDFTreeModel(None)
-        debugger._render_tree(model, None, "ignored")  # noqa: SLF001
+        debugger._render_tree(model, None, "ignored")
         assert debugger.get_tree().get_children("") == ()
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_populate_children_swallows_get_child_count_error(
@@ -573,11 +573,11 @@ def test_populate_children_swallows_get_child_count_error(
     debugger = PDFDebugger(tk_root)
     try:
         parent = debugger.get_tree().insert("", "end", text="root")
-        debugger._populate_children(_FailingModel(), parent, object())  # noqa: SLF001
+        debugger._populate_children(_FailingModel(), parent, object())
         # No children were inserted.
         assert debugger.get_tree().get_children(parent) == ()
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_populate_children_swallows_get_child_error(tk_root: tk.Tk) -> None:
@@ -601,11 +601,11 @@ def test_populate_children_swallows_get_child_error(tk_root: tk.Tk) -> None:
     debugger = PDFDebugger(tk_root)
     try:
         parent = debugger.get_tree().insert("", "end", text="root")
-        debugger._populate_children(_PartialModel(), parent, object())  # noqa: SLF001
+        debugger._populate_children(_PartialModel(), parent, object())
         # The first iteration logged + skipped; the second inserted one row.
         assert len(debugger.get_tree().get_children(parent)) == 1
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_populate_children_swallows_is_leaf_error(tk_root: tk.Tk) -> None:
@@ -627,13 +627,13 @@ def test_populate_children_swallows_is_leaf_error(tk_root: tk.Tk) -> None:
     debugger = PDFDebugger(tk_root)
     try:
         parent = debugger.get_tree().insert("", "end", text="root")
-        debugger._populate_children(_LeafErrModel(), parent, object())  # noqa: SLF001
+        debugger._populate_children(_LeafErrModel(), parent, object())
         # The row was inserted, the sentinel was not.
         children = debugger.get_tree().get_children(parent)
         assert len(children) == 1
         assert debugger.get_tree().get_children(children[0]) == ()
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------
@@ -645,9 +645,9 @@ def test_on_tree_open_no_document_returns_early(tk_root: tk.Tk) -> None:
     debugger = PDFDebugger(tk_root)
     try:
         # _document is None; should be a no-op.
-        debugger._on_tree_open(None)  # noqa: SLF001
+        debugger._on_tree_open(None)
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_on_tree_open_replaces_sentinel(tk_root: tk.Tk, synthetic_pdf) -> None:
@@ -669,7 +669,7 @@ def test_on_tree_open_replaces_sentinel(tk_root: tk.Tk, synthetic_pdf) -> None:
                 and debugger.get_tree().get_node(grandkids[0]) is None
             ):
                 debugger.get_tree().focus(child)
-                debugger._on_tree_open(None)  # noqa: SLF001
+                debugger._on_tree_open(None)
                 # The sentinel should now be gone; real children may or
                 # may not exist depending on the node type.
                 texts = [
@@ -683,7 +683,7 @@ def test_on_tree_open_replaces_sentinel(tk_root: tk.Tk, synthetic_pdf) -> None:
             with contextlib.suppress(Exception):
                 debugger.get_document().close()
         with contextlib.suppress(tk.TclError):
-            debugger._main_frame.destroy()  # noqa: SLF001
+            debugger._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------
@@ -695,9 +695,9 @@ def test_on_tree_selection_changed_no_selection(tk_root: tk.Tk) -> None:
     debugger = PDFDebugger(tk_root)
     try:
         # No selection — the handler must early-return.
-        debugger._on_tree_selection_changed(None)  # noqa: SLF001
+        debugger._on_tree_selection_changed(None)
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_on_tree_selection_changed_unregistered_node(tk_root: tk.Tk) -> None:
@@ -706,9 +706,9 @@ def test_on_tree_selection_changed_unregistered_node(tk_root: tk.Tk) -> None:
         iid = debugger.get_tree().insert("", "end", text="unregistered")
         debugger.get_tree().selection_set(iid)
         # No node registered for ``iid`` — handler returns silently.
-        debugger._on_tree_selection_changed(None)  # noqa: SLF001
+        debugger._on_tree_selection_changed(None)
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_on_tree_selection_changed_dispatch_exception_falls_back(
@@ -727,11 +727,11 @@ def test_on_tree_selection_changed_dispatch_exception_falls_back(
         iid = debugger.get_tree().insert("", "end", text="X")
         debugger.get_tree().register_node(iid, entry)
         debugger.get_tree().selection_set(iid)
-        debugger._on_tree_selection_changed(None)  # noqa: SLF001
+        debugger._on_tree_selection_changed(None)
         # Even though dispatch raised, the text-fallback mounted a widget.
         assert debugger.get_right_widget() is not None
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------
@@ -747,10 +747,10 @@ def test_dispatch_selection_xref_entry_uses_text_details(tk_root: tk.Tk) -> None
         node = XrefEntry(0, None, 0, None)
         iid = debugger.get_tree().insert("", "end", text="x")
         debugger.get_tree().register_node(iid, node)
-        debugger._dispatch_selection(node, None, iid, "")  # noqa: SLF001
+        debugger._dispatch_selection(node, None, iid, "")
         assert isinstance(debugger.get_right_widget(), tk.Text)
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_dispatch_selection_color_pane(tk_root: tk.Tk) -> None:
@@ -771,9 +771,9 @@ def test_dispatch_selection_color_pane(tk_root: tk.Tk) -> None:
         # need the dispatcher to reach _show_color_pane, so swallow any
         # widget-construction error.
         with contextlib.suppress(Exception):
-            debugger._dispatch_selection(entry, None, iid, "")  # noqa: SLF001
+            debugger._dispatch_selection(entry, None, iid, "")
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_dispatch_selection_flag_pane(tk_root: tk.Tk) -> None:
@@ -792,9 +792,9 @@ def test_dispatch_selection_flag_pane(tk_root: tk.Tk) -> None:
         iid = debugger.get_tree().insert("", "end", text="Flags")
         debugger.get_tree().register_node(iid, flag)
         with contextlib.suppress(Exception):
-            debugger._dispatch_selection(flag, parent, iid, "")  # noqa: SLF001
+            debugger._dispatch_selection(flag, parent, iid, "")
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_dispatch_selection_signature_pane(tk_root: tk.Tk) -> None:
@@ -811,9 +811,9 @@ def test_dispatch_selection_signature_pane(tk_root: tk.Tk) -> None:
         iid = debugger.get_tree().insert("", "end", text="Contents")
         debugger.get_tree().register_node(iid, node)
         with contextlib.suppress(Exception):
-            debugger._dispatch_selection(node, parent, iid, "")  # noqa: SLF001
+            debugger._dispatch_selection(node, parent, iid, "")
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_dispatch_selection_font(tk_root: tk.Tk) -> None:
@@ -830,10 +830,10 @@ def test_dispatch_selection_font(tk_root: tk.Tk) -> None:
         iid = debugger.get_tree().insert("", "end", text="F1")
         debugger.get_tree().register_node(iid, entry)
         # No parent in the tree → grand_node is None → falls back to text.
-        debugger._dispatch_selection(entry, None, iid, "")  # noqa: SLF001
+        debugger._dispatch_selection(entry, None, iid, "")
         assert debugger.get_right_widget() is not None
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------
@@ -846,7 +846,7 @@ def test_get_underneath_object_array_entry() -> None:
 
     ae = ArrayEntry()
     ae.set_value(COSString("v"))
-    assert PDFDebugger._get_underneath_object(ae) is ae.get_value()  # noqa: SLF001
+    assert PDFDebugger._get_underneath_object(ae) is ae.get_value()
 
 
 def test_get_underneath_object_page_entry() -> None:
@@ -854,18 +854,18 @@ def test_get_underneath_object_page_entry() -> None:
 
     d = COSDictionary()
     pe = PageEntry(d, 1, None)
-    assert PDFDebugger._get_underneath_object(pe) is d  # noqa: SLF001
+    assert PDFDebugger._get_underneath_object(pe) is d
 
 
 def test_get_underneath_object_xref_entry() -> None:
     from pypdfbox.debugger.ui.xref_entry import XrefEntry
 
     entry = XrefEntry(0, None, 0, None)
-    assert PDFDebugger._get_underneath_object(entry) is None  # noqa: SLF001
+    assert PDFDebugger._get_underneath_object(entry) is None
 
 
 def test_get_node_key_for_non_map_entry_returns_none() -> None:
-    assert PDFDebugger._get_node_key(object()) is None  # noqa: SLF001
+    assert PDFDebugger._get_node_key(object()) is None
 
 
 # ----------------------------------------------------------------------
@@ -880,7 +880,7 @@ def test_first_array_name_returns_name() -> None:
     arr.add(COSName.get_pdf_name("DeviceN"))
     entry = MapEntry()
     entry.set_value(arr)
-    assert PDFDebugger._first_array_name(entry) == "DeviceN"  # noqa: SLF001
+    assert PDFDebugger._first_array_name(entry) == "DeviceN"
 
 
 def test_first_array_name_non_name_first_entry_returns_none() -> None:
@@ -890,7 +890,7 @@ def test_first_array_name_non_name_first_entry_returns_none() -> None:
     arr.add(COSString("not-a-name"))
     entry = MapEntry()
     entry.set_value(arr)
-    assert PDFDebugger._first_array_name(entry) is None  # noqa: SLF001
+    assert PDFDebugger._first_array_name(entry) is None
 
 
 # ----------------------------------------------------------------------
@@ -905,7 +905,7 @@ def test_is_flag_node_f_with_annot_parent() -> None:
     parent.set_value(parent_value)
     node = MapEntry()
     node.set_key(COSName.get_pdf_name("F"))
-    assert PDFDebugger._is_flag_node(node, parent) is True  # noqa: SLF001
+    assert PDFDebugger._is_flag_node(node, parent) is True
 
 
 def test_is_flag_node_p_with_encrypt_parent() -> None:
@@ -915,11 +915,11 @@ def test_is_flag_node_p_with_encrypt_parent() -> None:
     parent.set_value(parent_value)
     node = MapEntry()
     node.set_key(COSName.get_pdf_name("P"))
-    assert PDFDebugger._is_flag_node(node, parent) is True  # noqa: SLF001
+    assert PDFDebugger._is_flag_node(node, parent) is True
 
 
 def test_is_signature_rejects_non_map_entries() -> None:
-    assert PDFDebugger._is_signature(object(), object()) is False  # noqa: SLF001
+    assert PDFDebugger._is_signature(object(), object()) is False
 
 
 def test_is_signature_rejects_non_contents_key() -> None:
@@ -929,7 +929,7 @@ def test_is_signature_rejects_non_contents_key() -> None:
     parent.set_value(parent_value)
     node = MapEntry()
     node.set_key(COSName.get_pdf_name("Other"))
-    assert PDFDebugger._is_signature(node, parent) is False  # noqa: SLF001
+    assert PDFDebugger._is_signature(node, parent) is False
 
 
 # ----------------------------------------------------------------------
@@ -940,10 +940,10 @@ def test_is_signature_rejects_non_contents_key() -> None:
 def test_replace_right_component_with_none(tk_root: tk.Tk) -> None:
     debugger = PDFDebugger(tk_root)
     try:
-        debugger._replace_right_component(None)  # noqa: SLF001
+        debugger._replace_right_component(None)
         assert debugger.get_right_widget() is None
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------
@@ -959,10 +959,10 @@ def test_open_menu_item_action_cancel(tk_root: tk.Tk, monkeypatch) -> None:
             "pypdfbox.debugger.pd_debugger.filedialog.askopenfilename",
             lambda **_kw: "",
         )
-        debugger._open_menu_item_action_performed()  # noqa: SLF001
+        debugger._open_menu_item_action_performed()
         assert debugger.has_document() is False
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_open_menu_item_action_loads_pdf(
@@ -976,14 +976,14 @@ def test_open_menu_item_action_loads_pdf(
             "pypdfbox.debugger.pd_debugger.filedialog.askopenfilename",
             lambda **_kw: str(synthetic_pdf),
         )
-        debugger._open_menu_item_action_performed()  # noqa: SLF001
+        debugger._open_menu_item_action_performed()
         assert debugger.has_document() is True
     finally:
         if debugger.get_document() is not None:
             with contextlib.suppress(Exception):
                 debugger.get_document().close()
         with contextlib.suppress(tk.TclError):
-            debugger._main_frame.destroy()  # noqa: SLF001
+            debugger._main_frame.destroy()
 
 
 def test_open_menu_item_action_handles_oserror(
@@ -1008,10 +1008,10 @@ def test_open_menu_item_action_handles_oserror(
         monkeypatch.setattr(
             "pypdfbox.debugger.pd_debugger.ErrorDialog", _StubErrorDialog
         )
-        debugger._open_menu_item_action_performed()  # noqa: SLF001
+        debugger._open_menu_item_action_performed()
         assert shown  # an error was surfaced
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_open_url_menu_cancel(tk_root: tk.Tk, monkeypatch) -> None:
@@ -1021,9 +1021,9 @@ def test_open_url_menu_cancel(tk_root: tk.Tk, monkeypatch) -> None:
             "pypdfbox.debugger.pd_debugger.simpledialog.askstring",
             lambda *a, **kw: None,
         )
-        debugger._open_url_menu_item_action_performed()  # noqa: SLF001
+        debugger._open_url_menu_item_action_performed()
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_open_url_menu_invalid_url(tk_root: tk.Tk, monkeypatch) -> None:
@@ -1046,19 +1046,19 @@ def test_open_url_menu_invalid_url(tk_root: tk.Tk, monkeypatch) -> None:
         monkeypatch.setattr(
             "pypdfbox.debugger.pd_debugger.ErrorDialog", _StubErrorDialog
         )
-        debugger._open_url_menu_item_action_performed()  # noqa: SLF001
+        debugger._open_url_menu_item_action_performed()
         assert _StubErrorDialog.instances
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_reopen_menu_no_path(tk_root: tk.Tk) -> None:
     debugger = PDFDebugger(tk_root)
     try:
         # No current file path → noop.
-        debugger._reopen_menu_item_action_performed()  # noqa: SLF001
+        debugger._reopen_menu_item_action_performed()
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_reopen_menu_with_file_path(
@@ -1069,20 +1069,20 @@ def test_reopen_menu_with_file_path(
     debugger = PDFDebugger(tk_root)
     try:
         debugger.open_document(synthetic_pdf)
-        debugger._reopen_menu_item_action_performed()  # noqa: SLF001
+        debugger._reopen_menu_item_action_performed()
         assert debugger.has_document() is True
     finally:
         if debugger.get_document() is not None:
             with contextlib.suppress(Exception):
                 debugger.get_document().close()
         with contextlib.suppress(tk.TclError):
-            debugger._main_frame.destroy()  # noqa: SLF001
+            debugger._main_frame.destroy()
 
 
 def test_reopen_menu_with_http_path(tk_root: tk.Tk, monkeypatch) -> None:
     debugger = PDFDebugger(tk_root)
     try:
-        debugger._current_file_path = "http://example.invalid/missing.pdf"  # noqa: SLF001
+        debugger._current_file_path = "http://example.invalid/missing.pdf"
         # Stub ErrorDialog so the OSError surfaced doesn't show a real popup.
         called: list = []
 
@@ -1096,18 +1096,18 @@ def test_reopen_menu_with_http_path(tk_root: tk.Tk, monkeypatch) -> None:
         monkeypatch.setattr(
             "pypdfbox.debugger.pd_debugger.ErrorDialog", _StubErrorDialog
         )
-        debugger._reopen_menu_item_action_performed()  # noqa: SLF001
+        debugger._reopen_menu_item_action_performed()
         assert called  # urlopen raised; the dialog was constructed
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_save_as_no_document(tk_root: tk.Tk) -> None:
     debugger = PDFDebugger(tk_root)
     try:
-        debugger._save_as_menu_item_action_performed()  # noqa: SLF001
+        debugger._save_as_menu_item_action_performed()
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_save_as_writes_pdf(
@@ -1123,14 +1123,14 @@ def test_save_as_writes_pdf(
             "pypdfbox.debugger.pd_debugger.filedialog.asksaveasfilename",
             lambda **_kw: str(target),
         )
-        debugger._save_as_menu_item_action_performed()  # noqa: SLF001
+        debugger._save_as_menu_item_action_performed()
         assert target.exists()
     finally:
         if debugger.get_document() is not None:
             with contextlib.suppress(Exception):
                 debugger.get_document().close()
         with contextlib.suppress(tk.TclError):
-            debugger._main_frame.destroy()  # noqa: SLF001
+            debugger._main_frame.destroy()
 
 
 def test_save_as_cancel_short_circuits(
@@ -1145,23 +1145,23 @@ def test_save_as_cancel_short_circuits(
             "pypdfbox.debugger.pd_debugger.filedialog.asksaveasfilename",
             lambda **_kw: "",
         )
-        debugger._save_as_menu_item_action_performed()  # noqa: SLF001
+        debugger._save_as_menu_item_action_performed()
     finally:
         if debugger.get_document() is not None:
             with contextlib.suppress(Exception):
                 debugger.get_document().close()
         with contextlib.suppress(tk.TclError):
-            debugger._main_frame.destroy()  # noqa: SLF001
+            debugger._main_frame.destroy()
 
 
 def test_save_decoded_stream_no_selection(tk_root: tk.Tk) -> None:
     debugger = PDFDebugger(tk_root)
     try:
         # No selection → _selected_stream returns None → action is a noop.
-        debugger._save_decoded_stream()  # noqa: SLF001
-        debugger._save_raw_stream()  # noqa: SLF001
+        debugger._save_decoded_stream()
+        debugger._save_raw_stream()
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_save_decoded_stream_writes_bytes(
@@ -1183,11 +1183,11 @@ def test_save_decoded_stream_writes_bytes(
             "pypdfbox.debugger.pd_debugger.filedialog.asksaveasfilename",
             lambda **_kw: str(target),
         )
-        debugger._save_decoded_stream()  # noqa: SLF001
+        debugger._save_decoded_stream()
         assert target.exists()
         assert target.read_bytes() == b"hello"
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_save_raw_stream_writes_bytes(
@@ -1209,10 +1209,10 @@ def test_save_raw_stream_writes_bytes(
             "pypdfbox.debugger.pd_debugger.filedialog.asksaveasfilename",
             lambda **_kw: str(target),
         )
-        debugger._save_raw_stream()  # noqa: SLF001
+        debugger._save_raw_stream()
         assert target.exists()
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_save_decoded_stream_cancel(tk_root: tk.Tk, monkeypatch) -> None:
@@ -1229,19 +1229,19 @@ def test_save_decoded_stream_cancel(tk_root: tk.Tk, monkeypatch) -> None:
             "pypdfbox.debugger.pd_debugger.filedialog.asksaveasfilename",
             lambda **_kw: "",
         )
-        debugger._save_decoded_stream()  # noqa: SLF001
-        debugger._save_raw_stream()  # noqa: SLF001
+        debugger._save_decoded_stream()
+        debugger._save_raw_stream()
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_print_menu_no_document(tk_root: tk.Tk) -> None:
     debugger = PDFDebugger(tk_root)
     try:
         # Document is None → noop, no messagebox.
-        debugger._print_menu_item_action_performed()  # noqa: SLF001
+        debugger._print_menu_item_action_performed()
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_print_menu_with_document(
@@ -1258,14 +1258,14 @@ def test_print_menu_with_document(
             debugger, "_send_document_to_printer",
             lambda n: captured.append(n),
         )
-        debugger._print_menu_item_action_performed()  # noqa: SLF001
+        debugger._print_menu_item_action_performed()
         assert captured and captured[0] >= 1
     finally:
         if debugger.get_document() is not None:
             with contextlib.suppress(Exception):
                 debugger.get_document().close()
         with contextlib.suppress(tk.TclError):
-            debugger._main_frame.destroy()  # noqa: SLF001
+            debugger._main_frame.destroy()
 
 
 def test_find_menu_item_action_shows_info(tk_root: tk.Tk, monkeypatch) -> None:
@@ -1276,12 +1276,12 @@ def test_find_menu_item_action_shows_info(tk_root: tk.Tk, monkeypatch) -> None:
             "pypdfbox.debugger.pd_debugger.messagebox.showinfo",
             lambda *a, **kw: called.append((a, kw)),
         )
-        debugger._find_menu_item_action_performed()  # noqa: SLF001
-        debugger._find_next_menu_item_action_performed()  # noqa: SLF001
-        debugger._find_previous_menu_item_action_performed()  # noqa: SLF001
+        debugger._find_menu_item_action_performed()
+        debugger._find_next_menu_item_action_performed()
+        debugger._find_previous_menu_item_action_performed()
         assert called  # only Find... actually shows a dialog
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_show_about_dialog(tk_root: tk.Tk, monkeypatch) -> None:
@@ -1292,10 +1292,10 @@ def test_show_about_dialog(tk_root: tk.Tk, monkeypatch) -> None:
             "pypdfbox.debugger.pd_debugger.messagebox.showinfo",
             lambda *a, **kw: called.append((a, kw)),
         )
-        debugger._show_about_dialog()  # noqa: SLF001
+        debugger._show_about_dialog()
         assert called
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_exit_menu_item_action_clears_state(
@@ -1312,21 +1312,21 @@ def test_exit_menu_item_action_clears_state(
     try:
         debugger.open_document(synthetic_pdf)
         scratch = tk.Toplevel(tk_root)
-        debugger._toplevel = scratch  # noqa: SLF001
-        debugger._exit_menu_item_action_performed()  # noqa: SLF001
+        debugger._toplevel = scratch
+        debugger._exit_menu_item_action_performed()
         assert debugger.has_document() is False
     finally:
         with contextlib.suppress(tk.TclError):
-            debugger._main_frame.destroy()  # noqa: SLF001
+            debugger._main_frame.destroy()
 
 
 def test_copy_tree_path_no_selection(tk_root: tk.Tk) -> None:
     debugger = PDFDebugger(tk_root)
     try:
         # No selection → early return.
-        debugger._copy_tree_path()  # noqa: SLF001
+        debugger._copy_tree_path()
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_copy_tree_path_no_document(tk_root: tk.Tk) -> None:
@@ -1341,9 +1341,9 @@ def test_copy_tree_path_no_document(tk_root: tk.Tk) -> None:
         debugger.get_tree().register_node(iid, entry)
         debugger.get_tree().selection_set(iid)
         # No document; should not throw.
-        debugger._copy_tree_path()  # noqa: SLF001
+        debugger._copy_tree_path()
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_copy_tree_path_with_document(
@@ -1358,22 +1358,22 @@ def test_copy_tree_path_with_document(
         roots = debugger.get_tree().get_children("")
         assert roots
         debugger.get_tree().selection_set(roots[0])
-        debugger._copy_tree_path()  # noqa: SLF001
+        debugger._copy_tree_path()
     finally:
         if debugger.get_document() is not None:
             with contextlib.suppress(Exception):
                 debugger.get_document().close()
         with contextlib.suppress(tk.TclError):
-            debugger._main_frame.destroy()  # noqa: SLF001
+            debugger._main_frame.destroy()
 
 
 def test_osx_open_file_swallows_oserror(tk_root: tk.Tk) -> None:
     debugger = PDFDebugger(tk_root)
     try:
         # Non-existent path triggers an OSError that the wrapper swallows.
-        debugger._osx_open_file("/nonexistent.pdf")  # noqa: SLF001
+        debugger._osx_open_file("/nonexistent.pdf")
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------
@@ -1388,9 +1388,9 @@ def test_populate_recent_files_menu_with_entries(
 
     debugger = PDFDebugger(tk_root)
     try:
-        debugger._recent_files.add_file(str(synthetic_pdf))  # noqa: SLF001
-        debugger._populate_recent_files_menu()  # noqa: SLF001
-        recent_menu = debugger._recent_files_menu  # noqa: SLF001
+        debugger._recent_files.add_file(str(synthetic_pdf))
+        debugger._populate_recent_files_menu()
+        recent_menu = debugger._recent_files_menu
         assert recent_menu is not None
         # Invoke the opener and confirm the document loads.
         last_index = recent_menu.index("end")
@@ -1402,7 +1402,7 @@ def test_populate_recent_files_menu_with_entries(
             with contextlib.suppress(Exception):
                 debugger.get_document().close()
         with contextlib.suppress(tk.TclError):
-            debugger._main_frame.destroy()  # noqa: SLF001
+            debugger._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------
@@ -1424,23 +1424,23 @@ def test_read_pdf_url_via_file_scheme(
         # Sanity: urlopen works against file URLs in tests.
         with _urllib_request.urlopen(url) as resp:
             assert resp.read(1)
-        debugger._read_pdf_url(url, "")  # noqa: SLF001
+        debugger._read_pdf_url(url, "")
         assert debugger.has_document() is True
     finally:
         if debugger.get_document() is not None:
             with contextlib.suppress(Exception):
                 debugger.get_document().close()
         with contextlib.suppress(tk.TclError):
-            debugger._main_frame.destroy()  # noqa: SLF001
+            debugger._main_frame.destroy()
 
 
 def test_read_pdf_url_rejects_missing_scheme(tk_root: tk.Tk) -> None:
     debugger = PDFDebugger(tk_root)
     try:
         with pytest.raises(ValueError, match="invalid URL"):
-            debugger._read_pdf_url("no-scheme", "")  # noqa: SLF001
+            debugger._read_pdf_url("no-scheme", "")
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_read_pdf_file_reopen_closes_existing(
@@ -1455,7 +1455,7 @@ def test_read_pdf_file_reopen_closes_existing(
         first_doc = debugger.get_document()
         # Set the previous file path to a non-http path so the
         # add_file branch is exercised.
-        debugger._current_file_path = str(synthetic_pdf)  # noqa: SLF001
+        debugger._current_file_path = str(synthetic_pdf)
         debugger.open_document(synthetic_pdf)
         assert debugger.has_document() is True
         # The old document object should be different from the new one.
@@ -1465,7 +1465,7 @@ def test_read_pdf_file_reopen_closes_existing(
             with contextlib.suppress(Exception):
                 debugger.get_document().close()
         with contextlib.suppress(tk.TclError):
-            debugger._main_frame.destroy()  # noqa: SLF001
+            debugger._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------
@@ -1476,11 +1476,11 @@ def test_read_pdf_file_reopen_closes_existing(
 def test_enable_document_actions_without_file_menu(tk_root: tk.Tk) -> None:
     debugger = PDFDebugger(tk_root)
     try:
-        debugger._file_menu = None  # noqa: SLF001
+        debugger._file_menu = None
         # Should not throw despite the file menu being absent.
-        debugger._enable_document_actions()  # noqa: SLF001
+        debugger._enable_document_actions()
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------
@@ -1601,10 +1601,10 @@ def test_show_text_details_with_stream_mounts_hex_view(tk_root: tk.Tk) -> None:
         # is reached via _dispatch_selection's fall-through.
         iid = debugger.get_tree().insert("", "end", text="Bin")
         debugger.get_tree().register_node(iid, entry)
-        debugger._show_text_details(entry)  # noqa: SLF001
+        debugger._show_text_details(entry)
         assert debugger.get_right_widget() is not None
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 def test_show_text_details_with_unrenderable_node(tk_root: tk.Tk) -> None:
@@ -1612,11 +1612,11 @@ def test_show_text_details_with_unrenderable_node(tk_root: tk.Tk) -> None:
     with an empty string body."""
     debugger = PDFDebugger(tk_root)
     try:
-        debugger._show_text_details(object())  # noqa: SLF001
+        debugger._show_text_details(object())
         widget = debugger.get_right_widget()
         assert isinstance(widget, tk.Text)
     finally:
-        debugger._main_frame.destroy()  # noqa: SLF001
+        debugger._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------

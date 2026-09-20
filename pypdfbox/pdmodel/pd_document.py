@@ -102,7 +102,7 @@ class PDDocument:
             )
         if source is not None:
             # Late-bound source override (rare — primarily test plumbing).
-            self._document._source = source  # noqa: SLF001 — sibling-package handoff
+            self._document._source = source
 
         # Cached high-level wrappers, lazily built.
         self._catalog: PDDocumentCatalog | None = None
@@ -887,7 +887,7 @@ class PDDocument:
             return header_version
         try:
             catalog_str = self.get_document_catalog().get_version()
-        except Exception:  # noqa: BLE001 — catalog may be absent on raw docs
+        except Exception:
             catalog_str = None
         if catalog_str is not None:
             try:
@@ -1088,10 +1088,10 @@ class PDDocument:
         # pass 2's dictionary walk doesn't re-enter the stream body via
         # the ``COSDictionary`` recursion (a stream IS a dictionary, but
         # we want to keep its raw bytes deferred to the lazy hook).
-        from pypdfbox.cos import COSArray as _COSArray  # noqa: PLC0415
-        from pypdfbox.cos import COSDictionary as _COSDictionary  # noqa: PLC0415
-        from pypdfbox.cos import COSObjectKey as _COSObjectKey  # noqa: PLC0415
-        from pypdfbox.cos import COSString as _COSString  # noqa: PLC0415
+        from pypdfbox.cos import COSArray as _COSArray
+        from pypdfbox.cos import COSDictionary as _COSDictionary
+        from pypdfbox.cos import COSObjectKey as _COSObjectKey
+        from pypdfbox.cos import COSString as _COSString
 
         # Object-stream membership guard (PDF 32000-1 §7.6.2): strings and
         # streams stored *inside* a /Type /ObjStm container are never
@@ -1556,25 +1556,25 @@ class PDDocument:
         annot_found = False
         sig_field_found = False
 
-        _ANNOT = COSName.get_pdf_name("Annot")
-        _SIG = COSName.get_pdf_name("Sig")
-        _AP = COSName.get_pdf_name("AP")
-        _FT = COSName.get_pdf_name("FT")
+        annot_name = COSName.get_pdf_name("Annot")
+        sig_name = COSName.get_pdf_name("Sig")
+        ap_name = COSName.get_pdf_name("AP")
+        ft_name = COSName.get_pdf_name("FT")
 
         for cos_object in visual_signature.get_objects():
             base = cos_object.get_object()
             if not isinstance(base, COSDictionary):
                 continue
             # Search for signature annotation.
-            if not annot_found and base.get_cos_name(_TYPE) == _ANNOT:
+            if not annot_found and base.get_cos_name(_TYPE) == annot_name:
                 self.assign_signature_rectangle(first_widget, base)
                 annot_found = True
             # Search for signature field.
-            ap_dict = base.get_dictionary_object(_AP)
+            ap_dict = base.get_dictionary_object(ap_name)
             if (
                 isinstance(ap_dict, COSDictionary)
                 and not sig_field_found
-                and base.get_cos_name(_FT) == _SIG
+                and base.get_cos_name(ft_name) == sig_name
             ):
                 self.assign_appearance_dictionary(first_widget, ap_dict)
                 self.assign_acro_form_default_resource(acro_form, base)
@@ -1620,21 +1620,21 @@ class PDDocument:
         AcroForm's, preferring an outright install when the AcroForm has no
         existing default-resources dict. Mirrors upstream private
         ``PDDocument.assignAcroFormDefaultResource`` (PDDocument.java:615-640)."""
-        _DR = COSName.get_pdf_name("DR")
-        _XOBJECT = COSName.get_pdf_name("XObject")
+        dr_name = COSName.get_pdf_name("DR")
+        xobject_name = COSName.get_pdf_name("XObject")
 
-        new_dr = new_dict.get_dictionary_object(_DR)
+        new_dr = new_dict.get_dictionary_object(dr_name)
         if not isinstance(new_dr, COSDictionary):
             return
         default_resources = acro_form.get_default_resources()
         if default_resources is None:
-            acro_form.get_cos_object().set_item(_DR, new_dr)
+            acro_form.get_cos_object().set_item(dr_name, new_dr)
             new_dr.set_direct(True)
             new_dr.set_needs_to_be_updated(True)
             return
         old_dr = default_resources.get_cos_object()
-        new_xobject = new_dr.get_dictionary_object(_XOBJECT)
-        old_xobject = old_dr.get_dictionary_object(_XOBJECT)
+        new_xobject = new_dr.get_dictionary_object(xobject_name)
+        old_xobject = old_dr.get_dictionary_object(xobject_name)
         if isinstance(new_xobject, COSDictionary) and isinstance(
             old_xobject, COSDictionary
         ):
@@ -2181,7 +2181,7 @@ class PDDocument:
     def __repr__(self) -> str:
         try:
             n = self.get_number_of_pages() if not self._closed else "?"
-        except Exception:  # noqa: BLE001
+        except Exception:
             n = "?"
         return (
             f"PDDocument(pages={n}, version={self._document.get_version()}, "
@@ -2243,9 +2243,9 @@ class ExternalSigningSupport:
         self._signature_set = True
         # Clear pending-signature staging on the document so a subsequent
         # save_incremental doesn't try to re-sign with no interface.
-        self._document._pending_signature = None  # noqa: SLF001
-        self._document._pending_signature_interface = None  # noqa: SLF001
-        self._document._pending_signature_options = None  # noqa: SLF001
+        self._document._pending_signature = None
+        self._document._pending_signature_interface = None
+        self._document._pending_signature_options = None
 
 
 __all__ = ["PDDocument", "PDDocumentSource", "ExternalSigningSupport"]

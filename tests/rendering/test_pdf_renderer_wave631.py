@@ -38,7 +38,7 @@ def test_get_page_for_render_rejects_negative_index_without_wraparound() -> None
         renderer = PDFRenderer(doc)
 
         with pytest.raises(IndexError, match="page index out of range: -1"):
-            renderer._get_page_for_render(-1)  # noqa: SLF001
+            renderer._get_page_for_render(-1)
     finally:
         doc.close()
 

@@ -59,7 +59,7 @@ def test_wave665_process_annotations_tolerates_subtype_lookup_failure(
 
     imported = ImportedPage()
 
-    Splitter()._process_annotations(object(), imported)  # type: ignore[arg-type]  # noqa: SLF001,E501
+    Splitter()._process_annotations(object(), imported)  # type: ignore[arg-type]
 
     assert imported.rewritten is not None
     assert len(imported.rewritten) == 1
@@ -88,7 +88,7 @@ def test_wave665_stage_link_destination_clears_broken_goto_action() -> None:
 
     link = Link()
 
-    Splitter()._stage_link_destination(link, COSDictionary())  # noqa: SLF001
+    Splitter()._stage_link_destination(link, COSDictionary())
 
     assert link.action is None
 
@@ -112,9 +112,9 @@ def test_wave665_stage_link_destination_ignores_factory_none(
 
     splitter = Splitter()
 
-    splitter._stage_link_destination(Link(), COSDictionary())  # type: ignore[arg-type]  # noqa: SLF001,E501
+    splitter._stage_link_destination(Link(), COSDictionary())  # type: ignore[arg-type]
 
-    assert splitter._dest_to_fix == []  # noqa: SLF001
+    assert splitter._dest_to_fix == []
 
 
 def test_wave665_signature_widget_false_when_name_lookup_fails(
@@ -125,4 +125,4 @@ def test_wave665_signature_widget_false_when_name_lookup_fails(
 
     monkeypatch.setattr(COSDictionary, "get_name", raise_attribute_error)
 
-    assert not Splitter._is_signature_widget(COSDictionary())  # noqa: SLF001
+    assert not Splitter._is_signature_widget(COSDictionary())

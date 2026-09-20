@@ -22,7 +22,7 @@ def test_version_project_version_falls_back_when_distribution_missing(
 
     monkeypatch.setattr(version.metadata, "version", _missing_version)
 
-    assert version._project_version() == "0.0.0+unknown"  # noqa: SLF001
+    assert version._project_version() == "0.0.0+unknown"
 
 
 def test_version_dependency_versions_handle_empty_and_missing_distribution(
@@ -33,7 +33,7 @@ def test_version_dependency_versions_handle_empty_and_missing_distribution(
 
     monkeypatch.setattr(version.metadata, "distribution", _missing_distribution)
 
-    assert version._dependency_versions() == []  # noqa: SLF001
+    assert version._dependency_versions() == []
 
 
 def test_version_dependency_versions_normalize_requirements(
@@ -58,7 +58,7 @@ def test_version_dependency_versions_normalize_requirements(
     monkeypatch.setattr(version.metadata, "distribution", _distribution)
     monkeypatch.setattr(version.metadata, "version", _dependency_version)
 
-    assert version._dependency_versions() == [  # noqa: SLF001
+    assert version._dependency_versions() == [
         ("installed", "9.9"),
         ("missing", "<not installed>"),
     ]
@@ -84,15 +84,15 @@ def test_texttopdf_font_bbox_height_uses_descriptor_bbox() -> None:
     descriptor.set_font_bounding_box(PDRectangle(0.0, -4.0, 10.0, 16.0))
     font.set_font_descriptor(descriptor)
 
-    assert texttopdf._font_bbox_height(font) == pytest.approx(20.0)  # noqa: SLF001
+    assert texttopdf._font_bbox_height(font) == pytest.approx(20.0)
 
 
 def test_texttopdf_font_bbox_height_falls_back_without_descriptor() -> None:
-    assert texttopdf._font_bbox_height(PDFont()) == pytest.approx(1000.0)  # noqa: SLF001
+    assert texttopdf._font_bbox_height(PDFont()) == pytest.approx(1000.0)
 
 
 def test_texttopdf_string_width_empty_string_is_zero() -> None:
-    assert texttopdf._string_width_units(PDFontFactory.create_default_font(), "") == 0.0  # noqa: SLF001
+    assert texttopdf._string_width_units(PDFontFactory.create_default_font(), "") == 0.0
 
 
 def test_texttopdf_lookahead_trims_form_feed_before_width_check() -> None:
@@ -112,7 +112,7 @@ def test_texttopdf_lookahead_trims_form_feed_before_width_check() -> None:
 def test_extracttext_rotation_magic_returns_when_range_is_empty() -> None:
     output = io.StringIO()
 
-    extracttext._extract_text_rotation_magic(  # noqa: SLF001
+    extracttext._extract_text_rotation_magic(
         object(), output, first=3, last=2, sort=False
     )
 
@@ -169,7 +169,7 @@ def test_extracttext_rotation_magic_runs_zero_angle_when_collector_finds_none(
     output = io.StringIO()
     document = object()
 
-    extracttext._extract_text_rotation_magic(  # noqa: SLF001
+    extracttext._extract_text_rotation_magic(
         document, output, first=1, last=1, sort=True, ignore_beads=True
     )
 

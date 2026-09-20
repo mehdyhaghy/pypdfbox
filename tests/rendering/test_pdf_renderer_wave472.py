@@ -25,16 +25,16 @@ def _make_doc(width: float = 6.0, height: float = 6.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (6, 6)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -55,15 +55,15 @@ def test_process_form_bytes_restores_knockout_depth_when_dispatch_raises(
         raise RuntimeError("dispatch boom")
 
     doc, renderer = _prepared_renderer()
-    renderer._knockout_active = True  # noqa: SLF001
-    renderer._knockout_form_depth = 4  # noqa: SLF001
+    renderer._knockout_active = True
+    renderer._knockout_form_depth = 4
     try:
         monkeypatch.setattr(renderer, "_dispatch_tokens", _raise_dispatch)
 
         with pytest.raises(RuntimeError, match="dispatch boom"):
-            renderer._process_form_bytes(b"0 0 m")  # noqa: SLF001
+            renderer._process_form_bytes(b"0 0 m")
 
-        assert renderer._knockout_form_depth == 4  # noqa: SLF001
+        assert renderer._knockout_form_depth == 4
     finally:
         _finish(renderer)
         doc.close()
@@ -90,8 +90,8 @@ def test_show_inline_image_falls_back_to_legacy_decoder_success(
         _finish(renderer)
 
         assert "cannot decode inline image (helper): helper boom" in caplog.text
-        assert renderer._image.getpixel((0, 0)) == (12, 34, 56)  # noqa: SLF001
-        assert renderer._image.getpixel((1, 1)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image.getpixel((0, 0)) == (12, 34, 56)
+        assert renderer._image.getpixel((1, 1)) == (255, 255, 255)
     finally:
         doc.close()
 
@@ -106,7 +106,7 @@ def test_decode_image_xobject_helper_converts_to_rgb_without_stream_fallback() -
 
     doc, renderer = _prepared_renderer()
     try:
-        decoded = renderer._decode_image_xobject(_Image())  # noqa: SLF001
+        decoded = renderer._decode_image_xobject(_Image())
 
         assert decoded is not None
         assert decoded.mode == "RGB"
@@ -121,15 +121,15 @@ def test_paste_image_alpha_without_clip_preserves_background() -> None:
     try:
         source = Image.new("RGBA", (1, 1), (200, 10, 20, 0))
 
-        renderer._paste_image(source)  # noqa: SLF001
+        renderer._paste_image(source)
         _finish(renderer)
 
-        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)
 
         source.putpixel((0, 0), (200, 10, 20, 255))
-        renderer._paste_image(source)  # noqa: SLF001
+        renderer._paste_image(source)
         _finish(renderer)
 
-        assert renderer._image.getpixel((0, 0)) == (200, 10, 20)  # noqa: SLF001
+        assert renderer._image.getpixel((0, 0)) == (200, 10, 20)
     finally:
         doc.close()

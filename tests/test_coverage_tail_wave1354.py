@@ -72,7 +72,7 @@ def test_begin_marked_content_seq_with_props_invokes_hook() -> None:
         begin_marked_content_sequence_with_properties as _bdc_mod,
     )
 
-    BeginMarkedContentSequenceWithProperties = (
+    bdc_props_op_cls = (
         _bdc_mod.BeginMarkedContentSequenceWithProperties
     )
     from pypdfbox.cos import COSDictionary, COSName
@@ -87,7 +87,7 @@ def test_begin_marked_content_seq_with_props_invokes_hook() -> None:
         def get_resources(self):  # type: ignore[no-untyped-def]
             return None
 
-    p = BeginMarkedContentSequenceWithProperties()
+    p = bdc_props_op_cls()
     p._context = _Ctx()  # type: ignore[attr-defined]
     tag = COSName.get_pdf_name("Tag")
     props = COSDictionary()
@@ -590,11 +590,11 @@ def test_begin_marked_content_seq_props_get_name() -> None:
         begin_marked_content_sequence_with_properties as _bdc_mod,
     )
 
-    BeginMarkedContentSequenceWithProperties = (
+    bdc_props_op_cls = (
         _bdc_mod.BeginMarkedContentSequenceWithProperties
     )
 
-    assert BeginMarkedContentSequenceWithProperties().get_name() == "BDC"
+    assert bdc_props_op_cls().get_name() == "BDC"
 
 
 def test_marked_content_point_with_props_get_name() -> None:

@@ -62,7 +62,7 @@ class _InnerStub:
         if glyf is not None:
             self.glyf = glyf
 
-    def getGlyphOrder(self) -> list[str]:  # noqa: N802
+    def getGlyphOrder(self) -> list[str]:
         if self._fail_glyph_order:
             raise RuntimeError("glyph order failed")
         return self._glyph_order
@@ -111,7 +111,7 @@ class _TTFStub:
     def get_number_of_glyphs(self) -> int:
         return 2
 
-    def get_post_script(self):  # noqa: ANN201 — stub
+    def get_post_script(self):
         # Wave-1434: a no-/Encoding TrueType now resolves its encoding via
         # read_encoding_from_font(), which consults the post table for glyph
         # names. A real TTF has one; this minimal stub has none (the production
@@ -156,7 +156,7 @@ def test_glyph_width_prefers_width_array_and_handles_zero_units(
     assert font.get_glyph_width(65) == 321.0
 
     no_units = cast(
-        TrueTypeFont,
+        "TrueTypeFont",
         _TTFStub(cmap=_CMapStub({65: 1}), units_per_em=0, advances={1: 500}),
     )
     font = PDTrueTypeFont()
@@ -173,7 +173,7 @@ def test_path_and_glyph_path_empty_branches(monkeypatch: pytest.MonkeyPatch) -> 
     assert PDTrueTypeFont().get_path("A") == []
 
     font = PDTrueTypeFont()
-    empty = cast(TrueTypeFont, _TTFStub(cmap=_CMapStub()))
+    empty = cast("TrueTypeFont", _TTFStub(cmap=_CMapStub()))
     monkeypatch.setattr(font, "get_true_type_font", lambda: empty)
     assert font.get_glyph_path(65) == []
 
@@ -181,7 +181,7 @@ def test_path_and_glyph_path_empty_branches(monkeypatch: pytest.MonkeyPatch) -> 
 def test_glyph_path_falls_back_to_direct_gid(monkeypatch: pytest.MonkeyPatch) -> None:
     font = PDTrueTypeFont()
     ttf = cast(
-        TrueTypeFont,
+        "TrueTypeFont",
         _TTFStub(
             cmap=_CMapStub({65: 1}),
             inner=_InnerStub(glyph_set=_GlyphSet(A=_GlyphStub())),
@@ -196,7 +196,7 @@ def test_get_height_zero_when_code_does_not_resolve(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     font = PDTrueTypeFont()
-    ttf = cast(TrueTypeFont, _TTFStub(cmap=_CMapStub()))
+    ttf = cast("TrueTypeFont", _TTFStub(cmap=_CMapStub()))
     monkeypatch.setattr(font, "get_true_type_font", lambda: ttf)
 
     assert font.get_height(65) == 0.0
@@ -214,7 +214,7 @@ def test_glyph_name_for_code_suppresses_notdef() -> None:
 
 def test_unicode_cmap_parse_failure_is_cached() -> None:
     font = PDTrueTypeFont()
-    ttf = cast(TrueTypeFont, _TTFStub(fail_cmap=True))
+    ttf = cast("TrueTypeFont", _TTFStub(fail_cmap=True))
 
     assert font._get_unicode_cmap(ttf) is None
     assert font._cmap_resolved is True
@@ -222,25 +222,25 @@ def test_unicode_cmap_parse_failure_is_cached() -> None:
 
 
 def test_fonttools_glyph_helpers_handle_missing_and_failing_inners() -> None:
-    no_inner = cast(TrueTypeFont, object())
+    no_inner = cast("TrueTypeFont", object())
     assert _fonttools_glyph_set(no_inner) is None
     assert _gid_to_glyph_name(no_inner, 1) is None
     assert _glyph_bbox_height(no_inner, 1) == 0.0
 
-    fail_glyph_set = cast(TrueTypeFont, _TTFStub(inner=_InnerStub(fail_glyph_set=True)))
+    fail_glyph_set = cast("TrueTypeFont", _TTFStub(inner=_InnerStub(fail_glyph_set=True)))
     assert _fonttools_glyph_set(fail_glyph_set) is None
 
-    fail_order = cast(TrueTypeFont, _TTFStub(inner=_InnerStub(fail_glyph_order=True)))
+    fail_order = cast("TrueTypeFont", _TTFStub(inner=_InnerStub(fail_glyph_order=True)))
     assert _gid_to_glyph_name(fail_order, 1) is None
     assert _draw_glyph_by_gid(fail_order, 1) == []
 
-    out_of_range = cast(TrueTypeFont, _TTFStub(inner=_InnerStub(glyph_order=[".notdef"])))
+    out_of_range = cast("TrueTypeFont", _TTFStub(inner=_InnerStub(glyph_order=[".notdef"])))
     assert _gid_to_glyph_name(out_of_range, 5) is None
 
 
 def test_draw_glyph_by_name_swallows_draw_failures() -> None:
     ttf = cast(
-        TrueTypeFont,
+        "TrueTypeFont",
         _TTFStub(inner=_InnerStub(glyph_set=_GlyphSet(A=_GlyphStub(fail=True)))),
     )
 
@@ -251,24 +251,24 @@ def test_get_path_by_name_returns_empty_for_non_integer_pseudo_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     font = PDTrueTypeFont()
-    ttf = cast(TrueTypeFont, _TTFStub(inner=_InnerStub()))
+    ttf = cast("TrueTypeFont", _TTFStub(inner=_InnerStub()))
     monkeypatch.setattr(font, "get_true_type_font", lambda: ttf)
 
     assert font.get_path_by_name("not-a-gid") == []
 
 
 def test_glyph_bbox_height_handles_missing_glyf_name_and_bad_glyf() -> None:
-    missing_name = cast(TrueTypeFont, _TTFStub(inner=_InnerStub(glyph_order=[".notdef"])))
+    missing_name = cast("TrueTypeFont", _TTFStub(inner=_InnerStub(glyph_order=[".notdef"])))
     assert _glyph_bbox_height(missing_name, 1) == 0.0
 
     bad_glyf = cast(
-        TrueTypeFont,
+        "TrueTypeFont",
         _TTFStub(inner=_InnerStub(glyf={})),
     )
     assert _glyph_bbox_height(bad_glyf, 1) == 0.0
 
     good_glyf = cast(
-        TrueTypeFont,
+        "TrueTypeFont",
         _TTFStub(inner=_InnerStub(glyf={"A": _BBoxGlyph()})),
     )
     assert _glyph_bbox_height(good_glyf, 1) == 10.0
@@ -276,7 +276,7 @@ def test_glyph_bbox_height_handles_missing_glyf_name_and_bad_glyf() -> None:
 
 def test_glyph_bbox_height_uses_bounds_pen_without_glyf_table() -> None:
     ttf = cast(
-        TrueTypeFont,
+        "TrueTypeFont",
         _TTFStub(inner=_InnerStub(glyph_set=_GlyphSet(A=_GlyphStub()))),
     )
 
@@ -284,11 +284,11 @@ def test_glyph_bbox_height_uses_bounds_pen_without_glyf_table() -> None:
 
 
 def test_glyph_bbox_height_bounds_pen_empty_and_failure_paths() -> None:
-    missing_glyph = cast(TrueTypeFont, _TTFStub(inner=_InnerStub()))
+    missing_glyph = cast("TrueTypeFont", _TTFStub(inner=_InnerStub()))
     assert _glyph_bbox_height(missing_glyph, 1) == 0.0
 
     empty_bounds = cast(
-        TrueTypeFont,
+        "TrueTypeFont",
         _TTFStub(
             inner=_InnerStub(glyph_set=_GlyphSet(A=_GlyphStub(draw_bounds=False)))
         ),
@@ -296,7 +296,7 @@ def test_glyph_bbox_height_bounds_pen_empty_and_failure_paths() -> None:
     assert _glyph_bbox_height(empty_bounds, 1) == 0.0
 
     failing_draw = cast(
-        TrueTypeFont,
+        "TrueTypeFont",
         _TTFStub(inner=_InnerStub(glyph_set=_GlyphSet(A=_GlyphStub(fail=True)))),
     )
     assert _glyph_bbox_height(failing_draw, 1) == 0.0

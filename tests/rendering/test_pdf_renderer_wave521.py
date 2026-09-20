@@ -25,16 +25,16 @@ def _make_doc(width: float = 6.0, height: float = 6.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (6, 6)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -50,8 +50,8 @@ def test_render_setup_uses_media_box_origin_in_device_ctm(monkeypatch: Any) -> N
 
     def _capture_page(processed_page: PDPage) -> None:
         captured["page"] = processed_page
-        captured["ctm"] = renderer._device_ctm  # noqa: SLF001
-        captured["size"] = renderer._image.size  # noqa: SLF001
+        captured["ctm"] = renderer._device_ctm
+        captured["size"] = renderer._image.size
 
     try:
         monkeypatch.setattr(renderer, "process_page", _capture_page)
@@ -76,8 +76,8 @@ def test_render_failure_clears_live_canvas_without_caching_page(
     renderer = PDFRenderer(doc)
 
     def _raise_page(_page: PDPage) -> None:
-        assert renderer._image is not None  # noqa: SLF001
-        assert renderer._draw is not None  # noqa: SLF001
+        assert renderer._image is not None
+        assert renderer._draw is not None
         raise RuntimeError("render boom")
 
     try:
@@ -86,8 +86,8 @@ def test_render_failure_clears_live_canvas_without_caching_page(
         with pytest.raises(RuntimeError, match="render boom"):
             renderer.render_image(0)
 
-        assert renderer._image is None  # noqa: SLF001
-        assert renderer._draw is None  # noqa: SLF001
+        assert renderer._image is None
+        assert renderer._draw is None
         assert renderer.get_page_image() is None
     finally:
         doc.close()
@@ -98,10 +98,10 @@ def test_unknown_pattern_fill_combines_path_mask_with_existing_clip() -> None:
     try:
         clip = Image.new("L", (5, 5), 0)
         clip.paste(255, (2, 2, 5, 5))
-        renderer._gs.clip_mask = clip  # noqa: SLF001
-        renderer._gs.fill_pattern = object()  # noqa: SLF001
-        renderer._gs.fill_rgb = (20, 40, 60)  # noqa: SLF001
-        renderer._subpaths = [  # noqa: SLF001
+        renderer._gs.clip_mask = clip
+        renderer._gs.fill_pattern = object()
+        renderer._gs.fill_rgb = (20, 40, 60)
+        renderer._subpaths = [
             [
                 ("M", 1.0, 1.0),
                 ("L", 4.0, 1.0),
@@ -111,12 +111,12 @@ def test_unknown_pattern_fill_combines_path_mask_with_existing_clip() -> None:
             ]
         ]
 
-        renderer._paint_pattern_fill(even_odd=False)  # noqa: SLF001
+        renderer._paint_pattern_fill(even_odd=False)
         _finish(renderer)
 
-        assert renderer._image.getpixel((1, 1)) == (255, 255, 255)  # noqa: SLF001
-        assert renderer._image.getpixel((3, 3)) == (20, 40, 60)  # noqa: SLF001
-        assert renderer._image.getpixel((0, 4)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image.getpixel((1, 1)) == (255, 255, 255)
+        assert renderer._image.getpixel((3, 3)) == (20, 40, 60)
+        assert renderer._image.getpixel((0, 4)) == (255, 255, 255)
     finally:
         doc.close()
 
@@ -143,14 +143,14 @@ def test_tiling_pattern_logs_cell_render_failure_and_leaves_canvas(
         caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
         monkeypatch.setattr(renderer, "_render_tiling_cell", _raise_cell)
 
-        renderer._paint_tiling_pattern(  # noqa: SLF001
+        renderer._paint_tiling_pattern(
             _Pattern(),
             region_mask=Image.new("L", (3, 3), 255),
         )
         _finish(renderer)
 
         assert "tiling pattern cell render failed: tile boom" in caplog.text
-        assert renderer._image.getpixel((1, 1)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image.getpixel((1, 1)) == (255, 255, 255)
     finally:
         doc.close()
 
@@ -158,9 +158,9 @@ def test_tiling_pattern_logs_cell_render_failure_and_leaves_canvas(
 def test_line_and_color_operators_ignore_incomplete_operands() -> None:
     doc, renderer = _prepared_renderer()
     try:
-        renderer._gs.stroke_rgb = (1, 2, 3)  # noqa: SLF001
-        renderer._gs.fill_rgb = (4, 5, 6)  # noqa: SLF001
-        renderer._gs.line_width = 7.0  # noqa: SLF001
+        renderer._gs.stroke_rgb = (1, 2, 3)
+        renderer._gs.fill_rgb = (4, 5, 6)
+        renderer._gs.line_width = 7.0
 
         renderer.process_operator("RG", [COSFloat(0.0), COSFloat(1.0)])
         renderer.process_operator("rg", [COSFloat(0.0), COSFloat(1.0)])
@@ -168,9 +168,9 @@ def test_line_and_color_operators_ignore_incomplete_operands() -> None:
         renderer.process_operator("k", [COSFloat(0.0), COSFloat(0.0), COSFloat(0.0)])
         renderer.process_operator("w", [])
 
-        assert renderer._gs.stroke_rgb == (1, 2, 3)  # noqa: SLF001
-        assert renderer._gs.fill_rgb == (4, 5, 6)  # noqa: SLF001
-        assert renderer._gs.line_width == 7.0  # noqa: SLF001
+        assert renderer._gs.stroke_rgb == (1, 2, 3)
+        assert renderer._gs.fill_rgb == (4, 5, 6)
+        assert renderer._gs.line_width == 7.0
     finally:
         _finish(renderer)
         doc.close()

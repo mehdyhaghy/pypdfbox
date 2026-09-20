@@ -244,8 +244,8 @@ class PDFParser:
         """
         # Local import — pdfparser must not depend on the loader / pdmodel
         # layers at import time (both live one layer up).
-        from pypdfbox.loader import Loader  # noqa: PLC0415
-        from pypdfbox.pdmodel.pd_document import PDDocument  # noqa: PLC0415
+        from pypdfbox.loader import Loader
+        from pypdfbox.pdmodel.pd_document import PDDocument
 
         document = Loader.load_pdf(source, password)
         return PDDocument(document)
@@ -506,7 +506,7 @@ class PDFParser:
             )
         # Local import — pdfparser must not depend on pdmodel at import
         # time (PDDocument lives one layer up).
-        from pypdfbox.pdmodel.pd_document import PDDocument  # noqa: PLC0415
+        from pypdfbox.pdmodel.pd_document import PDDocument
 
         self._pd_document = PDDocument(self._document)
         return self._pd_document
@@ -617,7 +617,7 @@ class PDFParser:
         Apache PDFBox upstream does **not** decode the hint stream at
         all; this is a pypdfbox enrichment over the deferral noted in
         CHANGES.md under "Wave 41 round-out — read-only linearization"."""
-        from .linearization_hint_table import (  # noqa: PLC0415
+        from .linearization_hint_table import (
             HintTableParseError,
             parse_page_offset_hint_table,
         )
@@ -764,7 +764,7 @@ class PDFParser:
         on success, or ``None`` when the document is not linearized, the
         hint stream cannot be located, ``/H[2]`` is missing, or the body
         is malformed."""
-        from .linearization_hint_table import (  # noqa: PLC0415
+        from .linearization_hint_table import (
             HintTableParseError,
             parse_shared_object_hint_table,
         )
@@ -796,7 +796,7 @@ class PDFParser:
         hint stream cannot be located, ``/H[3]`` is missing, or the body
         is malformed. Many linearized PDFs ship without thumbnails — a
         ``None`` return is a normal, non-error outcome."""
-        from .linearization_hint_table import (  # noqa: PLC0415
+        from .linearization_hint_table import (
             HintTableParseError,
             parse_thumbnail_hint_table,
         )
@@ -972,8 +972,8 @@ class PDFParser:
             return None
         # Local imports — pdfparser must not depend on pdmodel at import
         # time (encryption lives one layer up).
-        from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption  # noqa: PLC0415
-        from pypdfbox.pdmodel.encryption.standard_security_handler import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption
+        from pypdfbox.pdmodel.encryption.standard_security_handler import (
             StandardDecryptionMaterial,
             StandardSecurityHandler,
         )
@@ -1187,7 +1187,7 @@ class PDFParser:
         self._src.seek(scan_from)
         tail = bytearray(length - scan_from)
         n = self._src.read_into(tail)
-        tail_bytes = bytes(tail[: n if n > 0 else 0])
+        tail_bytes = bytes(tail[: max(0, n)])
         # Upstream: ``int bufOff = lastIndexOf(EOF_MARKER, buf, buf.length)``.
         eof_off = tail_bytes.rfind(b"%%EOF")
         if eof_off < 0:
@@ -1862,7 +1862,7 @@ class PDFParser:
         helpers that need a document-level view of the raw file."""
         try:
             saved = self._src.get_position()
-        except Exception:  # noqa: BLE001 - source without a position cursor
+        except Exception:
             return None
         try:
             length = self._src.length()
@@ -1875,7 +1875,7 @@ class PDFParser:
                     break
                 read += n
             return bytes(buf[:read])
-        except Exception:  # noqa: BLE001 - unreadable source: skip the EOF rule
+        except Exception:
             return None
         finally:
             with contextlib.suppress(Exception):

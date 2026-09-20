@@ -23,16 +23,16 @@ def _make_doc(width: float = 5.0, height: float = 5.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (5, 5)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -65,41 +65,41 @@ def test_render_tiling_cell_restores_renderer_state_when_processing_fails(
     doc, renderer = _prepared_renderer()
     pattern_resources = object()
     previous_resources = object()
-    previous_image = renderer._image  # noqa: SLF001
-    previous_draw = renderer._draw  # noqa: SLF001
-    previous_stack = renderer._gs_stack  # noqa: SLF001
+    previous_image = renderer._image
+    previous_draw = renderer._draw
+    previous_stack = renderer._gs_stack
     previous_subpaths = [[("M", 9.0, 9.0)]]
     try:
-        renderer._resources = previous_resources  # noqa: SLF001
-        renderer._subpaths = previous_subpaths  # noqa: SLF001
-        renderer._current_subpath = previous_subpaths[0]  # noqa: SLF001
-        renderer._current_point = (9.0, 9.0)  # noqa: SLF001
-        renderer._pending_clip = "W*"  # noqa: SLF001
-        renderer._page_height_px = 5.0  # noqa: SLF001
+        renderer._resources = previous_resources
+        renderer._subpaths = previous_subpaths
+        renderer._current_subpath = previous_subpaths[0]
+        renderer._current_point = (9.0, 9.0)
+        renderer._pending_clip = "W*"
+        renderer._page_height_px = 5.0
 
         def _raise(_data: bytes) -> None:
-            assert renderer._resources is pattern_resources  # noqa: SLF001
-            assert renderer._image is not previous_image  # noqa: SLF001
+            assert renderer._resources is pattern_resources
+            assert renderer._image is not previous_image
             raise RuntimeError("cell boom")
 
         monkeypatch.setattr(renderer, "_process_form_bytes", _raise)
 
         with pytest.raises(RuntimeError, match="cell boom"):
-            renderer._render_tiling_cell(  # noqa: SLF001
+            renderer._render_tiling_cell(
                 _Pattern(),
                 bbox=_BBox(),
                 tile_size=(2, 2),
             )
 
-        assert renderer._image is previous_image  # noqa: SLF001
-        assert renderer._draw is previous_draw  # noqa: SLF001
-        assert renderer._resources is previous_resources  # noqa: SLF001
-        assert renderer._gs_stack is previous_stack  # noqa: SLF001
-        assert renderer._subpaths is previous_subpaths  # noqa: SLF001
-        assert renderer._current_subpath is previous_subpaths[0]  # noqa: SLF001
-        assert renderer._current_point == (9.0, 9.0)  # noqa: SLF001
-        assert renderer._pending_clip == "W*"  # noqa: SLF001
-        assert renderer._page_height_px == 5.0  # noqa: SLF001
+        assert renderer._image is previous_image
+        assert renderer._draw is previous_draw
+        assert renderer._resources is previous_resources
+        assert renderer._gs_stack is previous_stack
+        assert renderer._subpaths is previous_subpaths
+        assert renderer._current_subpath is previous_subpaths[0]
+        assert renderer._current_point == (9.0, 9.0)
+        assert renderer._pending_clip == "W*"
+        assert renderer._page_height_px == 5.0
     finally:
         _finish(renderer)
         doc.close()
@@ -118,10 +118,10 @@ def test_shading_domain_helpers_default_on_malformed_arrays() -> None:
 
     shading = _ShortDomain()
 
-    assert PDFRenderer._shading_domain(shading) == (0.0, 1.0)  # noqa: SLF001
-    assert PDFRenderer._shading_domain_2d(shading) == (0.0, 1.0, 0.0, 1.0)  # noqa: SLF001
-    assert PDFRenderer._shading_extend(shading) == (False, False)  # noqa: SLF001
-    assert PDFRenderer._shading_matrix(shading) == (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001,E501
+    assert PDFRenderer._shading_domain(shading) == (0.0, 1.0)
+    assert PDFRenderer._shading_domain_2d(shading) == (0.0, 1.0, 0.0, 1.0)
+    assert PDFRenderer._shading_extend(shading) == (False, False)
+    assert PDFRenderer._shading_matrix(shading) == (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
 
 
 def test_paste_image_with_blend_uses_source_alpha_without_clip() -> None:
@@ -133,12 +133,12 @@ def test_paste_image_with_blend_uses_source_alpha_without_clip() -> None:
 
     doc, renderer = _prepared_renderer((3, 3))
     try:
-        renderer._image.paste((200, 200, 200), (0, 0, 3, 3))  # noqa: SLF001
+        renderer._image.paste((200, 200, 200), (0, 0, 3, 3))
         source = Image.new("RGB", (1, 1), (100, 100, 100))
         alpha = Image.new("L", (1, 1), 0)
         alpha.putpixel((0, 0), 255)
 
-        renderer._paste_image_with_blend(  # noqa: SLF001
+        renderer._paste_image_with_blend(
             source,
             alpha,
             (1, 1, 1, 1),
@@ -146,8 +146,8 @@ def test_paste_image_with_blend_uses_source_alpha_without_clip() -> None:
             _Multiply(),
         )
 
-        assert renderer._image.getpixel((0, 0)) == (200, 200, 200)  # noqa: SLF001
-        assert renderer._image.getpixel((1, 1)) == (78, 78, 78)  # noqa: SLF001
-        assert renderer._image.getpixel((2, 2)) == (200, 200, 200)  # noqa: SLF001
+        assert renderer._image.getpixel((0, 0)) == (200, 200, 200)
+        assert renderer._image.getpixel((1, 1)) == (78, 78, 78)
+        assert renderer._image.getpixel((2, 2)) == (200, 200, 200)
     finally:
         doc.close()

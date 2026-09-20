@@ -100,8 +100,8 @@ Build a PDF from one or more images. Pillow opens each input —
 PNG, JPEG, TIFF, and GIF are the well-tested formats.
 
 ```
-pypdfbox imagetopdf -i page1.png page2.png -o out.pdf
-pypdfbox imagetopdf -i diagram.tif -o out.pdf -pageSize A4 -resize -margin-pt 36
+pypdfbox imagetopdf -i page1.png page2.png -o output.pdf
+pypdfbox imagetopdf -i diagram.tif -o output.pdf -pageSize A4 -resize -margin-pt 36
 ```
 
 Use `-pageSize auto` to match each image's pixel dimensions

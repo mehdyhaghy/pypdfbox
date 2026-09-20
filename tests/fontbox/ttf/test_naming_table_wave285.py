@@ -15,7 +15,7 @@ def _read(blob: bytes, *, table_length: int | None = None) -> NamingTable:
     table = NamingTable()
     table.set_offset(0)
     table.set_length(len(blob) if table_length is None else table_length)
-    table.read(cast(TrueTypeFont, object()), MemoryTTFDataStream(blob))
+    table.read(cast("TrueTypeFont", object()), MemoryTTFDataStream(blob))
     return table
 
 

@@ -81,7 +81,7 @@ class GlyphRenderer:
 
         Mirrors upstream ``calculatePath(Point[])`` (line 94).
         """
-        from fontTools.pens.recordingPen import RecordingPen  # noqa: PLC0415
+        from fontTools.pens.recordingPen import RecordingPen
 
         path = RecordingPen()
         start = 0

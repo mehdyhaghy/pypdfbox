@@ -49,7 +49,7 @@ class _Type4Tester:
         return cls(ctx)
 
     # ---- pop helpers ----
-    def pop_bool(self, expected: bool) -> _Type4Tester:  # noqa: FBT001
+    def pop_bool(self, expected: bool) -> _Type4Tester:
         value = self._context.get_stack().pop()
         assert isinstance(value, bool)
         assert value == expected

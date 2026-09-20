@@ -45,7 +45,7 @@ def test_get_namespace_table_skips_schemas_with_empty_preferred_prefix(monkeypat
         PREFERRED_PREFIX = ""
 
     monkeypatch.setitem(
-        dxp._SCHEMA_REGISTRY, "http://example/empty-prefix/", _EmptyPrefixSchema  # noqa: SLF001
+        dxp._SCHEMA_REGISTRY, "http://example/empty-prefix/", _EmptyPrefixSchema
     )
     table = _parser().get_namespace_table()
     # The empty-prefix schema did NOT contribute an entry; "rdf" + "xml"
@@ -84,7 +84,7 @@ def test_build_structured_from_li_skips_unknown_attr_form_attr() -> None:
         f'photoshop:Unknown="ignored"/>'
     )
     li = ET.fromstring(li_xml)
-    instance = parser._build_structured_from_li(li, LayerType, schema)  # type: ignore[arg-type]  # noqa: SLF001
+    instance = parser._build_structured_from_li(li, LayerType, schema)  # type: ignore[arg-type]
     assert instance is not None
     # LayerName was captured; Unknown was filtered.
     assert instance.get_layer_name() == "L1"
@@ -104,7 +104,7 @@ def test_build_structured_from_li_single_non_description_child_treated_as_field(
         f'</rdf:li>'
     )
     li = ET.fromstring(li_xml)
-    instance = parser._build_structured_from_li(li, LayerType, schema)  # type: ignore[arg-type]  # noqa: SLF001
+    instance = parser._build_structured_from_li(li, LayerType, schema)  # type: ignore[arg-type]
     assert instance is not None
     assert instance.get_layer_name() == "directName"
 
@@ -124,7 +124,7 @@ def test_build_structured_from_li_description_wrapper_with_unknown_attr() -> Non
         f'</rdf:li>'
     )
     li = ET.fromstring(li_xml)
-    instance = parser._build_structured_from_li(li, LayerType, schema)  # type: ignore[arg-type]  # noqa: SLF001
+    instance = parser._build_structured_from_li(li, LayerType, schema)  # type: ignore[arg-type]
     assert instance is not None
     assert instance.get_layer_name() == "WrappedName"
 

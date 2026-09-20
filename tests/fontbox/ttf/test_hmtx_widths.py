@@ -148,7 +148,7 @@ def test_advance_widths_inherit_last_for_trailing_lsbs() -> None:
     class _StubTTF:
         def get_horizontal_header(self) -> HorizontalHeaderTable:
             hhea = HorizontalHeaderTable()
-            hhea._number_of_h_metrics = 2  # noqa: SLF001
+            hhea._number_of_h_metrics = 2
             return hhea
 
         def get_number_of_glyphs(self) -> int:

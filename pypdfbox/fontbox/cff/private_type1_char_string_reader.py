@@ -54,7 +54,7 @@ class _CFFCIDDefaultReader(PrivateType1CharStringReader):
     def __init__(self, font: Any) -> None:
         self._font = font
 
-    def get_type1_char_string(self, name: str) -> Type1CharString:  # noqa: ARG002
+    def get_type1_char_string(self, name: str) -> Type1CharString:
         return self._font.get_type2_char_string(0)
 
 

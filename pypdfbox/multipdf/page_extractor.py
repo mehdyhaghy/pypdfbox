@@ -136,14 +136,14 @@ class PageExtractor:
         an extracted document without /Info is still well-formed."""
         try:
             info = self._source_document.get_document_information()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _LOG.debug("get_document_information failed: %s", exc)
             return
         if info is None:
             return
         try:
             target.set_document_information(info)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _LOG.debug("set_document_information failed: %s", exc)
 
     def _copy_viewer_preferences(self, target: PDDocument) -> None:
@@ -154,19 +154,19 @@ class PageExtractor:
         try:
             src_catalog = self._source_document.get_document_catalog()
             dst_catalog = target.get_document_catalog()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _LOG.debug("get_document_catalog failed: %s", exc)
             return
         try:
             prefs = src_catalog.get_viewer_preferences()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _LOG.debug("get_viewer_preferences failed: %s", exc)
             return
         if prefs is None:
             return
         try:
             dst_catalog.set_viewer_preferences(prefs)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _LOG.debug("set_viewer_preferences failed: %s", exc)
 
 

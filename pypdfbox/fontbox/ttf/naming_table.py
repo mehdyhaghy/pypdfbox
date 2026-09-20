@@ -59,7 +59,7 @@ class NamingTable(TTFTable):
         self,
         ttf: TrueTypeFont,
         data: TTFDataStream,
-        only_headers: bool,  # noqa: FBT001 — upstream private overload
+        only_headers: bool,
     ) -> None:
         data.read_unsigned_short()  # format selector
         number_of_name_records = data.read_unsigned_short()

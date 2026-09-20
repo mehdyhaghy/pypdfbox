@@ -17,7 +17,7 @@ class _StubCmap:
     """Minimal :class:`CmapLookup` stub — SMCP worker accepts it but
     never consults it in :meth:`apply_transforms`."""
 
-    def get_glyph_id(self, codepoint: int) -> int:  # noqa: ARG002
+    def get_glyph_id(self, codepoint: int) -> int:
         return 0
 
 

@@ -79,7 +79,7 @@ class CFFType1Font(CFFFont):
             return
         self._private_overlay[name] = value
 
-    def get_private_dict(self) -> dict[str, Any]:  # noqa: D401 — overrides base
+    def get_private_dict(self) -> dict[str, Any]:
         """PDFBox: ``CFFType1Font.getPrivateDict()`` — Private DICT
         entries with any :meth:`add_to_private_dict` overlay layered on
         top of the fontTools-parsed Top.Private rawDict."""
@@ -99,7 +99,7 @@ class CFFType1Font(CFFFont):
         instead of re-instantiating per glyph.
         """
         if self._char_string_parser is None:
-            from pypdfbox.fontbox.cff.cff_cid_font import (  # noqa: PLC0415
+            from pypdfbox.fontbox.cff.cff_cid_font import (
                 _Type2CharStringParser,
             )
 
@@ -144,7 +144,7 @@ class CFFType1Font(CFFFont):
         legacy stub-Top-DICT form) and a real :class:`CFFStandardEncoding`
         instance (installed by :meth:`CFFParser.parse` so callers see
         the polymorphic upstream class identity)."""
-        from .cff_standard_encoding import CFFStandardEncoding  # noqa: PLC0415
+        from .cff_standard_encoding import CFFStandardEncoding
 
         enc = self.get_encoding()
         if enc == "StandardEncoding":
@@ -153,7 +153,7 @@ class CFFType1Font(CFFFont):
 
     def is_expert_encoding(self) -> bool:
         """True when the font uses the predefined ExpertEncoding."""
-        from .cff_expert_encoding import CFFExpertEncoding  # noqa: PLC0415
+        from .cff_expert_encoding import CFFExpertEncoding
 
         enc = self.get_encoding()
         if enc == "ExpertEncoding":
@@ -164,7 +164,7 @@ class CFFType1Font(CFFFont):
         """True when the font carries a custom (non-predefined) encoding
         — a list-shaped Top DICT entry or an embedded :class:`Format0Encoding`
         / :class:`Format1Encoding` installed by the parser."""
-        from .cff_built_in_encoding import CFFBuiltInEncoding  # noqa: PLC0415
+        from .cff_built_in_encoding import CFFBuiltInEncoding
 
         enc = self.get_encoding()
         if enc is None:
@@ -261,7 +261,7 @@ class CFFType1Font(CFFFont):
             return str(enc.get_name(code)) or ".notdef"
         if isinstance(enc, str):
             if enc == "StandardEncoding":
-                from pypdfbox.fontbox.encoding.standard_encoding import (  # noqa: PLC0415
+                from pypdfbox.fontbox.encoding.standard_encoding import (
                     StandardEncoding,
                 )
 
@@ -287,7 +287,7 @@ class CFFType1Font(CFFFont):
         table via public API; we resolve via the static table built
         in :mod:`pypdfbox.fontbox.cff._expert_encoding`.
         """
-        from pypdfbox.fontbox.cff._expert_encoding import (  # noqa: PLC0415
+        from pypdfbox.fontbox.cff._expert_encoding import (
             EXPERT_ENCODING_TABLE,
         )
 
@@ -307,14 +307,14 @@ class CFFType1Font(CFFFont):
             return -1 if code is None else int(code)
         if isinstance(enc, str):
             if enc == "StandardEncoding":
-                from pypdfbox.fontbox.encoding.standard_encoding import (  # noqa: PLC0415
+                from pypdfbox.fontbox.encoding.standard_encoding import (
                     StandardEncoding,
                 )
 
                 code = StandardEncoding.INSTANCE.get_code(name)
                 return -1 if code is None else int(code)
             if enc == "ExpertEncoding":
-                from pypdfbox.fontbox.cff._expert_encoding import (  # noqa: PLC0415
+                from pypdfbox.fontbox.cff._expert_encoding import (
                     EXPERT_ENCODING_TABLE,
                 )
 
@@ -333,7 +333,7 @@ class CFFType1Font(CFFFont):
 
     # ---------- glyph access (parity helpers) ----------
 
-    def has_glyph(self, name: str) -> bool:  # noqa: D401 — overrides base
+    def has_glyph(self, name: str) -> bool:
         """PDFBox: ``CFFType1Font.hasGlyph(String)`` — true when the
         charset contains ``name``. Inherited base class checks the
         CharStrings index by name; both views agree for name-keyed CFF.
@@ -342,13 +342,13 @@ class CFFType1Font(CFFFont):
             return False
         return name in self.get_charset() or super().has_glyph(name)
 
-    def get_path(self, name: str) -> list[tuple[Any, ...]]:  # noqa: D401 — overrides base
+    def get_path(self, name: str) -> list[tuple[Any, ...]]:
         """PDFBox: ``CFFType1Font.getPath(String)`` — name-keyed glyph
         path. Mirrors the inherited GID-keyed
         :meth:`CFFFont.get_path` but takes a PostScript name."""
         return super().get_path(name)
 
-    def get_width(self, name: str) -> float:  # noqa: D401 — overrides base
+    def get_width(self, name: str) -> float:
         """PDFBox: ``CFFType1Font.getWidth(String)`` — name-keyed
         advance width."""
         return super().get_width(name)
@@ -368,7 +368,7 @@ class CFFType1Font(CFFFont):
         gid = self.name_to_gid(name)
         return self.get_type2_char_string(gid)
 
-    def is_cid_font(self) -> bool:  # noqa: D401 — overrides base
+    def is_cid_font(self) -> bool:
         """A :class:`CFFType1Font` is name-keyed, never CIDKeyed."""
         return False
 

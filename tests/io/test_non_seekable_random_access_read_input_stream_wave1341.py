@@ -90,7 +90,7 @@ class _RaisingStream:
         self._message = message
         self._closed = False
 
-    def readinto(self, buf: bytearray) -> int:  # noqa: ARG002
+    def readinto(self, buf: bytearray) -> int:
         raise OSError(self._message)
 
     def close(self) -> None:

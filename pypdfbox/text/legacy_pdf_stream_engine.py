@@ -59,7 +59,7 @@ class LegacyPDFStreamEngine(PDFStreamEngine):
 
     def show_glyph(self, text_rendering_matrix, font, code: int, displacement) -> None:  # type: ignore[override]
         """Subclasses override to receive glyph events; default is a no-op."""
-        return None
+        return
 
     def compute_font_height(self, font) -> float:
         """Heuristic font height. Mirrors upstream's ``computeFontHeight``."""
@@ -90,7 +90,7 @@ class LegacyPDFStreamEngine(PDFStreamEngine):
 
     def process_text_position(self, text) -> None:
         """Hook called per glyph; subclasses override to consume."""
-        return None
+        return
 
 
 __all__ = ["LegacyPDFStreamEngine"]

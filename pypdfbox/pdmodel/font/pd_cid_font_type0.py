@@ -222,7 +222,7 @@ class PDCIDFontType0(PDCIDFont):
                 self._cff = CFFCIDFont.from_cff_font(base)
             else:
                 self._cff = CFFType1Font.from_cff_font(base)
-        except Exception:  # noqa: BLE001
+        except Exception:
             _LOG.exception("failed to parse /FontFile3 for %s", self.get_name())
             self._cff = False
             return None
@@ -430,7 +430,7 @@ class PDCIDFontType0(PDCIDFont):
             return _CFF_DEFAULT_FONT_MATRIX
         try:
             matrix = program.font_matrix
-        except Exception:  # noqa: BLE001
+        except Exception:
             return _CFF_DEFAULT_FONT_MATRIX
         if not matrix or len(matrix) < 6:
             return _CFF_DEFAULT_FONT_MATRIX
@@ -649,7 +649,7 @@ class PDCIDFontType0(PDCIDFont):
         if cs is not None:
             try:
                 return cs.get_path()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return []
         return []
 
@@ -681,7 +681,7 @@ class PDCIDFontType0(PDCIDFont):
             return False
         try:
             return cs.get_gid() != 0
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
 
     def encode(self, unicode_codepoint: int) -> bytes:  # type: ignore[override]

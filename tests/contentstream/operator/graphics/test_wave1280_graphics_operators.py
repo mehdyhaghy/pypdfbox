@@ -19,26 +19,26 @@ from pypdfbox.contentstream.operator.graphics.clip_even_odd_rule import (
 from pypdfbox.contentstream.operator.graphics.clip_non_zero_rule import (
     ClipNonZeroRule,
 )
-from pypdfbox.contentstream.operator.graphics.close_fill_even_odd_and_stroke_path import (  # noqa: E501
+from pypdfbox.contentstream.operator.graphics.close_fill_even_odd_and_stroke_path import (
     CloseFillEvenOddAndStrokePath,
 )
-from pypdfbox.contentstream.operator.graphics.close_fill_non_zero_and_stroke_path import (  # noqa: E501
+from pypdfbox.contentstream.operator.graphics.close_fill_non_zero_and_stroke_path import (
     CloseFillNonZeroAndStrokePath,
 )
 from pypdfbox.contentstream.operator.graphics.end_path import EndPath
-from pypdfbox.contentstream.operator.graphics.fill_even_odd_and_stroke_path import (  # noqa: E501
+from pypdfbox.contentstream.operator.graphics.fill_even_odd_and_stroke_path import (
     FillEvenOddAndStrokePath,
 )
 from pypdfbox.contentstream.operator.graphics.fill_even_odd_rule import (
     FillEvenOddRule,
 )
-from pypdfbox.contentstream.operator.graphics.fill_non_zero_and_stroke_path import (  # noqa: E501
+from pypdfbox.contentstream.operator.graphics.fill_non_zero_and_stroke_path import (
     FillNonZeroAndStrokePath,
 )
 from pypdfbox.contentstream.operator.graphics.fill_non_zero_rule import (
     FillNonZeroRule,
 )
-from pypdfbox.contentstream.operator.graphics.graphics_operator_processor import (  # noqa: E501
+from pypdfbox.contentstream.operator.graphics.graphics_operator_processor import (
     GraphicsOperatorProcessor,
 )
 from pypdfbox.contentstream.operator.graphics.legacy_fill_non_zero_rule import (
@@ -67,7 +67,7 @@ def test_graphics_context_returns_bound_context_or_none() -> None:
     class _Concrete(GraphicsOperatorProcessor):
         OPERATOR_NAME = "x"
 
-        def process(self, operator, operands):  # noqa: ANN001
+        def process(self, operator, operands):
             return None
 
     handler = _Concrete()
@@ -168,7 +168,7 @@ def test_close_fill_non_zero_and_stroke_dispatches_via_bound_engine() -> None:
     calls: list[tuple[str, list]] = []
 
     class _Engine:
-        def process_operator(self, name, operands):  # noqa: ANN001
+        def process_operator(self, name, operands):
             calls.append((name, operands))
 
     handler = CloseFillNonZeroAndStrokePath()
@@ -184,7 +184,7 @@ def test_close_fill_even_odd_and_stroke_dispatches_via_bound_engine() -> None:
     calls: list[tuple[str, list]] = []
 
     class _Engine:
-        def process_operator(self, name, operands):  # noqa: ANN001
+        def process_operator(self, name, operands):
             calls.append((name, operands))
 
     handler = CloseFillEvenOddAndStrokePath()

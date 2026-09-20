@@ -234,7 +234,7 @@ class MacRomanEncoding(Encoding):
         """Return ``COSName.MAC_ROMAN_ENCODING``. Mirrors upstream
         ``MacRomanEncoding.getCOSObject()``.
         """
-        from pypdfbox.cos.cos_name import COSName  # noqa: PLC0415
+        from pypdfbox.cos.cos_name import COSName
 
         return COSName.MAC_ROMAN_ENCODING
 

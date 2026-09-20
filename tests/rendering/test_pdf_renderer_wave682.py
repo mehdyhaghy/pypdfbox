@@ -27,16 +27,16 @@ def _prepared_renderer(
 ) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -58,15 +58,15 @@ def test_resolve_font_caches_direct_resource_font_and_handles_failures() -> None
     doc, renderer = _prepared_renderer()
     try:
         name = COSName.get_pdf_name("F1")
-        assert renderer._resolve_font(name) is None  # noqa: SLF001
+        assert renderer._resolve_font(name) is None
 
-        renderer._resources = _RaisingResources()  # noqa: SLF001
-        assert renderer._resolve_font(name) is None  # noqa: SLF001
+        renderer._resources = _RaisingResources()
+        assert renderer._resolve_font(name) is None
 
         resources = _Resources()
-        renderer._resources = resources  # noqa: SLF001
-        assert renderer._resolve_font(name) is resources.font  # noqa: SLF001
-        assert renderer._resolve_font(name) is resources.font  # noqa: SLF001
+        renderer._resources = resources
+        assert renderer._resolve_font(name) is resources.font
+        assert renderer._resolve_font(name) is resources.font
         assert resources.calls == 1
     finally:
         _finish(renderer)
@@ -86,13 +86,13 @@ def test_text_operator_guards_and_read_code_fallback(monkeypatch: Any) -> None:
 
     doc, renderer = _prepared_renderer()
     try:
-        renderer._op_set_font(None, [])  # noqa: SLF001
-        renderer._op_set_font(None, [object(), object()])  # noqa: SLF001
-        assert renderer._gs.text_font is None  # noqa: SLF001
+        renderer._op_set_font(None, [])
+        renderer._op_set_font(None, [object(), object()])
+        assert renderer._gs.text_font is None
 
-        renderer._show_string(b"abc")  # noqa: SLF001
-        renderer._gs.text_font = _BadReaderFont()  # noqa: SLF001
-        renderer._gs.text_font_size = 10.0  # noqa: SLF001
+        renderer._show_string(b"abc")
+        renderer._gs.text_font = _BadReaderFont()
+        renderer._gs.text_font_size = 10.0
 
         seen_codes: list[int] = []
         monkeypatch.setattr(renderer, "_get_ttf_glyph_set", lambda _font: (None, None))
@@ -108,10 +108,10 @@ def test_text_operator_guards_and_read_code_fallback(monkeypatch: Any) -> None:
             or 100.0,
         )
 
-        renderer._show_string(b"AZ")  # noqa: SLF001
+        renderer._show_string(b"AZ")
 
         assert seen_codes == [65, 99]
-        assert renderer._gs.text_matrix[4] == 2.0  # noqa: SLF001
+        assert renderer._gs.text_matrix[4] == 2.0
     finally:
         _finish(renderer)
         doc.close()
@@ -157,14 +157,14 @@ def test_get_ttf_glyph_set_type0_parse_and_glyphset_failures(
             "from_bytes",
             staticmethod(lambda _data: (_ for _ in ()).throw(RuntimeError("bad ttf"))),
         )
-        assert renderer._get_ttf_glyph_set(_Type0Font()) == (None, None)  # noqa: SLF001
+        assert renderer._get_ttf_glyph_set(_Type0Font()) == (None, None)
 
         monkeypatch.setattr(
             ttf_module.TrueTypeFont,
             "from_bytes",
             staticmethod(lambda _data: _BadGlyphSetTTF()),
         )
-        ttf, glyph_set = renderer._get_ttf_glyph_set(_Type0Font())  # noqa: SLF001
+        ttf, glyph_set = renderer._get_ttf_glyph_set(_Type0Font())
         assert isinstance(ttf, _BadGlyphSetTTF)
         assert glyph_set is None
 
@@ -173,7 +173,7 @@ def test_get_ttf_glyph_set_type0_parse_and_glyphset_failures(
             "from_bytes",
             staticmethod(lambda _data: _TTF()),
         )
-        assert renderer._get_ttf_glyph_set(object()) == (None, None)  # noqa: SLF001
+        assert renderer._get_ttf_glyph_set(object()) == (None, None)
     finally:
         _finish(renderer)
         doc.close()
@@ -209,13 +209,13 @@ def test_type1c_units_and_resolve_font_program_cache(
     doc, renderer = _prepared_renderer()
     try:
         monkeypatch.setattr(type1c_module, "PDType1CFont", _Type1CFont)
-        assert PDFRenderer._get_type1_units_per_em(_Type1CFont(None)) is None  # noqa: SLF001
-        assert PDFRenderer._get_type1_units_per_em(_Type1CFont(_CFFProgram())) == 2048  # noqa: E501, SLF001
+        assert PDFRenderer._get_type1_units_per_em(_Type1CFont(None)) is None
+        assert PDFRenderer._get_type1_units_per_em(_Type1CFont(_CFFProgram())) == 2048
 
-        renderer._get_ttf_glyph_set = lambda _font: (None, None)  # type: ignore[method-assign] # noqa: SLF001, E501
+        renderer._get_ttf_glyph_set = lambda _font: (None, None)  # type: ignore[method-assign]
         program_font = _Type1CFont(_CFFProgram())
-        assert renderer._resolve_font_program(program_font) is program_font._program  # noqa: SLF001
-        assert renderer._resolve_font_program(program_font) is program_font._program  # noqa: SLF001
+        assert renderer._resolve_font_program(program_font) is program_font._program
+        assert renderer._resolve_font_program(program_font) is program_font._program
 
         mapper = _Mapper()
         monkeypatch.setattr(
@@ -224,8 +224,8 @@ def test_type1c_units_and_resolve_font_program_cache(
             staticmethod(lambda: mapper),
         )
         plain_font = object()
-        assert renderer._resolve_font_program(plain_font) == "fallback"  # noqa: SLF001
-        assert renderer._resolve_font_program(plain_font) == "fallback"  # noqa: SLF001
+        assert renderer._resolve_font_program(plain_font) == "fallback"
+        assert renderer._resolve_font_program(plain_font) == "fallback"
         assert mapper.calls == 1
     finally:
         _finish(renderer)
@@ -237,7 +237,7 @@ def test_draw_glyph_ttf_and_type1_failures_fall_back_cleanly(
 ) -> None:
     class _BadTTF:
         class _TT:
-            def getGlyphName(self, _gid: int) -> str:  # noqa: N802
+            def getGlyphName(self, _gid: int) -> str:
                 raise RuntimeError("name failed")
 
         _tt = _TT()
@@ -270,14 +270,14 @@ def test_draw_glyph_ttf_and_type1_failures_fall_back_cleanly(
         monkeypatch.setattr(renderer, "_maybe_warn_standard14", lambda _font: None)
         monkeypatch.setattr(renderer, "_draw_placeholder_box", lambda *_args: None)
 
-        assert renderer._draw_glyph(  # noqa: SLF001
+        assert renderer._draw_glyph(
             _PlaceholderFont(),
             65,
             _BadTTF(),
             {},
         ) == 500.0
 
-        assert renderer._draw_glyph(  # noqa: SLF001
+        assert renderer._draw_glyph(
             _Type1Font(),
             65,
             None,

@@ -22,16 +22,16 @@ def _make_doc(width: float = 4.0, height: float = 4.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (4, 4)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -46,7 +46,7 @@ def test_transparency_group_helper_result_takes_precedence_over_group_dict() -> 
             group.set_item(COSName.get_pdf_name("S"), COSName.get_pdf_name("Transparency"))
             return group
 
-    assert PDFRenderer._is_transparency_group(_Form()) is False  # noqa: SLF001
+    assert PDFRenderer._is_transparency_group(_Form()) is False
 
 
 def test_blend_unknown_nonseparable_mode_falls_back_to_normal(
@@ -62,7 +62,7 @@ def test_blend_unknown_nonseparable_mode_falls_back_to_normal(
     backdrop = Image.new("RGBA", (1, 1), (255, 255, 255, 255))
 
     caplog.set_level("DEBUG", logger="pypdfbox.rendering.pdf_renderer")
-    blended = PDFRenderer._blend(source, backdrop, _UnknownNonSeparable())  # noqa: SLF001
+    blended = PDFRenderer._blend(source, backdrop, _UnknownNonSeparable())
 
     expected = backdrop.copy()
     expected.alpha_composite(source)
@@ -73,16 +73,16 @@ def test_blend_unknown_nonseparable_mode_falls_back_to_normal(
 def test_paint_with_live_path_noops_without_draw_and_preserves_path() -> None:
     doc, renderer = _prepared_renderer()
     try:
-        renderer._start_subpath(0.0, 0.0)  # noqa: SLF001
-        renderer._current_subpath.append(("L", 2.0, 0.0))  # noqa: SLF001
-        renderer._current_subpath.append(("L", 2.0, 2.0))  # noqa: SLF001
-        renderer._draw = None  # noqa: SLF001
+        renderer._start_subpath(0.0, 0.0)
+        renderer._current_subpath.append(("L", 2.0, 0.0))
+        renderer._current_subpath.append(("L", 2.0, 2.0))
+        renderer._draw = None
 
-        renderer._paint(stroke=False, fill=True, even_odd=False)  # noqa: SLF001
+        renderer._paint(stroke=False, fill=True, even_odd=False)
 
-        assert renderer._subpaths  # noqa: SLF001
-        assert renderer._current_subpath is not None  # noqa: SLF001
-        assert renderer._pending_clip is None  # noqa: SLF001
+        assert renderer._subpaths
+        assert renderer._current_subpath is not None
+        assert renderer._pending_clip is None
     finally:
         _finish(renderer)
         doc.close()

@@ -79,10 +79,10 @@ def test_wave789_abstract_structured_conversion_helpers() -> None:
     metadata = XMPMetadata.create_xmp_metadata()
     structured = _BareStructured(metadata)
 
-    assert structured._is_calendar_like(date(2026, 5, 9)) is True  # noqa: SLF001
-    assert structured._is_calendar_like("2026-05-09") is False  # noqa: SLF001
+    assert structured._is_calendar_like(date(2026, 5, 9)) is True
+    assert structured._is_calendar_like("2026-05-09") is False
 
-    attr = structured._new_attribute("http://example.com/ns/", "kind", "value")  # noqa: SLF001
+    attr = structured._new_attribute("http://example.com/ns/", "kind", "value")
     assert attr.get_namespace() == "http://example.com/ns/"
     assert attr.get_name() == "kind"
     assert attr.get_value() == "value"

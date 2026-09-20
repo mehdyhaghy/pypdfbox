@@ -50,7 +50,7 @@ def test_type2_get_width_uses_cached_value_on_second_call() -> None:
         default_width_x=500,
     )
 
-    char_string._cached_width = 321.0  # noqa: SLF001
+    char_string._cached_width = 321.0
 
     assert char_string.get_width() == 321.0
 
@@ -64,7 +64,7 @@ def test_type2_get_width_falls_back_to_default_when_extractor_fails() -> None:
         sequence=None,
         default_width_x=444,
     )
-    char_string._t2 = object()  # noqa: SLF001
+    char_string._t2 = object()
 
     assert char_string.get_width() == 444.0
     assert char_string.get_width() == 444.0

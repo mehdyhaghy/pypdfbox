@@ -16,7 +16,7 @@ from pypdfbox.pdmodel import PDDocument
 def test_wave635_open_source_keeps_caller_owned_document_open() -> None:
     doc = PDDocument()
 
-    resolved, owns = PDFMergerUtility._open_source(doc)  # noqa: SLF001
+    resolved, owns = PDFMergerUtility._open_source(doc)
 
     assert resolved is doc
     assert owns is False
@@ -40,21 +40,21 @@ def test_wave635_open_source_loads_supported_inputs_and_rejects_bad_streams(
     random_access = RandomAccessReadBuffer(b"%PDF")
     binary_stream = io.BytesIO(b"stream-pdf")
 
-    assert PDFMergerUtility._open_source(b"bytes-pdf") == ("doc-1", True)  # noqa: SLF001
-    assert PDFMergerUtility._open_source(memoryview(b"memory-pdf")) == (  # noqa: SLF001
+    assert PDFMergerUtility._open_source(b"bytes-pdf") == ("doc-1", True)
+    assert PDFMergerUtility._open_source(memoryview(b"memory-pdf")) == (
         "doc-2",
         True,
     )
-    assert PDFMergerUtility._open_source(random_access) == ("doc-3", True)  # noqa: SLF001
-    assert PDFMergerUtility._open_source(binary_stream) == ("doc-4", True)  # noqa: SLF001
+    assert PDFMergerUtility._open_source(random_access) == ("doc-3", True)
+    assert PDFMergerUtility._open_source(binary_stream) == ("doc-4", True)
 
     assert loaded_sources[:3] == [b"bytes-pdf", b"memory-pdf", random_access]
     assert loaded_sources[3] == b"stream-pdf"
 
     with pytest.raises(TypeError, match="binary stream source read"):
-        PDFMergerUtility._open_source(io.StringIO("not bytes"))  # noqa: SLF001
+        PDFMergerUtility._open_source(io.StringIO("not bytes"))
     with pytest.raises(TypeError, match="unsupported source type"):
-        PDFMergerUtility._open_source(object())  # noqa: SLF001
+        PDFMergerUtility._open_source(object())
 
 
 def test_wave635_merge_documents_without_sources_stages_options_and_returns(

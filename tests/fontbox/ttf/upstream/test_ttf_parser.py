@@ -81,7 +81,7 @@ def test_post_table(ttf_bytes: bytes) -> None:
     # Resolve glyph names through fontTools' post-table loader; the
     # equivalent of upstream ``post.getGlyphNames()``. Whichever path
     # gives a populated list works.
-    glyph_names = post.get_glyph_names() or font._tt.getGlyphOrder()  # noqa: SLF001
+    glyph_names = post.get_glyph_names() or font._tt.getGlyphOrder()
     assert glyph_names is not None
 
     # WGL4 (Macintosh standard) name

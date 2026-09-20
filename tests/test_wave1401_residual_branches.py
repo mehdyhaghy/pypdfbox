@@ -292,10 +292,10 @@ def test_pd_cid_font_type0_coerce_bbox_none_returns_none() -> None:
     from pypdfbox.pdmodel.font.pd_cid_font_type0 import PDCIDFontType0
 
     # _coerce_bbox should tolerate junk input.
-    result = PDCIDFontType0._coerce_bbox("not-a-list")  # noqa: SLF001
+    result = PDCIDFontType0._coerce_bbox("not-a-list")
     assert result is None
 
-    result = PDCIDFontType0._coerce_bbox([1, 2, 3])  # noqa: SLF001 — wrong length
+    result = PDCIDFontType0._coerce_bbox([1, 2, 3])
     assert result is None
 
 
@@ -575,8 +575,8 @@ def test_search_panel_listeners_without_methods_skipped(tk_root) -> None:
     panel = SearchPanel(doc_l, chg_l, cmp_l, lambda: None, lambda: None, tk_root)
 
     # Trigger dispatch — should not raise.
-    panel._on_document_event()  # noqa: SLF001
-    panel._on_state_change()  # noqa: SLF001
+    panel._on_document_event()
+    panel._on_state_change()
 
     # reset() when _counter_visible=False (the default) — closes 165->168.
     panel.reset()

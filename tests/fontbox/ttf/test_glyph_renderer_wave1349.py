@@ -21,18 +21,18 @@ def test_render_two_consecutive_off_curve_mid_contour_emits_implicit_midpoint() 
     off-curve and ``j+1 < clen`` → ``mid_value`` + ``qCurveTo`` (lines
     118-119)."""
     d = GlyfSimpleDescript()
-    d._contour_count = 1  # noqa: SLF001
-    d._end_pts_of_contours = [3]  # noqa: SLF001
+    d._contour_count = 1
+    d._end_pts_of_contours = [3]
     # Point sequence: on-curve, off-curve, off-curve, on-curve (end).
-    d._flags = [  # noqa: SLF001
+    d._flags = [
         GlyfDescript.ON_CURVE,
         0,
         0,
         GlyfDescript.ON_CURVE,
     ]
-    d._x_coordinates = [0, 10, 20, 30]  # noqa: SLF001
-    d._y_coordinates = [0, 10, 10, 0]  # noqa: SLF001
-    d._point_count = 4  # noqa: SLF001
+    d._x_coordinates = [0, 10, 20, 30]
+    d._y_coordinates = [0, 10, 10, 0]
+    d._point_count = 4
 
     pen = GlyphRenderer(d).get_path()
     ops = [op for (op, _args) in pen.value]

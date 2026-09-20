@@ -63,7 +63,7 @@ def test_apply_transforms_vatu_feature_adapts_to_none() -> None:
     assert worker.apply_transforms([50, 51, 52]) == [50, 51, 52]
 
 
-def test_apply_rkrf_feature_no_reph_first_glyph_loops_on(  # noqa: D401
+def test_apply_rkrf_feature_no_reph_first_glyph_loops_on(
 ) -> None:
     """No RA (reph[0]) anywhere → every loop iteration takes the
     ``ra_glyph == reph[0]`` False arc ([135,140]) and the list is

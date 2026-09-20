@@ -131,7 +131,7 @@ def test_create_buffer_from_stream_closes_source_on_failure() -> None:
     closed: list[bool] = []
 
     class BadStream:
-        def read(self, n: int | None = None) -> bytes:  # noqa: ARG002
+        def read(self, n: int | None = None) -> bytes:
             raise OSError("simulated")
 
         def close(self) -> None:
@@ -164,7 +164,7 @@ def test_ctor_stream_yielding_non_bytes_raises() -> None:
         def __init__(self) -> None:
             self._calls = 0
 
-        def read(self, n: int | None = None) -> object:  # noqa: ARG002
+        def read(self, n: int | None = None) -> object:
             self._calls += 1
             return "not bytes"
 

@@ -35,30 +35,30 @@ import pytest
 pytest.importorskip("pypdfbox.pdmodel.encryption.standard_security_handler")
 pytest.importorskip("pypdfbox.pdmodel.encryption.standard_protection_policy")
 
-from pypdfbox import Loader, PDDocument  # noqa: E402
-from pypdfbox.cos import COSArray, COSStream  # noqa: E402
-from pypdfbox.pdmodel import PDPage  # noqa: E402
-from pypdfbox.pdmodel.common.pd_metadata import PDMetadata  # noqa: E402
-from pypdfbox.pdmodel.encryption.access_permission import (  # noqa: E402
+from pypdfbox import Loader, PDDocument
+from pypdfbox.cos import COSArray, COSStream
+from pypdfbox.pdmodel import PDPage
+from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
+from pypdfbox.pdmodel.encryption.access_permission import (
     AccessPermission,
 )
-from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption  # noqa: E402
-from pypdfbox.pdmodel.encryption.public_key_decryption_material import (  # noqa: E402
+from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption
+from pypdfbox.pdmodel.encryption.public_key_decryption_material import (
     PublicKeyDecryptionMaterial,
 )
-from pypdfbox.pdmodel.encryption.public_key_protection_policy import (  # noqa: E402
+from pypdfbox.pdmodel.encryption.public_key_protection_policy import (
     PublicKeyProtectionPolicy,
 )
-from pypdfbox.pdmodel.encryption.public_key_recipient import (  # noqa: E402
+from pypdfbox.pdmodel.encryption.public_key_recipient import (
     PublicKeyRecipient,
 )
-from pypdfbox.pdmodel.encryption.public_key_security_handler import (  # noqa: E402
+from pypdfbox.pdmodel.encryption.public_key_security_handler import (
     PublicKeySecurityHandler,
 )
-from pypdfbox.pdmodel.encryption.standard_protection_policy import (  # noqa: E402
+from pypdfbox.pdmodel.encryption.standard_protection_policy import (
     StandardProtectionPolicy,
 )
-from pypdfbox.pdmodel.encryption.standard_security_handler import (  # noqa: E402
+from pypdfbox.pdmodel.encryption.standard_security_handler import (
     InvalidPasswordException,
     StandardSecurityHandler,
 )
@@ -394,7 +394,7 @@ def _build_r5_dictionary_via_handler() -> tuple[
 
     file_key = os.urandom(32)
     handler.set_encryption_key(file_key)
-    handler._encrypt_metadata = True  # noqa: SLF001 — no public setter
+    handler._encrypt_metadata = True
 
     # Build the /U /UE /O /OE /Perms quintet exactly as the r6 dictionary
     # builder does — the r5 algorithm produces the same byte shape; the
@@ -403,7 +403,7 @@ def _build_r5_dictionary_via_handler() -> tuple[
     truncated = password[:127]
     u_validation_salt = os.urandom(8)
     u_key_salt = os.urandom(8)
-    u_hash = handler._compute_hash_r5_r6(  # noqa: SLF001
+    u_hash = handler._compute_hash_r5_r6(
         truncated + u_validation_salt, truncated, b"", 5
     )
     u_value = u_hash + u_validation_salt + u_key_salt
@@ -414,7 +414,7 @@ def _build_r5_dictionary_via_handler() -> tuple[
         modes,
     )
 
-    ue_intermediate = handler._compute_hash_r5_r6(  # noqa: SLF001
+    ue_intermediate = handler._compute_hash_r5_r6(
         truncated + u_key_salt, truncated, b"", 5
     )
     ue_cipher = Cipher(
@@ -424,14 +424,14 @@ def _build_r5_dictionary_via_handler() -> tuple[
 
     o_validation_salt = os.urandom(8)
     o_key_salt = os.urandom(8)
-    o_hash = handler._compute_hash_r5_r6(  # noqa: SLF001
+    o_hash = handler._compute_hash_r5_r6(
         truncated + o_validation_salt + u_value,
         truncated,
         u_value,
         5,
     )
     o_value = o_hash + o_validation_salt + o_key_salt
-    oe_intermediate = handler._compute_hash_r5_r6(  # noqa: SLF001
+    oe_intermediate = handler._compute_hash_r5_r6(
         truncated + o_key_salt + u_value,
         truncated,
         u_value,
@@ -633,7 +633,7 @@ def test_public_key_single_recipient_round_trip_per_key_length(
     """
     try:
         cert, private_key = _build_self_signed_rsa()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pytest.skip("cert generation too heavy in this environment")
 
     recipient = PublicKeyRecipient(
@@ -667,7 +667,7 @@ def test_public_key_recipient_with_mismatched_key_cannot_decrypt() -> None:
     try:
         cert_a, _key_a = _build_self_signed_rsa()
         _cert_b, key_b_other = _build_self_signed_rsa()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pytest.skip("cert generation too heavy in this environment")
 
     policy = PublicKeyProtectionPolicy()
@@ -708,7 +708,7 @@ def test_public_key_four_recipients_yield_four_envelopes() -> None:
         cert_keys: list[tuple[object, object]] = [
             _build_self_signed_rsa() for _ in range(4)
         ]
-    except Exception:  # noqa: BLE001
+    except Exception:
         pytest.skip("cert generation too heavy in this environment")
 
     policy = PublicKeyProtectionPolicy()

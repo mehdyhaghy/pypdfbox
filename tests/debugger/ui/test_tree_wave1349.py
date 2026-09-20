@@ -33,13 +33,13 @@ def test_get_file_extension_uses_str_of_node_for_other_types() -> None:
     falls back to ``str(node)``. A plain string ``"FontFile"`` is its own
     ``str()``, so the FontFile branch fires."""
     stream = COSStream()
-    assert Tree._get_file_extension(stream, "FontFile") == "pfb"  # noqa: SLF001
-    assert Tree._get_file_extension(stream, "FontFile2") == "ttf"  # noqa: SLF001
+    assert Tree._get_file_extension(stream, "FontFile") == "pfb"
+    assert Tree._get_file_extension(stream, "FontFile2") == "ttf"
 
 
 def test_get_file_extension_str_node_unknown_returns_none() -> None:
     stream = COSStream()
-    assert Tree._get_file_extension(stream, "RandomKey") is None  # noqa: SLF001
+    assert Tree._get_file_extension(stream, "RandomKey") is None
 
 
 # ---- lines 219-220: _make_save_raw_stream invocation -----------------------

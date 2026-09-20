@@ -6,15 +6,15 @@ from pypdfbox.fontbox.cff.cff_type1_font import CFFType1Font
 
 
 class _Top:
-    rawDict = {"FamilyName": "ParsedFamily"}  # noqa: N815, RUF012
+    rawDict = {"FamilyName": "ParsedFamily"}
 
 
 def _base_font() -> CFFFont:
     base = CFFFont()
-    base._top = _Top()  # noqa: SLF001
-    base._data = b"\x01\x00\x04\x04cff"  # noqa: SLF001
-    base._font_matrix = [0.002, 0.0, 0.0, 0.002, 0.0, 0.0]  # noqa: SLF001
-    base._widths = {"A": 600.0}  # noqa: SLF001
+    base._top = _Top()
+    base._data = b"\x01\x00\x04\x04cff"
+    base._font_matrix = [0.002, 0.0, 0.0, 0.002, 0.0, 0.0]
+    base._widths = {"A": 600.0}
     base.set_name("SyntheticName")
     base.add_value_to_top_dict("FamilyName", "OverlayFamily")
     base.add_value_to_top_dict("Weight", "Medium")
@@ -29,7 +29,7 @@ def _assert_rewrapped_base_state(wrapped: CFFFont, base: CFFFont) -> None:
     assert wrapped.get_font_matrix() == [0.002, 0.0, 0.0, 0.002, 0.0, 0.0]
 
     base.add_value_to_top_dict("Weight", "Changed")
-    base._font_matrix = [0.001, 0.0, 0.0, 0.001, 0.0, 0.0]  # noqa: SLF001
+    base._font_matrix = [0.001, 0.0, 0.0, 0.001, 0.0, 0.0]
 
     assert wrapped.get_property("Weight") == "Medium"
     assert wrapped.get_font_matrix() == [0.002, 0.0, 0.0, 0.002, 0.0, 0.0]

@@ -57,7 +57,7 @@ def test_read_image_raster_num_channels_mismatch_falls_through() -> None:
     """
 
     class _LyingFilter(DCTFilter):
-        def get_num_channels(self, reader: object) -> str:  # noqa: ARG002
+        def get_num_channels(self, reader: object) -> str:
             return "4"  # disagrees with the 3 bands below
 
     class _ThreeBand:
@@ -148,7 +148,7 @@ def test_brute_force_returns_zero_when_seek_unsupported() -> None:
 
 def test_brute_force_returns_zero_when_seek_missing() -> None:
     class _NoSeekAttr:
-        def read(self, n: int) -> bytes:  # noqa: ARG002
+        def read(self, n: int) -> bytes:
             return b""
 
     # ``iis.seek`` lookup raises ``AttributeError`` and is caught.

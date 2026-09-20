@@ -14,7 +14,7 @@ def test_content_stream_writer_skips_value_less_inline_image_parameter() -> None
     params = COSDictionary()
     params.set_int("W", 1)
     params.set_int("H", 1)
-    cast(Any, params)._items[COSName.get_pdf_name("Broken")] = None
+    cast("Any", params)._items[COSName.get_pdf_name("Broken")] = None
     op.set_image_parameters(params)
     op.set_image_data(b"\x00")
 

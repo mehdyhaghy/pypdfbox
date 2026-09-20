@@ -50,8 +50,8 @@ def _codespace_full_match(
     """``rng.is_full_match`` against a slice of ``data`` without copying."""
     if rng.get_code_length() != code_len:
         return False
-    start = rng._start  # noqa: SLF001 — intentional internal access for hot path
-    end = rng._end  # noqa: SLF001
+    start = rng._start
+    end = rng._end
     for i in range(code_len):
         b = data[offset + i] & 0xFF
         if b < start[i] or b > end[i]:
@@ -244,7 +244,7 @@ class CMap:
         min_len = self._min_code_length
         if max_len <= 0:
             b = self._read_one(input_stream)
-            return b if b >= 0 else 0
+            return max(b, 0)
         bytes_buf = bytearray(max_len)
 
         # Read the initial minCodeLength bytes. Upstream ignores the actual

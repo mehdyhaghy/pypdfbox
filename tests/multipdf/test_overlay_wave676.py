@@ -40,7 +40,7 @@ def test_wave676_create_layout_page_supplies_empty_resources_when_page_has_none(
     overlay.set_input_pdf(base)
 
     try:
-        layout = overlay._create_layout_page(_NoResourcePage())  # type: ignore[arg-type]  # noqa: SLF001,E501
+        layout = overlay._create_layout_page(_NoResourcePage())  # type: ignore[arg-type]
     finally:
         base.close()
 
@@ -70,7 +70,7 @@ def test_wave676_make_cloner_falls_back_to_document_deep_copy(
     monkeypatch.setattr(builtins, "__import__", blocked_import)
 
     try:
-        cloner = Overlay._make_cloner(doc)  # noqa: SLF001
+        cloner = Overlay._make_cloner(doc)
         cloned = cloner.clone_for_new_document(source)
     finally:
         doc.close()

@@ -51,7 +51,7 @@ class PrintTextLocations(PDFTextStripper):
         for text in text_positions:
             try:
                 font_name = text.get_font().get_name()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 font_name = "<unknown>"
             sys.stdout.write(
                 f"String[{getattr(text, 'get_x_dir_adj', lambda: 0)()},"

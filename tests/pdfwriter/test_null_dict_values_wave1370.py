@@ -111,7 +111,7 @@ def test_smuggled_none_in_items_dict_is_skipped_at_write() -> None:
     catalog = COSDictionary()
     catalog.set_int(COSName.get_pdf_name("Real"), 42)
     # Bypass the public setter to inject a None value.
-    catalog._items[COSName.get_pdf_name("Smuggled")] = None  # type: ignore[assignment]  # noqa: SLF001
+    catalog._items[COSName.get_pdf_name("Smuggled")] = None  # type: ignore[assignment]
     out = _write(_make_doc(catalog))
     assert b"/Real 42" in out
     # The smuggled value must not appear — no /Smuggled key on the wire.

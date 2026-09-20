@@ -391,7 +391,7 @@ def test_add_glyphs_to_subset_when_subsetting(
     font = PDType0Font.load_ttf(None, liberation_bytes)
     font.add_glyphs_to_subset({1, 2, 3})
     # The internal set picks them up; subset() consumes them.
-    assert font._subset_glyph_ids == {1, 2, 3}  # noqa: SLF001
+    assert font._subset_glyph_ids == {1, 2, 3}
 
 
 def test_add_glyphs_to_subset_raises_when_disabled(
@@ -456,8 +456,8 @@ def test_read_encoding_primes_caches_without_error() -> None:
     # Should be a no-op-shaped call returning None.
     assert font.read_encoding() is None
     # Cache flags now reflect the touched-once state.
-    assert font._cmap_loaded is True  # noqa: SLF001
-    assert font._cmap_ucs2_loaded is True  # noqa: SLF001
+    assert font._cmap_loaded is True
+    assert font._cmap_ucs2_loaded is True
 
 
 # ---------- methods added in Wave 1261 (PDType0Font 1:1 round-out) ----------
@@ -530,9 +530,9 @@ def test_fetch_c_map_ucs2_primes_cache() -> None:
     """
     desc = _build_cid_font_type2(registry="Adobe", ordering="GB1")
     font = _build_type0(desc)
-    assert font._cmap_ucs2_loaded is False  # noqa: SLF001
+    assert font._cmap_ucs2_loaded is False
     font.fetch_c_map_ucs2()
-    assert font._cmap_ucs2_loaded is True  # noqa: SLF001
+    assert font._cmap_ucs2_loaded is True
 
 
 def test_fetch_c_map_ucs2_swallows_parse_errors() -> None:

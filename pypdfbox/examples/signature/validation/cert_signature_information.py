@@ -28,7 +28,7 @@ class CertSignatureInformation:
         self._alternative_cert_chain: CertSignatureInformation | None = None
 
     # ----- setters -----------------------------------------------------
-    def set_certificate(self, certificate) -> None:  # noqa: ANN001
+    def set_certificate(self, certificate) -> None:
         self._certificate = certificate
 
     def set_signature_hash(self, value: str | None) -> None:
@@ -58,7 +58,7 @@ class CertSignatureInformation:
         self._alternative_cert_chain = value
 
     # ----- getters -----------------------------------------------------
-    def get_certificate(self):  # noqa: ANN201
+    def get_certificate(self):
         return self._certificate
 
     def get_signature_hash(self) -> str | None:

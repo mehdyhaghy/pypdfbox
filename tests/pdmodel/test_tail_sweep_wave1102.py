@@ -21,7 +21,7 @@ def test_wave1102_wave841_other_destination_cos_object_branch(
         assert destination is not None
         cos_object = destination.get_cos_object()
         assert isinstance(cos_object, COSDictionary)
-        return None
+        return
 
     monkeypatch.setattr(
         PDActionEmbeddedGoTo,

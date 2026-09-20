@@ -64,7 +64,7 @@ Other in-module packages:
 from pypdfbox import Loader, PDDocument, PDPage, PDRectangle
 
 # Read
-with Loader.load_pdf("in.pdf") as src:
+with Loader.load_pdf("input.pdf") as src:
     title = src.get_document_information().get_title()
     page = src.get_page(0)
     rect = page.get_media_box()
@@ -75,7 +75,7 @@ with PDDocument() as dst:
     page = PDPage(PDRectangle.A4)
     dst.add_page(page)
     dst.get_document_information().set_title("Hello")
-    dst.save("out.pdf")
+    dst.save("output.pdf")
 ```
 
 ## PDFBox divergence

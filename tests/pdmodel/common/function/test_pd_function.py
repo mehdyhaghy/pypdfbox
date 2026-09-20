@@ -410,13 +410,13 @@ def test_type0_order3_2d_smoke_4x4_grid() -> None:
 def test_type0_order2_falls_back_to_linear() -> None:
     """/Order values other than 1 or 3 fall back to linear interpolation,
     behaviorally identical to the /Order = 1 result."""
-    common = dict(
-        size=[3],
-        bits=8,
-        domain=[0.0, 1.0],
-        rng=[0.0, 1.0],
-        body=bytes([0x00, 0x80, 0xFF]),
-    )
+    common = {
+        "size": [3],
+        "bits": 8,
+        "domain": [0.0, 1.0],
+        "rng": [0.0, 1.0],
+        "body": bytes([0x00, 0x80, 0xFF]),
+    }
     linear = _make_type0(**common)
     quadratic = _make_type0(**common, order=2)
     for x in (0.0, 0.25, 0.5, 0.75, 1.0):

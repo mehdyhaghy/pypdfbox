@@ -88,7 +88,7 @@ def test_wave566_signature_dictionary_helpers_handle_empty_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     doc = PDDocument()
-    monkeypatch.setattr(doc, "get_signature_fields", lambda: [])
+    monkeypatch.setattr(doc, "get_signature_fields", list)
 
     try:
         assert doc.get_signature_dictionaries() == []
@@ -101,9 +101,9 @@ def test_wave566_signature_dictionary_helpers_handle_empty_fields(
 def test_wave566_write_bytes_to_path_and_binary_stream(tmp_path) -> None:
     target = tmp_path / "out.pdf"
 
-    PDDocument._write_bytes_to_target(b"path", target)  # noqa: SLF001
+    PDDocument._write_bytes_to_target(b"path", target)
     stream = io.BytesIO()
-    PDDocument._write_bytes_to_target(b"stream", stream)  # noqa: SLF001
+    PDDocument._write_bytes_to_target(b"stream", stream)
 
     assert target.read_bytes() == b"path"
     assert stream.getvalue() == b"stream"

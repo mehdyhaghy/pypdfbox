@@ -90,7 +90,7 @@ def test_prepare_for_decryption_derives_key_with_metadata_sentinel_and_positive_
         encryption, b"document-id", _material_with_sentinels()
     )
 
-    expected = hashlib.sha1(  # noqa: S324 - mirrors PDF public-key algorithm
+    expected = hashlib.sha1(
         seed + recipient_blob + b"\xff\xff\xff\xff",
         usedforsecurity=False,
     ).digest()[:16]
@@ -164,7 +164,7 @@ def test_prepare_document_metadata_false_sentinel_participates_in_key_derivation
     handler = PublicKeySecurityHandler(policy)
     handler.prepare_document(object())
 
-    expected = hashlib.sha1(  # noqa: S324 - mirrors PDF public-key algorithm
+    expected = hashlib.sha1(
         (b"s" * 20) + b"envelope-der" + b"\xff\xff\xff\xff",
         usedforsecurity=False,
     ).digest()[:16]

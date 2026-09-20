@@ -16,7 +16,7 @@ def test_compute_hash_revision5_is_plain_sha256() -> None:
     data = b"password" + b"12345678"
 
     assert (
-        StandardSecurityHandler._compute_hash_r5_r6(  # noqa: SLF001
+        StandardSecurityHandler._compute_hash_r5_r6(
             data,
             b"password",
             b"user-key-is-ignored-for-r5" * 2,
@@ -91,7 +91,7 @@ def test_prepare_for_decryption_revision6_missing_key_fields_raises() -> None:
 
 def test_revision6_compute_encryption_key_returns_none_for_missing_entries() -> None:
     assert (
-        StandardSecurityHandler._compute_encryption_key_r5_r6(  # noqa: SLF001
+        StandardSecurityHandler._compute_encryption_key_r5_r6(
             b"pw",
             b"",
             b"u" * 48,
@@ -105,10 +105,10 @@ def test_revision6_compute_encryption_key_returns_none_for_missing_entries() -> 
 
 
 def test_decrypt_perms_rejects_malformed_lengths() -> None:
-    assert StandardSecurityHandler._decrypt_perms_r5_r6(b"short", b"\x00" * 16) == b""  # noqa: SLF001
-    assert StandardSecurityHandler._decrypt_perms_r5_r6(b"\x00" * 32, b"short") == b""  # noqa: SLF001
+    assert StandardSecurityHandler._decrypt_perms_r5_r6(b"short", b"\x00" * 16) == b""
+    assert StandardSecurityHandler._decrypt_perms_r5_r6(b"\x00" * 32, b"short") == b""
     assert (
-        StandardSecurityHandler._validate_perms_r5_r6(  # noqa: SLF001
+        StandardSecurityHandler._validate_perms_r5_r6(
             b"\x00" * 32,
             b"short",
             -3904,
@@ -128,7 +128,7 @@ def test_aes_cfm_decrypt_partial_iv_raises() -> None:
 
     handler = StandardSecurityHandler()
     handler.set_encryption_key(b"k" * 16)
-    handler._string_cfm = "AESV2"  # noqa: SLF001
+    handler._string_cfm = "AESV2"
 
     # Empty payload → empty (silent zero-length skip).
     assert handler.decrypt_string(b"", 1, 0) == b""
@@ -146,6 +146,6 @@ def test_unknown_cfm_dispatch_falls_back_to_rc4() -> None:
     handler.set_encryption_key(b"k" * 16)
     payload = b"leave me alone"
 
-    enc = handler._dispatch_encrypt("Mystery", payload, 1, 0)  # noqa: SLF001
+    enc = handler._dispatch_encrypt("Mystery", payload, 1, 0)
     assert enc != payload
-    assert handler._dispatch_decrypt("Mystery", enc, 1, 0) == payload  # noqa: SLF001
+    assert handler._dispatch_decrypt("Mystery", enc, 1, 0) == payload

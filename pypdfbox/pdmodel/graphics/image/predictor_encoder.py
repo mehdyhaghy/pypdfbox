@@ -196,7 +196,7 @@ class PredictorEncoder:
         # graph (matches upstream's pattern of only touching ``COSName``
         # / ``COSInteger`` constants inside this method).
         try:
-            from pypdfbox.cos import (  # noqa: PLC0415
+            from pypdfbox.cos import (
                 COSDictionary,
                 COSInteger,
                 COSName,
@@ -272,7 +272,7 @@ class PredictorEncoder:
         cos_stream.set_int(COSName.get_pdf_name("Length"), len(encoded))
         cos_stream.set_raw_data(encoded)
 
-        from .pd_image_x_object import PDImageXObject  # noqa: PLC0415
+        from .pd_image_x_object import PDImageXObject
 
         return PDImageXObject(cos_stream)
 

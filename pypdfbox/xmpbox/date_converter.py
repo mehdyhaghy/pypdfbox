@@ -284,8 +284,7 @@ def to_calendar(date_string: str | None) -> datetime | None:
     if _ISO_PREFIX_RE.match(date):
         return _from_iso8601(date)
 
-    if date.startswith("D:"):
-        date = date[2:]
+    date = date.removeprefix("D:")
     # Upstream's ``DateConverter.toCalendar("D:")`` and
     # ``toCalendar("D:    ")`` both return null (mirrors
     # ``testToString`` in TestDateUtil). After stripping the ``D:``
@@ -336,8 +335,7 @@ def _try_parse_date_fallback(date_string: str) -> datetime | None:
     # silently accepted tab/newline-led inputs PDFBox rejects — use a
     # space-only lstrip instead.
     text = date_string.lstrip(" ")
-    if text.startswith("D:"):
-        text = text[2:]
+    text = text.removeprefix("D:")
     pos = ParsePosition(0)
     cal = DateConverter.parse_date(text, pos)
     if cal is None or pos.index != len(text):
@@ -387,8 +385,7 @@ def to_calendar_strict(date_string: str | None) -> datetime | None:
             return _from_iso8601(date)
 
         # Lines 105-108: strip the D: prefix (but the rest is parsed strictly).
-        if date.startswith("D:"):
-            date = date[2:]
+        date = date.removeprefix("D:")
 
         # Lines 109-113: a T separator is only valid at position 10.
         pos_of_t = date.find("T")

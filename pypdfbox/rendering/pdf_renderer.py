@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from PIL import Image, ImageChops, ImageDraw
 
+from pypdfbox.contentstream.operator.state.concatenate import check_concatenation
 from pypdfbox.contentstream.pdf_stream_engine import PDFStreamEngine
 from pypdfbox.cos import (
     COSArray,
@@ -493,7 +494,7 @@ def _java_max(a: float, b: float) -> float:
     """``Math.max`` with Java NaN semantics: NaN if either argument is NaN."""
     if a != a or b != b:
         return _NAN
-    return a if a >= b else b
+    return max(a, b)
 
 
 def _cmyk_to_rgb_bytes(c: float, m: float, y: float, k: float) -> tuple[int, int, int]:
@@ -529,7 +530,7 @@ def _coerce_color_components(
 def _resolve_builtin_color_spaces() -> dict[str, Any]:
     """Lazy load the singleton built-in color-space wrappers."""
     # Lazy import — pulls the full colour module on first use only.
-    from pypdfbox.pdmodel.graphics.color import (  # noqa: PLC0415
+    from pypdfbox.pdmodel.graphics.color import (
         PDDeviceCMYK,
         PDDeviceGray,
         PDDeviceRGB,
@@ -589,9 +590,9 @@ def _decode_inline_image_static(
     form. The bound-method form on :class:`PDFRenderer` adds Indexed /
     ICCBased / Separation / DeviceN resolution via ``self._resources``.
     """
-    import io as _io  # noqa: PLC0415
+    import io as _io
 
-    from PIL import Image as _Image  # noqa: PLC0415
+    from PIL import Image as _Image
 
     if not isinstance(params, COSDictionary):
         return None
@@ -1300,14 +1301,14 @@ class PDFRenderer(PDFStreamEngine):
         :meth:`_render_page_into` so the heavy PIL/aggdraw state stays on
         the renderer for now.
         """
-        import numpy as np  # noqa: PLC0415
+        import numpy as np
 
         # Imported lazily — both modules import each other, and the
         # circular import only resolves once both classes are bound.
-        from pypdfbox.rendering.page_drawer import (  # noqa: PLC0415
+        from pypdfbox.rendering.page_drawer import (
             PageDrawer,
         )
-        from pypdfbox.rendering.page_drawer_parameters import (  # noqa: PLC0415
+        from pypdfbox.rendering.page_drawer_parameters import (
             PageDrawerParameters,
         )
 
@@ -1437,7 +1438,7 @@ class PDFRenderer(PDFStreamEngine):
                 # Vectorised equivalent of the former per-pixel loop:
                 # any pixel whose R, G and B are all exactly 255 has its
                 # alpha forced to 0; every other pixel keeps its alpha.
-                import numpy as np  # noqa: PLC0415
+                import numpy as np
 
                 arr = np.array(rgba)  # writable (H, W, 4) uint8 copy
                 white = (
@@ -1559,13 +1560,13 @@ class PDFRenderer(PDFStreamEngine):
             # ``shouldSkipAnnotation``.
             try:
                 annotations = page.get_annotations(self._annotation_filter)
-            except Exception as exc:  # noqa: BLE001 — defensive
+            except Exception as exc:
                 _log.debug("annotation iteration failed: %s", exc)
                 annotations = []
             for annotation in annotations:
                 try:
                     self._render_annotation(annotation)
-                except Exception as exc:  # noqa: BLE001 — log-and-continue
+                except Exception as exc:
                     subtype = None
                     with contextlib.suppress(Exception):
                         subtype = annotation.get_subtype()
@@ -1595,7 +1596,7 @@ class PDFRenderer(PDFStreamEngine):
             return 0
         try:
             return _normalise_rotation(getter())
-        except Exception:  # noqa: BLE001 — hostile/odd page, fall back to 0
+        except Exception:
             return 0
 
     def _get_page_for_render(self, page_index: int) -> PDPage:
@@ -1766,10 +1767,10 @@ class PDFRenderer(PDFStreamEngine):
             return False
         # Lazily import the concrete property-list types so the rendering
         # cluster does not eagerly pull in the optional-content pdmodel.
-        from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_group import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_group import (
             PDOptionalContentGroup,
         )
-        from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_membership_dictionary import (  # noqa: PLC0415, E501
+        from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_membership_dictionary import (  # noqa: E501
             PDOptionalContentMembershipDictionary,
         )
 
@@ -1778,7 +1779,7 @@ class PDFRenderer(PDFStreamEngine):
                 return not self.is_group_enabled(prop)
             if isinstance(prop, PDOptionalContentMembershipDictionary):
                 return not prop.is_visible_with(self._ocg_state_resolver)
-        except Exception:  # noqa: BLE001
+        except Exception:
             # Malformed OC dictionary — fail open (visible), matching
             # upstream which only hides content it can positively resolve.
             return False
@@ -1792,7 +1793,7 @@ class PDFRenderer(PDFStreamEngine):
         subdictionary. Returns a :class:`PDPropertyList` subclass (OCG /
         OCMD) or ``None`` when the operand is not an optional-content
         reference."""
-        from pypdfbox.pdmodel.graphics.pd_property_list import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.pd_property_list import (
             PDPropertyList,
         )
 
@@ -1804,7 +1805,7 @@ class PDFRenderer(PDFStreamEngine):
             if resources is not None:
                 try:
                     resolved = resources.get_properties(properties)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     resolved = None
                 if resolved is not None:
                     # get_properties already returns a typed PDPropertyList.
@@ -1814,7 +1815,7 @@ class PDFRenderer(PDFStreamEngine):
             return None
         try:
             return PDPropertyList.create(prop_dict)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
 
     def _push_marked_content(
@@ -1858,7 +1859,7 @@ class PDFRenderer(PDFStreamEngine):
         (PDFBOX-4095). The lite renderer already handles blend
         compositing inline; this accessor is provided so subclasses /
         downstream tooling can mirror upstream's branch."""
-        from pypdfbox.pdmodel.graphics.blend_mode import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.blend_mode import (
             BlendMode,
         )
 
@@ -1867,13 +1868,13 @@ class PDFRenderer(PDFStreamEngine):
             return False
         try:
             names = resources.get_ext_g_state_names()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
         normal = BlendMode.NORMAL
         for name in names:
             try:
                 ext_gstate = resources.get_ext_gstate(name)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 continue
             # extGState null can happen if the key exists but has no value
             # (see PDFBOX-3950-23EGDHXSBBYQLKYOKGZUOVYVNE675PRD.pdf).
@@ -1911,7 +1912,7 @@ class PDFRenderer(PDFStreamEngine):
         if callable(get_bit_depth):
             try:
                 return int(get_bit_depth()) == 1
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return False
         bit_depth = getattr(graphics, "bit_depth", None)
         if isinstance(bit_depth, int):
@@ -1958,7 +1959,7 @@ class PDFRenderer(PDFStreamEngine):
         themselves when they expose ``set_annotation_filter``) so the
         drawer matches the value the caller would have read via
         :meth:`get_annotations_filter`."""
-        from pypdfbox.rendering.page_drawer import (  # noqa: PLC0415
+        from pypdfbox.rendering.page_drawer import (
             PageDrawer,
         )
 
@@ -2137,7 +2138,7 @@ class PDFRenderer(PDFStreamEngine):
             operands = []
         # Coerce string → engine-native Operator only when needed for
         # name extraction; we never re-dispatch here.
-        from pypdfbox.contentstream.operator import (  # noqa: PLC0415
+        from pypdfbox.contentstream.operator import (
             Operator as _Op,
         )
 
@@ -2194,6 +2195,15 @@ class PDFRenderer(PDFStreamEngine):
             _to_float(operands[4]),
             _to_float(operands[5]),
         )
+        # PDFBOX-6255. Upstream's PageDrawer routes ``cm`` through
+        # ``Matrix.concatenate``, which refuses a product containing NaN /
+        # infinity and (upstream 88a0c56d) rethrows that as an IOException.
+        # ``_matmul`` below multiplies plain doubles and has no such guard,
+        # so run the shared check first — otherwise a corrupt ``cm`` poisons
+        # the CTM for the rest of the page. The OSError raised here is
+        # triaged by ``process_operator`` like any other malformed operator:
+        # the operator is dropped and the CTM keeps its previous value.
+        check_concatenation(m, self._gs.ctm)
         # cm post-multiplies the current CTM. PDF spec §8.4.4: "Modify
         # the current transformation matrix (CTM) by concatenating the
         # specified matrix" — new_ctm = matrix * old_ctm.
@@ -2327,7 +2337,7 @@ class PDFRenderer(PDFStreamEngine):
             return None
         try:
             initial = get_initial_color()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug(
                 "rendering: get_initial_color on %s failed: %s",
                 type(colour_space).__name__,
@@ -2357,7 +2367,7 @@ class PDFRenderer(PDFStreamEngine):
             return None
         try:
             return resources.get_color_space(name)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug(
                 "rendering: cannot resolve colour space %s: %s", name.name, exc
             )
@@ -2482,7 +2492,7 @@ class PDFRenderer(PDFStreamEngine):
                 return None
         try:
             rgb_floats = colour_space.to_rgb(components)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug(
                 "rendering: colour-space %s to_rgb failed for %s: %s",
                 type(colour_space).__name__,
@@ -2537,7 +2547,7 @@ class PDFRenderer(PDFStreamEngine):
                 self._apply_transfer_to_byte(rgb[1], tr, 1),
                 self._apply_transfer_to_byte(rgb[2], tr, 2),
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             return rgb
 
     @staticmethod
@@ -2562,7 +2572,7 @@ class PDFRenderer(PDFStreamEngine):
         try:
             x = value / 255.0
             out = fn.eval([x])
-        except Exception:  # noqa: BLE001
+        except Exception:
             return value
         if not out:
             return value
@@ -2593,7 +2603,7 @@ class PDFRenderer(PDFStreamEngine):
             r_lut = [self._apply_transfer_to_byte(i, tr, 0) for i in range(256)]
             g_lut = [self._apply_transfer_to_byte(i, tr, 1) for i in range(256)]
             b_lut = [self._apply_transfer_to_byte(i, tr, 2) for i in range(256)]
-        except Exception:  # noqa: BLE001
+        except Exception:
             return pil_image
         mode = pil_image.mode
         if mode == "L":
@@ -2673,7 +2683,7 @@ class PDFRenderer(PDFStreamEngine):
             return None
         try:
             return resources.get_pattern(last)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug(
                 "rendering: cannot resolve pattern %s: %s", last.name, exc
             )
@@ -2701,7 +2711,7 @@ class PDFRenderer(PDFStreamEngine):
             return
         try:
             shading = resources.get_shading(name)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug(
                 "rendering: cannot resolve shading %s: %s", name.name, exc
             )
@@ -2817,7 +2827,7 @@ class PDFRenderer(PDFStreamEngine):
         name = operands[0]
         try:
             ext_gstate = self._resources.get_ext_gstate(name)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug(
                 "rendering: cannot resolve ExtGState %s: %s", name.name, exc
             )
@@ -2832,8 +2842,8 @@ class PDFRenderer(PDFStreamEngine):
         # ``/ca`` would silently clobber a ``/BM`` set by an earlier ``gs``.
         # Mirrors upstream ``PDExtendedGraphicsState.copyIntoGraphicsState``,
         # which applies the blend mode only when the dict contains ``/BM``.
-        from pypdfbox.cos import COSName as _COSName  # noqa: PLC0415
-        from pypdfbox.pdmodel.graphics.blend_mode import (  # noqa: PLC0415
+        from pypdfbox.cos import COSName as _COSName
+        from pypdfbox.pdmodel.graphics.blend_mode import (
             BlendMode,
         )
 
@@ -2844,12 +2854,12 @@ class PDFRenderer(PDFStreamEngine):
             has_bm = ext_gstate.get_cos_object().contains_key(
                 _COSName.get_pdf_name("BM")
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             has_bm = False
         if has_bm:
             try:
                 bm = ext_gstate.get_blend_mode()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 bm = None
             # ``Normal`` → leave blend_mode as None for the cheap alpha-over
             # hot path; only stash the wrapper for non-Normal modes.
@@ -2864,7 +2874,7 @@ class PDFRenderer(PDFStreamEngine):
         # logged at debug and treated as ``/None``.
         try:
             smask_typed = ext_gstate.get_soft_mask_typed()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug(
                 "rendering: cannot resolve ExtGState /SMask on %s: %s",
                 name.name, exc,
@@ -2875,13 +2885,13 @@ class PDFRenderer(PDFStreamEngine):
         # ---- /CA (stroke alpha) and /ca (non-stroke alpha) ----
         try:
             ca = ext_gstate.get_stroking_alpha_constant()
-        except Exception:  # noqa: BLE001
+        except Exception:
             ca = None
         if ca is not None:
             self._gs.stroke_alpha = max(0.0, min(1.0, float(ca)))
         try:
             ca_ns = ext_gstate.get_non_stroking_alpha_constant()
-        except Exception:  # noqa: BLE001
+        except Exception:
             ca_ns = None
         if ca_ns is not None:
             self._gs.fill_alpha = max(0.0, min(1.0, float(ca_ns)))
@@ -2889,7 +2899,7 @@ class PDFRenderer(PDFStreamEngine):
         # ---- /LW (line width) — §8.4.3.2 ----
         try:
             lw = ext_gstate.get_line_width()
-        except Exception:  # noqa: BLE001
+        except Exception:
             lw = None
         if lw is not None:
             self._gs.line_width = max(0.0, float(lw))
@@ -2897,7 +2907,7 @@ class PDFRenderer(PDFStreamEngine):
         # ---- /LC (line cap) — §8.4.3.3 ----
         try:
             lc = ext_gstate.get_line_cap_style()
-        except Exception:  # noqa: BLE001
+        except Exception:
             lc = None
         if lc is not None:
             cap = int(lc)
@@ -2910,7 +2920,7 @@ class PDFRenderer(PDFStreamEngine):
         # ---- /LJ (line join) — §8.4.3.4 ----
         try:
             lj = ext_gstate.get_line_join_style()
-        except Exception:  # noqa: BLE001
+        except Exception:
             lj = None
         if lj is not None:
             join = int(lj)
@@ -2923,7 +2933,7 @@ class PDFRenderer(PDFStreamEngine):
         # ---- /ML (miter limit) — §8.4.3.5 ----
         try:
             ml = ext_gstate.get_miter_limit()
-        except Exception:  # noqa: BLE001
+        except Exception:
             ml = None
         if ml is not None:
             try:
@@ -2936,13 +2946,13 @@ class PDFRenderer(PDFStreamEngine):
         # ---- /D (line dash pattern) — §8.4.3.6 ----
         try:
             dash = ext_gstate.get_line_dash_pattern()
-        except Exception:  # noqa: BLE001
+        except Exception:
             dash = None
         if dash is not None:
             try:
                 arr = tuple(float(x) for x in dash.get_dash_array())
                 phase = float(dash.get_phase())
-            except Exception:  # noqa: BLE001
+            except Exception:
                 arr = None
             else:
                 # Empty dash array means "solid" per spec — store as None so
@@ -2955,7 +2965,7 @@ class PDFRenderer(PDFStreamEngine):
         # ---- /RI (rendering intent) — §8.6.5.8 ----
         try:
             ri = ext_gstate.get_rendering_intent()
-        except Exception:  # noqa: BLE001
+        except Exception:
             ri = None
         if ri is not None:
             self._gs.rendering_intent = str(ri)
@@ -2963,13 +2973,13 @@ class PDFRenderer(PDFStreamEngine):
         # ---- /Font [font size] — §9.3.1 ----
         try:
             font_setting = ext_gstate.get_font_setting()
-        except Exception:  # noqa: BLE001
+        except Exception:
             font_setting = None
         if font_setting is not None:
             try:
                 font_obj = font_setting.get_font()
                 font_size = font_setting.get_font_size()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 font_obj = None
                 font_size = None
             if font_obj is not None:
@@ -2988,7 +2998,7 @@ class PDFRenderer(PDFStreamEngine):
         # ---- /FL (flatness tolerance) — §10.6.2 ----
         try:
             fl = ext_gstate.get_flatness()
-        except Exception:  # noqa: BLE001
+        except Exception:
             fl = None
         if fl is not None:
             with contextlib.suppress(TypeError, ValueError):
@@ -2997,7 +3007,7 @@ class PDFRenderer(PDFStreamEngine):
         # ---- /SM (smoothness tolerance) — §10.6.3 ----
         try:
             sm = ext_gstate.get_smoothness()
-        except Exception:  # noqa: BLE001
+        except Exception:
             sm = None
         if sm is not None:
             with contextlib.suppress(TypeError, ValueError):
@@ -3017,24 +3027,24 @@ class PDFRenderer(PDFStreamEngine):
         # typed PDFunction lazily on first use.
         try:
             bg = ext_gstate.get_black_generation()
-        except Exception:  # noqa: BLE001
+        except Exception:
             bg = None
         self._gs.black_generation = bg
         try:
             bg2 = ext_gstate.get_black_generation2()
-        except Exception:  # noqa: BLE001
+        except Exception:
             bg2 = None
         self._gs.black_generation2 = bg2
 
         # ---- /UCR /UCR2 (undercolour removal) — §11.7.5.3 ----
         try:
             ucr = ext_gstate.get_undercolor_removal()
-        except Exception:  # noqa: BLE001
+        except Exception:
             ucr = None
         self._gs.undercolor_removal = ucr
         try:
             ucr2 = ext_gstate.get_undercolor_removal2()
-        except Exception:  # noqa: BLE001
+        except Exception:
             ucr2 = None
         self._gs.undercolor_removal2 = ucr2
 
@@ -3045,7 +3055,7 @@ class PDFRenderer(PDFStreamEngine):
         # value via :meth:`get_active_halftone`.
         try:
             ht = ext_gstate.get_halftone()
-        except Exception:  # noqa: BLE001
+        except Exception:
             ht = None
         self._gs.halftone = ht
 
@@ -3065,7 +3075,7 @@ class PDFRenderer(PDFStreamEngine):
             )
         try:
             opm = ext_gstate.get_overprint_mode()
-        except Exception:  # noqa: BLE001
+        except Exception:
             opm = None
         if opm is not None:
             with contextlib.suppress(TypeError, ValueError):
@@ -3080,18 +3090,18 @@ class PDFRenderer(PDFStreamEngine):
         #   - a single PDFunction instance (apply to every channel),
         #   - a raw COSName ``/Default`` (only from /TR2; reset to no
         #     transfer for the lite renderer's purposes).
-        from pypdfbox.pdmodel.common.function.pd_function import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.common.function.pd_function import (
             PDFunctionTypeIdentity,
         )
 
         try:
             tr_typed: Any = ext_gstate.get_transfer2_typed()
-        except Exception:  # noqa: BLE001
+        except Exception:
             tr_typed = None
         if tr_typed is None:
             try:
                 tr_typed = ext_gstate.get_transfer_typed()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 tr_typed = None
         if isinstance(tr_typed, PDFunctionTypeIdentity):
             tr_typed = None
@@ -3144,7 +3154,7 @@ class PDFRenderer(PDFStreamEngine):
         if isinstance(function, COSName) and function.get_name() == "Default":
             return max(0.0, min(1.0, value))
         try:
-            from pypdfbox.pdmodel.common.function.pd_function import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.common.function.pd_function import (
                 PDFunction,
             )
             fn = (
@@ -3155,7 +3165,7 @@ class PDFRenderer(PDFStreamEngine):
             if fn is None:
                 return max(0.0, min(1.0, value))
             out = fn.eval([float(value)])
-        except Exception:  # noqa: BLE001
+        except Exception:
             return max(0.0, min(1.0, value))
         if not out:
             return max(0.0, min(1.0, value))
@@ -3671,7 +3681,7 @@ class PDFRenderer(PDFStreamEngine):
                 mask_alpha = self._render_soft_mask_alpha(
                     soft_mask, (width_px, height_px)
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _log.debug("rendering: soft-mask paint failed: %s", exc)
                 mask_alpha = None
             if mask_alpha is not None:
@@ -3999,7 +4009,7 @@ class PDFRenderer(PDFStreamEngine):
         if self._image is None:
             return None
         # Defer the skia import to keep the renderer module load light.
-        import skia  # noqa: PLC0415
+        import skia
 
         width_px, height_px = self._image.size
         sk_path = skia.Path()
@@ -4059,7 +4069,7 @@ class PDFRenderer(PDFStreamEngine):
         """
         if self._image is None:
             return None
-        import skia  # noqa: PLC0415
+        import skia
 
         width_px, height_px = self._image.size
         sk_path = skia.Path()
@@ -4155,7 +4165,7 @@ class PDFRenderer(PDFStreamEngine):
         """Rasterise the path into an RGBA buffer and extract the alpha
         channel as an ``"L"`` PIL image.
         """
-        import skia  # noqa: PLC0415
+        import skia
 
         row_bytes = width_px * 4
         pixels = bytearray(width_px * height_px * 4)
@@ -4198,7 +4208,7 @@ class PDFRenderer(PDFStreamEngine):
         CTM in force at the fill (PDF 32000-1 §8.7.3.1)."""
         try:
             matrix = tuple(pattern.get_matrix())
-        except Exception:  # noqa: BLE001 — defensive, missing /Matrix
+        except Exception:
             return _IDENTITY
         if len(matrix) != 6:
             return _IDENTITY
@@ -4211,7 +4221,7 @@ class PDFRenderer(PDFStreamEngine):
         pattern type we don't yet rasterise."""
         # Local import — pattern types live in pdmodel.graphics.pattern and
         # we don't want to drag them into renderer module load time.
-        from pypdfbox.pdmodel.graphics.pattern import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.pattern import (
             PDShadingPattern,
             PDTilingPattern,
         )
@@ -4255,7 +4265,7 @@ class PDFRenderer(PDFStreamEngine):
         :meth:`_paint_pattern_fill` but over the stroke mask and the
         stroking-colour pattern slot.
         """
-        from pypdfbox.pdmodel.graphics.pattern import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.pattern import (
             PDShadingPattern,
             PDTilingPattern,
         )
@@ -4365,7 +4375,7 @@ class PDFRenderer(PDFStreamEngine):
             pattern_matrix = tuple(pattern.get_matrix())
             if len(pattern_matrix) != 6:
                 pattern_matrix = _IDENTITY
-        except Exception:  # noqa: BLE001
+        except Exception:
             pattern_matrix = _IDENTITY
         pattern_device_ctm = _matmul(pattern_matrix, self._device_ctm)  # type: ignore[arg-type]
         # Tile bounding-box dimensions in pattern space.
@@ -4423,7 +4433,7 @@ class PDFRenderer(PDFStreamEngine):
                 device_scale=(sx, sy),
                 tint_rgb=tint_rgb,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug("rendering: tiling pattern cell render failed: %s", exc)
             return
         if tile is None:
@@ -4617,7 +4627,7 @@ class PDFRenderer(PDFStreamEngine):
         # Pattern resources live on the pattern's own /Resources dict.
         try:
             pattern_res = pattern.get_resources()
-        except Exception:  # noqa: BLE001
+        except Exception:
             pattern_res = None
         if pattern_res is not None:
             self._resources = pattern_res
@@ -4676,7 +4686,7 @@ class PDFRenderer(PDFStreamEngine):
             return
 
         # Local import to keep cluster boundaries explicit.
-        from pypdfbox.pdmodel.graphics.shading import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.shading import (
             PDShadingType2,
             PDShadingType3,
         )
@@ -4696,7 +4706,7 @@ class PDFRenderer(PDFStreamEngine):
         if isinstance(shading, PDShadingType3):
             self._paint_radial_shading(shading, region_mask=region_mask)
             return
-        from pypdfbox.pdmodel.graphics.shading import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.shading import (
             PDShadingType1,
             PDShadingType4,
             PDShadingType5,
@@ -4771,20 +4781,20 @@ class PDFRenderer(PDFStreamEngine):
         space's ``to_rgb`` (non-Device) or the Device heuristic."""
         try:
             bg = shading.get_background()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         if bg is None:
             return None
         try:
             flat = list(bg.to_float_array())
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         if not flat:
             return None
         cs = None
         try:
             cs = shading.get_color_space()
-        except Exception:  # noqa: BLE001
+        except Exception:
             cs = None
         cs_name = cs.name if isinstance(cs, COSName) else None
         if cs_name not in ("DeviceGray", "DeviceRGB", "DeviceCMYK") and (
@@ -4803,7 +4813,7 @@ class PDFRenderer(PDFStreamEngine):
         type 0 / 4 — eval not yet implemented)."""
         try:
             fn = shading.get_function()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug("rendering: shading get_function failed: %s", exc)
             return None
         if fn is None:
@@ -4813,19 +4823,19 @@ class PDFRenderer(PDFStreamEngine):
         # Normalise via PDFunction.create() when ``fn`` lacks ``eval``.
         if not hasattr(fn, "eval"):
             try:
-                from pypdfbox.pdmodel.common.function import (  # noqa: PLC0415
+                from pypdfbox.pdmodel.common.function import (
                     PDFunction,
                 )
 
                 fn = PDFunction.create(fn)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _log.debug("rendering: PDFunction.create failed: %s", exc)
                 return None
             if fn is None:
                 return None
         try:
             out = fn.eval([float(t)])
-        except (NotImplementedError, Exception) as exc:  # noqa: BLE001
+        except (NotImplementedError, Exception) as exc:
             _log.debug("rendering: shading function eval failed: %s", exc)
             return None
         if not out:
@@ -4837,7 +4847,7 @@ class PDFRenderer(PDFStreamEngine):
         cs = None
         try:
             cs = shading.get_color_space()
-        except Exception:  # noqa: BLE001
+        except Exception:
             cs = None
         cs_name = cs.name if isinstance(cs, COSName) else None
         # Non-Device colour space (Separation / Indexed / DeviceN / Lab /
@@ -4879,7 +4889,7 @@ class PDFRenderer(PDFStreamEngine):
         resolved or its conversion fails."""
         try:
             cs = shading.get_color_space_object(self._resources)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug("rendering: shading colour-space resolve failed: %s", exc)
             return None
         if cs is None or not hasattr(cs, "to_rgb"):
@@ -4893,7 +4903,7 @@ class PDFRenderer(PDFStreamEngine):
         clamped = [0.0 if v < 0.0 else 1.0 if v > 1.0 else float(v) for v in out]
         try:
             rgb = cs.to_rgb(clamped)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug("rendering: shading colour-space to_rgb failed: %s", exc)
             return None
         if rgb is None:
@@ -5250,7 +5260,7 @@ class PDFRenderer(PDFStreamEngine):
         # Resolve the function once (PDFunction.eval handles 2-in/N-out).
         try:
             fn = shading.get_function()
-        except Exception:  # noqa: BLE001
+        except Exception:
             fn = None
         if fn is None:
             _log.debug("rendering: PDShadingType1 missing /Function")
@@ -5258,7 +5268,7 @@ class PDFRenderer(PDFStreamEngine):
         # Normalise: get_function may hand back a COSArray of per-channel
         # functions or a typed PDFunction. We need a callable that maps
         # [x, y] → [r, g, b...] in [0,1] regardless.
-        from pypdfbox.pdmodel.common.function import PDFunction  # noqa: PLC0415
+        from pypdfbox.pdmodel.common.function import PDFunction
 
         if isinstance(fn, COSArray):
             # Array of single-output functions, one per colour component.
@@ -5269,7 +5279,7 @@ class PDFRenderer(PDFStreamEngine):
                     continue
                 try:
                     sub_fns.append(PDFunction.create(entry))
-                except Exception:  # noqa: BLE001
+                except Exception:
                     sub_fns.append(None)
 
             def evaluate(x: float, y: float) -> list[float]:
@@ -5285,7 +5295,7 @@ class PDFRenderer(PDFStreamEngine):
                         return []
                     try:
                         r = sf.eval([x, y])
-                    except Exception:  # noqa: BLE001
+                    except Exception:
                         return []
                     if not r:
                         return []
@@ -5295,7 +5305,7 @@ class PDFRenderer(PDFStreamEngine):
             if not hasattr(fn, "eval"):
                 try:
                     fn = PDFunction.create(fn)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     fn = None
             if fn is None:
                 return
@@ -5303,7 +5313,7 @@ class PDFRenderer(PDFStreamEngine):
             def evaluate(x: float, y: float) -> list[float]:
                 try:
                     out_vals = list(fn.eval([x, y]))
-                except Exception:  # noqa: BLE001
+                except Exception:
                     return []
                 # Upstream PDShading.evalFunction clamps every output
                 # component to [0, 1] before colour-space conversion.
@@ -5312,7 +5322,7 @@ class PDFRenderer(PDFStreamEngine):
         cs_obj = None
         try:
             cs_obj = shading.get_color_space()
-        except Exception:  # noqa: BLE001
+        except Exception:
             cs_obj = None
         cs_name = cs_obj.name if isinstance(cs_obj, COSName) else None
 
@@ -5457,7 +5467,7 @@ class PDFRenderer(PDFStreamEngine):
             return False
         try:
             triangles = shading.collect_triangles()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug(
                 "rendering: triangle-mesh collect_triangles failed: %s", exc
             )
@@ -5466,30 +5476,30 @@ class PDFRenderer(PDFStreamEngine):
             return False
 
         canvas_w, canvas_h = self._image.size
-        import skia  # noqa: PLC0415
+        import skia
 
         # Resolve the colour space + optional /Function once.
         cs_obj = None
         try:
             cs_obj = shading.get_color_space()
-        except Exception:  # noqa: BLE001
+        except Exception:
             cs_obj = None
         cs_name = cs_obj.name if isinstance(cs_obj, COSName) else None
         fn = None
         try:
             raw_fn = shading.get_function()
-        except Exception:  # noqa: BLE001
+        except Exception:
             raw_fn = None
         if raw_fn is not None:
             if hasattr(raw_fn, "eval"):
                 fn = raw_fn
             else:
                 try:
-                    from pypdfbox.pdmodel.common.function import (  # noqa: PLC0415
+                    from pypdfbox.pdmodel.common.function import (
                         PDFunction,
                     )
                     fn = PDFunction.create(raw_fn)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     fn = None
 
         # Page CTM (PDF a, b, c, d, e, f) mapping shading/user space to
@@ -5513,7 +5523,7 @@ class PDFRenderer(PDFStreamEngine):
                     out = fn.eval([float(interp[0])])
                     if out:
                         interp = [float(v) for v in out]
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pass
             r, g, bl = self._function_output_to_rgb(interp, cs_name)
             argb = skia.ColorSetARGB(255, r, g, bl)
@@ -5617,7 +5627,7 @@ class PDFRenderer(PDFStreamEngine):
             return True
         try:
             patches = shading.parse_patches()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug(
                 "rendering: patch-mesh parse_patches failed: %s", exc
             )
@@ -5626,7 +5636,7 @@ class PDFRenderer(PDFStreamEngine):
             return False
 
         canvas_w, canvas_h = self._image.size
-        import skia  # noqa: PLC0415
+        import skia
 
         # Allocate the RGBA destination matching the page canvas, then we
         # use skia to draw triangles. The background colour bleeds through
@@ -5669,7 +5679,7 @@ class PDFRenderer(PDFStreamEngine):
         cs_obj = None
         try:
             cs_obj = shading.get_color_space()
-        except Exception:  # noqa: BLE001
+        except Exception:
             cs_obj = None
         cs_name = cs_obj.name if isinstance(cs_obj, COSName) else None
 
@@ -5680,16 +5690,16 @@ class PDFRenderer(PDFStreamEngine):
         fn = None
         try:
             raw_fn = shading.get_function()
-        except Exception:  # noqa: BLE001
+        except Exception:
             raw_fn = None
         if raw_fn is not None:
             if not hasattr(raw_fn, "eval"):
                 try:
-                    from pypdfbox.pdmodel.common.function import (  # noqa: PLC0415
+                    from pypdfbox.pdmodel.common.function import (
                         PDFunction,
                     )
                     fn = PDFunction.create(raw_fn)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     fn = None
             else:
                 fn = raw_fn
@@ -6029,7 +6039,7 @@ class PDFRenderer(PDFStreamEngine):
             try:
                 out = fn.eval([float(interp[0])])
                 interp = [float(v) for v in out] if out else interp
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
         r, g, b = PDFRenderer._function_output_to_rgb(interp, cs_name)
         return (r, g, b, 255)
@@ -6043,20 +6053,20 @@ class PDFRenderer(PDFStreamEngine):
         absent / unparseable."""
         try:
             bg = shading.get_background()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         if bg is None:
             return None
         try:
             flat = bg.to_float_array()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         if not flat:
             return None
         cs_obj = None
         try:
             cs_obj = shading.get_color_space()
-        except Exception:  # noqa: BLE001
+        except Exception:
             cs_obj = None
         cs_name = cs_obj.name if isinstance(cs_obj, COSName) else None
         r, g, b = PDFRenderer._function_output_to_rgb(list(flat), cs_name)
@@ -6070,13 +6080,13 @@ class PDFRenderer(PDFStreamEngine):
         in pattern user space, or ``None`` when absent."""
         try:
             bbox = shading.get_b_box()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         if bbox is None:
             return None
         try:
             flat = bbox.to_float_array()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         if len(flat) < 4:
             return None
@@ -6088,7 +6098,7 @@ class PDFRenderer(PDFStreamEngine):
         """Read ``/AntiAlias`` — default ``False`` per PDF 32000-1 Table 79."""
         try:
             return bool(shading.get_anti_alias())
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
 
     @staticmethod
@@ -6097,13 +6107,13 @@ class PDFRenderer(PDFStreamEngine):
         [0 1 0 1]. Falls back to defaults for any shape mismatch."""
         try:
             domain = shading.get_domain()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return (0.0, 1.0, 0.0, 1.0)
         if domain is None:
             return (0.0, 1.0, 0.0, 1.0)
         try:
             flat = domain.to_float_array()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return (0.0, 1.0, 0.0, 1.0)
         if len(flat) < 4:
             return (0.0, 1.0, 0.0, 1.0)
@@ -6115,13 +6125,13 @@ class PDFRenderer(PDFStreamEngine):
         identity."""
         try:
             mtx = shading.get_matrix()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return _IDENTITY
         if mtx is None:
             return _IDENTITY
         try:
             flat = mtx.to_float_array()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return _IDENTITY
         if len(flat) < 6:
             return _IDENTITY
@@ -6138,7 +6148,7 @@ class PDFRenderer(PDFStreamEngine):
     def _shading_domain(shading: Any) -> tuple[float, float]:
         try:
             domain = shading.get_domain()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return (0.0, 1.0)
         if domain is None:
             return (0.0, 1.0)
@@ -6147,7 +6157,7 @@ class PDFRenderer(PDFStreamEngine):
         # to_float_array via COSArray.
         try:
             flat = domain.to_float_array()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return (0.0, 1.0)
         if len(flat) < 2:
             return (0.0, 1.0)
@@ -6159,7 +6169,7 @@ class PDFRenderer(PDFStreamEngine):
         # a COSArray (or None). Adapt both shapes.
         try:
             ext = shading.get_extend()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return (False, False)
         if ext is None:
             return (False, False)
@@ -6167,12 +6177,12 @@ class PDFRenderer(PDFStreamEngine):
             return (bool(ext[0]), bool(ext[1]))
         # COSArray path.
         try:
-            from pypdfbox.cos import COSBoolean  # noqa: PLC0415
-        except Exception:  # noqa: BLE001
+            from pypdfbox.cos import COSBoolean
+        except Exception:
             return (False, False)
         try:
             size = ext.size()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return (False, False)
         if size < 2:
             return (False, False)
@@ -6277,7 +6287,7 @@ class PDFRenderer(PDFStreamEngine):
             return
         try:
             xobject = resources.get_x_object(name)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug("rendering: cannot resolve XObject %s: %s", name.name, exc)
             return
         if xobject is None:
@@ -6291,17 +6301,17 @@ class PDFRenderer(PDFStreamEngine):
         if callable(oc_getter):
             try:
                 oc = oc_getter()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 oc = None
             if oc is not None and self._property_list_is_hidden(oc):
                 return
 
         # Local imports keep the cluster boundary (graphics → form/image)
         # explicit and avoid an import cycle.
-        from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (
             PDFormXObject,
         )
-        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (
             PDImageXObject,
         )
 
@@ -6314,17 +6324,17 @@ class PDFRenderer(PDFStreamEngine):
             # branch our renderer would silently drop stencils.
             try:
                 is_stencil = bool(xobject.is_stencil())
-            except Exception:  # noqa: BLE001
+            except Exception:
                 is_stencil = False
             if is_stencil:
                 try:
                     self._paint_stencil_mask(xobject)
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     _log.debug("rendering: cannot paint stencil mask: %s", exc)
                 return
             try:
                 pil_image = self._decode_image_xobject(xobject)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _log.debug("rendering: cannot decode image: %s", exc)
                 return
             if pil_image is None:
@@ -6342,7 +6352,7 @@ class PDFRenderer(PDFStreamEngine):
             # standalone color-key /Mask array take effect.
             try:
                 smask = xobject.get_soft_mask()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 smask = None
             if smask is not None:
                 pil_image = self._apply_smask(pil_image, smask, xobject)
@@ -6357,14 +6367,14 @@ class PDFRenderer(PDFStreamEngine):
                 # rather than over-painting the backdrop.
                 try:
                     explicit_mask = xobject.get_mask()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     explicit_mask = None
                 if explicit_mask is not None:
                     pil_image = self._apply_explicit_mask(pil_image, explicit_mask)
                 else:
                     try:
                         color_key = xobject.get_color_key_mask()
-                    except Exception:  # noqa: BLE001
+                    except Exception:
                         color_key = None
                     if color_key:
                         pil_image = self._apply_color_key_mask(pil_image, color_key)
@@ -6377,7 +6387,7 @@ class PDFRenderer(PDFStreamEngine):
             # XObject ``Do`` site still pasted positionally → always bilinear.)
             try:
                 interpolate = bool(xobject.get_interpolate())
-            except Exception:  # noqa: BLE001
+            except Exception:
                 interpolate = False
             self._paste_image(pil_image, interpolate=interpolate)
             return
@@ -6438,14 +6448,14 @@ class PDFRenderer(PDFStreamEngine):
                 return True
             if destination in ("View", "Export") and annotation.is_no_view():
                 return True
-        except Exception:  # noqa: BLE001 — defensive: malformed flags
+        except Exception:
             return False
         # Unknown subtypes with the Invisible bit set are dropped per spec.
         if annotation.__class__.__name__ == "PDAnnotationUnknown":
             try:
                 if annotation.is_invisible():
                     return True
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
         return False
 
@@ -6480,7 +6490,7 @@ class PDFRenderer(PDFStreamEngine):
         if callable(oc_getter):
             try:
                 oc = oc_getter()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 oc = None
             if oc is not None and self._property_list_is_hidden(oc):
                 return
@@ -6489,7 +6499,7 @@ class PDFRenderer(PDFStreamEngine):
         # ``annotation.constructAppearances(renderer.document)``).
         try:
             appearance = annotation.get_normal_appearance_stream()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug("annotation: cannot resolve appearance: %s", exc)
             return
         if appearance is None:
@@ -6501,7 +6511,7 @@ class PDFRenderer(PDFStreamEngine):
                     except TypeError:
                         construct()
                     appearance = annotation.get_normal_appearance_stream()
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     _log.debug(
                         "annotation: construct_appearances failed: %s", exc
                     )
@@ -6511,14 +6521,14 @@ class PDFRenderer(PDFStreamEngine):
         # Annotation rectangle in user space.
         try:
             rect = annotation.get_rectangle()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return
         if rect is None:
             return
         # Appearance bounding box + matrix (defaults to identity).
         try:
             bbox = appearance.get_bbox()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return
         if bbox is None:
             return
@@ -6530,7 +6540,7 @@ class PDFRenderer(PDFStreamEngine):
             return
         try:
             matrix = appearance.get_matrix()
-        except Exception:  # noqa: BLE001
+        except Exception:
             matrix = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
         if matrix is None or len(matrix) < 6:
             matrix = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
@@ -6608,7 +6618,7 @@ class PDFRenderer(PDFStreamEngine):
         no_rotate = False
         try:
             no_rotate = bool(annotation.is_no_rotate())
-        except Exception:  # noqa: BLE001 — defensive accessor
+        except Exception:
             no_rotate = False
         if no_rotate and self._render_page_rotation:
             r_matrix = _no_rotate_matrix(
@@ -6638,19 +6648,19 @@ class PDFRenderer(PDFStreamEngine):
             # Switch resources to the appearance's /Resources if any.
             try:
                 form_res = appearance.get_resources()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 form_res = None
             if form_res is not None:
                 self._resources = form_res
             # Walk the appearance content stream.
             try:
                 cos_stream = appearance.get_cos_object()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 cos_stream = None
             if isinstance(cos_stream, COSStream):
                 try:
                     data = cos_stream.to_byte_array()
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     _log.debug(
                         "annotation: cannot decode appearance stream: %s", exc
                     )
@@ -6733,11 +6743,11 @@ class PDFRenderer(PDFStreamEngine):
         if callable(helper):
             try:
                 return bool(helper())
-            except Exception:  # noqa: BLE001 — defensive
+            except Exception:
                 pass
         try:
             group = form.get_group()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
         if not isinstance(group, COSDictionary):
             return False
@@ -6768,7 +6778,7 @@ class PDFRenderer(PDFStreamEngine):
         Java2D ``Composite`` whose ``compose`` method evaluates the same
         equations).
         """
-        from pypdfbox.pdmodel.graphics.blend_mode import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.blend_mode import (
             BlendMode,
         )
 
@@ -6883,7 +6893,7 @@ class PDFRenderer(PDFStreamEngine):
         ``SoftLight``); unknown names leave the backdrop unchanged."""
         if mode_name is None:
             return backdrop
-        import numpy as np  # noqa: PLC0415
+        import numpy as np
 
         # Fast path — the five hot separable modes are elementwise and
         # are vectorised in float64 below. Each ``np.where`` reproduces
@@ -6947,11 +6957,11 @@ class PDFRenderer(PDFStreamEngine):
             return Image.fromarray(out_arr, "L")
 
         # Fallback — exact per-pixel scalar loop for every other mode.
-        bd = cast(Any, backdrop.load())
-        sd = cast(Any, source.load())
+        bd = cast("Any", backdrop.load())
+        sd = cast("Any", source.load())
         w, h = backdrop.size
         out = Image.new("L", (w, h))
-        od = cast(Any, out.load())
+        od = cast("Any", out.load())
         for y in range(h):
             for x in range(w):
                 b_s = bd[x, y] / 255.0
@@ -7135,14 +7145,14 @@ class PDFRenderer(PDFStreamEngine):
         w, h = backdrop.size
         # Drop the alpha channel — alpha is reapplied by the caller via
         # ``Image.composite(...)`` against the source alpha.
-        bd = cast(Any, backdrop.convert("RGB").load())
-        sd = cast(Any, source.convert("RGB").load())
+        bd = cast("Any", backdrop.convert("RGB").load())
+        sd = cast("Any", source.convert("RGB").load())
         out_r = Image.new("L", (w, h))
         out_g = Image.new("L", (w, h))
         out_b = Image.new("L", (w, h))
-        rd = cast(Any, out_r.load())
-        gd = cast(Any, out_g.load())
-        bd_out = cast(Any, out_b.load())
+        rd = cast("Any", out_r.load())
+        gd = cast("Any", out_g.load())
+        bd_out = cast("Any", out_b.load())
         for y in range(h):
             for x in range(w):
                 br, bg, bb = bd[x, y]
@@ -7150,9 +7160,9 @@ class PDFRenderer(PDFStreamEngine):
                 cb = (br / 255.0, bg / 255.0, bb / 255.0)
                 cs = (sr / 255.0, sg / 255.0, sb / 255.0)
                 cr, cgc, cbc = compose(cb, cs)
-                cr = 0.0 if cr < 0.0 else 1.0 if cr > 1.0 else cr
-                cgc = 0.0 if cgc < 0.0 else 1.0 if cgc > 1.0 else cgc
-                cbc = 0.0 if cbc < 0.0 else 1.0 if cbc > 1.0 else cbc
+                cr = 0.0 if cr < 0.0 else min(cr, 1.0)
+                cgc = 0.0 if cgc < 0.0 else min(cgc, 1.0)
+                cbc = 0.0 if cbc < 0.0 else min(cbc, 1.0)
                 rd[x, y] = int(round(cr * 255.0))
                 gd[x, y] = int(round(cgc * 255.0))
                 bd_out[x, y] = int(round(cbc * 255.0))
@@ -7171,7 +7181,7 @@ class PDFRenderer(PDFStreamEngine):
 
         Spec formula: ``B(Cb, Cs) = SetLum(SetSat(Cs, Sat(Cb)), Lum(Cb))``.
         """
-        from pypdfbox.pdmodel.graphics.blend_mode import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.blend_mode import (
             BlendMode,
         )
 
@@ -7204,7 +7214,7 @@ class PDFRenderer(PDFStreamEngine):
 
         Spec formula: ``B(Cb, Cs) = SetLum(SetSat(Cb, Sat(Cs)), Lum(Cb))``.
         """
-        from pypdfbox.pdmodel.graphics.blend_mode import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.blend_mode import (
             BlendMode,
         )
 
@@ -7234,7 +7244,7 @@ class PDFRenderer(PDFStreamEngine):
 
         Spec formula: ``B(Cb, Cs) = SetLum(Cs, Lum(Cb))``.
         """
-        from pypdfbox.pdmodel.graphics.blend_mode import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.blend_mode import (
             BlendMode,
         )
 
@@ -7264,7 +7274,7 @@ class PDFRenderer(PDFStreamEngine):
 
         Spec formula: ``B(Cb, Cs) = SetLum(Cb, Lum(Cs))``.
         """
-        from pypdfbox.pdmodel.graphics.blend_mode import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.blend_mode import (
             BlendMode,
         )
 
@@ -7303,7 +7313,7 @@ class PDFRenderer(PDFStreamEngine):
         skipped."""
         try:
             mask_image = smask.to_pil_image()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug("rendering: cannot decode SMask: %s", exc)
             return image
         if mask_image is None:
@@ -7335,13 +7345,13 @@ class PDFRenderer(PDFStreamEngine):
         failure or absent matte returns ``rgba`` unchanged."""
         try:
             matte = base.extract_matte(smask)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug("rendering: cannot resolve SMask /Matte: %s", exc)
             return rgba
         if not matte or len(matte) < 3:
             return rgba
         m = [max(0.0, min(255.0, float(c) * 255.0)) for c in matte[:3]]
-        import numpy as np  # noqa: PLC0415
+        import numpy as np
 
         # Vectorised equivalent of the former per-pixel loop:
         #   c = m + (c' - m) * (255 / a)   (alpha 0 left untouched;
@@ -7374,7 +7384,7 @@ class PDFRenderer(PDFStreamEngine):
         opaque). Any failure logs at debug level and returns ``image``
         unchanged — explicit-mask compositing is best-effort in the lite
         renderer."""
-        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (
             _unpack_sub_byte_samples,
         )
 
@@ -7388,7 +7398,7 @@ class PDFRenderer(PDFStreamEngine):
             samples = _unpack_sub_byte_samples(data, mw, mh, 1)
             if samples is None:
                 return image
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug("rendering: cannot decode explicit /Mask: %s", exc)
             return image
 
@@ -7399,7 +7409,7 @@ class PDFRenderer(PDFStreamEngine):
         # (RenderProbe). A /Decode [1 0] on the mask reverses the polarity.
         try:
             decode = mask.get_decode()
-        except Exception:  # noqa: BLE001
+        except Exception:
             decode = None
         masked_sample = 1
         if decode is not None and len(decode) >= 2 and decode[0] > decode[1]:
@@ -7451,7 +7461,7 @@ class PDFRenderer(PDFStreamEngine):
             )
             return image
 
-        import numpy as np  # noqa: PLC0415
+        import numpy as np
 
         (r_lo, r_hi), (g_lo, g_hi), (b_lo, b_hi) = pairs
         # Vectorised equivalent of the per-pixel loop: a pixel whose
@@ -7494,7 +7504,7 @@ class PDFRenderer(PDFStreamEngine):
           remaps mask values before they become alpha multipliers.
 
         Returns ``None`` when the soft mask is malformed or unrenderable."""
-        from pypdfbox.pdmodel.graphics.state.pd_soft_mask import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.state.pd_soft_mask import (
             PDSoftMask,
         )
 
@@ -7562,7 +7572,7 @@ class PDFRenderer(PDFStreamEngine):
             current = self._draw
             if current is not None:
                 current.flush()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug("rendering: soft-mask group render failed: %s", exc)
             return None
         finally:
@@ -7634,7 +7644,7 @@ class PDFRenderer(PDFStreamEngine):
             return (0, 0, 0)
         try:
             flat = bc.to_float_array()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return (0, 0, 0)
         if not flat:
             return (0, 0, 0)
@@ -7659,11 +7669,11 @@ class PDFRenderer(PDFStreamEngine):
         [0, 1] back to [0, 1]; we sample once per byte value."""
         if isinstance(tr, COSName) and tr.name in ("Identity", "Default"):
             return None
-        from pypdfbox.pdmodel.common.function import PDFunction  # noqa: PLC0415
+        from pypdfbox.pdmodel.common.function import PDFunction
 
         try:
             fn = PDFunction.create(tr)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         if fn is None:
             return None
@@ -7674,7 +7684,7 @@ class PDFRenderer(PDFStreamEngine):
                 v = float(out[0]) if out else i / 255.0
                 v = max(0.0, min(1.0, v))
                 lut.append(int(round(v * 255.0)))
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         return lut
 
@@ -7711,7 +7721,7 @@ class PDFRenderer(PDFStreamEngine):
         cs_obj: COSBase | None = None
         try:
             group = form.get_group()
-        except Exception:  # noqa: BLE001
+        except Exception:
             group = None
         if isinstance(group, COSDictionary):
             isolated = group.get_boolean(COSName.get_pdf_name("I"), default=False)
@@ -7853,7 +7863,7 @@ class PDFRenderer(PDFStreamEngine):
                 mask_alpha = self._render_soft_mask_alpha(
                     soft_mask, group_canvas.size
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _log.debug("rendering: soft-mask render failed: %s", exc)
                 mask_alpha = None
             if mask_alpha is not None:
@@ -7910,7 +7920,7 @@ class PDFRenderer(PDFStreamEngine):
         :meth:`process_operator` only fires the snapshot reset for the
         *top-level* group children, not for paints inside nested forms
         (PDF spec §11.4.7.3)."""
-        from pypdfbox.pdfparser.pdf_stream_parser import (  # noqa: PLC0415
+        from pypdfbox.pdfparser.pdf_stream_parser import (
             PDFStreamParser,
         )
 
@@ -7988,7 +7998,7 @@ class PDFRenderer(PDFStreamEngine):
             return None
         try:
             cs = image.get_color_space()
-        except Exception:  # noqa: BLE001
+        except Exception:
             cs = None
         cs_name = cs.get_name() if cs is not None else None
         with image.create_input_stream() as src:
@@ -8008,7 +8018,7 @@ class PDFRenderer(PDFStreamEngine):
             if callable(to_rgb_image):
                 try:
                     result = to_rgb_image(data, width, height)
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     _log.debug(
                         "rendering: %s.to_rgb_image failed: %s",
                         type(cs).__name__,
@@ -8045,7 +8055,7 @@ class PDFRenderer(PDFStreamEngine):
            clip / blend / SMask pipeline still runs on the stencil
            output exactly as it would for an inline-coloured image.
         """
-        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (
             _unpack_sub_byte_samples,
         )
 
@@ -8096,7 +8106,7 @@ class PDFRenderer(PDFStreamEngine):
         # matte's edge — visible on any upscaled stencil.
         try:
             interpolate = bool(image.get_interpolate())
-        except Exception:  # noqa: BLE001
+        except Exception:
             interpolate = False
         self._paste_image(rgba, interpolate=interpolate)
 
@@ -8325,13 +8335,13 @@ class PDFRenderer(PDFStreamEngine):
         data = op.get_image_data()
         if params is None or data is None:
             return
-        from pypdfbox.pdmodel.graphics.image.pd_inline_image import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.image.pd_inline_image import (
             PDInlineImage,
         )
 
         try:
             inline_image = PDInlineImage(params, data, self._resources)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug("rendering: cannot construct inline image: %s", exc)
             return
         self.show_inline_image(inline_image)
@@ -8363,18 +8373,18 @@ class PDFRenderer(PDFStreamEngine):
         # never lets the backdrop through.
         try:
             is_stencil = bool(inline_image.is_stencil())
-        except Exception:  # noqa: BLE001
+        except Exception:
             is_stencil = False
         if is_stencil:
             try:
                 self._paint_stencil_mask(inline_image)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _log.debug("rendering: cannot paint inline stencil mask: %s", exc)
             return
         pil_image: Image.Image | None
         try:
             pil_image = inline_image.to_pil_image()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug("rendering: cannot decode inline image (helper): %s", exc)
             pil_image = None
         if pil_image is None:
@@ -8382,7 +8392,7 @@ class PDFRenderer(PDFStreamEngine):
                 pil_image = self._decode_inline_image(
                     inline_image.get_cos_object(), inline_image.get_stream()
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _log.debug("rendering: cannot decode inline image: %s", exc)
                 return
         if pil_image is None:
@@ -8394,7 +8404,7 @@ class PDFRenderer(PDFStreamEngine):
         # shows sharp sample boundaries exactly as PDFBox renders them.
         try:
             interpolate = bool(inline_image.get_interpolate())
-        except Exception:  # noqa: BLE001
+        except Exception:
             interpolate = False
         self._paste_image(pil_image, interpolate=interpolate)
 
@@ -8517,12 +8527,12 @@ class PDFRenderer(PDFStreamEngine):
             # Direct CS array form (e.g. ``[/Indexed /DeviceRGB 255 < … >]``,
             # ``[/ICCBased <stream>]``, ``[/Separation /Name /DeviceCMYK <fn>]``).
             try:
-                from pypdfbox.pdmodel.graphics.color.pd_color_space import (  # noqa: PLC0415
+                from pypdfbox.pdmodel.graphics.color.pd_color_space import (
                     PDColorSpace,
                 )
 
                 colour_space = PDColorSpace.create(cs_obj)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _log.debug(
                     "rendering: inline image CS array failed to resolve: %s",
                     exc,
@@ -8570,7 +8580,7 @@ class PDFRenderer(PDFStreamEngine):
                 rgb_image = to_rgb_image(
                     data[: width * height], width, height
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _log.debug(
                     "rendering: inline image %s.to_rgb_image failed: %s",
                     type(colour_space).__name__,
@@ -8589,7 +8599,7 @@ class PDFRenderer(PDFStreamEngine):
         components_count = 0
         try:
             components_count = int(colour_space.get_number_of_components())
-        except Exception:  # noqa: BLE001
+        except Exception:
             components_count = 0
         if components_count <= 0:
             _log.debug(
@@ -8626,7 +8636,7 @@ class PDFRenderer(PDFStreamEngine):
                     pixels[out + 1] = _clamp_byte(float(rgb_floats[1]))
                     pixels[out + 2] = _clamp_byte(float(rgb_floats[2]))
                 out += 3
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug(
                 "rendering: inline image %s per-pixel to_rgb failed: %s",
                 type(colour_space).__name__,
@@ -8801,8 +8811,8 @@ class PDFRenderer(PDFStreamEngine):
         if self._image is None or not self._text_clip_paths:
             return
         try:
-            import skia  # type: ignore[import-not-found]  # noqa: PLC0415
-        except Exception as exc:  # noqa: BLE001  # pragma: no cover - skia is a required runtime dep
+            import skia  # type: ignore[import-not-found]
+        except Exception as exc:  # pragma: no cover - skia is a required runtime dep
             _log.debug("rendering: skia unavailable for text clip commit: %s", exc)
             return
         width_px, height_px = self._image.size
@@ -8874,14 +8884,14 @@ class PDFRenderer(PDFStreamEngine):
             return cached
         try:
             font_dict = resources.get_font(font_name)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         if font_dict is None:
             return None
         if not isinstance(font_dict, COSDictionary):
             self._font_cache[cache_key] = font_dict
             return font_dict
-        from pypdfbox.pdmodel.font.pd_font_factory import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.font.pd_font_factory import (
             PDFontFactory,
         )
 
@@ -8972,9 +8982,9 @@ class PDFRenderer(PDFStreamEngine):
     def _op_text_next_line(self, _op: Any, _operands: list[COSBase]) -> None:
         # T* — equivalent to ``0 -leading Td``.
         leading = self._gs.text_leading
-        from pypdfbox.cos import COSFloat as _F  # noqa: PLC0415
+        from pypdfbox.cos import COSFloat
 
-        self._op_text_move(_op, [_F(0.0), _F(-leading)])
+        self._op_text_move(_op, [COSFloat(0.0), COSFloat(-leading)])
 
     def _op_show_text(self, _op: Any, operands: list[COSBase]) -> None:
         if not operands:
@@ -9009,7 +9019,7 @@ class PDFRenderer(PDFStreamEngine):
         # observer (and the knockout-group / operator-dispatch machinery in
         # ``process_operator``) sees the constituent ``T*`` / ``Tj``. We
         # mirror that re-entry for behavioural parity.
-        from pypdfbox.contentstream.operator_name import (  # noqa: PLC0415
+        from pypdfbox.contentstream.operator_name import (
             OperatorName,
         )
 
@@ -9026,7 +9036,7 @@ class PDFRenderer(PDFStreamEngine):
         # the engine the same way rather than mutating the state inline.
         if len(operands) < 3:
             return
-        from pypdfbox.contentstream.operator_name import (  # noqa: PLC0415
+        from pypdfbox.contentstream.operator_name import (
             OperatorName,
         )
 
@@ -9052,7 +9062,7 @@ class PDFRenderer(PDFStreamEngine):
         # /FontMatrix into text space. Route to the dedicated handler so
         # the TTF / Type1 / Type1C branches below don't have to learn the
         # charproc protocol.
-        from pypdfbox.pdmodel.font.pd_type3_font import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.font.pd_type3_font import (
             PDType3Font,
         )
 
@@ -9077,7 +9087,7 @@ class PDFRenderer(PDFStreamEngine):
         if callable(getter):
             try:
                 is_vertical = bool(getter())
-            except Exception:  # noqa: BLE001
+            except Exception:
                 is_vertical = False
 
         # Type0 (composite) fonts read multi-byte codes through their
@@ -9089,7 +9099,7 @@ class PDFRenderer(PDFStreamEngine):
             if callable(read_code):
                 try:
                     code, consumed = read_code(data, offset)
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     _log.debug(
                         "rendering: Type0 read_code failed at offset %d: %s",
                         offset,
@@ -9140,14 +9150,14 @@ class PDFRenderer(PDFStreamEngine):
         """Return (TrueTypeFont, fontTools glyphSet) for ``font`` if it's
         a TTF-backed PDFont with an embedded ``/FontFile2``; ``(None, None)``
         otherwise."""
-        from pypdfbox.pdmodel.font.pd_true_type_font import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.font.pd_true_type_font import (
             PDTrueTypeFont,
         )
-        from pypdfbox.pdmodel.font.pd_type0_font import PDType0Font  # noqa: PLC0415
+        from pypdfbox.pdmodel.font.pd_type0_font import PDType0Font
 
         ttf = None
         if isinstance(font, PDTrueTypeFont):
-            ttf = font._get_true_type_font()  # noqa: SLF001
+            ttf = font._get_true_type_font()
         elif isinstance(font, PDType0Font):
             descendant = font.get_descendant_font()
             if descendant is not None:
@@ -9157,20 +9167,20 @@ class PDFRenderer(PDFStreamEngine):
                     font_file2 = desc.get_font_file2()
                     if font_file2 is not None:
                         try:
-                            from pypdfbox.fontbox.ttf import (  # noqa: PLC0415
+                            from pypdfbox.fontbox.ttf import (
                                 TrueTypeFont,
                             )
 
                             ttf = TrueTypeFont.from_bytes(
                                 font_file2.to_byte_array()
                             )
-                        except Exception:  # noqa: BLE001
+                        except Exception:
                             ttf = None
         if ttf is None:
             return (None, None)
         try:
-            glyph_set = ttf._tt.getGlyphSet()  # noqa: SLF001
-        except Exception:  # noqa: BLE001
+            glyph_set = ttf._tt.getGlyphSet()
+        except Exception:
             return (ttf, None)
         return (ttf, glyph_set)
 
@@ -9192,27 +9202,27 @@ class PDFRenderer(PDFStreamEngine):
         returns ``None`` for them and the caller falls back to the
         placeholder rectangle.
         """
-        from pypdfbox.pdmodel.font.pd_type1_font import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.font.pd_type1_font import (
             PDType1Font,
         )
-        from pypdfbox.pdmodel.font.pd_type1c_font import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.font.pd_type1c_font import (
             PDType1CFont,
         )
 
         if isinstance(font, PDType1CFont):
-            cff_program = font._get_cff_font()  # noqa: SLF001
+            cff_program = font._get_cff_font()
             if cff_program is not None:
                 return cff_program.units_per_em
             # Falls through to the Liberation branch below — PDType1CFont
             # is a subclass of PDType1Font so the isinstance check there
             # would match too if we didn't return early.
         if isinstance(font, PDType1Font):
-            type1_program = font._get_type1_font()  # noqa: SLF001
+            type1_program = font._get_type1_font()
             if type1_program is not None:
                 return type1_program.units_per_em
             # No embedded program — try the Liberation substitute when the
             # font is one of the Standard 14.
-            from pypdfbox.pdmodel.font.standard14_fonts import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.font.standard14_fonts import (
                 Standard14Fonts,
             )
 
@@ -9224,7 +9234,7 @@ class PDFRenderer(PDFStreamEngine):
                 return None
             try:
                 return int(substitute.get_units_per_em())
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return None
         return None
 
@@ -9266,29 +9276,29 @@ class PDFRenderer(PDFStreamEngine):
         # Type1 / Type1C — pull the embedded program directly. ``ttf``
         # was None above, so this is only hit for Type1 / CFF fonts.
         try:
-            from pypdfbox.pdmodel.font.pd_type1_font import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.font.pd_type1_font import (
                 PDType1Font,
             )
-            from pypdfbox.pdmodel.font.pd_type1c_font import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.font.pd_type1c_font import (
                 PDType1CFont,
             )
 
             if isinstance(font, PDType1CFont):
-                cff_program = font._get_cff_font()  # noqa: SLF001
+                cff_program = font._get_cff_font()
                 if cff_program is not None:
                     self._font_program_cache[key] = cff_program
                     return cff_program
             elif isinstance(font, PDType1Font):
-                type1_program = font._get_type1_font()  # noqa: SLF001
+                type1_program = font._get_type1_font()
                 if type1_program is not None:
                     self._font_program_cache[key] = type1_program
                     return type1_program
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug("rendering: embedded Type1/CFF probe failed: %s", exc)
 
         # Step 2 / 3 — FontMappers substitution chain.
         try:
-            from pypdfbox.fontbox.font_mappers import (  # noqa: PLC0415
+            from pypdfbox.fontbox.font_mappers import (
                 FontMappers,
             )
 
@@ -9302,7 +9312,7 @@ class PDFRenderer(PDFStreamEngine):
             )
             mapper = FontMappers.instance()
             mapping = mapper.get_font_box_font(base_font or "", descriptor)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.debug(
                 "rendering: FontMappers lookup failed for %r: %s", font, exc
             )
@@ -9364,7 +9374,7 @@ class PDFRenderer(PDFStreamEngine):
             if callable(pv_getter):
                 try:
                     pv_x, pv_y = pv_getter(code)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pv_x = pv_y = 0.0
                 if pv_x or pv_y:
                     text_local = _matmul(
@@ -9398,7 +9408,7 @@ class PDFRenderer(PDFStreamEngine):
         if ttf is not None and glyph_set is not None:
             try:
                 gid = self._code_to_gid(font, code, ttf)
-                glyph_name = ttf._tt.getGlyphName(gid)  # noqa: SLF001
+                glyph_name = ttf._tt.getGlyphName(gid)
                 glyph = glyph_set[glyph_name]
                 pen = _AggdrawPathPen(scale=1.0 / ttf.get_units_per_em())
                 glyph.draw(make_base_pen_bridge(pen, glyph_set=glyph_set))
@@ -9433,7 +9443,7 @@ class PDFRenderer(PDFStreamEngine):
                         self._gs.fill_rgb,
                     )
                 return _advance(advance_units)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _log.debug("rendering: glyph %d draw failed: %s", code, exc)
 
         # ----- Type1 / Type1C (CFF) path -----
@@ -9443,7 +9453,7 @@ class PDFRenderer(PDFStreamEngine):
         if type1_units_per_em is not None and type1_units_per_em > 0:
             try:
                 commands = font.get_glyph_path(code)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _log.debug(
                     "rendering: type1 glyph %d path build failed: %s",
                     code,
@@ -9460,7 +9470,7 @@ class PDFRenderer(PDFStreamEngine):
                         self._fill_aggdraw_path(
                             path, glyph_to_device, self._gs.fill_rgb
                         )
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     _log.debug(
                         "rendering: type1 glyph %d draw failed: %s",
                         code,
@@ -9473,7 +9483,7 @@ class PDFRenderer(PDFStreamEngine):
         # *something*, then advance by the font-supplied width if any.
         try:
             advance_units = self._font_width_units(font, code)
-        except Exception:  # noqa: BLE001
+        except Exception:
             advance_units = 500.0
         # Walk the substitution chain (PDF 32000-1 §9.8 / §9.10) to upgrade
         # the placeholder advance with metrics from a Standard 14 / system
@@ -9552,7 +9562,7 @@ class PDFRenderer(PDFStreamEngine):
         # wrapper, whose ``get_width`` keys on PostScript glyph names
         # (``"A"``, ``"space"``, ``".notdef"``, …) — so a code-to-name
         # round trip is unavoidable.
-        from pypdfbox.fontbox.encoding.standard_encoding import (  # noqa: PLC0415
+        from pypdfbox.fontbox.encoding.standard_encoding import (
             StandardEncoding,
         )
 
@@ -9561,7 +9571,7 @@ class PDFRenderer(PDFStreamEngine):
             return default_units
         try:
             width = float(substitute.get_width(glyph_name))
-        except Exception:  # noqa: BLE001
+        except Exception:
             return default_units
         if width <= 0.0:
             return default_units
@@ -9570,7 +9580,7 @@ class PDFRenderer(PDFStreamEngine):
         if callable(upem):
             try:
                 units = int(upem())
-            except Exception:  # noqa: BLE001
+            except Exception:
                 units = 0
             if units > 0:
                 return width * (1000.0 / units)
@@ -9602,12 +9612,12 @@ class PDFRenderer(PDFStreamEngine):
         if key in self._warned_standard14_fonts:
             return
         try:
-            from pypdfbox.pdmodel.font.standard14_fonts import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.font.standard14_fonts import (
                 Standard14Fonts,
             )
 
             base_font = font.get_name() if hasattr(font, "get_name") else None
-        except Exception:  # noqa: BLE001
+        except Exception:
             return
         if base_font is None or not Standard14Fonts.contains_name(base_font):
             return
@@ -9678,7 +9688,7 @@ class PDFRenderer(PDFStreamEngine):
         if callable(public):
             try:
                 return int(public(code))
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _log.debug("rendering: code_to_gid failed for %d: %s", code, exc)
         cmap = ttf.get_unicode_cmap_subtable()
         if cmap is not None:
@@ -9691,7 +9701,7 @@ class PDFRenderer(PDFStreamEngine):
         if get_width is not None:
             try:
                 return float(get_width(code))
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return 500.0
         return 500.0
 
@@ -9714,7 +9724,7 @@ class PDFRenderer(PDFStreamEngine):
             return False
         try:
             return bool(has(code))
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
 
     def _fill_aggdraw_path(
@@ -9840,7 +9850,7 @@ class PDFRenderer(PDFStreamEngine):
         # control-point) glyph-local bounds through the affine.
         affine = _to_pil_affine(ctm)
         a, b, c, d, e, f = affine
-        bounds = path._sk.getBounds()  # noqa: SLF001
+        bounds = path._sk.getBounds()
         gx0, gy0 = bounds.left(), bounds.top()
         gx1, gy1 = bounds.right(), bounds.bottom()
         corners = ((gx0, gy0), (gx1, gy0), (gx0, gy1), (gx1, gy1))
@@ -9880,7 +9890,7 @@ class PDFRenderer(PDFStreamEngine):
         # reseed replaces the old full-canvas ``aggdraw.Draw(self._image)``
         # rebind. (Fall back to the rebind if the draw wraps another
         # image — defensive; the renderer keeps them paired.)
-        if self._draw._pil is self._image:  # noqa: SLF001
+        if self._draw._pil is self._image:
             self._draw.reseed_region((x0, y0, x1, y1))
         else:  # pragma: no cover - draw/image are always rebound together
             self._draw = aggdraw.Draw(self._image)
@@ -10001,12 +10011,12 @@ class PDFRenderer(PDFStreamEngine):
         commit the union in :meth:`_op_end_text`.
         """
         try:
-            import skia  # type: ignore[import-not-found]  # noqa: PLC0415
-        except Exception as exc:  # noqa: BLE001  # pragma: no cover - skia is a required runtime dep
+            import skia  # type: ignore[import-not-found]
+        except Exception as exc:  # pragma: no cover - skia is a required runtime dep
             _log.debug("rendering: skia unavailable for text clip: %s", exc)
             return
         try:
-            sk_path: Any = path._sk  # noqa: SLF001
+            sk_path: Any = path._sk
         except AttributeError:
             return
         # aggdraw's PIL-style affine: (a, b, c, d, e, f) means
@@ -10219,7 +10229,7 @@ class PDFRenderer(PDFStreamEngine):
         with contextlib.suppress(Exception):
             local = charproc.get_dictionary_object(COSName.RESOURCES)
         if isinstance(local, COSDictionary):
-            from pypdfbox.pdmodel.pd_resources import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.pd_resources import (
                 PDResources,
             )
 
@@ -10311,7 +10321,7 @@ class PDFRenderer(PDFStreamEngine):
             self._gs.ctm = _matmul(glyph_to_user, self._gs.ctm)
             try:
                 data = charproc.to_byte_array()
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _log.debug("rendering: cannot read Type 3 charproc: %s", exc)
                 data = b""
             # A leading ``d1`` marks an uncoloured-mask glyph: colour ops

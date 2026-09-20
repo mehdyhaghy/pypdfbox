@@ -205,7 +205,7 @@ class TTFSubsetter:
         # New GIDs are assigned in ascending order of the old GID set
         # (matches the sorted iteration order upstream's TreeSet uses).
         old_gids = self._resolve_old_gids()
-        return {new_gid: old_gid for new_gid, old_gid in enumerate(sorted(old_gids))}
+        return dict(enumerate(sorted(old_gids)))
 
     # ---------- options ---------------------------------------------------
 
@@ -264,13 +264,13 @@ class TTFSubsetter:
         """Return the subset font as a ``bytes`` buffer."""
         # Lazy imports — fontTools is a heavy import and this method is
         # only invoked when a caller actually wants subset output.
-        import fontTools.subset as ft_subset  # type: ignore[import-untyped]  # noqa: PLC0415
-        import fontTools.ttLib as ttLib  # type: ignore[import-untyped]  # noqa: PLC0415
+        import fontTools.subset as ft_subset  # type: ignore[import-untyped]
+        from fontTools import ttLib  # type: ignore[import-untyped]
 
         # Build a fresh in-memory copy of the source font so subsetting
         # doesn't perturb the cached fontTools instance the parent
         # TrueTypeFont may still be using for accessor calls.
-        raw = self._ttf._read_all_bytes(self._ttf._data)  # noqa: SLF001
+        raw = self._ttf._read_all_bytes(self._ttf._data)
         tt = ttLib.TTFont(io.BytesIO(raw))
 
         options = ft_subset.Options()
@@ -394,7 +394,7 @@ class TTFSubsetter:
 
     def _add_composite_components(self, old_gids: set[int]) -> None:
         """Expand ``old_gids`` with TrueType composite glyph components."""
-        tt = self._ttf._tt  # noqa: SLF001
+        tt = self._ttf._tt
         if "glyf" not in tt:
             return
         glyph_order = tt.getGlyphOrder()
@@ -553,7 +553,7 @@ class TTFSubsetter:
         ``datetime``, or any object with a ``timeInMillis`` attribute
         (Java-style Calendar shim used elsewhere in the port).
         """
-        from datetime import UTC, datetime  # noqa: PLC0415
+        from datetime import UTC, datetime
 
         if isinstance(value, int):
             seconds = value
@@ -693,10 +693,10 @@ class TTFSubsetter:
         stay one-liners. Each call returns a fresh font — callers must
         not assume identity across :meth:`build_*` invocations.
         """
-        import fontTools.subset as ft_subset  # type: ignore[import-untyped]  # noqa: PLC0415
-        import fontTools.ttLib as ttLib  # type: ignore[import-untyped]  # noqa: PLC0415
+        import fontTools.subset as ft_subset  # type: ignore[import-untyped]
+        from fontTools import ttLib  # type: ignore[import-untyped]
 
-        raw = self._ttf._read_all_bytes(self._ttf._data)  # noqa: SLF001
+        raw = self._ttf._read_all_bytes(self._ttf._data)
         tt = ttLib.TTFont(io.BytesIO(raw))
 
         options = ft_subset.Options()
@@ -759,7 +759,7 @@ class TTFSubsetter:
         buf = io.BytesIO()
         tt.save(buf)
         buf.seek(0)
-        import fontTools.ttLib as ttLib  # type: ignore[import-untyped]  # noqa: PLC0415
+        from fontTools import ttLib  # type: ignore[import-untyped]
 
         loaded = ttLib.TTFont(buf)
         reader = loaded.reader

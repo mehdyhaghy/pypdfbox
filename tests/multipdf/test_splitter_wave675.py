@@ -136,10 +136,10 @@ def test_wave675_clone_structure_tree_sets_parent_tree_next_key_for_retained_pag
     destination_page = _DestinationPage(struct_parent=0)
     destination = _DestinationDocument(destination_page, cloned_page)
     splitter = Splitter()
-    splitter._source_document = _SourceDocument(source_root)  # type: ignore[assignment]  # noqa: SLF001,E501
-    splitter._page_dict_map = {id(source_page): cloned_page}  # noqa: SLF001
+    splitter._source_document = _SourceDocument(source_root)  # type: ignore[assignment]
+    splitter._page_dict_map = {id(source_page): cloned_page}
 
-    splitter._clone_structure_tree(destination)  # type: ignore[arg-type]  # noqa: SLF001
+    splitter._clone_structure_tree(destination)  # type: ignore[arg-type]
 
     assert destination.get_document_catalog().struct_root is not None
     assert (

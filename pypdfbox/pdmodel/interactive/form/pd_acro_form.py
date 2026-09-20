@@ -708,7 +708,7 @@ class PDAcroForm:
             self.import_fdf(xfdf)
             return
 
-        from pypdfbox.loader import Loader  # noqa: PLC0415
+        from pypdfbox.loader import Loader
 
         # Loader.load_xfdf returns a freshly-allocated FDFDocument; we
         # own the lifetime, so close it after the field walk completes.

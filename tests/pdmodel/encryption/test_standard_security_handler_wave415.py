@@ -115,7 +115,7 @@ def test_extract_document_id_reads_cos_document_first_id() -> None:
         cos_doc.set_document_id(ids)
 
         assert (
-            StandardSecurityHandler._extract_document_id(cos_doc, b"default")  # noqa: SLF001
+            StandardSecurityHandler._extract_document_id(cos_doc, b"default")
             == b"first-id"
         )
     finally:
@@ -134,7 +134,7 @@ def test_extract_document_id_reads_wrapped_document() -> None:
                 return cos_doc
 
         assert (
-            StandardSecurityHandler._extract_document_id(  # noqa: SLF001
+            StandardSecurityHandler._extract_document_id(
                 _PDDocumentLike(),
                 b"default",
             )
@@ -146,7 +146,7 @@ def test_extract_document_id_reads_wrapped_document() -> None:
 
 def test_extract_document_id_falls_back_for_missing_or_non_string_id() -> None:
     assert (
-        StandardSecurityHandler._extract_document_id(object(), b"default")  # noqa: SLF001
+        StandardSecurityHandler._extract_document_id(object(), b"default")
         == b"default"
     )
 
@@ -156,7 +156,7 @@ def test_extract_document_id_falls_back_for_missing_or_non_string_id() -> None:
         ids.add(COSArray())
         cos_doc.set_document_id(ids)
         assert (
-            StandardSecurityHandler._extract_document_id(cos_doc, b"default")  # noqa: SLF001
+            StandardSecurityHandler._extract_document_id(cos_doc, b"default")
             == b"default"
         )
     finally:

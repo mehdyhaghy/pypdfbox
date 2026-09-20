@@ -332,10 +332,10 @@ class PDMeshBasedShadingType(PDTriangleBasedShadingType):
         when the backing object is not a ``COSStream`` or the ``/Decode``
         array is missing/degenerate, matching upstream's fallback.
         """
-        from pypdfbox.cos.cos_stream import COSStream  # noqa: PLC0415
+        from pypdfbox.cos.cos_stream import COSStream
 
-        from .coons_patch import CoonsPatch  # noqa: PLC0415
-        from .tensor_patch import TensorPatch  # noqa: PLC0415
+        from .coons_patch import CoonsPatch
+        from .tensor_patch import TensorPatch
 
         if control_points not in (12, 16):
             control_points = 16 if self.get_shading_type() == 7 else 12

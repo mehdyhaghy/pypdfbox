@@ -12,12 +12,62 @@ handler so PDFBox developers can reach for the familiar identifier.
 
 from __future__ import annotations
 
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from pypdfbox.cos import COSBase, COSNumber
+from pypdfbox.util.matrix import Matrix
 
 from .. import MissingOperandException, Operator, OperatorName
 from ..operator_processor import OperatorProcessor
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+# PDFBOX-6255 — the shared guard every ``cm`` implementation runs.
+#
+# pypdfbox has more than one ``cm`` entry point (this class, the
+# registered ``graphics.ConcatenateMatrix`` handler and the rendering
+# engine's own ``PDFRenderer._op_concat_matrix``). The *rule* lives in a
+# single place — ``Matrix.concatenate`` -> ``checkFloatValues``, ported in
+# :mod:`pypdfbox.util.matrix` — and :func:`check_concatenation` is the one
+# place that translates its ``ValueError`` into the ``IOException``
+# (``OSError`` here) upstream's ``Concatenate.process`` throws, so a future
+# parity fix cannot land on one path and miss the others.
+#
+# Only *non-finite* products are illegal. A singular matrix (e.g. all
+# zeroes, which collapses user space onto a point) is perfectly finite and
+# stays legal — upstream accepts it too.
+
+# Fast path bound. Upstream evaluates the product in Java ``float`` (32
+# bit), so a cell can only turn non-finite by exceeding ``Float.MAX_VALUE``
+# (3.4028235e38). Each cell is a sum of three products, so when every input
+# element is within +/-1e19 the largest attainable cell (and every partial
+# sum) is 3e38 — below the limit — and the real check provably passes. NaN
+# and infinity both fail the magnitude test (every comparison against NaN is
+# False), so they fall through to the real check.
+_SAFE_ELEMENT_MAGNITUDE = 1e19
+
+
+def check_concatenation(matrix: Sequence[float], ctm: Sequence[float]) -> None:
+    """Raise ``OSError`` if concatenating ``matrix`` onto ``ctm`` would
+    produce a matrix holding NaN / infinity.
+
+    Both arguments are the six affine components ``(a, b, c, d, e, f)``.
+    The check is delegated to :meth:`Matrix.concatenate` so the rule is
+    never restated; the throwaway :class:`Matrix` pair exists only to run
+    upstream's ``checkFloatValues`` in single precision, which is what
+    ``PageDrawer`` / ``Concatenate`` do.
+    """
+    limit = _SAFE_ELEMENT_MAGNITUDE
+    for value in (*matrix, *ctm):
+        if not -limit <= value <= limit:
+            break
+    else:
+        return
+    try:
+        Matrix(*ctm).concatenate(Matrix(*matrix))
+    except ValueError as ex:
+        raise OSError(str(ex)) from ex
 
 
 class Concatenate(OperatorProcessor):
@@ -60,8 +110,6 @@ class Concatenate(OperatorProcessor):
                     # Upstream calls ``CTM.concatenate(matrix)`` with a Matrix,
                     # not the raw six floats; ``Matrix.concatenate`` reads
                     # ``matrix._single`` and would crash on a plain tuple.
-                    from pypdfbox.util.matrix import Matrix  # noqa: PLC0415
-
                     concat(Matrix(*matrix))
             except ValueError as ex:
                 raise OSError(str(ex)) from ex
@@ -70,4 +118,4 @@ class Concatenate(OperatorProcessor):
         return OperatorName.CONCAT
 
 
-__all__ = ["Concatenate"]
+__all__ = ["Concatenate", "check_concatenation"]

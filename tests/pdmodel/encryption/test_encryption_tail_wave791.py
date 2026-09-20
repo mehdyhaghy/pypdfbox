@@ -115,7 +115,7 @@ def test_standard_security_handler_embedded_filter_uses_stream_default() -> None
     encryption.set_v(4)
     encryption.set_stm_f("Identity")
 
-    handler._populate_routing_table(encryption)  # noqa: SLF001
+    handler._populate_routing_table(encryption)
 
     assert handler.get_embedded_file_cfm() == "Identity"
     assert handler.encrypt_stream(b"embedded", 7, 0, is_embedded_file=True) == b"embedded"

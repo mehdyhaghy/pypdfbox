@@ -56,13 +56,13 @@ def _reset_menu_singletons() -> None:
     from pypdfbox.debugger.ui.view_menu import ViewMenu
     from pypdfbox.debugger.ui.zoom_menu import ZoomMenu
 
-    ViewMenu._reset_instance()  # noqa: SLF001
-    ZoomMenu._reset_instance()  # noqa: SLF001
-    RotationMenu._reset_instance()  # noqa: SLF001
-    RenderDestinationMenu._reset_instance()  # noqa: SLF001
-    TreeViewMenu._reset_for_testing()  # noqa: SLF001
-    ImageTypeMenu._reset_for_testing()  # noqa: SLF001
-    TextStripperMenu._reset_for_testing()  # noqa: SLF001
+    ViewMenu._reset_instance()
+    ZoomMenu._reset_instance()
+    RotationMenu._reset_instance()
+    RenderDestinationMenu._reset_instance()
+    TreeViewMenu._reset_for_testing()
+    ImageTypeMenu._reset_for_testing()
+    TextStripperMenu._reset_for_testing()
 
 
 @pytest.fixture()
@@ -101,7 +101,7 @@ def debugger(tk_root: tk.Tk) -> Iterator[PDFDebugger]:
         yield instance
     finally:
         with contextlib.suppress(tk.TclError):
-            instance._main_frame.destroy()  # noqa: SLF001
+            instance._main_frame.destroy()
 
 
 # ----------------------------------------------------------------------
@@ -114,11 +114,11 @@ def test_add_recent_file_items_skips_cascade_state_when_no_reopen_index(
 ) -> None:
     """503->exit — when ``_reopen_menu_index`` is ``None`` the cascade
     state update is skipped (cascade itself isn't owned by the file menu)."""
-    debugger._reopen_menu_index = None  # noqa: SLF001
-    debugger._recent_files.remove_all()  # noqa: SLF001
+    debugger._reopen_menu_index = None
+    debugger._recent_files.remove_all()
     path = tmp_path / "alpha.pdf"
     path.write_bytes(b"%PDF-1.7\n")
-    debugger._recent_files.add_file(str(path))  # noqa: SLF001
+    debugger._recent_files.add_file(str(path))
     # Should not raise even with reopen_menu_index None.
     debugger.add_recent_file_items()
 
@@ -127,12 +127,12 @@ def test_populate_recent_files_menu_skips_state_when_no_reopen_index(
     debugger: PDFDebugger, tmp_path: Path
 ) -> None:
     """1825->exit — same skip on the lower-level repopulate helper."""
-    debugger._reopen_menu_index = None  # noqa: SLF001
+    debugger._reopen_menu_index = None
     path = tmp_path / "beta.pdf"
     path.write_bytes(b"%PDF-1.7\n")
-    debugger._recent_files.remove_all()  # noqa: SLF001
-    debugger._recent_files.add_file(str(path))  # noqa: SLF001
-    debugger._populate_recent_files_menu()  # noqa: SLF001
+    debugger._recent_files.remove_all()
+    debugger._recent_files.add_file(str(path))
+    debugger._populate_recent_files_menu()
 
 
 # ----------------------------------------------------------------------
@@ -145,8 +145,8 @@ def test_on_tree_open_skips_when_single_child_is_not_sentinel(
 ) -> None:
     """797->exit — when the only child has a real label / node, the
     sentinel-replacement guard is False and we just return."""
-    debugger._document = MagicMock()  # noqa: SLF001 - guard at line 790
-    tree = debugger._tree  # noqa: SLF001
+    debugger._document = MagicMock()
+    tree = debugger._tree
     parent_iid = tree.insert("", "end", text="parent")
     # Single child with non-"..." text and a registered node, so the
     # if-condition collapses to False on the get_node-is-None clause.
@@ -154,7 +154,7 @@ def test_on_tree_open_skips_when_single_child_is_not_sentinel(
     tree.register_node(child_iid, MapEntry())
     tree.focus(parent_iid)
     # Should be a no-op (the child must remain).
-    debugger._on_tree_open(None)  # type: ignore[arg-type]  # noqa: SLF001
+    debugger._on_tree_open(None)  # type: ignore[arg-type]
     assert tree.exists(child_iid)
 
 
@@ -166,7 +166,7 @@ def test_on_tree_open_skips_when_single_child_is_not_sentinel(
 def test_select_node_when_status_label_is_none(debugger: PDFDebugger) -> None:
     """838->841 — ``_select_node`` continues past the status-clear step
     when ``get_status_label()`` returns ``None``."""
-    sb = debugger._status_bar  # noqa: SLF001
+    sb = debugger._status_bar
 
     def _no_label() -> None:
         return None
@@ -178,7 +178,7 @@ def test_select_node_when_status_label_is_none(debugger: PDFDebugger) -> None:
     from pypdfbox.debugger.ui.xref_entry import XrefEntry
 
     node = XrefEntry(0, None, 0, None)
-    debugger._dispatch_selection(node, None, "fake_iid", "fake_parent")  # noqa: SLF001
+    debugger._dispatch_selection(node, None, "fake_iid", "fake_parent")
 
 
 # ----------------------------------------------------------------------
@@ -191,14 +191,14 @@ def test_is_encrypt_false_when_key_is_not_encrypt() -> None:
     me = MapEntry()
     me.set_key(COSName.get_pdf_name("Other"))
     me.set_value(COSDictionary())
-    assert PDFDebugger._is_encrypt(me) is False  # noqa: SLF001
+    assert PDFDebugger._is_encrypt(me) is False
 
 
 def test_is_encrypt_false_when_key_is_none() -> None:
     me = MapEntry()
     me.set_key(None)
     me.set_value(COSDictionary())
-    assert PDFDebugger._is_encrypt(me) is False  # noqa: SLF001
+    assert PDFDebugger._is_encrypt(me) is False
 
 
 # ----------------------------------------------------------------------
@@ -213,7 +213,7 @@ def test_is_signature_false_when_parent_value_not_dict() -> None:
     node.set_key(COSName.get_pdf_name("Contents"))
     parent = MapEntry()
     parent.set_value(COSArray())  # not a COSDictionary
-    assert PDFDebugger._is_signature(node, parent) is False  # noqa: SLF001
+    assert PDFDebugger._is_signature(node, parent) is False
 
 
 # ----------------------------------------------------------------------
@@ -233,7 +233,7 @@ def _build_show_stream_world(
     grand_node: Any | None = None,
 ) -> tuple[MapEntry, MapEntry, str, str]:
     """Insert ``stream`` into the tree under a parent we can shape."""
-    tree = debugger._tree  # noqa: SLF001
+    tree = debugger._tree
     # Always-empty grand parent (root) so the topmost iid is "".
     if grand_node is None:
         parent_iid = tree.insert("", "end", text="parent")
@@ -267,7 +267,7 @@ def test_show_stream_contents_key_with_non_dict_grandparent(
     node, _parent_node, iid, parent_iid = _build_show_stream_world(
         debugger, stream, parent_key_name="Contents", grand_node=grand
     )
-    debugger._show_stream(node, iid, parent_iid)  # noqa: SLF001
+    debugger._show_stream(node, iid, parent_iid)
 
 
 def test_show_stream_neither_form_nor_pattern_nor_thumb_nor_image(
@@ -280,7 +280,7 @@ def test_show_stream_neither_form_nor_pattern_nor_thumb_nor_image(
     node, _parent_node, iid, parent_iid = _build_show_stream_world(
         debugger, stream
     )
-    debugger._show_stream(node, iid, parent_iid)  # noqa: SLF001
+    debugger._show_stream(node, iid, parent_iid)
 
 
 def test_show_stream_image_subtype_grand_node_none(debugger: PDFDebugger) -> None:
@@ -288,7 +288,7 @@ def test_show_stream_image_subtype_grand_node_none(debugger: PDFDebugger) -> Non
     grand_node resolves to ``None``."""
     stream = COSStream()
     stream.set_item(COSName.SUBTYPE, COSName.get_pdf_name("Image"))
-    tree = debugger._tree  # noqa: SLF001
+    tree = debugger._tree
     grand_iid = tree.insert("", "end", text="grand")
     # Intentionally no register_node ⇒ get_node returns None.
     parent_iid = tree.insert(grand_iid, "end", text="parent")
@@ -299,7 +299,7 @@ def test_show_stream_image_subtype_grand_node_none(debugger: PDFDebugger) -> Non
     node = MapEntry()
     node.set_value(stream)
     tree.register_node(iid, node)
-    debugger._show_stream(node, iid, parent_iid)  # noqa: SLF001
+    debugger._show_stream(node, iid, parent_iid)
 
 
 def test_show_stream_image_subtype_underneath_not_dict(
@@ -314,7 +314,7 @@ def test_show_stream_image_subtype_underneath_not_dict(
     node, _parent_node, iid, parent_iid = _build_show_stream_world(
         debugger, stream, grand_node=grand
     )
-    debugger._show_stream(node, iid, parent_iid)  # noqa: SLF001
+    debugger._show_stream(node, iid, parent_iid)
 
 
 # ----------------------------------------------------------------------
@@ -325,7 +325,7 @@ def test_show_stream_image_subtype_underneath_not_dict(
 def test_copy_tree_path_skips_unregistered_nodes(debugger: PDFDebugger) -> None:
     """1407->1409 — ``get_node(parent)`` is ``None`` for an
     intermediate iid; that iteration of the while-loop just continues."""
-    tree = debugger._tree  # noqa: SLF001
+    tree = debugger._tree
     # 3-level chain: root → outer (no node) → middle (node) → leaf (node)
     outer_iid = tree.insert("", "end", text="outer")  # no register_node
     middle_iid = tree.insert(outer_iid, "end", text="middle")
@@ -335,7 +335,7 @@ def test_copy_tree_path_skips_unregistered_nodes(debugger: PDFDebugger) -> None:
     tree.selection_set(leaf_iid)
     # _document is None ⇒ the early return after the walk fires, but we
     # have already exercised the get_node-None branch by then.
-    debugger._copy_tree_path()  # noqa: SLF001
+    debugger._copy_tree_path()
 
 
 # ----------------------------------------------------------------------
@@ -375,8 +375,8 @@ def test_read_pdf_file_skips_recent_files_when_prior_path_is_http(
     # Simulate a previously loaded http URL with a fake document.
     prior_doc = MagicMock()
     prior_doc.close.return_value = None
-    debugger._document = prior_doc  # noqa: SLF001
-    debugger._current_file_path = "http://example.com/foo.pdf"  # noqa: SLF001
+    debugger._document = prior_doc
+    debugger._current_file_path = "http://example.com/foo.pdf"
     target = tmp_path / "x.pdf"
     target.write_bytes(b"%PDF-1.7\n")
     # Patch PDDocument.load so the actual parser isn't exercised.
@@ -386,10 +386,10 @@ def test_read_pdf_file_skips_recent_files_when_prior_path_is_http(
 
     monkeypatch.setattr(_pm.PDDocument, "load", lambda *a, **kw: fake_doc)
     add_spy = MagicMock()
-    debugger._recent_files.add_file = add_spy  # type: ignore[method-assign]  # noqa: SLF001
+    debugger._recent_files.add_file = add_spy  # type: ignore[method-assign]
     # set_visible suppresses any UI exception path.
     with contextlib.suppress(Exception):
-        debugger._read_pdf_file(str(target), "")  # noqa: SLF001
+        debugger._read_pdf_file(str(target), "")
     # Since the previous path was http, no add_file call.
     assert add_spy.call_count == 0
 
@@ -402,8 +402,8 @@ def test_read_pdf_file_when_prior_path_is_none(
     """1719->1725 — _current_file_path is None — same outcome."""
     prior_doc = MagicMock()
     prior_doc.close.return_value = None
-    debugger._document = prior_doc  # noqa: SLF001
-    debugger._current_file_path = None  # noqa: SLF001
+    debugger._document = prior_doc
+    debugger._current_file_path = None
     target = tmp_path / "y.pdf"
     target.write_bytes(b"%PDF-1.7\n")
     fake_doc = MagicMock()
@@ -412,9 +412,9 @@ def test_read_pdf_file_when_prior_path_is_none(
 
     monkeypatch.setattr(_pm.PDDocument, "load", lambda *a, **kw: fake_doc)
     add_spy = MagicMock()
-    debugger._recent_files.add_file = add_spy  # type: ignore[method-assign]  # noqa: SLF001
+    debugger._recent_files.add_file = add_spy  # type: ignore[method-assign]
     with contextlib.suppress(Exception):
-        debugger._read_pdf_file(str(target), "")  # noqa: SLF001
+        debugger._read_pdf_file(str(target), "")
     assert add_spy.call_count == 0
 
 
@@ -430,10 +430,10 @@ def test_read_pdf_url_skips_recent_files_when_prior_was_http(
     """1762->1768 — same skip as the file-load path for URL loads."""
     prior_doc = MagicMock()
     prior_doc.close.return_value = None
-    debugger._document = prior_doc  # noqa: SLF001
-    debugger._current_file_path = "http://earlier.example/a.pdf"  # noqa: SLF001
+    debugger._document = prior_doc
+    debugger._current_file_path = "http://earlier.example/a.pdf"
     add_spy = MagicMock()
-    debugger._recent_files.add_file = add_spy  # type: ignore[method-assign]  # noqa: SLF001
+    debugger._recent_files.add_file = add_spy  # type: ignore[method-assign]
     # Fake urlopen returning bytes.
     from io import BytesIO
 
@@ -462,7 +462,7 @@ def test_read_pdf_url_skips_recent_files_when_prior_was_http(
 
     monkeypatch.setattr(_pm.PDDocument, "load", lambda *a, **kw: fake_doc)
     with contextlib.suppress(Exception):
-        debugger._read_pdf_url("http://example.com/x.pdf", "")  # noqa: SLF001
+        debugger._read_pdf_url("http://example.com/x.pdf", "")
     assert add_spy.call_count == 0
 
 
@@ -476,9 +476,9 @@ def test_enable_document_actions_skips_save_stream_when_save_as_unset(
 ) -> None:
     """1798->exit — when ``_save_as_menu_index`` is ``None`` the
     Save-decoded/raw block is skipped entirely."""
-    debugger._save_as_menu_index = None  # noqa: SLF001
+    debugger._save_as_menu_index = None
     # Must not raise even though the file menu IS built.
-    debugger._enable_document_actions()  # noqa: SLF001
+    debugger._enable_document_actions()
 
 
 # ----------------------------------------------------------------------
@@ -492,7 +492,7 @@ def test_save_document_to_path_without_remove_security(
     """1958->1961 — ``remove_security=False`` ⇒ the security-clear
     block is skipped; the save call still runs."""
     fake_doc = MagicMock()
-    debugger._document = fake_doc  # noqa: SLF001
+    debugger._document = fake_doc
     target = tmp_path / "saved.pdf"
     debugger.flush_to_disk(str(target), remove_security=False)
     # Only ``save`` should have been called; security setter should not.

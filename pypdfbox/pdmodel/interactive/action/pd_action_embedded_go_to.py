@@ -85,9 +85,9 @@ class PDActionEmbeddedGoTo(PDAction):
         # fresh instance). To preserve upstream's "fresh empty destination is
         # accepted" behaviour, only flag a non-null page entry as invalid —
         # the COSNull placeholder is treated as "no page set yet".
-        from pypdfbox.cos import COSNull  # noqa: PLC0415
+        from pypdfbox.cos import COSNull
         from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
-            PDPageDestination,  # noqa: PLC0415
+            PDPageDestination,
         )
 
         if isinstance(destination, PDPageDestination):
@@ -267,7 +267,7 @@ class PDActionEmbeddedGoTo(PDAction):
             for d in opened_docs:
                 try:
                     d.close()
-                except Exception:  # noqa: BLE001 — best-effort cleanup
+                except Exception:
                     _LOG.debug("Failed to close embedded PDDocument", exc_info=True)
 
     def _resolve_final_destination(
@@ -495,7 +495,7 @@ def _open_embedded_pdf(
             return None
     try:
         data = embedded.to_byte_array()
-    except Exception:  # noqa: BLE001 — malformed stream is a soft failure
+    except Exception:
         _LOG.debug(
             "Embedded file %r — failed to read bytes", name, exc_info=True
         )
@@ -504,7 +504,7 @@ def _open_embedded_pdf(
         return None
     try:
         return pddocument_cls.load(data)
-    except Exception:  # noqa: BLE001 — non-PDF payload is a soft failure
+    except Exception:
         _LOG.debug(
             "Embedded file %r — bytes do not parse as a PDF",
             name,

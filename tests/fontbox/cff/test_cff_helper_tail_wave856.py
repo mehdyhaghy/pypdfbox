@@ -142,10 +142,10 @@ def test_wave856_cid_from_bytes_rejects_name_keyed_skips_missing_paths(
 def test_wave856_cid_from_bytes_rejects_name_keyed_ignores_non_cff_font(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import fontTools.ttLib as ttlib
+    from fontTools import ttLib
 
     monkeypatch.setattr(cid_mod, "Path", _ExistingPath)
-    monkeypatch.setattr(ttlib, "TTFont", _NoCFFFont)
+    monkeypatch.setattr(ttLib, "TTFont", _NoCFFFont)
 
     with pytest.raises(pytest.skip.Exception):
         cid_mod.TestCFFCIDFontFromNonCIDRaises().test_from_bytes_rejects_name_keyed()
@@ -154,10 +154,10 @@ def test_wave856_cid_from_bytes_rejects_name_keyed_ignores_non_cff_font(
 def test_wave856_cid_from_bytes_rejects_name_keyed_ignores_broken_font(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import fontTools.ttLib as ttlib
+    from fontTools import ttLib
 
     monkeypatch.setattr(cid_mod, "Path", _ExistingPath)
-    monkeypatch.setattr(ttlib, "TTFont", _BrokenTTFont)
+    monkeypatch.setattr(ttLib, "TTFont", _BrokenTTFont)
 
     with pytest.raises(pytest.skip.Exception):
         cid_mod.TestCFFCIDFontFromNonCIDRaises().test_from_bytes_rejects_name_keyed()

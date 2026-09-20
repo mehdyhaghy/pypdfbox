@@ -111,11 +111,11 @@ def _load_pkcs12_keystore(
     """
     # Lazy import: keystores are uncommon, keep the dep cost off the
     # hot password-only decrypt path.
-    from cryptography.hazmat.primitives.serialization.pkcs12 import (  # noqa: PLC0415
+    from cryptography.hazmat.primitives.serialization.pkcs12 import (
         load_pkcs12,
     )
 
-    from pypdfbox.pdmodel.encryption import PublicKeyDecryptionMaterial  # noqa: PLC0415
+    from pypdfbox.pdmodel.encryption import PublicKeyDecryptionMaterial
 
     data = Path(keystore_path).read_bytes()
     pwd_bytes = password.encode("utf-8") if password else None
@@ -166,7 +166,7 @@ def run(args: argparse.Namespace) -> int:
                 flush=True,
             )
             return 4
-        except Exception as exc:  # noqa: BLE001 — surface as upstream IOException
+        except Exception as exc:
             print(
                 f"decrypt: Error decrypting document [{type(exc).__name__}]: {exc}",
                 flush=True,

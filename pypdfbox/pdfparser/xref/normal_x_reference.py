@@ -35,8 +35,8 @@ class NormalXReference(AbstractXReference):
 
     @staticmethod
     def _is_object_stream(obj: COSBase) -> bool:
-        from pypdfbox.cos.cos_object import COSObject  # noqa: PLC0415
-        from pypdfbox.cos.cos_stream import COSStream  # noqa: PLC0415
+        from pypdfbox.cos.cos_object import COSObject
+        from pypdfbox.cos.cos_stream import COSStream
 
         base = obj.get_object() if isinstance(obj, COSObject) else obj
         if isinstance(base, COSStream):

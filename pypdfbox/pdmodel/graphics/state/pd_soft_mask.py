@@ -138,16 +138,16 @@ class PDSoftMask:
             group_base = self._dict.get_dictionary_object(_G)
             if group_base is None:
                 return None
-            from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (
                 PDFormXObject,
             )
-            from pypdfbox.pdmodel.graphics.form.pd_transparency_group import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.graphics.form.pd_transparency_group import (
                 PDTransparencyGroup,
             )
-            from pypdfbox.pdmodel.graphics.pd_x_object import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.graphics.pd_x_object import (
                 PDXObject,
             )
-            from pypdfbox.pdmodel.pd_resources import PDResources  # noqa: PLC0415
+            from pypdfbox.pdmodel.pd_resources import PDResources
 
             # Read /Subtype with ``get_name_as_string`` (not the name-only
             # ``get_name``) to mirror how upstream's getGroup → createXObject
@@ -195,7 +195,7 @@ class PDSoftMask:
                 f"{type(group).__name__}"
             )
         self._dict.set_item(_G, cos)
-        from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (
             PDFormXObject,
         )
 
@@ -262,7 +262,7 @@ class PDSoftMask:
         ``PDSoftMask.getTransferFunction()`` which returns a
         ``PDFunction``. Companion to :meth:`get_transfer_function`
         (which returns the raw COS object)."""
-        from pypdfbox.pdmodel.common.function.pd_function import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.common.function.pd_function import (
             PDFunction,
         )
 

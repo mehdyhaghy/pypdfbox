@@ -51,7 +51,7 @@ def test_wave518_owner_password_recovery_and_public_key_aliases() -> None:
         owner_password, owner_r2, 2, 5
     )
 
-    assert recovered_r2 == StandardSecurityHandler._pad_password(user_password)  # noqa: SLF001
+    assert recovered_r2 == StandardSecurityHandler._pad_password(user_password)
 
     owner_r3 = StandardSecurityHandler.compute_owner_password(
         owner_password, user_password, 3, 16
@@ -68,7 +68,7 @@ def test_wave518_owner_password_recovery_and_public_key_aliases() -> None:
         16,
     )
 
-    assert recovered_r3 == StandardSecurityHandler._pad_password(user_password)  # noqa: SLF001
+    assert recovered_r3 == StandardSecurityHandler._pad_password(user_password)
     assert len(encrypted_key) == 16
     assert StandardSecurityHandler.get_user_password(owner_password, owner_r3, 6, 32) == b""
 
@@ -85,7 +85,7 @@ def _revision5_encryption_for_password(
     u_hash = hashlib.sha256(password + user_validation_salt).digest()
     u_value = u_hash + user_validation_salt + user_key_salt
     ue_key = hashlib.sha256(password + user_key_salt).digest()
-    ue = ssh_module._aes_cbc_no_padding_encrypt(ue_key, b"\x00" * 16, file_key)  # noqa: SLF001
+    ue = ssh_module._aes_cbc_no_padding_encrypt(ue_key, b"\x00" * 16, file_key)
 
     if owner_password is None:
         o_value = b"o" * 48
@@ -96,7 +96,7 @@ def _revision5_encryption_for_password(
         o_hash = hashlib.sha256(owner_password + owner_validation_salt + u_value).digest()
         o_value = o_hash + owner_validation_salt + owner_key_salt
         oe_key = hashlib.sha256(owner_password + owner_key_salt + u_value).digest()
-        oe = ssh_module._aes_cbc_no_padding_encrypt(oe_key, b"\x00" * 16, file_key)  # noqa: SLF001
+        oe = ssh_module._aes_cbc_no_padding_encrypt(oe_key, b"\x00" * 16, file_key)
 
     encryption = PDEncryption()
     encryption.set_filter("Standard")
@@ -167,13 +167,13 @@ def test_wave518_routing_helpers_handle_explicit_eff_and_aes_fallbacks() -> None
     encryption.set_crypt_filter_dictionary("FileCF", file_cf)
 
     handler = StandardSecurityHandler()
-    handler._populate_routing_table(encryption)  # noqa: SLF001
+    handler._populate_routing_table(encryption)
 
     assert StandardSecurityHandler.get_stream_filter_name(encryption) == "Identity"
     assert StandardSecurityHandler.get_string_filter_name(encryption) == "AESV2"
-    assert StandardSecurityHandler._is_aes_v4(encryption) is False  # noqa: SLF001
+    assert StandardSecurityHandler._is_aes_v4(encryption) is False
     encryption.set_stm_f("AESV3")
-    assert StandardSecurityHandler._is_aes_v4(encryption) is True  # noqa: SLF001
+    assert StandardSecurityHandler._is_aes_v4(encryption) is True
     assert handler.get_stream_cfm() == "Identity"
     assert handler.get_string_cfm() == "AESV2"
     assert handler.get_embedded_file_cfm() == "V2"
@@ -184,17 +184,17 @@ def test_wave518_dispatch_encrypt_decrypt_round_trips_rc4_aesv2_and_aesv3() -> N
     handler.set_encryption_key(b"\x01" * 32)
     payload = b"wave518 payload"
 
-    rc4 = handler._dispatch_encrypt("V2", payload, 7, 0)  # noqa: SLF001
+    rc4 = handler._dispatch_encrypt("V2", payload, 7, 0)
     assert rc4 != payload
-    assert handler._dispatch_decrypt("V2", rc4, 7, 0) == payload  # noqa: SLF001
+    assert handler._dispatch_decrypt("V2", rc4, 7, 0) == payload
 
-    aesv2 = handler._dispatch_encrypt("AESV2", payload, 7, 0)  # noqa: SLF001
+    aesv2 = handler._dispatch_encrypt("AESV2", payload, 7, 0)
     assert aesv2 != payload
-    assert handler._dispatch_decrypt("AESV2", aesv2, 7, 0) == payload  # noqa: SLF001
+    assert handler._dispatch_decrypt("AESV2", aesv2, 7, 0) == payload
 
-    aesv3 = handler._dispatch_encrypt("AESV3", payload, 7, 0)  # noqa: SLF001
+    aesv3 = handler._dispatch_encrypt("AESV3", payload, 7, 0)
     assert aesv3 != payload
-    assert handler._dispatch_decrypt("AESV3", aesv3, 7, 0) == payload  # noqa: SLF001
+    assert handler._dispatch_decrypt("AESV3", aesv3, 7, 0) == payload
 
 
 def test_wave518_prepare_document_for_encryption_alias_installs_aes256(
@@ -237,33 +237,33 @@ def test_wave518_prepare_document_for_encryption_alias_installs_aes256(
 def test_wave518_perms_validation_and_no_padding_helpers() -> None:
     file_key = b"\x02" * 32
     plain = bytearray(16)
-    p = ssh_module._signed32(DEFAULT_PERMISSIONS)  # noqa: SLF001
+    p = ssh_module._signed32(DEFAULT_PERMISSIONS)
     plain[0] = p & 0xFF
     plain[1] = (p >> 8) & 0xFF
     plain[2] = (p >> 16) & 0xFF
     plain[3] = (p >> 24) & 0xFF
     plain[8] = ord("F")
     plain[9:12] = b"adb"
-    encrypted = ssh_module._aes_cbc_no_padding_encrypt(  # noqa: SLF001
+    encrypted = ssh_module._aes_cbc_no_padding_encrypt(
         file_key,
         b"\x00" * 16,
         bytes(plain),
     )
 
-    assert StandardSecurityHandler._decrypt_perms_r5_r6(file_key, encrypted) == bytes(plain)  # noqa: SLF001
-    assert StandardSecurityHandler._validate_perms_r5_r6(  # noqa: SLF001
+    assert StandardSecurityHandler._decrypt_perms_r5_r6(file_key, encrypted) == bytes(plain)
+    assert StandardSecurityHandler._validate_perms_r5_r6(
         file_key,
         encrypted,
         DEFAULT_PERMISSIONS,
         encrypt_metadata=False,
     )
-    assert not StandardSecurityHandler._validate_perms_r5_r6(  # noqa: SLF001
+    assert not StandardSecurityHandler._validate_perms_r5_r6(
         file_key,
         encrypted,
         DEFAULT_PERMISSIONS,
         encrypt_metadata=True,
     )
-    assert ssh_module._aes_cbc_no_padding_decrypt(  # noqa: SLF001
+    assert ssh_module._aes_cbc_no_padding_decrypt(
         file_key,
         b"\x00" * 16,
         b"short",

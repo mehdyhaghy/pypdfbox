@@ -204,7 +204,7 @@ def test_private_aliases_still_work(tk_root: tk.Tk) -> None:
     hxr = _HexChangeRecorder()
     pane.add_selection_change_listener(sel)
     pane.add_hex_change_listeners(hxr)
-    pane._fire_selection_changed(SelectEvent(0, SelectEvent.IN))  # noqa: SLF001
-    pane._fire_hex_value_changed(0xAB, 0)  # noqa: SLF001
+    pane._fire_selection_changed(SelectEvent(0, SelectEvent.IN))
+    pane._fire_hex_value_changed(0xAB, 0)
     assert len(sel.events) == 1
     assert len(hxr.events) == 1

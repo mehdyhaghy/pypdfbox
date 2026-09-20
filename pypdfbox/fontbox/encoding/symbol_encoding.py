@@ -215,7 +215,7 @@ class SymbolEncoding(Encoding):
         """Return ``COSName("SymbolEncoding")``. Mirrors upstream
         ``SymbolEncoding.getCOSObject()``.
         """
-        from pypdfbox.cos.cos_name import COSName  # noqa: PLC0415
+        from pypdfbox.cos.cos_name import COSName
 
         return COSName.get_pdf_name("SymbolEncoding")
 

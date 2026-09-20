@@ -229,7 +229,7 @@ def test_push_button_regenerate_appearance_calls_appearance_generator() -> None:
     calls: list[object] = []
     original = pd_appearance_generator.PDAppearanceGenerator.generate
 
-    def tracker(self, field):  # noqa: ANN001 — local monkeypatch
+    def tracker(self, field):
         calls.append(field)
 
     pd_appearance_generator.PDAppearanceGenerator.generate = tracker  # type: ignore[assignment]

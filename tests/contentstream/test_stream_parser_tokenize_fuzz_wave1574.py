@@ -212,7 +212,7 @@ def test_array_operand() -> None:
     toks = tokens(b"[1 2 3] g")
     arr = toks[0]
     assert isinstance(arr, COSArray)
-    assert [e for e in arr] == [
+    assert list(arr) == [
         COSInteger.get(1),
         COSInteger.get(2),
         COSInteger.get(3),
@@ -404,7 +404,7 @@ def test_truncated_array_returns_gathered_elements() -> None:
     # Missing ']' -> lenient: return the elements gathered so far.
     arr = tokens(b"[1 2 3")[0]
     assert isinstance(arr, COSArray)
-    assert [e for e in arr] == [
+    assert list(arr) == [
         COSInteger.get(1),
         COSInteger.get(2),
         COSInteger.get(3),

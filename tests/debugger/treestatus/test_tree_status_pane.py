@@ -108,7 +108,7 @@ def test_tree_select_updates_status_for_selection(tk_root: tk.Tk) -> None:
     nodes[child_iid].set_value(inner)  # type: ignore[attr-defined]
 
     tree.selection_set(child_iid)
-    pane._on_tree_select(None)  # type: ignore[arg-type]  # noqa: SLF001
+    pane._on_tree_select(None)  # type: ignore[arg-type]
     assert "Foo" in pane._status_var.get()  # type: ignore[attr-defined]
 
 
@@ -116,7 +116,7 @@ def test_tree_select_without_status_obj_is_noop(tk_root: tk.Tk) -> None:
     tree = ttk.Treeview(tk_root)
     pane = TreeStatusPane(tree)
     pane.init()
-    pane._on_tree_select(None)  # type: ignore[arg-type]  # noqa: SLF001
+    pane._on_tree_select(None)  # type: ignore[arg-type]
     # No exception; status text remains empty.
     assert pane._status_var.get() == ""  # type: ignore[attr-defined]
 
@@ -127,7 +127,7 @@ def test_tree_select_without_selection_is_noop(tk_root: tk.Tk) -> None:
     pane.init()
     pane.update_tree_status(TreeStatus(COSDictionary()))
     # No selection on the tree → handler returns early.
-    pane._on_tree_select(None)  # type: ignore[arg-type]  # noqa: SLF001
+    pane._on_tree_select(None)  # type: ignore[arg-type]
 
 
 def test_text_input_with_valid_path_clears_error_style(tk_root: tk.Tk) -> None:
@@ -140,9 +140,9 @@ def test_text_input_with_valid_path_clears_error_style(tk_root: tk.Tk) -> None:
     root_dict = COSDictionary()
     root_dict.set_item(COSName.get_pdf_name("Foo"), COSInteger.get(1))
     pane.update_tree_status(TreeStatus(root_dict))
-    pane._status_var.set("Foo")  # type: ignore[attr-defined]  # noqa: SLF001
+    pane._status_var.set("Foo")  # type: ignore[attr-defined]
     # Default ``_locate_item_for_path`` returns None → soft-success branch.
-    pane._on_text_input(None)  # type: ignore[arg-type]  # noqa: SLF001
+    pane._on_text_input(None)  # type: ignore[arg-type]
 
 
 def test_text_input_with_invalid_path_flips_error_style(tk_root: tk.Tk) -> None:
@@ -150,9 +150,9 @@ def test_text_input_with_invalid_path_flips_error_style(tk_root: tk.Tk) -> None:
     pane = TreeStatusPane(tree)
     pane.init()
     pane.update_tree_status(TreeStatus(COSDictionary()))
-    pane._status_var.set("Missing")  # type: ignore[attr-defined]  # noqa: SLF001
-    pane._on_text_input(None)  # type: ignore[arg-type]  # noqa: SLF001
-    style = pane._status_field.cget("style")  # type: ignore[attr-defined]  # noqa: SLF001
+    pane._status_var.set("Missing")  # type: ignore[attr-defined]
+    pane._on_text_input(None)  # type: ignore[arg-type]
+    style = pane._status_field.cget("style")  # type: ignore[attr-defined]
     assert "Error" in style
 
 
@@ -161,5 +161,5 @@ def test_text_input_without_status_obj_returns_break(tk_root: tk.Tk) -> None:
     pane = TreeStatusPane(tree)
     pane.init()
     # No status obj.
-    result = pane._on_text_input(None)  # type: ignore[arg-type]  # noqa: SLF001
+    result = pane._on_text_input(None)  # type: ignore[arg-type]
     assert result == "break"

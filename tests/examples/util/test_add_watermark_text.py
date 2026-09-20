@@ -55,7 +55,7 @@ def test_add_watermark_falls_back_when_append_mode_missing(
     real_pcs = mod.PDPageContentStream
 
     class _ShimNoAppendMode:
-        def __init__(self, *a, **kw):  # noqa: ANN001, ANN002, ANN003
+        def __init__(self, *a, **kw):
             # Only the two-arg form is used after the fallback.
             assert len(a) == 2
             self._inner = real_pcs(*a, **kw)
@@ -64,7 +64,7 @@ def test_add_watermark_falls_back_when_append_mode_missing(
             return getattr(self._inner, name)
 
     # Strip the class-level AppendMode attribute so the lookup raises.
-    def _no_append_mode(*a, **kw):  # noqa: ANN002, ANN003
+    def _no_append_mode(*a, **kw):
         return _ShimNoAppendMode(*a, **kw)
 
     # Replace the AppendMode property with one that raises AttributeError.
@@ -74,7 +74,7 @@ def test_add_watermark_falls_back_when_append_mode_missing(
                 raise AttributeError(name)
             return getattr(real_pcs, name)
 
-        def __call__(self, *a, **kw):  # noqa: ANN002, ANN003
+        def __call__(self, *a, **kw):
             return _no_append_mode(*a, **kw)
 
     monkeypatch.setattr(mod, "PDPageContentStream", _ShimClass())
@@ -101,7 +101,7 @@ def test_add_watermark_falls_back_on_type_error(
         # Mirror the class attribute so the first branch is taken.
         AppendMode = real_pcs.AppendMode
 
-        def __init__(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        def __init__(self, *args, **kwargs):
             if len(args) > 2:
                 raise TypeError("multi-arg form is unavailable in this stub")
             self._inner = real_pcs(*args, **kwargs)

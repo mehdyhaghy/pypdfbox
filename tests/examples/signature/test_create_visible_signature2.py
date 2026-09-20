@@ -40,8 +40,8 @@ def test_image_file_round_trips(pkcs12_bytes, tsa_password, tmp_path: Path):
 
 def test_set_image_file_accepts_string_path(pkcs12_bytes, tsa_password):
     signer = CreateVisibleSignature2(pkcs12_bytes, tsa_password)
-    signer.set_image_file("/tmp/some.png")  # noqa: S108
-    assert signer.get_image_file() == Path("/tmp/some.png")  # noqa: S108
+    signer.set_image_file("/tmp/some.png")
+    assert signer.get_image_file() == Path("/tmp/some.png")
 
 
 def test_late_external_signing_round_trip(pkcs12_bytes, tsa_password):
@@ -83,7 +83,7 @@ def test_main_drives_sign_pipeline(
     # in ``test_sign_pdf_signs_to_outfile``.
     called: dict[str, object] = {}
 
-    def _stub_sign(self, document, output, signature_field_name):  # noqa: ARG001
+    def _stub_sign(self, document, output, signature_field_name):
         called["document"] = document
         called["output"] = output
         output.write(b"%PDF-1.4\n%%EOF\n")
@@ -122,7 +122,7 @@ def test_sign_pdf_signs_to_outfile(
     # Stub ``_sign_document`` so the test verifies the file-open / context
     # management wiring of ``sign_pdf`` without exercising the full
     # in-place signing pipeline (which expects a wrapped PDDocument).
-    def _stub(self, doc, out, name):  # noqa: ARG001
+    def _stub(self, doc, out, name):
         out.write(b"%PDF-1.4\n%%EOF\n")
 
     monkeypatch.setattr(CreateVisibleSignature2, "_sign_document", _stub)
@@ -136,7 +136,7 @@ def test_sign_pdf_signs_to_outfile(
     )
     assert out_pdf.exists()
     assert out_pdf.read_bytes().startswith(b"%PDF-")
-    assert signer._tsa_url == "http://tsa.invalid/"  # noqa: SLF001
+    assert signer._tsa_url == "http://tsa.invalid/"
 
 
 def test_sign_document_blocks_when_docmdp_disallows(
@@ -159,7 +159,7 @@ def test_sign_document_blocks_when_docmdp_disallows(
     with PDDocument() as doc:
         doc.add_page(PDPage())
         with pytest.raises(RuntimeError, match="DocMDP"):
-            signer._sign_document(doc, BytesIO(), None)  # noqa: SLF001
+            signer._sign_document(doc, BytesIO(), None)
 
 
 def test_sign_document_drives_signature_pipeline(
@@ -193,7 +193,7 @@ def test_sign_document_drives_signature_pipeline(
 
     signer = CreateVisibleSignature2(pkcs12_bytes, tsa_password)
     buf = BytesIO()
-    signer._sign_document(_StubDoc(), buf, None)  # noqa: SLF001
+    signer._sign_document(_StubDoc(), buf, None)
     assert buf.getvalue().startswith(b"%PDF-")
     sig = captured["sig"]
     assert sig.get_name() == "Example User"

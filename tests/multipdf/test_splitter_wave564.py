@@ -62,7 +62,7 @@ def test_wave564_signature_widget_parent_cycle_does_not_loop() -> None:
     parent.set_item(_PARENT, grandparent)
     grandparent.set_item(_PARENT, parent)
 
-    assert not Splitter._is_signature_widget(widget)  # noqa: SLF001
+    assert not Splitter._is_signature_widget(widget)
 
 
 def test_wave564_signature_widget_parent_chain_detects_sig_field() -> None:
@@ -74,7 +74,7 @@ def test_wave564_signature_widget_parent_chain_detects_sig_field() -> None:
     parent.set_item(_PARENT, grandparent)
     widget.set_item(_PARENT, parent)
 
-    assert Splitter._is_signature_widget(widget)  # noqa: SLF001
+    assert Splitter._is_signature_widget(widget)
 
 
 def test_wave564_objr_without_payload_is_dropped() -> None:
@@ -86,7 +86,7 @@ def test_wave564_objr_without_payload_is_dropped() -> None:
     objr.set_item(_TYPE, COSName.get_pdf_name("OBJR"))
     objr.set_item(_OBJ, COSDictionary())
 
-    cloned = Splitter()._k_create_clone(  # noqa: SLF001
+    cloned = Splitter()._k_create_clone(
         objr, COSDictionary(), COSDictionary(), PageTree()
     )
 
@@ -101,7 +101,7 @@ def test_wave564_mcr_with_inherited_page_is_retained() -> None:
     mcr.set_item(_TYPE, COSName.get_pdf_name("MCR"))
     mcr.set_item(_K, COSInteger.get(3))
 
-    cloned = Splitter()._k_create_clone(  # noqa: SLF001
+    cloned = Splitter()._k_create_clone(
         mcr, parent, parent_page, object()
     )
 
@@ -117,7 +117,7 @@ def test_wave564_clone_tree_element_warns_for_unretained_dictionary(
     dst_numbers: dict[int, object] = {}
 
     with caplog.at_level(logging.WARNING, logger="pypdfbox.multipdf.splitter"):
-        splitter._clone_tree_element({4: COSDictionary()}, dst_numbers, 4)  # noqa: SLF001
+        splitter._clone_tree_element({4: COSDictionary()}, dst_numbers, 4)
 
     assert dst_numbers == {}
     assert "ParentTree index 4 dictionary not found" in caplog.text

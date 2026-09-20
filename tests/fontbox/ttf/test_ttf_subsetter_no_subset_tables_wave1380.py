@@ -107,7 +107,7 @@ def test_subsetter_with_no_subset_tables_produces_valid_ttf(
     subsetter.write_to_stream(out)
     out.seek(0)
     # Re-parse the output via fontTools to confirm validity.
-    import fontTools.ttLib as ttLib  # noqa: PLC0415
+    from fontTools import ttLib
 
     reparsed = ttLib.TTFont(out)
     # The descriptor metadata tables must still be present after
@@ -182,7 +182,7 @@ def _make_embedder(embed_subset: bool) -> Any:
     """Build a minimal PDTrueTypeFontEmbedder for inspection. We avoid
     real document I/O — the embedder constructor only needs a document
     + a COSDictionary + a fontTools TTFont + an Encoding."""
-    import fontTools.ttLib as ttLib  # noqa: PLC0415
+    from fontTools import ttLib
 
     from pypdfbox.cos import COSDictionary
     from pypdfbox.pdmodel.font.encoding.win_ansi_encoding import (
@@ -203,7 +203,7 @@ def _make_embedder(embed_subset: bool) -> Any:
 
 def _make_cid_embedder() -> Any:
     """Build a minimal :class:`PDCIDFontType2Embedder` for inspection."""
-    import fontTools.ttLib as ttLib  # noqa: PLC0415
+    from fontTools import ttLib
 
     from pypdfbox.cos import COSDictionary
     from pypdfbox.pdmodel.font.pd_cid_font_type2_embedder import (

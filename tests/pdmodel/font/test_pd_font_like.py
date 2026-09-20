@@ -162,7 +162,7 @@ def test_protocol_runtime_checkable_does_not_check_signatures() -> None:
 
     class _WrongSig:
         # Wrong return types, but presence is what counts.
-        def get_name(self):  # noqa: D401 - test stub
+        def get_name(self):
             return 1
         def get_font_descriptor(self): return 0  # noqa: E704
         def get_font_matrix(self): return None  # noqa: E704

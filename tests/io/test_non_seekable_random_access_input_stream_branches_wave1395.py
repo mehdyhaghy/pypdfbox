@@ -39,7 +39,7 @@ class _BadGetBufferStream:
     def getbuffer(self) -> object:
         raise OSError("synthetic getbuffer failure")
 
-    def close(self) -> None:  # noqa: D401 - shim
+    def close(self) -> None:
         """Compatibility no-op."""
 
 
@@ -48,6 +48,6 @@ def test_available_on_underlying_returns_zero_when_getbuffer_raises() -> None:
     when ``getbuffer()`` raises — guards against quirky in-memory streams."""
     stream = NonSeekableRandomAccessReadInputStream(_BadGetBufferStream())
     # Nothing buffered + getbuffer raises -> length() ends up at 0.
-    assert stream._available_on_underlying() == 0  # noqa: SLF001
+    assert stream._available_on_underlying() == 0
     # available() routes through the same helper and reports buffered only.
     assert stream.available() == 0

@@ -1254,8 +1254,8 @@ class BaseParser:
         # Match upstream byte-by-byte: peek 'e n d' then 's t r e a m' or
         # 'o b j' to detect early end-of-object markers.
         c = self._src.read()
-        EOF = RandomAccessRead.EOF
-        while c != EOF and c != 0x2F and c != 0x3E:
+        eof = RandomAccessRead.EOF
+        while c != eof and c != 0x2F and c != 0x3E:
             if c == 0x65:  # 'e'
                 c = self._src.read()
                 if c == 0x6E:  # 'n'
@@ -1279,7 +1279,7 @@ class BaseParser:
                         if is_stream or is_obj:
                             return True
             c = self._src.read()
-        if c == EOF:
+        if c == eof:
             return True
         self._src.rewind(1)
         return False

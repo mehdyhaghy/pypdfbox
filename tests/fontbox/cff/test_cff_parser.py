@@ -46,7 +46,7 @@ def _load_type1_cff_bytes() -> tuple[bytes, bytes] | None:
     name-keyed CFF OTF on the host, or ``None`` if no fixture is
     available."""
     try:
-        from fontTools.ttLib import TTFont  # noqa: PLC0415
+        from fontTools.ttLib import TTFont
     except ImportError:
         return None
     for candidate in _TYPE1_OTF_CANDIDATES:
@@ -65,7 +65,7 @@ def _load_type1_cff_bytes() -> tuple[bytes, bytes] | None:
             buf = io.BytesIO()
             ttf["CFF "].cff.compile(buf, ttf, isCFF2=False)
             return otf_bytes, buf.getvalue()
-        except Exception:  # noqa: BLE001
+        except Exception:
             continue
     return None
 
@@ -95,7 +95,7 @@ def test_parser_to_string_pre_parse() -> None:
 
 def test_parse_empty_bytes_raises() -> None:
     parser = CFFParser()
-    with pytest.raises(Exception):  # noqa: B017, PT011
+    with pytest.raises(Exception):  # noqa: B017
         # fontTools surfaces this as struct.error / IndexError; we
         # accept any exception — upstream raises IOException.
         parser.parse(b"")
@@ -198,7 +198,7 @@ _CID_CANDIDATES = [
 
 def _load_cid_cff_bytes() -> bytes | None:
     try:
-        from fontTools.ttLib import TTFont  # noqa: PLC0415
+        from fontTools.ttLib import TTFont
     except ImportError:
         return None
     for candidate in _CID_CANDIDATES:
@@ -216,7 +216,7 @@ def _load_cid_cff_bytes() -> bytes | None:
                 buf = io.BytesIO()
                 ttf["CFF "].cff.compile(buf, ttf, isCFF2=False)
                 return buf.getvalue()
-        except Exception:  # noqa: BLE001
+        except Exception:
             continue
     return None
 

@@ -450,7 +450,7 @@ class COSDocument(COSBase):
         leaves the document scratch intact."""
         # Local import to avoid a hard cos_document → cos_stream cycle at
         # module load time.
-        from .cos_stream import COSStream  # noqa: PLC0415
+        from .cos_stream import COSStream
 
         stream = COSStream(self._scratch_file)
         if dictionary is not None:

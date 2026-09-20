@@ -63,13 +63,13 @@ class XMLUtil:
             if contains_doctype(data):
                 raise OSError("DOCTYPE declarations are not allowed")
             try:
-                from defusedxml.minidom import parseString as _safe_parse
+                from defusedxml import minidom as _defused_minidom
 
                 # pragma: no cover -- defusedxml is an optional hardening
                 # path; not in pyproject (the project ships permissive-only,
                 # no-new-deps gate) so this branch only fires for downstream
                 # users who add defusedxml themselves.
-                return _safe_parse(  # pragma: no cover
+                return _defused_minidom.parseString(  # pragma: no cover
                     data, forbid_dtd=True, forbid_entities=True
                 )
             except ImportError:

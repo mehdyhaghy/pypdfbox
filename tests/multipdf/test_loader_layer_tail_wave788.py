@@ -8,7 +8,7 @@ from pypdfbox import Loader, PDDocument
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.multipdf import PageExtractor, Splitter
 from pypdfbox.multipdf.layer_utility import _at_quadrant_rotate, _coerce_matrix
-from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_tree_root import (  # noqa: E501
+from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_tree_root import (
     PDStructureElementNumberTreeNode,
 )
 
@@ -124,12 +124,12 @@ def test_wave788_splitter_parent_tree_keeps_annotation_struct_parent() -> None:
             return self.catalog
 
     splitter = Splitter()
-    splitter._source_document = SourceDocument()  # type: ignore[assignment]  # noqa: SLF001
-    splitter._page_dict_map = {id(source_page): cloned_page}  # noqa: SLF001
-    splitter._annot_dict_map = {id(source_annotation): cloned_annotation}  # noqa: SLF001
+    splitter._source_document = SourceDocument()  # type: ignore[assignment]
+    splitter._page_dict_map = {id(source_page): cloned_page}
+    splitter._annot_dict_map = {id(source_annotation): cloned_annotation}
     destination = DestinationDocument()
 
-    splitter._clone_structure_tree(destination)  # type: ignore[arg-type]  # noqa: SLF001
+    splitter._clone_structure_tree(destination)  # type: ignore[arg-type]
 
     assert destination.catalog.root is not None
     numbers = destination.catalog.root.get_parent_tree().get_numbers()

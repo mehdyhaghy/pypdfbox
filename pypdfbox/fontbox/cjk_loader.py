@@ -225,7 +225,7 @@ def ensure_language(
 def _fetch(url: str, *, opener) -> bytes:
     """Download *url* and return its body. Honours redirects via urllib."""
     req = Request(url, headers={"User-Agent": "pypdfbox-cjk-loader"})
-    with opener(req, timeout=60) as resp:  # noqa: S310 - URL is the pinned manifest
+    with opener(req, timeout=60) as resp:
         return resp.read()
 
 

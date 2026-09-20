@@ -241,7 +241,7 @@ class PDAnnotationMarkup(PDAnnotation):
         the resolved dictionary in a ``PDExternalDataDictionary``; any
         non-dictionary shape yields ``None``.
         """
-        from .pd_external_data_dictionary import (  # noqa: PLC0415
+        from .pd_external_data_dictionary import (
             PDExternalDataDictionary,
         )
 
@@ -334,7 +334,7 @@ class PDAnnotationMarkup(PDAnnotation):
         traversing a mixed annotation tree benefit from a single entry
         point.
         """
-        from pypdfbox.pdmodel.interactive.measurement.pd_measure_dictionary import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.interactive.measurement.pd_measure_dictionary import (
             PDMeasureDictionary,
         )
 

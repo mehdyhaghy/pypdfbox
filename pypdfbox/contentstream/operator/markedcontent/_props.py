@@ -106,19 +106,19 @@ def resolve_property_dict(
         return None
     try:
         resources = getter()
-    except Exception:  # noqa: BLE001 — defensive
+    except Exception:
         return None
     if resources is None:
         return None
     try:
         pl = resources.get_property_list(prop)
-    except Exception:  # noqa: BLE001 — defensive: malformed dict
+    except Exception:
         return None
     if pl is None:
         return None
     try:
         cos_object = pl.get_cos_object()
-    except Exception:  # noqa: BLE001 — defensive
+    except Exception:
         return None
     if isinstance(cos_object, COSDictionary):
         return cos_object

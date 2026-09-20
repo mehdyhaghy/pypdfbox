@@ -24,16 +24,16 @@ def _make_doc(width: float = 20.0, height: float = 20.0) -> tuple[PDDocument, PD
 def _prepared_renderer(size: tuple[int, int] = (20, 20)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -57,14 +57,14 @@ class _Substitute:
 def test_paste_image_with_blend_honors_clip_and_alpha() -> None:
     doc, renderer = _prepared_renderer((4, 2))
     try:
-        renderer._image.paste((0, 255, 0), (0, 0, 4, 2))  # noqa: SLF001
+        renderer._image.paste((0, 255, 0), (0, 0, 4, 2))
         source = Image.new("RGB", (2, 2), (255, 0, 0))
         alpha = Image.new("L", (2, 2), 255)
         alpha.putpixel((1, 0), 0)
         clip = Image.new("L", (4, 2), 0)
         clip.paste(255, (0, 0, 2, 2))
 
-        renderer._paste_image_with_blend(  # noqa: SLF001
+        renderer._paste_image_with_blend(
             source,
             alpha,
             (0, 0, 2, 2),
@@ -72,9 +72,9 @@ def test_paste_image_with_blend_honors_clip_and_alpha() -> None:
             BlendMode.MULTIPLY,
         )
 
-        assert renderer._image.getpixel((0, 0)) == (0, 0, 0)  # noqa: SLF001
-        assert renderer._image.getpixel((1, 0)) == (0, 255, 0)  # noqa: SLF001
-        assert renderer._image.getpixel((3, 0)) == (0, 255, 0)  # noqa: SLF001
+        assert renderer._image.getpixel((0, 0)) == (0, 0, 0)
+        assert renderer._image.getpixel((1, 0)) == (0, 255, 0)
+        assert renderer._image.getpixel((3, 0)) == (0, 255, 0)
     finally:
         _finish(renderer)
         doc.close()
@@ -103,15 +103,15 @@ def test_render_form_xobject_restores_resources_and_renders_stream() -> None:
     form_resources = object()
     stream = COSStream()
     stream.set_raw_data(b"0 0 1 rg\n0 0 6 6 re\nf\n")
-    renderer._resources = original_resources  # noqa: SLF001
+    renderer._resources = original_resources
     try:
-        renderer._render_form_xobject(_Form(stream, form_resources))  # noqa: SLF001
+        renderer._render_form_xobject(_Form(stream, form_resources))
         _finish(renderer)
 
-        assert renderer._resources is original_resources  # noqa: SLF001
-        assert len(renderer._gs_stack) == 1  # noqa: SLF001
-        assert renderer._image.getpixel((3, 3)) == (0, 0, 255)  # noqa: SLF001
-        assert renderer._image.getpixel((8, 8)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._resources is original_resources
+        assert len(renderer._gs_stack) == 1
+        assert renderer._image.getpixel((3, 3)) == (0, 0, 255)
+        assert renderer._image.getpixel((8, 8)) == (255, 255, 255)
     finally:
         doc.close()
 
@@ -126,15 +126,15 @@ def test_text_metric_helpers_cover_fallback_and_error_branches() -> None:
                 raise self._value
             return self._value
 
-    assert PDFRenderer._font_width_units(_WidthFont(321.0), 65) == 321.0  # noqa: SLF001
-    assert PDFRenderer._font_width_units(_WidthFont(RuntimeError("width")), 65) == 500.0  # noqa: E501, SLF001
-    assert PDFRenderer._font_width_units(object(), 65) == 500.0  # noqa: SLF001
+    assert PDFRenderer._font_width_units(_WidthFont(321.0), 65) == 321.0
+    assert PDFRenderer._font_width_units(_WidthFont(RuntimeError("width")), 65) == 500.0
+    assert PDFRenderer._font_width_units(object(), 65) == 500.0
 
-    assert PDFRenderer._fallback_advance_units(_Substitute(600.0), 65, 500.0) == 600.0  # noqa: E501, SLF001
-    assert PDFRenderer._fallback_advance_units(_Substitute(1200.0, 2000), 65, 500.0) == 600.0  # noqa: E501, SLF001
-    assert PDFRenderer._fallback_advance_units(_Substitute(RuntimeError("w")), 65, 500.0) == 500.0  # noqa: E501, SLF001
-    assert PDFRenderer._fallback_advance_units(_Substitute(0.0), 65, 500.0) == 500.0  # noqa: E501, SLF001
-    assert PDFRenderer._fallback_advance_units(_Substitute(600.0), 0, 500.0) == 500.0  # noqa: E501, SLF001
+    assert PDFRenderer._fallback_advance_units(_Substitute(600.0), 65, 500.0) == 600.0
+    assert PDFRenderer._fallback_advance_units(_Substitute(1200.0, 2000), 65, 500.0) == 600.0
+    assert PDFRenderer._fallback_advance_units(_Substitute(RuntimeError("w")), 65, 500.0) == 500.0
+    assert PDFRenderer._fallback_advance_units(_Substitute(0.0), 65, 500.0) == 500.0
+    assert PDFRenderer._fallback_advance_units(_Substitute(600.0), 0, 500.0) == 500.0
 
 
 def test_code_to_gid_prefers_font_methods_then_cmap_fallback() -> None:
@@ -157,17 +157,17 @@ def test_code_to_gid_prefers_font_methods_then_cmap_fallback() -> None:
         def get_unicode_cmap_subtable(self) -> Any | None:
             return self._cmap
 
-    assert PDFRenderer._code_to_gid(_PrivateWithTypeError(), 5, _TTF(None)) == 15  # noqa: SLF001
-    assert PDFRenderer._code_to_gid(_PublicRaises(), 5, _TTF(_CMap())) == 25  # noqa: SLF001
-    assert PDFRenderer._code_to_gid(object(), 5, _TTF(None)) == 0  # noqa: SLF001
+    assert PDFRenderer._code_to_gid(_PrivateWithTypeError(), 5, _TTF(None)) == 15
+    assert PDFRenderer._code_to_gid(_PublicRaises(), 5, _TTF(_CMap())) == 25
+    assert PDFRenderer._code_to_gid(object(), 5, _TTF(None)) == 0
 
 
 def test_type1_path_builder_and_aggdraw_pen_quadratic_branches() -> None:
-    assert PDFRenderer._build_aggdraw_path_from_commands(  # noqa: SLF001
+    assert PDFRenderer._build_aggdraw_path_from_commands(
         [("moveto", 0.0, 0.0)],
         scale=1.0,
     ) is None
-    assert PDFRenderer._build_aggdraw_path_from_commands(  # noqa: SLF001
+    assert PDFRenderer._build_aggdraw_path_from_commands(
         [
             ("moveto", 0.0, 0.0),
             ("lineto", 10.0, 0.0),

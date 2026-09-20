@@ -148,7 +148,7 @@ class XMPBasicJobTicketSchema(XMPSchema):
     def _get_job_list(self) -> list[dict[str, str]]:
         existing = self._properties.get(self.JOB_REF)
         if isinstance(existing, list) and all(isinstance(item, dict) for item in existing):
-            return cast(list[dict[str, str]], existing)
+            return cast("list[dict[str, str]]", existing)
         if existing is None:
             new_list: list[dict[str, str]] = []
             self._properties[self.JOB_REF] = new_list

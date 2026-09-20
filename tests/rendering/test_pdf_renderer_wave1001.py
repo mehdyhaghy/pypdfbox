@@ -9,7 +9,7 @@ from tests.rendering import test_pdf_renderer_wave991 as wave991
 
 def test_wave991_exposed_previous_handler_raises() -> None:
     with pytest.raises(AssertionError, match="previous handler should only be restored"):
-        wave991._raise_previous_handler(None, object(), [])  # noqa: SLF001
+        wave991._raise_previous_handler(None, object(), [])
 
 
 def test_wave991_restores_non_empty_original_handler(
@@ -23,7 +23,7 @@ def test_wave991_restores_non_empty_original_handler(
     ) -> None:
         raise AssertionError("original handler should only be restored")
 
-    dispatch = wave991.wave981.wave972.wave966.wave531.renderer_mod._DISPATCH  # noqa: SLF001
+    dispatch = wave991.wave981.wave972.wave966.wave531.renderer_mod._DISPATCH
     previous = dispatch.get("W531")
     dispatch["W531"] = original_handler
     try:

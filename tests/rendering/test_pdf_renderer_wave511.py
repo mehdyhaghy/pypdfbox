@@ -25,16 +25,16 @@ def _make_doc(width: float = 8.0, height: float = 8.0) -> tuple[PDDocument, PDPa
 def _prepared_renderer(size: tuple[int, int] = (8, 8)) -> tuple[PDDocument, PDFRenderer]:
     doc, _page = _make_doc(float(size[0]), float(size[1]))
     renderer = PDFRenderer(doc)
-    renderer._image = Image.new("RGB", size, (255, 255, 255))  # noqa: SLF001
-    renderer._draw = aggdraw.Draw(renderer._image)  # noqa: SLF001
-    renderer._draw.setantialias(True)  # noqa: SLF001
-    renderer._gs_stack = [_GState()]  # noqa: SLF001
-    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)  # noqa: SLF001
+    renderer._image = Image.new("RGB", size, (255, 255, 255))
+    renderer._draw = aggdraw.Draw(renderer._image)
+    renderer._draw.setantialias(True)
+    renderer._gs_stack = [_GState()]
+    renderer._device_ctm = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     return doc, renderer
 
 
 def _finish(renderer: PDFRenderer) -> None:
-    draw = renderer._draw  # noqa: SLF001
+    draw = renderer._draw
     if draw is not None:
         draw.flush()
 
@@ -49,7 +49,7 @@ def test_dispatch_logs_and_drops_malformed_operator(monkeypatch: Any, caplog: An
     ) -> None:
         raise ValueError("bad operands")
 
-    monkeypatch.setitem(pdf_renderer._DISPATCH, "rg", _raising_handler)  # noqa: SLF001
+    monkeypatch.setitem(pdf_renderer._DISPATCH, "rg", _raising_handler)
     try:
         caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
 
@@ -66,18 +66,18 @@ def test_pattern_color_space_clears_stale_pattern_except_for_pattern_space() -> 
     try:
         stroke_pattern = object()
         fill_pattern = object()
-        renderer._gs.stroke_pattern = stroke_pattern  # noqa: SLF001
-        renderer._gs.fill_pattern = fill_pattern  # noqa: SLF001
+        renderer._gs.stroke_pattern = stroke_pattern
+        renderer._gs.fill_pattern = fill_pattern
 
         renderer.process_operator("CS", [COSName.get_pdf_name("Pattern")])
         renderer.process_operator("cs", [COSName.get_pdf_name("Pattern")])
-        assert renderer._gs.stroke_pattern is stroke_pattern  # noqa: SLF001
-        assert renderer._gs.fill_pattern is fill_pattern  # noqa: SLF001
+        assert renderer._gs.stroke_pattern is stroke_pattern
+        assert renderer._gs.fill_pattern is fill_pattern
 
         renderer.process_operator("CS", [COSName.get_pdf_name("DeviceRGB")])
         renderer.process_operator("cs", [COSFloat(0.0)])
-        assert renderer._gs.stroke_pattern is None  # noqa: SLF001
-        assert renderer._gs.fill_pattern is None  # noqa: SLF001
+        assert renderer._gs.stroke_pattern is None
+        assert renderer._gs.fill_pattern is None
     finally:
         _finish(renderer)
         doc.close()
@@ -102,15 +102,15 @@ def test_pattern_operand_resolves_success_and_logs_resource_failure(
     try:
         caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
         resources = _Resources()
-        renderer._resources = resources  # noqa: SLF001
+        renderer._resources = resources
 
         renderer.process_operator("scn", [COSFloat(0.5), COSName.get_pdf_name("P1")])
         renderer.process_operator("SCN", [COSName.get_pdf_name("P1")])
-        assert renderer._gs.fill_pattern is resources.pattern  # noqa: SLF001
-        assert renderer._gs.stroke_pattern is resources.pattern  # noqa: SLF001
+        assert renderer._gs.fill_pattern is resources.pattern
+        assert renderer._gs.stroke_pattern is resources.pattern
 
-        renderer._resources = _BrokenResources()  # noqa: SLF001
-        assert renderer._resolve_pattern_operand([COSName.get_pdf_name("P1")]) is None  # noqa: SLF001
+        renderer._resources = _BrokenResources()
+        assert renderer._resolve_pattern_operand([COSName.get_pdf_name("P1")]) is None
         assert "cannot resolve pattern P1: pattern boom" in caplog.text
     finally:
         _finish(renderer)
@@ -153,14 +153,14 @@ def test_extgstate_alpha_constants_are_clamped_and_soft_mask_is_stored() -> None
     doc, renderer = _prepared_renderer()
     try:
         resources = _Resources()
-        renderer._resources = resources  # noqa: SLF001
+        renderer._resources = resources
 
         renderer.process_operator("gs", [COSName.get_pdf_name("GS1")])
 
-        assert renderer._gs.blend_mode is BlendMode.SCREEN  # noqa: SLF001
-        assert renderer._gs.soft_mask is resources.ext_gstate.soft_mask  # noqa: SLF001
-        assert renderer._gs.stroke_alpha == 1.0  # noqa: SLF001
-        assert renderer._gs.fill_alpha == 0.0  # noqa: SLF001
+        assert renderer._gs.blend_mode is BlendMode.SCREEN
+        assert renderer._gs.soft_mask is resources.ext_gstate.soft_mask
+        assert renderer._gs.stroke_alpha == 1.0
+        assert renderer._gs.fill_alpha == 0.0
     finally:
         _finish(renderer)
         doc.close()

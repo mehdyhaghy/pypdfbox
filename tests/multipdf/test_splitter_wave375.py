@@ -85,9 +85,9 @@ def test_wave375_popup_annotation_reference_is_rewritten_to_cloned_popup() -> No
     # in the same chunk resolve correctly. Direct unit-callers of
     # ``_process_annotations`` need to allocate the pending queue + drain
     # it manually.
-    splitter._pending_annot_passes = []  # noqa: SLF001
-    splitter._process_annotations(source_page, imported)  # noqa: SLF001
-    splitter._finalize_annotation_links()  # noqa: SLF001
+    splitter._pending_annot_passes = []
+    splitter._process_annotations(source_page, imported)
+    splitter._finalize_annotation_links()
 
     cloned_annots = (
         imported.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Annots"))

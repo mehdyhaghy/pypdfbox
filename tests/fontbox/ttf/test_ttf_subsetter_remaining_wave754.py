@@ -46,7 +46,7 @@ class _CompositeTable(dict[str, Any]):
 class _CompositeGlyph:
     components = [SimpleNamespace(glyphName="absent-component")]
 
-    def isComposite(self) -> bool:  # noqa: N802
+    def isComposite(self) -> bool:
         return True
 
 

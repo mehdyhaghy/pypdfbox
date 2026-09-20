@@ -110,7 +110,7 @@ def test_wave388_random_access_read_overload_rejects_non_random_access() -> None
 def test_wave388_open_source_returns_open_document_without_taking_ownership() -> None:
     doc = _build_doc(1)
 
-    opened, owns = PDFMergerUtility._open_source(doc)  # noqa: SLF001
+    opened, owns = PDFMergerUtility._open_source(doc)
 
     assert opened is doc
     assert owns is False
@@ -119,7 +119,7 @@ def test_wave388_open_source_returns_open_document_without_taking_ownership() ->
 
 def test_wave388_open_source_rejects_unsupported_source_type() -> None:
     with pytest.raises(TypeError, match="unsupported source type"):
-        PDFMergerUtility._open_source(object())  # type: ignore[arg-type]  # noqa: SLF001
+        PDFMergerUtility._open_source(object())  # type: ignore[arg-type]
 
 
 def test_wave388_random_access_sources_remain_caller_owned(tmp_path: Path) -> None:
@@ -152,10 +152,10 @@ def test_wave388_dynamic_xfa_helper_handles_true_false_and_raises() -> None:
         def xfa_is_dynamic(self) -> bool:
             raise RuntimeError("unreadable")
 
-    assert PDFMergerUtility._is_dynamic_xfa(Dynamic())  # noqa: SLF001
-    assert not PDFMergerUtility._is_dynamic_xfa(Static())  # noqa: SLF001
-    assert not PDFMergerUtility._is_dynamic_xfa(Broken())  # noqa: SLF001
-    assert not PDFMergerUtility._is_dynamic_xfa(object())  # noqa: SLF001
+    assert PDFMergerUtility._is_dynamic_xfa(Dynamic())
+    assert not PDFMergerUtility._is_dynamic_xfa(Static())
+    assert not PDFMergerUtility._is_dynamic_xfa(Broken())
+    assert not PDFMergerUtility._is_dynamic_xfa(object())
 
 
 def test_wave388_merge_into_respects_exclude_and_existing_destination() -> None:
@@ -169,7 +169,7 @@ def test_wave388_merge_into_respects_exclude_and_existing_destination() -> None:
     src.set_string(existing, "source")
     dst.set_string(existing, "dest")
 
-    PDFMergerUtility._merge_into(src, dst, _IdentityCloner(), {skip})  # noqa: SLF001
+    PDFMergerUtility._merge_into(src, dst, _IdentityCloner(), {skip})
 
     assert dst.get_string(keep) == "copied"
     assert dst.get_string(existing) == "dest"
@@ -217,7 +217,7 @@ def test_wave388_acroform_join_mode_appends_verbatim_fields() -> None:
     src_fields = [Field("A"), Field("B")]
 
     # No collision (dest empty) → both fields appended verbatim under both modes.
-    util._acro_form_join_fields_mode(_IdentityCloner(), dest_form, Form(src_fields))  # noqa: SLF001
+    util._acro_form_join_fields_mode(_IdentityCloner(), dest_form, Form(src_fields))
 
     fields = dest_form.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Fields"))
     assert isinstance(fields, COSArray)
@@ -237,7 +237,7 @@ def test_wave388_acroform_merge_errors_can_be_ignored(
     util.set_ignore_acro_form_errors(True)
 
     with caplog.at_level(logging.WARNING, logger="pypdfbox.multipdf.pdf_merger_utility"):
-        util._merge_acro_form(_IdentityCloner(), BrokenCatalog(), BrokenCatalog())  # noqa: SLF001
+        util._merge_acro_form(_IdentityCloner(), BrokenCatalog(), BrokenCatalog())
 
     assert "AcroForm merge error ignored" in caplog.text
 
@@ -254,7 +254,7 @@ def test_wave388_threads_append_into_existing_destination_array() -> None:
     src_catalog.get_cos_object().set_item(_THREADS, src_threads)
     dest_catalog.get_cos_object().set_item(_THREADS, dest_threads)
 
-    PDFMergerUtility()._merge_threads(  # noqa: SLF001
+    PDFMergerUtility()._merge_threads(
         _IdentityCloner(), src_catalog, dest_catalog
     )
 
@@ -275,7 +275,7 @@ def test_wave388_page_labels_create_destination_nums_when_missing() -> None:
     src_labels.set_item(_NUMS, src_nums)
     source.get_document_catalog().get_cos_object().set_item(_PAGE_LABELS, src_labels)
 
-    PDFMergerUtility()._merge_page_labels(  # noqa: SLF001
+    PDFMergerUtility()._merge_page_labels(
         _IdentityCloner(), source, destination
     )
 
@@ -311,8 +311,8 @@ def test_wave388_catalog_array_and_dictionary_merges_append_or_overlay() -> None
     dest_catalog.get_cos_object().set_item(_OUTPUT_INTENTS, output_dst)
 
     util = PDFMergerUtility()
-    util._merge_oc_properties(_IdentityCloner(), src_catalog, dest_catalog)  # noqa: SLF001
-    util._merge_output_intents(_IdentityCloner(), src_catalog, dest_catalog)  # noqa: SLF001
+    util._merge_oc_properties(_IdentityCloner(), src_catalog, dest_catalog)
+    util._merge_output_intents(_IdentityCloner(), src_catalog, dest_catalog)
 
     assert oc_dst.get_string(COSName.get_pdf_name("DestOnly")) == "yes"
     assert oc_dst.get_string(COSName.get_pdf_name("SourceOnly")) == "yes"
@@ -328,11 +328,11 @@ def test_wave388_open_action_is_first_source_wins() -> None:
     src_catalog.get_cos_object().set_item(_OPEN_ACTION, first)
 
     util = PDFMergerUtility()
-    util._merge_open_action(_IdentityCloner(), src_catalog, dest_catalog)  # noqa: SLF001
+    util._merge_open_action(_IdentityCloner(), src_catalog, dest_catalog)
     assert dest_catalog.get_cos_object().get_dictionary_object(_OPEN_ACTION) is first
 
     src_catalog.get_cos_object().set_item(_OPEN_ACTION, second)
-    util._merge_open_action(_IdentityCloner(), src_catalog, dest_catalog)  # noqa: SLF001
+    util._merge_open_action(_IdentityCloner(), src_catalog, dest_catalog)
     assert dest_catalog.get_cos_object().get_dictionary_object(_OPEN_ACTION) is first
 
 
@@ -345,7 +345,7 @@ def test_wave388_strip_struct_parent_from_annotations_only_touches_dict_entries(
     annots.add(COSName.get_pdf_name("NotADict"))
     page_dict.set_item(_ANNOTS, annots)
 
-    PDFMergerUtility._strip_struct_parent_from_annots(page_dict)  # noqa: SLF001
+    PDFMergerUtility._strip_struct_parent_from_annots(page_dict)
 
     assert not annot.contains_key(_STRUCT_PARENT)
 
@@ -412,7 +412,7 @@ def test_wave388_prepare_struct_tree_bootstrap_strips_stale_parent_keys() -> Non
     annots.add(annot)
     dest_page.get_cos_object().set_item(_ANNOTS, annots)
 
-    result = PDFMergerUtility()._prepare_struct_tree_merge(  # noqa: SLF001
+    result = PDFMergerUtility()._prepare_struct_tree_merge(
         source.get_document_catalog(),
         destination.get_document_catalog(),
         destination,
@@ -443,7 +443,7 @@ def test_wave388_update_page_references_handles_nested_arrays_and_orphans() -> N
     child_array.add(nested)
     entry.set_item(_K, child_array)
 
-    PDFMergerUtility()._update_page_references_map(  # noqa: SLF001
+    PDFMergerUtility()._update_page_references_map(
         _IdentityCloner(),
         {0: entry},
         {id(page_old): page_new, id(obj_old): obj_new},
@@ -465,7 +465,7 @@ def test_wave388_merge_k_entries_wraps_mixed_existing_and_source_kids() -> None:
     dest_root_dict = COSDictionary()
     dest_root_dict.set_item(_K, dest_child)
 
-    PDFMergerUtility()._merge_k_entries(  # noqa: SLF001
+    PDFMergerUtility()._merge_k_entries(
         _IdentityCloner(), _Root(src_root_dict), _Root(dest_root_dict)
     )
 
@@ -493,7 +493,7 @@ def test_wave388_merge_k_entries_appends_under_document_when_children_are_parts(
     src_root = COSDictionary()
     src_root.set_item(_K, part_child)
 
-    PDFMergerUtility()._merge_k_entries(  # noqa: SLF001
+    PDFMergerUtility()._merge_k_entries(
         _IdentityCloner(), _Root(src_root), _Root(dest_root)
     )
 
@@ -515,9 +515,9 @@ def test_wave388_has_only_documents_or_parts_rejects_non_dictionary_and_roles() 
     role.set_item(_S, COSName.get_pdf_name("P"))
     bad_role.add(role)
 
-    assert PDFMergerUtility._has_only_documents_or_parts(good)  # noqa: SLF001
-    assert not PDFMergerUtility._has_only_documents_or_parts(bad_type)  # noqa: SLF001
-    assert not PDFMergerUtility._has_only_documents_or_parts(bad_role)  # noqa: SLF001
+    assert PDFMergerUtility._has_only_documents_or_parts(good)
+    assert not PDFMergerUtility._has_only_documents_or_parts(bad_type)
+    assert not PDFMergerUtility._has_only_documents_or_parts(bad_role)
 
 
 def test_wave388_merge_role_map_keeps_equal_conflicts_and_adds_new_entries(
@@ -541,7 +541,7 @@ def test_wave388_merge_role_map_keeps_equal_conflicts_and_adds_new_entries(
     with caplog.at_level(
         logging.WARNING, logger="pypdfbox.multipdf.pdf_merger_utility"
     ):
-        PDFMergerUtility()._merge_role_map(  # noqa: SLF001
+        PDFMergerUtility()._merge_role_map(
             _IdentityCloner(), _Root(src_root), _Root(dest_root)
         )
 
@@ -564,7 +564,7 @@ def test_wave388_metadata_clone_exceptions_are_logged(
     src_catalog.get_cos_object().set_item(COSName.get_pdf_name("Metadata"), COSStream())
 
     with caplog.at_level(logging.ERROR, logger="pypdfbox.multipdf.pdf_merger_utility"):
-        PDFMergerUtility()._merge_metadata(  # noqa: SLF001
+        PDFMergerUtility()._merge_metadata(
             BrokenCloner(), src_catalog, dest_catalog, _build_doc(0)
         )
 

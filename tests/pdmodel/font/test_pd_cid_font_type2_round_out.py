@@ -25,8 +25,8 @@ from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
 
 class _StubGlyph:
     def __init__(self, y_min: int, y_max: int, draw_cmds: list[tuple] | None = None) -> None:
-        self.yMin = y_min  # noqa: N815 — fontTools attribute name
-        self.yMax = y_max  # noqa: N815 — fontTools attribute name
+        self.yMin = y_min
+        self.yMax = y_max
         self._draw_cmds = draw_cmds or []
 
     def draw(self, pen: Any) -> None:
@@ -77,10 +77,10 @@ class _StubTTInner:
     def __getitem__(self, key: str) -> Any:
         return self._tables[key]
 
-    def getGlyphOrder(self) -> list[str]:  # noqa: N802 — fontTools name
+    def getGlyphOrder(self) -> list[str]:
         return self._order
 
-    def getGlyphName(self, gid: int) -> str:  # noqa: N802 — fontTools name
+    def getGlyphName(self, gid: int) -> str:
         return self._order[gid]
 
     def getGlyphSet(self) -> _StubGlyphSet:  # noqa: N802 — fontTools name

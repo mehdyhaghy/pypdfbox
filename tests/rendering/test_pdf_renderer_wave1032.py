@@ -12,7 +12,7 @@ def test_wave922_local_handler_is_invoked(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def call_wave922_handler(_caplog: Any, _monkeypatch: pytest.MonkeyPatch) -> None:
-        wave922.wave591.renderer_module._DISPATCH["W591"](None, object(), [])  # noqa: SLF001
+        wave922.wave591.renderer_module._DISPATCH["W591"](None, object(), [])
 
     monkeypatch.setattr(
         wave922.wave591,

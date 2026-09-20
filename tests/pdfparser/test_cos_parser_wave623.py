@@ -14,7 +14,7 @@ def _parser(data: bytes, document: COSDocument | None = None) -> COSParser:
 def test_wave623_missing_eol_after_stream_keyword_rewinds_body_byte() -> None:
     parser = _parser(b"ABCDE")
 
-    parser._consume_eol_after_stream_keyword()  # noqa: SLF001
+    parser._consume_eol_after_stream_keyword()
 
     assert parser.position == 0
     assert parser.peek() == ord("A")

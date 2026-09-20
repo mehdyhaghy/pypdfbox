@@ -28,12 +28,12 @@ def test_wave686_lookup_returns_none_for_missing_category_and_resolves_entries()
     resources = PDResources()
     name = COSName.get_pdf_name("F0")
 
-    assert resources._lookup("Font", name) is None  # noqa: SLF001
+    assert resources._lookup("Font", name) is None
 
     font_dict = COSDictionary()
     resources.put(PDResources.FONT, name, font_dict)
 
-    assert resources._lookup("Font", name) is font_dict  # noqa: SLF001
+    assert resources._lookup("Font", name) is font_dict
 
 
 def test_wave686_get_font_returns_none_for_indirect_non_dictionary() -> None:

@@ -380,7 +380,7 @@ class Draw:
 
     # ---- state ----------------------------------------------------------
 
-    def setantialias(self, on: bool) -> None:  # noqa: FBT001 - aggdraw signature
+    def setantialias(self, on: bool) -> None:
         """Record AA flag.  skia AA is per-Paint; we apply it on draw."""
         self._antialias = bool(on)
 

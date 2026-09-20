@@ -118,8 +118,8 @@ def test_to_unicode_predefined_name_parser_failure_returns_none(
 
 def test_to_unicode_uses_encoding_cmap_unicode_mapping() -> None:
     font = _font_with_encoding(None)
-    font._cmap_loaded = True  # noqa: SLF001
-    font._cmap = _UnicodeCMap({0x41: "A"})  # noqa: SLF001
+    font._cmap_loaded = True
+    font._cmap = _UnicodeCMap({0x41: "A"})
 
     assert font.to_unicode(0x41) == "A"
 

@@ -210,7 +210,7 @@ def test_write_hex_is_uppercase() -> None:
 
 def test_write_all_low_control_bytes_escaped() -> None:
     # Every byte < 0x21 must be escaped (none are in the passthrough set).
-    for b in range(0x00, 0x21):
+    for b in range(0x21):
         assert _write(bytes((b,))) == b"/#" + f"{b:02X}".encode("ascii")
 
 
@@ -239,7 +239,7 @@ def test_write_empty_name() -> None:
         b"\x00\x01\x1f",
         b"\x7f\x80\xff",
         b"Lime Green",
-        bytes(range(0x00, 0x80)),
+        bytes(range(0x80)),
         bytes(range(0x80, 0x100)),
     ],
     ids=[
@@ -263,7 +263,7 @@ def test_round_trip_identity(raw: bytes) -> None:
 
 
 def test_round_trip_full_byte_range_individually() -> None:
-    for b in range(0x00, 0x100):
+    for b in range(0x100):
         raw = bytes((b,))
         serialised = _write(raw)
         assert _parse(serialised + b" ") == raw, f"byte {b:#04x} failed round-trip"

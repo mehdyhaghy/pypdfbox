@@ -94,7 +94,7 @@ def test_cloudy_polygon_impl_negative_n_triggers_move_to_only() -> None:
     # ran the n<0 path at least once.
     cb.cloudy_polygon_impl(polygon, is_ellipse=False)
     assert cb._call_count >= 2
-    assert cb._output_started is True  # noqa: SLF001
+    assert cb._output_started is True
 
 
 # ---------- line 915: huge-ellipse closure tolerance ----------

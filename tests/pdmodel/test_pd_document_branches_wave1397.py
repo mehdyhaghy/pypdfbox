@@ -28,7 +28,7 @@ def test_get_current_access_permission_when_handler_lacks_method() -> None:
         """Has no ``get_current_access_permission`` attribute."""
 
     with PDDocument() as doc:
-        doc._security_handler = _BareHandler()  # noqa: SLF001
+        doc._security_handler = _BareHandler()
         # Force not encrypted so the next branch returns OwnerAccess.
         perms = doc.get_current_access_permission()
         # Returned non-None — the fall-through path produced a value.
@@ -104,7 +104,7 @@ def test_import_page_acroform_fixup_skips_non_dict_fields_entries() -> None:
 
         # Drive the fixup with a synthetic page carrying a widget annot.
         page = _build_page_with_widget_annot("FieldB")
-        doc._import_page_acroform_fixup(page.get_cos_object())  # noqa: SLF001
+        doc._import_page_acroform_fixup(page.get_cos_object())
         # No crash → branch covered.
 
 
@@ -125,11 +125,11 @@ def test_import_page_acroform_fixup_reuses_existing_counter() -> None:
         )
         # First import → installs the counter at 1650.
         page1 = _build_page_with_widget_annot("Conflict")
-        doc._import_page_acroform_fixup(page1.get_cos_object())  # noqa: SLF001
+        doc._import_page_acroform_fixup(page1.get_cos_object())
         assert hasattr(doc, "_import_field_counter")
-        first_counter = doc._import_field_counter  # noqa: SLF001
+        first_counter = doc._import_field_counter
         # Second import → exists, skips re-initialisation branch.
         page2 = _build_page_with_widget_annot("Conflict")
-        doc._import_page_acroform_fixup(page2.get_cos_object())  # noqa: SLF001
+        doc._import_page_acroform_fixup(page2.get_cos_object())
         # Counter advanced (or stayed); critically, no AttributeError raised.
-        assert doc._import_field_counter >= first_counter  # noqa: SLF001
+        assert doc._import_field_counter >= first_counter

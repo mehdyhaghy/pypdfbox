@@ -440,7 +440,7 @@ class PDFDebugger:
         """
         # Reset the singleton ViewMenu so multiple tests can instantiate
         # the debugger without inheriting stale state.
-        ViewMenu._reset_instance()  # noqa: SLF001
+        ViewMenu._reset_instance()
         view_menu = ViewMenu.get_instance(pdf_debugger=self, master=parent)
         return view_menu.get_menu()
 
@@ -665,7 +665,7 @@ class PDFDebugger:
             page_labels = catalog.get_page_labels()
         except OSError as ex:
             return str(ex)
-        except Exception:  # noqa: BLE001 - mirrors upstream's broad catch
+        except Exception:
             return None
         if page_labels is None or page_index < 0:
             return None
@@ -739,7 +739,7 @@ class PDFDebugger:
         # Reset state.
         for iid in self._tree.get_children(""):
             self._tree.delete(iid)
-        self._tree._node_for_iid.clear()  # noqa: SLF001
+        self._tree._node_for_iid.clear()
 
         if root_obj is None:
             return
@@ -765,13 +765,13 @@ class PDFDebugger:
         """
         try:
             count = model.get_child_count(parent_node)
-        except Exception as ex:  # noqa: BLE001
+        except Exception as ex:
             _LOG.error("get_child_count failed: %s", ex)
             return
         for i in range(count):
             try:
                 child = model.get_child(parent_node, i)
-            except Exception as ex:  # noqa: BLE001
+            except Exception as ex:
                 _LOG.error("get_child failed: %s", ex)
                 continue
             label = _node_label(child)
@@ -781,7 +781,7 @@ class PDFDebugger:
             try:
                 if not model.is_leaf(child):
                     self._tree.insert(iid, "end", text="...")
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
         # On-demand expand handler — replace the sentinel with real
         # children when the user opens a node.
@@ -823,7 +823,7 @@ class PDFDebugger:
         parent_node = self._tree.get_node(parent_iid) if parent_iid else None
         try:
             self._dispatch_selection(node, parent_node, iid, parent_iid)
-        except Exception as ex:  # noqa: BLE001
+        except Exception as ex:
             _LOG.error("%s", ex)
             self._show_text_details(node)
 
@@ -1285,7 +1285,7 @@ class PDFDebugger:
             return
         try:
             n_pages = self._document.get_number_of_pages()
-        except Exception as ex:  # noqa: BLE001 - surface to user
+        except Exception as ex:
             messagebox.showerror(
                 "Print",
                 f"Could not determine page count: {ex}",
@@ -1301,7 +1301,7 @@ class PDFDebugger:
             return
         try:
             self._send_document_to_printer(n_pages)
-        except Exception as ex:  # noqa: BLE001 - surface to user
+        except Exception as ex:
             messagebox.showerror(
                 "Print",
                 f"Printing failed: {ex}",
@@ -1337,12 +1337,12 @@ class PDFDebugger:
         # Platform dispatch. We don't wait on the spooler — printing is
         # asynchronous from the user's perspective.
         if sys.platform == "win32" and hasattr(os, "startfile"):
-            os.startfile(str(tmp_path), "print")  # type: ignore[attr-defined]  # noqa: S606
+            os.startfile(str(tmp_path), "print")  # type: ignore[attr-defined]
             return
         for cmd in ("lp", "lpr"):
             if shutil.which(cmd):
                 try:
-                    subprocess.Popen(  # noqa: S603 - cmd is from a fixed allow-list
+                    subprocess.Popen(
                         [cmd, str(tmp_path)]
                     )
                     return
@@ -1351,7 +1351,7 @@ class PDFDebugger:
                     continue
         opener = "open" if sys.platform == "darwin" else "xdg-open"
         if shutil.which(opener):
-            subprocess.Popen([opener, str(tmp_path)])  # noqa: S603
+            subprocess.Popen([opener, str(tmp_path)])
             return
         # No spooler and no opener — surface a friendly note pointing the
         # user at the rasterised PDF so they can hand-print it.
@@ -1515,7 +1515,7 @@ class PDFDebugger:
                 self._read_pdf_file(self._current_file_path, "")
             with contextlib.suppress(AttributeError, tk.TclError):
                 self._toplevel.deiconify()  # type: ignore[union-attr]
-        except Exception as ex:  # noqa: BLE001 - mirrors upstream broad catch
+        except Exception as ex:
             _LOG.error("PDFDebugger.call failed: %s", ex)
             with contextlib.suppress(Exception):
                 ErrorDialog(ex).set_visible(True)
@@ -1606,7 +1606,7 @@ class PDFDebugger:
         except OSError as ex:
             ErrorDialog(ex).set_visible(True)
 
-    def open(self) -> PDDocument | None:  # noqa: A003 - mirrors upstream name
+    def open(self) -> PDDocument | None:
         """Open a document via the currently selected source path.
 
         Mirrors the anonymous overrides of
@@ -1642,14 +1642,14 @@ class PDFDebugger:
         identically to upstream (400x250) and centred over the master.
         """
         try:
-            from urllib.parse import urlparse  # noqa: PLC0415
-            from urllib.request import urlopen  # noqa: PLC0415
+            from urllib.parse import urlparse
+            from urllib.request import urlopen
 
             parsed = urlparse(resource)
             if parsed.scheme in ("", "file"):
                 body = Path(parsed.path or resource).read_text(encoding="utf-8")
             else:
-                with urlopen(resource) as response:  # noqa: S310
+                with urlopen(resource) as response:
                     body = response.read().decode("utf-8", errors="replace")
         except OSError as ex:
             ErrorDialog(ex).set_visible(True)
@@ -1679,9 +1679,9 @@ class PDFDebugger:
         upstream).
         """
         try:
-            from urllib.request import urlopen  # noqa: PLC0415
+            from urllib.request import urlopen
 
-            with urlopen(url) as response:  # noqa: S310 - user-supplied URL
+            with urlopen(url) as response:
                 body = response.read().decode("utf-8", errors="replace")
         except OSError as ex:
             ErrorDialog(ex).set_visible(True)
@@ -1712,7 +1712,7 @@ class PDFDebugger:
         """Open ``file_path`` and rebuild the tree."""
         # Local import to avoid a heavy import at module load time, and
         # to keep tests that exercise non-loading paths trivially light.
-        from pypdfbox.pdmodel import PDDocument  # noqa: PLC0415
+        from pypdfbox.pdmodel import PDDocument
 
         if self._document is not None:
             with contextlib.suppress(Exception):
@@ -1748,10 +1748,10 @@ class PDFDebugger:
 
     def _read_pdf_url(self, url_string: str, password: str | bytes = "") -> None:
         """Open a remote PDF and rebuild the tree."""
-        from urllib.parse import urlparse  # noqa: PLC0415
-        from urllib.request import urlopen  # noqa: PLC0415
+        from urllib.parse import urlparse
+        from urllib.request import urlopen
 
-        from pypdfbox.pdmodel import PDDocument  # noqa: PLC0415
+        from pypdfbox.pdmodel import PDDocument
 
         parsed = urlparse(url_string)
         if not parsed.scheme:
@@ -1769,7 +1769,7 @@ class PDFDebugger:
         self._current_file_path = url_string
         # ``urlopen`` is the stdlib equivalent of upstream's
         # ``RandomAccessReadBuffer.createBufferFromStream(url.openStream())``.
-        with urlopen(url_string) as response:  # noqa: S310 - user-supplied URL
+        with urlopen(url_string) as response:
             data = response.read()
         self._document = (
             PDDocument.load(data, password) if password else PDDocument.load(data)
@@ -1815,7 +1815,7 @@ class PDFDebugger:
         for path in reversed(files):
             name = Path(path).name
 
-            def _opener(path=path) -> None:  # noqa: ANN001 - local default arg
+            def _opener(path=path) -> None:
                 with contextlib.suppress(OSError):
                     self._read_pdf_file(path, "")
 
@@ -1912,7 +1912,7 @@ class PDFDebugger:
         :meth:`PDDocument.load` raises after exhausting password
         retries.
         """
-        from pypdfbox.pdmodel import PDDocument  # noqa: PLC0415
+        from pypdfbox.pdmodel import PDDocument
 
         opener = DocumentOpener(password=password, master=self._toplevel)
 
@@ -1925,9 +1925,9 @@ class PDFDebugger:
                 )
             text = str(source)
             if text.startswith(("http://", "https://", "file:")):
-                from urllib.request import urlopen  # noqa: PLC0415
+                from urllib.request import urlopen
 
-                with urlopen(text) as response:  # noqa: S310 - user-supplied URL
+                with urlopen(text) as response:
                     data = response.read()
                 return (
                     PDDocument.load(data, opener.password)
@@ -2071,7 +2071,7 @@ class PDFDebugger:
     @classmethod
     def main(cls, args: list[str] | None = None) -> int:
         """Command-line entry point. Mirrors upstream ``PDFDebugger.main``."""
-        import argparse  # noqa: PLC0415
+        import argparse
 
         parser = argparse.ArgumentParser(
             prog="pdfdebugger",
@@ -2130,23 +2130,23 @@ class PDFDebugger:
     # so parity tooling and upstream-style call-sites can invoke them
     # directly.
 
-    def open_menu_item_action_performed(self, event: Any = None) -> None:  # noqa: ARG002
+    def open_menu_item_action_performed(self, event: Any = None) -> None:
         """Open-file menu action. Mirrors upstream ``openMenuItemActionPerformed``."""
         self._open_menu_item_action_performed()
 
-    def save_as_menu_item_action_performed(self, event: Any = None) -> None:  # noqa: ARG002
+    def save_as_menu_item_action_performed(self, event: Any = None) -> None:
         """Save-as menu action. Mirrors upstream ``saveAsMenuItemActionPerformed``."""
         self._save_as_menu_item_action_performed()
 
-    def print_menu_item_action_performed(self, event: Any = None) -> None:  # noqa: ARG002
+    def print_menu_item_action_performed(self, event: Any = None) -> None:
         """Print menu action. Mirrors upstream ``printMenuItemActionPerformed``."""
         self._print_menu_item_action_performed()
 
-    def exit_menu_item_action_performed(self, event: Any = None) -> None:  # noqa: ARG002
+    def exit_menu_item_action_performed(self, event: Any = None) -> None:
         """Exit menu action. Mirrors upstream ``exitMenuItemActionPerformed``."""
         self._exit_menu_item_action_performed()
 
-    def j_tree1_value_changed(self, event: Any = None) -> None:  # noqa: ARG002
+    def j_tree1_value_changed(self, event: Any = None) -> None:
         """Tree-selection listener. Mirrors upstream ``jTree1ValueChanged``.
 
         Upstream's body delegates to the dispatch routine that fans out
@@ -2400,7 +2400,7 @@ class DocumentOpener:
         self.password: str | bytes = password
         self._master = master
 
-    def open(self) -> PDDocument:  # noqa: A003 - mirrors upstream method name
+    def open(self) -> PDDocument:
         """Load the underlying input and return a :class:`PDDocument`.
 
         Subclasses must override; the base implementation raises
@@ -2416,7 +2416,7 @@ class DocumentOpener:
         """
         # Local import: encryption pulls a large module subtree; loading
         # it eagerly would bloat unrelated debugger workflows.
-        from pypdfbox.pdmodel.encryption import (  # noqa: PLC0415
+        from pypdfbox.pdmodel.encryption import (
             InvalidPasswordException,
         )
 
@@ -2447,7 +2447,7 @@ class DocumentOpener:
                 # Tk not available; fall through to the stdin prompt.
                 pass
         try:
-            import getpass  # noqa: PLC0415
+            import getpass
 
             return getpass.getpass("Password: ")
         except (EOFError, KeyboardInterrupt):

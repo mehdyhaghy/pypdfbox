@@ -26,35 +26,35 @@ def test_wave943_process_page_restores_active_text_state_when_extraction_raises(
     class FailingStripper(PDFTextStripper):
         def _extract_positions(self, body: bytes) -> list[TextPosition]:
             assert body
-            assert self._active_page is page  # noqa: SLF001
-            self._active_cmap = cast(Any, object())  # noqa: SLF001
-            self._active_font = cast(Any, object())  # noqa: SLF001
-            self._active_avg_advance = 12.0  # noqa: SLF001
+            assert self._active_page is page
+            self._active_cmap = cast("Any", object())
+            self._active_font = cast("Any", object())
+            self._active_avg_advance = 12.0
             raise RuntimeError("parser failed")
 
     stripper = FailingStripper()
-    stripper._active_page = cast(Any, object())  # noqa: SLF001
-    stripper._cmap_cache = {"old": cast(Any, object())}  # noqa: SLF001
-    stripper._font_cache = {"old": cast(Any, object())}  # noqa: SLF001
+    stripper._active_page = cast("Any", object())
+    stripper._cmap_cache = {"old": cast("Any", object())}
+    stripper._font_cache = {"old": cast("Any", object())}
 
     try:
         with pytest.raises(RuntimeError, match="parser failed"):
             stripper.process_page(page)
 
-        assert stripper._active_page is None  # noqa: SLF001
-        assert stripper._active_cmap is None  # noqa: SLF001
-        assert stripper._active_font is None  # noqa: SLF001
-        assert stripper._active_avg_advance is None  # noqa: SLF001
-        assert stripper._cmap_cache == {}  # noqa: SLF001
-        assert stripper._font_cache == {}  # noqa: SLF001
+        assert stripper._active_page is None
+        assert stripper._active_cmap is None
+        assert stripper._active_font is None
+        assert stripper._active_avg_advance is None
+        assert stripper._cmap_cache == {}
+        assert stripper._font_cache == {}
     finally:
         doc.close()
 
 
 def _beaded_stripper() -> tuple[PDFTextStripper, TextPosition, TextPosition, TextPosition]:
     stripper = PDFTextStripper()
-    stripper._active_page = cast(  # noqa: SLF001
-        Any,
+    stripper._active_page = cast(
+        "Any",
         SimpleNamespace(
             get_thread_beads=lambda: [
                 SimpleNamespace(get_rectangle=lambda: PDRectangle(0.0, 0.0, 10.0, 10.0)),
@@ -81,7 +81,7 @@ def test_wave943_bead_partition_uses_upstream_slot_ordering() -> None:
     ``processTextPosition`` (PDFTextStripper.java:954-1020)."""
     stripper, first, residual, second = _beaded_stripper()
 
-    assert stripper._partition_by_beads([first, residual, second]) == [  # noqa: SLF001
+    assert stripper._partition_by_beads([first, residual, second]) == [
         [residual],
         [first],
         [second],
@@ -100,4 +100,4 @@ def test_wave943_bead_buckets_concatenate_with_no_default_separator() -> None:
     stripper, first, residual, second = _beaded_stripper()
     # Slot order is [outside](slot 0), [first](slot 1), [second](slot 3);
     # default article markers are empty, so the three buckets concatenate.
-    assert stripper._format_positions([first, residual, second]) == "outsidefirstsecond"  # noqa: SLF001
+    assert stripper._format_positions([first, residual, second]) == "outsidefirstsecond"

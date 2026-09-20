@@ -86,9 +86,9 @@ def test_wave543_process_annotations_rewrites_popup_to_cloned_popup() -> None:
 
     splitter = Splitter()
     # Wave 1373: chunk-level deferred second pass; drain manually.
-    splitter._pending_annot_passes = []  # noqa: SLF001
-    splitter._process_annotations(source_page, imported)  # noqa: SLF001
-    splitter._finalize_annotation_links()  # noqa: SLF001
+    splitter._pending_annot_passes = []
+    splitter._process_annotations(source_page, imported)
+    splitter._finalize_annotation_links()
 
     cloned_annots = imported.get_cos_object().get_dictionary_object(_ANNOTS)
     assert isinstance(cloned_annots, COSArray)
@@ -109,13 +109,13 @@ def test_wave543_fix_destinations_ignores_non_page_targets() -> None:
     dest.add(COSName.get_pdf_name("NamedTarget"))
     dest.add(_FIT)
     splitter = Splitter()
-    splitter._dest_to_fix = [(dest, source.get_page(0).get_cos_object())]  # noqa: SLF001
-    splitter._page_dict_map = {  # noqa: SLF001
+    splitter._dest_to_fix = [(dest, source.get_page(0).get_cos_object())]
+    splitter._page_dict_map = {
         id(source.get_page(0).get_cos_object()): chunk.get_page(0).get_cos_object()
     }
 
     try:
-        splitter._fix_destinations(chunk)  # noqa: SLF001
+        splitter._fix_destinations(chunk)
 
         assert dest.get(0) is COSName.get_pdf_name("NamedTarget")
     finally:

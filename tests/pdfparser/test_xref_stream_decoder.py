@@ -104,7 +104,7 @@ def test_xref_stream_with_uncompressed_in_use_entries() -> None:
     assert doc.has_object(COSObjectKey(2, 0))
     body1 = doc.get_object_from_pool(COSObjectKey(1, 0)).get_object()
     body2 = doc.get_object_from_pool(COSObjectKey(2, 0)).get_object()
-    from pypdfbox.cos import COSInteger  # noqa: PLC0415
+    from pypdfbox.cos import COSInteger
 
     assert isinstance(body1, COSInteger) and body1.value == 42
     assert isinstance(body2, COSString) and body2.get_bytes() == b"hello"
@@ -154,7 +154,7 @@ def test_xref_stream_w1_zero_defaults_to_in_use() -> None:
     doc = PDFParser(RandomAccessReadBuffer(pdf)).parse()
     # Object 1 is in-use — the implicit type 1 must apply.
     assert doc.has_object(COSObjectKey(1, 0))
-    from pypdfbox.cos import COSInteger  # noqa: PLC0415
+    from pypdfbox.cos import COSInteger
 
     body = doc.get_object_from_pool(COSObjectKey(1, 0)).get_object()
     assert isinstance(body, COSInteger) and body.value == 7
@@ -251,14 +251,14 @@ def test_encrypted_xref_stream_with_handler_decodes_body() -> None:
     pool entries would never appear.
     """
     pytest.importorskip("pypdfbox.pdmodel.encryption.standard_security_handler")
-    from pypdfbox.pdmodel.encryption.access_permission import (  # noqa: PLC0415
+    from pypdfbox.pdmodel.encryption.access_permission import (
         AccessPermission,
     )
-    from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption  # noqa: PLC0415
-    from pypdfbox.pdmodel.encryption.standard_protection_policy import (  # noqa: PLC0415
+    from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption
+    from pypdfbox.pdmodel.encryption.standard_protection_policy import (
         StandardProtectionPolicy,
     )
-    from pypdfbox.pdmodel.encryption.standard_security_handler import (  # noqa: PLC0415
+    from pypdfbox.pdmodel.encryption.standard_security_handler import (
         StandardSecurityHandler,
     )
 

@@ -198,7 +198,7 @@ class PDTilingPattern(PDAbstractPattern):
         """Return the wrapped content stream as a ``PDStream``. Mirrors
         upstream ``PDTilingPattern.getContentStream`` — tiling patterns
         carry a content stream describing one tile cell."""
-        from pypdfbox.pdmodel.common.pd_stream import PDStream  # noqa: PLC0415
+        from pypdfbox.pdmodel.common.pd_stream import PDStream
 
         cos = self._dict
         if not isinstance(cos, COSStream):

@@ -78,7 +78,7 @@ class RemoveAllText:
             for name in get_x_object_names():
                 try:
                     xobject = resources.get_x_object(name)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     continue
                 # Recurse when the XObject looks like a form xobject.
                 child_resources = getattr(xobject, "get_resources", None)
@@ -103,7 +103,7 @@ class RemoveAllText:
             with new_contents.create_output_stream(COSName.get_pdf_name("FlateDecode")) as out:
                 writer = ContentStreamWriter(out)
                 writer.write_tokens(new_tokens)
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
     @staticmethod
@@ -144,7 +144,7 @@ class RemoveAllText:
                 new_tokens.append(token)
                 token = parser.parse_next_token()
             return new_tokens
-        except Exception:  # noqa: BLE001
+        except Exception:
             return []
 
     @staticmethod
