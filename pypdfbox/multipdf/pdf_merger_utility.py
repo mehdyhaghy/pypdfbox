@@ -190,6 +190,7 @@ _ANNOTS: COSName = COSName.get_pdf_name("Annots")
 # ---------- enums ----------
 
 
+@enum.unique
 class DocumentMergeMode(enum.Enum):
     """Mirrors ``PDFMergerUtility.DocumentMergeMode``.
 
@@ -206,6 +207,7 @@ class DocumentMergeMode(enum.Enum):
     PDFBOX_LEGACY_MODE = "PDFBOX_LEGACY_MODE"
 
 
+@enum.unique
 class AcroFormMergeMode(enum.Enum):
     """Mirrors ``PDFMergerUtility.AcroFormMergeMode``."""
 

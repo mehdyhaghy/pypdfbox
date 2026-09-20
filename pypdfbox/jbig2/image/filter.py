@@ -12,9 +12,10 @@ Every kernel's ``f(x)`` is ported verbatim; the polynomial coefficient tables in
 """
 
 import math
-from enum import Enum
+from enum import Enum, unique
 
 
+@unique
 class FilterType(Enum):
     """Mirror ``org.apache.pdfbox.jbig2.image.FilterType`` (member order kept)."""
 

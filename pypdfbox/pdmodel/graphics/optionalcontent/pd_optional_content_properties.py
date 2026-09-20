@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import Enum, unique
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
 from pypdfbox.cos.cos_object import COSObject
@@ -7,6 +7,7 @@ from .pd_optional_content_configuration import PDOptionalContentConfiguration
 from .pd_optional_content_group import PDOptionalContentGroup
 
 
+@unique
 class BaseState(Enum):
     """OCG /D /BaseState. Mirrors upstream nested enum
     ``PDOptionalContentProperties.BaseState`` (``ON`` / ``OFF`` /

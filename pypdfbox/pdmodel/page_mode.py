@@ -7,11 +7,12 @@ compare equal to their underlying string value, which keeps callers that
 still pass plain strings working without changes.
 """
 
-from enum import StrEnum
+from enum import StrEnum, unique
 
 from pypdfbox.cos import COSName
 
 
+@unique
 class PageMode(StrEnum):
     """A name object specifying how the document shall be displayed when
     opened.

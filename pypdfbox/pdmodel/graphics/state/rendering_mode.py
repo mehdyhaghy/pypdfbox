@@ -1,6 +1,7 @@
-from enum import Enum
+from enum import Enum, unique
 
 
+@unique
 class RenderingMode(Enum):
     """Text Rendering Mode. Mirrors PDFBox ``RenderingMode``.
 

@@ -41,7 +41,7 @@ _ORACLE = _REPO_ROOT / "archive" / "oracle"
 if not _ORACLE.exists() and (_REPO_ROOT / "oracle").exists():
     _ORACLE = _REPO_ROOT / "oracle"
 _JARS_DIR = _ORACLE / "jars"
-_JAR = _JARS_DIR / "pdfbox-app-3.0.7.jar"
+_JAR = _JARS_DIR / "pdfbox-app-3.0.8.jar"
 _PROBES = _ORACLE / "probes"
 _BUILD = _ORACLE / "build"
 

@@ -13,7 +13,7 @@ from PDFBox doesn't blow up on AttributeError. The lite renderer in
 to pick the matching Pillow ``Image.new(mode=...)`` argument.
 """
 
-from enum import Enum
+from enum import Enum, unique
 
 # AWT BufferedImage type constants (java.awt.image.BufferedImage). Kept
 # as module-level ints so callers porting from upstream Java code can
@@ -26,6 +26,7 @@ TYPE_BYTE_GRAY: int = 10
 TYPE_BYTE_BINARY: int = 12
 
 
+@unique
 class ImageType(Enum):
     """Image type for rendering."""
 

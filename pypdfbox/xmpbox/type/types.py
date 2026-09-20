@@ -5,84 +5,109 @@ Mirrors ``org.apache.xmpbox.type.Types`` (PDFBox 3.0,
 
 The Java enum classifies every XMP property kind as basic/derived,
 simple/structured, and pairs it with the ``AbstractField`` subclass that
-materialises that type. We model it as a Python ``Enum`` whose values are
-the metadata tuple ``(name, simple, basic, impl_class_name)`` so callers
-can introspect classifications without forcing the implementation classes
-to import at module-load time.
+materialises that type.
 
-The leading ``name`` element exists purely to keep every member's value
-unique. Java enum constants are always distinct even when they carry
-identical constructor arguments, whereas a Python ``Enum`` silently folds
-equal-valued members into aliases. Without the discriminator
-``DefinedType`` would alias ``Structured`` and ``LangAlt`` would alias
-``GPSCoordinate``, losing two of upstream's 38 constants.
+Java enum constants are distinct by identity no matter what arguments they
+carry; a Python ``Enum`` instead folds members that share a value into
+aliases. Two pairs here carry identical metadata -- ``DefinedType`` with
+``Structured``, and ``LangAlt`` with ``GPSCoordinate`` -- so the obvious
+``Member = (simple, basic, impl)`` spelling silently produced 36 constants
+out of 38, and ``Types.Structured.is_defined()`` answered ``True``.
+
+``__new__`` therefore gives every member its own ``_value_`` and the
+declared tuple is consumed by ``__init__`` as named attributes. That is
+the same shape as the Java constructor -- arguments become fields, the
+constant's identity is its own -- and it makes uniqueness structural: a
+new member with metadata identical to an existing one cannot reintroduce
+the alias. ``@unique`` guards the result at import time.
+
+The implementing class is carried as a *name* rather than the class
+object so the implementation modules need not import at module-load time.
+``_value_`` is an opaque ordinal with no upstream counterpart (Java enums
+have no ``value``); callers use the accessors or the named attributes.
 """
 
-from enum import Enum
+from enum import Enum, unique
 
 
+@unique
 class Types(Enum):
-    Structured = ("Structured", False, None, None)
-    DefinedType = ("DefinedType", False, None, None)
+    simple: bool
+    basic: str | None
+    impl_class_name: str | None
+
+    def __new__(cls, *args: object) -> Types:
+        # Unique ordinal per member -- see the module docstring. Without this,
+        # members sharing a metadata tuple collapse into aliases.
+        obj = object.__new__(cls)
+        obj._value_ = len(cls.__members__) + 1
+        return obj
+
+    def __init__(self, simple: bool, basic: str | None, impl_class_name: str | None) -> None:
+        self.simple = simple
+        self.basic = basic
+        self.impl_class_name = impl_class_name
+
+    Structured = (False, None, None)
+    DefinedType = (False, None, None)  # noqa: PIE796 (distinct via __new__)
 
     # basic
-    Text = ("Text", True, None, "TextType")
-    Date = ("Date", True, None, "DateType")
-    Boolean = ("Boolean", True, None, "BooleanType")
-    Integer = ("Integer", True, None, "IntegerType")
-    Real = ("Real", True, None, "RealType")
-    GPSCoordinate = ("GPSCoordinate", True, "Text", "TextType")
+    Text = (True, None, "TextType")
+    Date = (True, None, "DateType")
+    Boolean = (True, None, "BooleanType")
+    Integer = (True, None, "IntegerType")
+    Real = (True, None, "RealType")
+    GPSCoordinate = (True, "Text", "TextType")
 
-    ProperName = ("ProperName", True, "Text", "ProperNameType")
-    Locale = ("Locale", True, "Text", "LocaleType")
-    AgentName = ("AgentName", True, "Text", "AgentNameType")
-    GUID = ("GUID", True, "Text", "GUIDType")
-    XPath = ("XPath", True, "Text", "XPathType")
-    Part = ("Part", True, "Text", "PartType")
-    URL = ("URL", True, "Text", "URLType")
-    URI = ("URI", True, "Text", "URIType")
-    Choice = ("Choice", True, "Text", "ChoiceType")
-    MIMEType = ("MIMEType", True, "Text", "MIMEType")
-    LangAlt = ("LangAlt", True, "Text", "TextType")
-    RenditionClass = ("RenditionClass", True, "Text", "RenditionClassType")
-    Rational = ("Rational", True, "Text", "RationalType")
+    ProperName = (True, "Text", "ProperNameType")
+    Locale = (True, "Text", "LocaleType")
+    AgentName = (True, "Text", "AgentNameType")
+    GUID = (True, "Text", "GUIDType")
+    XPath = (True, "Text", "XPathType")
+    Part = (True, "Text", "PartType")
+    URL = (True, "Text", "URLType")
+    URI = (True, "Text", "URIType")
+    Choice = (True, "Text", "ChoiceType")
+    MIMEType = (True, "Text", "MIMEType")
+    LangAlt = (True, "Text", "TextType")  # noqa: PIE796 (distinct via __new__)
+    RenditionClass = (True, "Text", "RenditionClassType")
+    Rational = (True, "Text", "RationalType")
 
-    Colorant = ("Colorant", False, "Structured", "ColorantType")
-    Font = ("Font", False, "Structured", "FontType")
-    Layer = ("Layer", False, "Structured", "LayerType")
-    Thumbnail = ("Thumbnail", False, "Structured", "ThumbnailType")
-    ResourceEvent = ("ResourceEvent", False, "Structured", "ResourceEventType")
-    ResourceRef = ("ResourceRef", False, "Structured", "ResourceRefType")
-    Version = ("Version", False, "Structured", "VersionType")
-    PDFASchema = ("PDFASchema", False, "Structured", "PDFASchemaType")
-    PDFAField = ("PDFAField", False, "Structured", "PDFAFieldType")
-    PDFAProperty = ("PDFAProperty", False, "Structured", "PDFAPropertyType")
-    PDFAType = ("PDFAType", False, "Structured", "PDFATypeType")
-    Job = ("Job", False, "Structured", "JobType")
-    OECF = ("OECF", False, "Structured", "OECFType")
-    CFAPattern = ("CFAPattern", False, "Structured", "CFAPatternType")
-    DeviceSettings = ("DeviceSettings", False, "Structured", "DeviceSettingsType")
-    Flash = ("Flash", False, "Structured", "FlashType")
-    Dimensions = ("Dimensions", False, "Structured", "DimensionsType")
+    Colorant = (False, "Structured", "ColorantType")
+    Font = (False, "Structured", "FontType")
+    Layer = (False, "Structured", "LayerType")
+    Thumbnail = (False, "Structured", "ThumbnailType")
+    ResourceEvent = (False, "Structured", "ResourceEventType")
+    ResourceRef = (False, "Structured", "ResourceRefType")
+    Version = (False, "Structured", "VersionType")
+    PDFASchema = (False, "Structured", "PDFASchemaType")
+    PDFAField = (False, "Structured", "PDFAFieldType")
+    PDFAProperty = (False, "Structured", "PDFAPropertyType")
+    PDFAType = (False, "Structured", "PDFATypeType")
+    Job = (False, "Structured", "JobType")
+    OECF = (False, "Structured", "OECFType")
+    CFAPattern = (False, "Structured", "CFAPatternType")
+    DeviceSettings = (False, "Structured", "DeviceSettingsType")
+    Flash = (False, "Structured", "FlashType")
+    Dimensions = (False, "Structured", "DimensionsType")
 
     def is_simple(self) -> bool:
-        return self.value[1]
+        return self.simple
 
     def is_basic(self) -> bool:
-        return self.value[2] is None
+        return self.basic is None
 
     def is_structured(self) -> bool:
-        return self.value[2] == "Structured"
+        return self.basic == "Structured"
 
     def is_defined(self) -> bool:
         return self is Types.DefinedType
 
     def get_basic(self) -> Types | None:
-        b = self.value[2]
-        return None if b is None else Types[b]
+        return None if self.basic is None else Types[self.basic]
 
     def get_implementing_class_name(self) -> str | None:
-        return self.value[3]
+        return self.impl_class_name
 
 
 __all__ = ["Types"]

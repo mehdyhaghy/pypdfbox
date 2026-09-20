@@ -7,9 +7,10 @@ interpreter.
 """
 
 from abc import ABC, abstractmethod
-from enum import Enum
+from enum import Enum, unique
 
 
+@unique
 class _State(Enum):
     """Used to indicate the parser's current state."""
 

@@ -1,8 +1,9 @@
 import os
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, unique
 
 
+@unique
 class StorageMode(Enum):
     MAIN_MEMORY_ONLY = "main_memory_only"
     TEMP_FILE_ONLY = "temp_file_only"

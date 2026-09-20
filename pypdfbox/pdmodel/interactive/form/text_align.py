@@ -1,6 +1,7 @@
-from enum import Enum
+from enum import Enum, unique
 
 
+@unique
 class TextAlign(Enum):
     """Text-alignment enum used by :class:`PlainTextFormatter`. Mirrors
     the inner enum

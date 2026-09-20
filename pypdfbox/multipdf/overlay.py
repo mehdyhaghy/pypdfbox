@@ -2,7 +2,7 @@ import logging
 import os
 import struct
 from decimal import Decimal
-from enum import Enum
+from enum import Enum, unique
 from typing import TYPE_CHECKING, Any, cast
 
 from pypdfbox.cos import (
@@ -35,6 +35,7 @@ _FLATE_DECODE: COSName = COSName.get_pdf_name("FlateDecode")
 _RESOURCES: COSName = COSName.get_pdf_name("Resources")
 
 
+@unique
 class Position(Enum):
     """Possible location of the overlaid pages: foreground or background.
 

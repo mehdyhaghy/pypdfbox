@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import Enum, unique
 from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName
@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from .pd_optional_content_group_usage import PDOptionalContentGroupUsage
 
 
+@unique
 class RenderState(Enum):
     """Render state for an OCG /Usage entry. Mirrors upstream nested enum
     ``PDOptionalContentGroup.RenderState`` (values "ON"/"OFF").

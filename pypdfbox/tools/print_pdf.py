@@ -30,6 +30,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+@enum.unique
 class Duplex(enum.Enum):
     """Mirror of inner enum ``PrintPDF.Duplex`` (PrintPDF.java:61)."""
 

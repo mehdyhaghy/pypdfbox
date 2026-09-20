@@ -1,5 +1,5 @@
 import contextlib
-from enum import Enum
+from enum import Enum, unique
 from typing import TYPE_CHECKING
 
 from .abstract_field import AbstractField
@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from ..xmp_metadata import XMPMetadata
 
 
+@unique
 class Cardinality(Enum):
     """
     Ported from ``org.apache.xmpbox.type.Cardinality``. ``Simple`` is the

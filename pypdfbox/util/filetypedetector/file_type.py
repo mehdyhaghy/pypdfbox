@@ -3,9 +3,10 @@
 Mirrors ``org.apache.pdfbox.util.filetypedetector.FileType``.
 """
 
-from enum import Enum
+from enum import Enum, unique
 
 
+@unique
 class FileType(Enum):
     UNKNOWN = "Unknown"
     JPEG = "JPEG"

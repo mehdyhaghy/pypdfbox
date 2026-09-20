@@ -9,7 +9,7 @@ same set of getters/setters and a ``render`` entry point that returns a
 Python analogue for sending a page to a Pillow-based printer backend.
 """
 
-from enum import Enum
+from enum import Enum, unique
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_document import PDDocument
 
 
+@unique
 class Scaling(Enum):
     NONE = "NONE"
     SHRINK_TO_FIT = "SHRINK_TO_FIT"

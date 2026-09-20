@@ -9,7 +9,7 @@ the API surface so callers can interrogate page count, page sizes and a
 per-page :class:`PDFPrintable`.
 """
 
-from enum import Enum
+from enum import Enum, unique
 from typing import TYPE_CHECKING
 
 from pypdfbox.printing.pdf_printable import PDFPrintable
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_document import PDDocument
 
 
+@unique
 class Orientation(Enum):
     AUTO = "AUTO"
     PORTRAIT = "PORTRAIT"

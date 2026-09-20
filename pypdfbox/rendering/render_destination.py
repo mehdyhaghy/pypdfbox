@@ -5,9 +5,10 @@ content groups are visible depending on the render purpose: graphics
 export, on-screen viewing, or printing.
 """
 
-from enum import Enum
+from enum import Enum, unique
 
 
+@unique
 class RenderDestination(Enum):
     """Optional content groups are visible depending on the render purpose."""
 

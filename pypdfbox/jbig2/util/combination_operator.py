@@ -1,6 +1,7 @@
-from enum import Enum
+from enum import Enum, unique
 
 
+@unique
 class CombinationOperator(Enum):
     """The available logical operators defined in the JBIG2 ISO standard.
 

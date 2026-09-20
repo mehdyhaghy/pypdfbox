@@ -87,6 +87,7 @@ def _font_bbox_height(font: PDFont) -> float:
     return 1000.0
 
 
+@enum.unique
 class PageSizes(enum.Enum):
     """Mirror of inner ``TextToPDF.PageSizes`` (TextToPDF.java:116)."""
 

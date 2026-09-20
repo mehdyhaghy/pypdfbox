@@ -24,7 +24,7 @@ re-parse the TTF.
 
 import io
 import logging
-from enum import Enum, auto
+from enum import Enum, auto, unique
 from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
@@ -41,6 +41,7 @@ if TYPE_CHECKING:
 _LOG = logging.getLogger(__name__)
 
 
+@unique
 class _State(Enum):
     """Width-encoder state machine. Mirrors upstream ``enum State`` (Java line 453-456)."""
 

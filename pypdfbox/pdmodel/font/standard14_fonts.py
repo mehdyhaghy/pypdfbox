@@ -1,5 +1,5 @@
 import logging
-from enum import Enum
+from enum import Enum, unique
 from importlib import resources
 from typing import TYPE_CHECKING, Any
 
@@ -613,6 +613,7 @@ _SYMBOL_PUA_FALLBACKS: dict[str, int] = {
 }
 
 
+@unique
 class FontName(Enum):
     """Enum of the 14 canonical PostScript names of the Standard 14 fonts.
 

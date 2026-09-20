@@ -1,6 +1,7 @@
-from enum import Enum
+from enum import Enum, unique
 
 
+@unique
 class OpenMode(Enum):
     """Tri-state for the ``/NewWindow`` entry on launch / GoToR / GoToE actions.
 

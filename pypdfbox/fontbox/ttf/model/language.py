@@ -1,6 +1,7 @@
-from enum import Enum
+from enum import Enum, unique
 
 
+@unique
 class Language(Enum):
     """Languages supported for GSUB shaping.
 

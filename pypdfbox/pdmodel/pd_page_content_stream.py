@@ -2,7 +2,7 @@ import importlib
 import io
 from collections import deque
 from collections.abc import Sequence
-from enum import Enum
+from enum import Enum, unique
 from typing import TYPE_CHECKING, Any, cast
 
 from pypdfbox.cos import (
@@ -42,6 +42,7 @@ _DEVICE_COLOR_SPACES: frozenset[str] = frozenset(
 )
 
 
+@unique
 class AppendMode(Enum):
     """How a page-targeted content stream is attached to existing contents."""
 

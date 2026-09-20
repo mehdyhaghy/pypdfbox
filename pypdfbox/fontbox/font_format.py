@@ -17,9 +17,10 @@ Upstream Java is a plain ``enum`` with no methods; we keep parity with
 or string equality (``str(FontFormat.TTF) == "FontFormat.TTF"``).
 """
 
-from enum import Enum
+from enum import Enum, unique
 
 
+@unique
 class FontFormat(Enum):
     """Three on-disk font program formats supported by FontProvider.
 

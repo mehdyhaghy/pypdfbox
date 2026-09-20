@@ -1,6 +1,7 @@
-from enum import Enum
+from enum import Enum, unique
 
 
+@unique
 class XReferenceType(Enum):
     """Type tag for an entry in a PDF crossreference stream.
 

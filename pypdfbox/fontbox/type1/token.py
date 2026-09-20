@@ -4,9 +4,10 @@ Mirrors ``org.apache.fontbox.type1.Token`` (PDFBox 3.0,
 ``fontbox/src/main/java/org/apache/fontbox/type1/Token.java``).
 """
 
-from enum import Enum
+from enum import Enum, unique
 
 
+@unique
 class Kind(Enum):
     NONE = "NONE"
     STRING = "STRING"

@@ -1,12 +1,13 @@
 import logging
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, unique
 
 from pypdfbox.cos import COSDictionary, COSObjectKey
 
 _LOG = logging.getLogger(__name__)
 
 
+@unique
 class XrefType(Enum):
     """Origin of an xref entry — kept so the writer can later re-emit
     the same form, and the resolver can decide which entries take

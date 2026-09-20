@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from enum import Enum
+from enum import Enum, unique
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 
@@ -13,6 +13,7 @@ from .pd_optional_content_group import PDOptionalContentGroup
 StateResolver = Callable[[PDOptionalContentGroup], bool]
 
 
+@unique
 class MembershipDictionaryVisibilityPolicy(Enum):
     """OCMD /P visibility policy. Mirrors upstream nested enum
     ``PDOptionalContentMembershipDictionary.VisibilityPolicy`` with values
