@@ -1,0 +1,89 @@
+"""Window icon wiring for the Tkinter debugger.
+
+Upstream PDFBox sets its Swing frame icon from
+``org.apache.pdfbox.debugger/pdfbox.png``; this is the Tk equivalent. The
+icon is cosmetic, so every failure path here is swallowed — a stripped-down
+Tk build without PNG support, a missing resource in an unusual install
+layout, or a window manager that ignores icons must never stop the debugger
+from opening.
+"""
+
+from __future__ import annotations
+
+import logging
+import sys
+import tkinter as tk
+from importlib import resources
+from pathlib import Path
+from typing import Any
+
+_LOG = logging.getLogger(__name__)
+
+# Tk holds only a weak reference to a PhotoImage. Without a module-level
+# anchor the image is garbage collected as soon as this function returns and
+# the icon silently blanks — the classic Tk footgun.
+_ICON_REFS: list[tk.PhotoImage] = []
+
+# Sizes handed to ``iconphoto``. Tk picks the best match for each context
+# (title bar, task switcher), so offering a spread beats offering one.
+_PHOTO_SIZES = (16, 32, 48, 64, 128, 256)
+
+
+def icon_dir() -> Path:
+    """Return the directory holding the packaged icon files.
+
+    Mirrors :func:`pypdfbox.fontbox.liberation_loader`'s lookup so the path
+    resolves identically for installed and editable installs.
+    """
+    return Path(str(resources.files("pypdfbox.resources.icon")))
+
+
+def apply_window_icon(window: Any) -> bool:
+    """Set ``window``'s icon to the pypdfbox mark.
+
+    Returns ``True`` when an icon was applied, ``False`` when it could not be
+    (never raises). ``window`` is a ``tk.Tk`` or ``tk.Toplevel``.
+    """
+    try:
+        directory = icon_dir()
+    except (ModuleNotFoundError, OSError) as ex:  # pragma: no cover - layout
+        _LOG.debug("icon resources unavailable: %s", ex)
+        return False
+
+    applied = False
+
+    # Windows: .ico gives a proper title-bar and taskbar icon, and
+    # ``default=`` makes it apply to Toplevels opened later too. On other
+    # platforms Tk expects an XBM here and raises, so this is Windows-only.
+    if sys.platform == "win32":
+        ico = directory / "pypdfbox.ico"
+        if ico.is_file():
+            try:
+                window.iconbitmap(default=str(ico))
+                applied = True
+            except Exception as ex:  # noqa: BLE001  # pragma: no cover
+                _LOG.debug("iconbitmap failed: %s", ex)
+
+    images: list[tk.PhotoImage] = []
+    for size in _PHOTO_SIZES:
+        png = directory / f"pypdfbox-{size}.png"
+        if not png.is_file():
+            continue
+        try:
+            # Tk 8.6+ reads PNG natively; older builds raise TclError. A
+            # non-Tk ``window`` fails with AttributeError/TypeError instead,
+            # so catch broadly — this path is cosmetic and must never
+            # propagate.
+            images.append(tk.PhotoImage(master=window, file=str(png)))
+        except Exception as ex:  # noqa: BLE001
+            _LOG.debug("could not load %s: %s", png.name, ex)
+
+    if images:
+        try:
+            window.iconphoto(True, *images)
+            _ICON_REFS.extend(images)
+            applied = True
+        except Exception as ex:  # noqa: BLE001  # pragma: no cover
+            _LOG.debug("iconphoto failed: %s", ex)
+
+    return applied

@@ -150,11 +150,11 @@ class PDFontFactory:
         resource_cache: PDResourceCache | None = None,
     ) -> PDFont | None:
         # ``resource_cache`` mirrors the upstream second argument to
-        # ``PDFontFactory.createFont`` — callers that want font internals
-        # pooled across pages pass the document / page cache. Per the
-        # upstream PDFBOX-6175 wiring it is forwarded only on the /Type0
-        # arm (composite fonts pool their descendant PDCIDFont and its
-        # /FontDescriptor); simple-font arms construct fresh wrappers.
+        # ``PDFontFactory.createFont`` — used by callers that want font
+        # instances pooled across pages. We don't currently consult it
+        # (all dispatch arms construct fresh wrappers); the parameter is
+        # accepted for signature parity so PDFBox-shaped calls don't break.
+        del resource_cache
         if font_dict is None:
             return None
         if not isinstance(font_dict, COSDictionary):
@@ -207,7 +207,7 @@ class PDFontFactory:
             # embedded font program kind (fixType0Subtype) before wrapping,
             # then always returns PDType0Font.
             PDFontFactory._fix_type0_descendant_subtype(font_dict, sub_type)
-            return PDType0Font(font_dict, resource_cache)
+            return PDType0Font(font_dict)
         if sub_type == PDCIDFontType0.SUB_TYPE:
             # A CIDFont is only ever legal as a /Type0 descendant — it must
             # never be the top-level font dictionary. Upstream raises

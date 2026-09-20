@@ -268,10 +268,19 @@ class CCITTFaxDecode(Filter):
         # are unbounded so the arithmetic is safe by construction, only the
         # cap itself needs porting. Message matches upstream exactly.
         array_size = (columns + 7) // 8 * rows
+        # PDFBOX-6243 (3.0.9): the bitmap is not the only allocation the
+        # decoder makes — ``CCITTFaxDecoderStream`` also builds two int
+        # arrays (``changesReferenceRow`` / ``changesCurrentRow``) of
+        # ``cols + 2`` 4-byte entries each. A single-row image with an
+        # absurd /Columns therefore slipped under the bitmap-only cap while
+        # still asking for hundreds of MB. Charge both allocations against
+        # the same budget, exactly like upstream.
+        changes_size = (columns + 2) * 4 * 2
         max_bytes = _max_decode_bytes()
-        if array_size > max_bytes:
+        if array_size + changes_size > max_bytes:
             raise OSError(
-                f"CCITT decode buffer too large ({array_size} bytes) for "
+                f"CCITT decode buffer too large (bitmapSize: {array_size}, "
+                f"changesSize: {changes_size}) for "
                 f"cols={columns}, rows={rows}; max allowed={max_bytes}; "
                 f"increase {Filter.SYSPROP_CCITTFAX_MAXBYTES} to override"
             )

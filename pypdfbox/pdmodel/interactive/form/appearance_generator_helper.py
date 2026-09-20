@@ -203,14 +203,46 @@ class AppearanceGeneratorHelper:
         generator = PDAppearanceGenerator()
         generator.set_appearance_value(self._field, self._value)
 
+    def get_glyph_layout_processor(self) -> Any:
+        """Return the AcroForm's glyph-layout processor, or ``None``.
+
+        Mirrors the lookup upstream performs at the top of
+        ``insertGeneratedAppearance``::
+
+            GlyphLayoutProcessorInterface glyphLayoutProcessor =
+                    field.getAcroForm().getGlyphLayoutProcessor();
+        """
+        try:
+            acro_form = self._field.get_acro_form()
+        except AttributeError:
+            return None
+        if acro_form is None:
+            return None
+        getter = getattr(acro_form, "get_glyph_layout_processor", None)
+        if getter is None:
+            return None
+        return getter()
+
     def insert_generated_appearance(
         self,
         widget: Any,
         appearance_stream: Any,
         output: Any,
     ) -> None:
-        """Stub for upstream's text emission routine (lines 482–638)."""
+        """Stub for upstream's text emission routine (lines 482–638).
+
+        Upstream's first act here is to hand the AcroForm's glyph-layout
+        processor (PDFBOX-4951, Java lines 490-495) to the appearance
+        content stream it opens. The port's appearance content streams are
+        opened inside :class:`PDAppearanceGenerator`, so the processor is
+        forwarded to the generator instead; the generator applies it to
+        every stream it opens. With none registered (the default) this is
+        a no-op.
+        """
         generator = PDAppearanceGenerator()
+        glyph_layout_processor = self.get_glyph_layout_processor()
+        if glyph_layout_processor is not None:
+            generator.set_glyph_layout_processor(glyph_layout_processor)
         generator.set_appearance_value(self._field, self._value)
 
     def get_text_align(self, widget: Any) -> int:

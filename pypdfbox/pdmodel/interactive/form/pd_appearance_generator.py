@@ -29,6 +29,9 @@ from pypdfbox.pdmodel.interactive.annotation.pd_appearance_stream import (
 )
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.glyph_layout_processor_interface import (
+        GlyphLayoutProcessorInterface,
+    )
     from pypdfbox.pdmodel.interactive.annotation import PDAnnotationWidget
 
     from .pd_button import PDButton
@@ -975,6 +978,66 @@ class PDAppearanceGenerator:
         field carries no ``/DA`` of its own and the inheritable walk also
         returns nothing. Falls back to ``"/Helv 0 Tf 0 g"``."""
         self._default_appearance_override = default_appearance
+        # PDFBOX-4951. Upstream sets the processor on the appearance
+        # content stream inside ``AppearanceGeneratorHelper``
+        # ``insertGeneratedAppearance`` (Java lines 490-495); in pypdfbox
+        # the appearance content streams are opened here, so the
+        # propagation point moves with them.
+        self._glyph_layout_processor: GlyphLayoutProcessorInterface | None = None
+        # Resolved per :meth:`generate` call from the field's AcroForm —
+        # the explicit override above wins when both are set.
+        self._acro_form_glyph_layout_processor: (
+            GlyphLayoutProcessorInterface | None
+        ) = None
+
+    def set_glyph_layout_processor(
+        self, glyph_layout_processor: GlyphLayoutProcessorInterface | None
+    ) -> None:
+        """Set the glyph layout processor applied to every appearance
+        content stream this generator opens."""
+        self._glyph_layout_processor = glyph_layout_processor
+
+    def _resolve_glyph_layout_processor(
+        self, field: PDField
+    ) -> GlyphLayoutProcessorInterface | None:
+        """Look the processor up on ``field``'s AcroForm.
+
+        Mirrors upstream's ``field.getAcroForm().getGlyphLayoutProcessor()``
+        lookup. Defensive against fields that are not attached to a form.
+        """
+        try:
+            acro_form = field.get_acro_form()
+        except (AttributeError, TypeError):
+            return None
+        if acro_form is None:
+            return None
+        getter = getattr(acro_form, "get_glyph_layout_processor", None)
+        if getter is None:
+            return None
+        return getter()
+
+    def _apply_glyph_layout_processor(
+        self, cs: PDAppearanceContentStream
+    ) -> None:
+        """Propagate the registered glyph-layout processor onto ``cs``.
+
+        Mirrors upstream's ``AppearanceGeneratorHelper``::
+
+            GlyphLayoutProcessorInterface glyphLayoutProcessor =
+                    field.getAcroForm().getGlyphLayoutProcessor();
+            if (glyphLayoutProcessor != null)
+            {
+                contents.setGlyphLayoutProcessor(glyphLayoutProcessor);
+            }
+
+        A no-op when nothing is registered, which is the default.
+        """
+        processor = (
+            self._glyph_layout_processor
+            or self._acro_form_glyph_layout_processor
+        )
+        if processor is not None:
+            cs.set_glyph_layout_processor(processor)
 
     # ------------------------------------------------------------------
     # public surface
@@ -1044,6 +1107,12 @@ class PDAppearanceGenerator:
         from .pd_radio_button import PDRadioButton
         from .pd_signature_field import PDSignatureField
         from .pd_text_field import PDTextField
+
+        # PDFBOX-4951: pick up the AcroForm's glyph-layout processor for
+        # this field, as upstream's AppearanceGeneratorHelper does.
+        self._acro_form_glyph_layout_processor = (
+            self._resolve_glyph_layout_processor(field)
+        )
 
         if isinstance(field, PDTextField):
             self._generate_text_field(field)
@@ -1306,6 +1375,7 @@ class PDAppearanceGenerator:
             )
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
             cs = cast(PDAppearanceContentStream, raw_cs)
+            self._apply_glyph_layout_processor(cs)
             cs.save_graphics_state()
             if is_radio:
                 self._draw_radio_dot(cs, width, height)
@@ -1520,6 +1590,7 @@ class PDAppearanceGenerator:
 
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
             cs = cast(PDAppearanceContentStream, raw_cs)
+            self._apply_glyph_layout_processor(cs)
             # Wave 1372 — preserve the /DA font alias (see text-field path).
             self._register_font_alias(cs, font, font_name)
             cs._buffer.extend(b"/Tx BMC\n")
@@ -1621,6 +1692,7 @@ class PDAppearanceGenerator:
 
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
             cs = cast(PDAppearanceContentStream, raw_cs)
+            self._apply_glyph_layout_processor(cs)
             # Wave 1372 — preserve the /DA font alias (see text-field path).
             self._register_font_alias(cs, font, font_name)
             cs._buffer.extend(b"/Tx BMC\n")
@@ -1774,6 +1846,7 @@ class PDAppearanceGenerator:
 
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
             cs = cast(PDAppearanceContentStream, raw_cs)
+            self._apply_glyph_layout_processor(cs)
             # Pre-register the font under the original /DA alias so the
             # emitted ``/<alias> <size> Tf`` token matches the source /DA
             # (upstream parity — wave 1372). When the alias is missing or
@@ -1869,6 +1942,7 @@ class PDAppearanceGenerator:
 
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
             cs = cast(PDAppearanceContentStream, raw_cs)
+            self._apply_glyph_layout_processor(cs)
             self._register_font_alias(cs, base_font, base_font_name)
             cs._buffer.extend(b"/Tx BMC\n")
             cs.save_graphics_state()
@@ -2510,6 +2584,7 @@ class PDAppearanceGenerator:
 
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
             cs = cast(PDAppearanceContentStream, raw_cs)
+            self._apply_glyph_layout_processor(cs)
             cs.save_graphics_state()
             # Background fill.
             if bg is not None:
@@ -2714,6 +2789,7 @@ class PDAppearanceGenerator:
 
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
             cs = cast(PDAppearanceContentStream, raw_cs)
+            self._apply_glyph_layout_processor(cs)
             cs.save_graphics_state()
             # /MK /BG fill — drawn first so the border + caption paint on top.
             if bg is not None:

@@ -544,11 +544,12 @@ class Overlay:
         if isinstance(cloned, COSDictionary):
             xobj_form.set_resources(PDResources(cloned))
         xobj_form.set_form_type(1)
-        # PDFBOX-6048: use the real lower-left corner of the overlay's
-        # MediaBox as the /BBox origin via ``create_retranslated_rectangle``
-        # (mirrors upstream's ``createRetranslatedRectangle()`` call). The
-        # real corner is reflected in the affine transform below (in
-        # :meth:`_create_overlay_stream`).
+        # Mirrors upstream's ``setBBox(layoutPage.overlayMediaBox
+        # .createRetranslatedRectangle())`` (Overlay.java line 544) — the
+        # BBox is ``[0 0 w h]``, so an overlay whose own MediaBox is not
+        # origin-based gets clipped rather than compensated for in
+        # :meth:`_calculate_affine_transform`. That split of
+        # responsibility is upstream's, and pypdfbox reproduces it.
         xobj_form.set_bbox(
             layout_page.overlay_media_box.create_retranslated_rectangle()
         )
@@ -616,9 +617,12 @@ class Overlay:
     ) -> list[float]:
         """Public hook (mirrors upstream ``calculateAffineTransform``).
 
-        Centers the overlay on the destination page using the **real**
-        lower-left corner of the overlay's media box (PDFBOX-6048
-        alignment — upstream 3.0.x assumed (0, 0)).
+        Centers the overlay on the destination page, offset by the
+        **real** lower-left corner of that page's media box (PDFBOX-6048
+        alignment — upstream 3.0.x and 2.x assumed (0, 0)). The
+        overlay's own lower-left corner is deliberately not subtracted:
+        upstream handles a non-origin overlay box through the form
+        XObject's retranslated ``/BBox`` instead.
 
         Returns the 6-element flat affine matrix ``[a b c d tx ty]``.
         """
@@ -628,21 +632,26 @@ class Overlay:
         self, page: PDPage, overlay_media_box: PDRectangle
     ) -> list[float]:
         page_media_box = page.get_media_box()
-        # Real lower-left corners of both boxes — PDFBOX-6048.
-        page_llx = page_media_box.get_lower_left_x()
-        page_lly = page_media_box.get_lower_left_y()
-        overlay_llx = overlay_media_box.get_lower_left_x()
-        overlay_lly = overlay_media_box.get_lower_left_y()
-        h_shift = (
-            (page_media_box.get_width() - overlay_media_box.get_width()) / 2.0
-            + page_llx
-            - overlay_llx
-        )
-        v_shift = (
-            (page_media_box.get_height() - overlay_media_box.get_height()) / 2.0
-            + page_lly
-            - overlay_lly
-        )
+        # PDFBOX-6048: centre on the *destination* page's real lower-left
+        # corner (3.0.x and 2.x assumed (0, 0)). Byte-faithful port of
+        # upstream trunk ``Overlay.calculateAffineTransform`` lines
+        # 615-616:
+        #     hShift = pageMediaBox.getLowerLeftX()
+        #              + (pageMediaBox.getWidth() - overlayMediaBox.getWidth()) / 2f
+        #     vShift = pageMediaBox.getLowerLeftY()
+        #              + (pageMediaBox.getHeight() - overlayMediaBox.getHeight()) / 2f
+        # Note there is deliberately NO ``- overlayMediaBox.getLowerLeftX()``
+        # term: upstream instead sets the form XObject's /BBox to
+        # ``overlayMediaBox.createRetranslatedRectangle()`` (``[0 0 w h]``),
+        # which clips an overlay whose own MediaBox is not origin-based.
+        # pypdfbox carried such a term until 2.0.0; it was an invented
+        # divergence and has been dropped for exact upstream parity.
+        h_shift = page_media_box.get_lower_left_x() + (
+            page_media_box.get_width() - overlay_media_box.get_width()
+        ) / 2.0
+        v_shift = page_media_box.get_lower_left_y() + (
+            page_media_box.get_height() - overlay_media_box.get_height()
+        ) / 2.0
         if _LOG.isEnabledFor(logging.DEBUG):
             _LOG.debug("Overlay position: (%s,%s)", h_shift, v_shift)
         return [1.0, 0.0, 0.0, 1.0, h_shift, v_shift]

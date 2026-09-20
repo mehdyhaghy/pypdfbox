@@ -185,8 +185,13 @@ class PDFTextStripperByArea(PDFTextStripper):
         ``regionCharacterList.put(name, …)`` / ``regionText.put(name, new
         StringWriter())`` reset at the top of ``extractRegions``.
 
-        Pages with no ``/Contents`` are silently skipped (matches
-        upstream's ``if (page.hasContents())`` guard).
+        PDFBOX-6145: upstream removed the ``if (page.hasContents())`` gate
+        that used to wrap the ``processPage(page)`` call here, so a page
+        with no content stream is now walked like any other. The walk finds
+        no glyphs, but the per-region ``writePage`` still runs — which means
+        every registered region ends up holding the page terminator
+        (:meth:`get_line_separator`) rather than the empty string the
+        skipped path left behind.
         """
         # Reset per-region state for every registered region — even ones
         # we never observed before — so a stale prior extraction can't
@@ -200,9 +205,11 @@ class PDFTextStripperByArea(PDFTextStripper):
         # ``processPage`` (PDFTextStripper.java L378).
         self._character_list_mapping = {}
 
+        # PDFBOX-6145: no early return for a contentless page. Upstream's
+        # ``PDFStreamEngine.processPage`` still skips the *stream* walk when
+        # ``/Contents`` is absent, so an empty body simply yields no glyphs
+        # — but the per-region formatting below still runs.
         contents = page.get_contents()
-        if not contents:
-            return
 
         # Run the parser exactly the way ``PDFTextStripper.process_page``
         # does so font/CMap resolution stays consistent. We can't just
@@ -237,7 +244,7 @@ class PDFTextStripperByArea(PDFTextStripper):
         self._active_font = None
         self._active_avg_advance = None
         try:
-            positions = self._extract_positions(contents)
+            positions = self._extract_positions(contents) if contents else []
             # NOTE: we do NOT run ``_apply_page_rotation`` over the whole list
             # here. On a rotated page the fold collapses a horizontal run's
             # ``width`` to a zero device-axis extent, which would break the

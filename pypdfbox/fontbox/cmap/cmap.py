@@ -104,6 +104,10 @@ class CMap:
         self._code_to_cid: dict[int, dict[int, int]] = {}
         self._code_to_cid_ranges: list[CIDRange] = []
 
+        # The CMaps this one inherits from through the ``usecmap`` operator,
+        # see :meth:`use_cmap`.
+        self._parent_cmaps: list[CMap] = []
+
         # Inverted (Unicode -> code bytes) mapping.
         self._unicode_to_byte_codes: dict[str, bytes] = {}
 
@@ -112,7 +116,11 @@ class CMap:
     # ---------- introspection ----------
 
     def has_cid_mappings(self) -> bool:
-        return bool(self._code_to_cid) or bool(self._code_to_cid_ranges)
+        return (
+            bool(self._code_to_cid)
+            or bool(self._code_to_cid_ranges)
+            or any(parent.has_cid_mappings() for parent in self._parent_cmaps)
+        )
 
     def has_unicode_mappings(self) -> bool:
         return (
@@ -418,58 +426,64 @@ class CMap:
 
         See ``to_cid_with_length`` if the code's byte length is known —
         this overload may return false positives for ambiguous codes."""
-        if not self.has_cid_mappings():
-            return 0
-        cid = 0
-        length = self._min_cid_length
-        while cid == 0 and length <= self._max_cid_length:
-            cid = self.to_cid_with_length(code, length)
-            length += 1
-        return cid
+        for length in range(self._min_cid_length, self._max_cid_length + 1):
+            cid = self._find_cid(code, length)
+            if cid != -1:
+                return cid
+        return 0
 
     def to_cid_with_length(self, code: int, length: int) -> int:
-        if (
-            not self.has_cid_mappings()
-            or length < self._min_cid_length
-            or length > self._max_cid_length
-        ):
-            return 0
+        cid = self._find_cid(code, length)
+        return cid if cid != -1 else 0
+
+    def to_cid_bytes(self, code: bytes | bytearray | memoryview) -> int:
+        """Resolve a CID from the raw code byte sequence."""
+        data = bytes(code)
+        return self.to_cid_with_length(_to_int(data), len(data))
+
+    def _find_cid(self, code: int, length: int) -> int:
+        """Return the CID this CMap, or one of the CMaps it inherits from,
+        maps ``code`` to, or ``-1`` if none of them maps it.
+
+        CID 0 is the ``.notdef`` glyph and a CMap may map a code to it
+        deliberately, so "mapped to 0" has to be told apart from "not
+        mapped" while the ``usecmap`` chain is walked. The public
+        ``to_cid*`` methods report both as 0. Mirrors upstream's private
+        ``CMap.findCID(int, int)``.
+        """
+        if length < self._min_cid_length or length > self._max_cid_length:
+            return -1
         cid_map = self._code_to_cid.get(length)
         if cid_map is not None:
             cid = cid_map.get(code)
             if cid is not None:
                 return cid
-        return self._to_cid_from_ranges_int(code, length)
-
-    def to_cid_bytes(self, code: bytes | bytearray | memoryview) -> int:
-        """Resolve a CID from the raw code byte sequence."""
-        data = bytes(code)
-        if (
-            not self.has_cid_mappings()
-            or len(data) < self._min_cid_length
-            or len(data) > self._max_cid_length
-        ):
-            return 0
-        cid_map = self._code_to_cid.get(len(data))
-        if cid_map is not None:
-            cid = cid_map.get(_to_int(data))
-            if cid is not None:
-                return cid
-        return self._to_cid_from_ranges_bytes(data)
+        cid_from_range = self._to_cid_from_ranges_int(code, length)
+        if cid_from_range != -1:
+            return cid_from_range
+        # this CMap doesn't map the code itself, so ask the ones it inherits from
+        for parent in self._parent_cmaps:
+            parent_cid = parent._find_cid(code, length)
+            if parent_cid != -1:
+                return parent_cid
+        return -1
 
     def _to_cid_from_ranges_int(self, code: int, length: int) -> int:
+        """CID the ranges *this* CMap declares map ``code`` to, or ``-1``
+        when no range covers it. Mirrors upstream's private
+        ``toCIDFromRanges(int, int)``."""
         for rng in self._code_to_cid_ranges:
             ch = rng.map_int(code, length)
             if ch != -1:
                 return ch
-        return 0
+        return -1
 
     def _to_cid_from_ranges_bytes(self, code: bytes) -> int:
         for rng in self._code_to_cid_ranges:
             ch = rng.map_bytes(code)
             if ch != -1:
                 return ch
-        return 0
+        return -1
 
     def to_cid_from_ranges(
         self,
@@ -479,15 +493,21 @@ class CMap:
         """Look up a CID solely against the registered CID ranges, ignoring
         the per-length ``codeToCid`` direct-mapping dicts.
 
-        Direct port of the two private upstream overloads
-        ``toCIDFromRanges(int, int)`` and ``toCIDFromRanges(byte[])``
-        (CMap.java lines 310 and 330). pypdfbox makes the entry public so
+        Direct port of the private upstream overload
+        ``toCIDFromRanges(int, int)`` plus the ``byte[]`` form upstream
+        dropped in PDFBOX-6251. pypdfbox makes the entry public so
         differential tests can probe range lookup in isolation; production
         callers should prefer :meth:`to_cid` or :meth:`to_cid_bytes` which
-        also consult the direct mappings.
+        also consult the direct mappings and the inherited CMaps.
+
+        Only the ranges *this* CMap declares are consulted — ranges reached
+        through ``usecmap`` belong to the parent CMap and are resolved by
+        :meth:`to_cid_with_length`.
 
         Returns ``0`` (the standard "no mapping" sentinel) when no range
-        covers the code.
+        covers the code. The private helpers return upstream's ``-1``
+        "not mapped" marker; this public entry keeps the 0 contract it has
+        always had.
         """
         if isinstance(code, int):
             if length is None:
@@ -495,8 +515,10 @@ class CMap:
                     "to_cid_from_ranges(code, length) requires length when "
                     "code is an int"
                 )
-            return self._to_cid_from_ranges_int(code, length)
-        return self._to_cid_from_ranges_bytes(bytes(code))
+            cid = self._to_cid_from_ranges_int(code, length)
+        else:
+            cid = self._to_cid_from_ranges_bytes(bytes(code))
+        return cid if cid != -1 else 0
 
     # ---------- mutators (used by parser; public for tests) ----------
 
@@ -613,9 +635,14 @@ class CMap:
         return self._unicode_to_byte_codes.get(unicode_str)
 
     def use_cmap(self, other: CMap) -> None:
-        """Implementation of the ``usecmap`` operator — copy all mappings
-        from ``other`` into ``self`` (without replacing existing CID
-        mappings, but unioning per-length dicts)."""
+        """Implementation of the ``usecmap`` operator — copy ``other``'s
+        codespace and Unicode mappings into ``self`` and keep ``other`` as a
+        parent for CID lookups.
+
+        The CID mappings of ``other`` are deliberately *not* merged
+        (PDFBOX-6251): the parent is asked only for codes this CMap does not
+        map itself, so this CMap's own mappings win and a ``usecmap`` chain
+        resolves nearest-first. See :meth:`_find_cid`."""
         for r in other._codespace_ranges:
             self.add_codespace_range(r)
         self._char_to_unicode_one_byte.update(other._char_to_unicode_one_byte)
@@ -628,13 +655,10 @@ class CMap:
         for k, v in other._char_to_unicode_more_bytes.items():
             length = 3 if k <= 0xFFFFFF else 4
             self._unicode_to_byte_codes[v] = _bytes_for_code(k, length)
-        for length, mapping in other._code_to_cid.items():
-            existing = self._code_to_cid.get(length)
-            if existing is None:
-                self._code_to_cid[length] = dict(mapping)
-            else:
-                existing.update(mapping)
-        self._code_to_cid_ranges.extend(other._code_to_cid_ranges)
+        # The parent is kept, not merged: it is asked only for codes this CMap
+        # doesn't map itself, so this CMap's own mappings win and a usecmap
+        # chain resolves nearest-first. See _find_cid().
+        self._parent_cmaps.append(other)
         if other._max_code_length > self._max_code_length:
             self._max_code_length = other._max_code_length
         if other._min_code_length < self._min_code_length:

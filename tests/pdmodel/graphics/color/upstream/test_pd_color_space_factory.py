@@ -30,6 +30,23 @@ from pypdfbox.pdmodel.graphics.color.pd_separation import PDSeparation
 from pypdfbox.pdmodel.pd_resources import PDResources
 
 
+def _default_indexed() -> PDIndexed:
+    """Build ``[/Indexed /DeviceRGB 255 null]`` — the array that PDFBox
+    3.x's no-arg ``PDIndexed()`` constructed. PDFBox 4.0 made that
+    constructor private (adopted in pypdfbox 2.0.0), so the array is
+    spelled out here instead."""
+    from pypdfbox.cos import COSArray, COSInteger, COSName, COSNull
+    from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
+    from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
+
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("Indexed"))
+    arr.add(PDDeviceRGB.INSTANCE.get_cos_object())
+    arr.add(COSInteger.get(255))
+    arr.add(COSNull.NULL)
+    return PDIndexed(arr)
+
+
 def _name(value: str) -> COSName:
     return COSName.get_pdf_name(value)
 
@@ -202,7 +219,7 @@ def test_get_default_decode_for_device_cmyk() -> None:
 
 
 def test_get_default_decode_for_indexed_uses_index_range() -> None:
-    assert PDIndexed().get_default_decode(8) == [0.0, 255.0]
+    assert _default_indexed().get_default_decode(8) == [0.0, 255.0]
 
 
 def test_get_default_decode_for_lab_uses_l_and_range() -> None:

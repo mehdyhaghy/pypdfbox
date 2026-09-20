@@ -165,7 +165,12 @@ class AcroFormOrphanWidgetsProcessor(AbstractProcessor):
     ) -> Any | None:
         """Walk up to the nearest field root and instantiate it as the
         non-terminal parent. Mirrors upstream's private
-        ``resolveNonRootField`` (Java line 195)."""
+        ``resolveNonRootField`` (Java line 195).
+
+        PDFBOX-6227: a ``/Parent`` chain that loops back on itself used to
+        spin forever; upstream now keeps a visited set and abandons the
+        field (returning ``None``) as soon as a dictionary is seen twice.
+        """
         try:
             from pypdfbox.cos import COSName
             from pypdfbox.pdmodel.interactive.form.pd_field_factory import (
@@ -173,7 +178,15 @@ class AcroFormOrphanWidgetsProcessor(AbstractProcessor):
             )
         except ImportError:
             return None
+        # Upstream uses ``HashSet<COSDictionary>``; COSDictionary does not
+        # override equals/hashCode, so membership is identity-based — ``id()``
+        # is the faithful Python equivalent.
+        visited: set[int] = set()
         while parent.contains_key(COSName.PARENT):  # type: ignore[attr-defined]
+            if id(parent) in visited:
+                _log.warning("Field ignored: %s", parent)
+                return None  # Cycle detected
+            visited.add(id(parent))
             parent = parent.get_cos_dictionary(COSName.PARENT)  # type: ignore[attr-defined]
             if parent is None:
                 return None

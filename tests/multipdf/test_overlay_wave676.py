@@ -94,8 +94,12 @@ def test_wave676_calculate_affine_transform_logs_debug_position(
     finally:
         doc.close()
 
-    assert matrix == [1.0, 0.0, 0.0, 1.0, 65.0, 20.0]
-    assert "Overlay position: (65.0,20.0)" in caplog.text
+    # Page 200 x 100, overlay box 50 x 20 at (10, 20). Upstream formula
+    # (2.0.0 parity correction — the overlay's own corner is not
+    # subtracted): h = 0 + (200-50)/2 = 75, v = 0 + (100-20)/2 = 40.
+    # pypdfbox 1.x produced (65, 20).
+    assert matrix == [1.0, 0.0, 0.0, 1.0, 75.0, 40.0]
+    assert "Overlay position: (75.0,40.0)" in caplog.text
 
 
 def test_wave676_position_value_of_rejects_unknown_name() -> None:

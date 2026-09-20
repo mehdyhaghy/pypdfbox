@@ -244,11 +244,13 @@ def test_extract_regions_blank_page_yields_empty_text() -> None:
 
     s = PDFTextStripperByArea()
     s.add_region("r", (0.0, 0.0, 612.0, 792.0))
-    # No /Contents on the page → upstream's hasContents() guard returns
-    # false, so the region buffer stays empty.
+    # PDFBOX-6145 dropped the ``hasContents()`` guard from extractRegions,
+    # so a contentless page now runs the per-region writePage anyway: the
+    # region captures no glyphs but still gets the page terminator.
     s.extract_regions(blank)
 
-    assert s.get_text_for_region("r") == ""
+    assert s.get_text_for_region("r") == s.get_line_separator()
+    assert s.get_text_for_region("r").strip() == ""
 
 
 def test_remove_region_clears_cached_text() -> None:

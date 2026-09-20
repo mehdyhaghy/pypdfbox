@@ -20,6 +20,23 @@ from pypdfbox.pdmodel.graphics.color.pd_device_gray import PDDeviceGray
 from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
 from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
 
+
+def _default_indexed() -> PDIndexed:
+    """Build ``[/Indexed /DeviceRGB 255 null]`` — the array that PDFBox
+    3.x's no-arg ``PDIndexed()`` constructed. PDFBox 4.0 made that
+    constructor private (adopted in pypdfbox 2.0.0), so the array is
+    spelled out here instead."""
+    from pypdfbox.cos import COSArray, COSInteger, COSName, COSNull
+    from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
+    from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
+
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("Indexed"))
+    arr.add(PDDeviceRGB.INSTANCE.get_cos_object())
+    arr.add(COSInteger.get(255))
+    arr.add(COSNull.NULL)
+    return PDIndexed(arr)
+
 # ---------- to_rgb (PDColorSpace.toRGB, line 306) ----------
 
 
@@ -44,7 +61,7 @@ def test_to_rgb_default_returns_three_floats() -> None:
     # The base-class default delegates to PDColor.to_rgb so even
     # subclasses that don't override (Indexed, Lab, DeviceColorSpace)
     # still answer the contract: 3 floats in [0, 1].
-    indexed = PDIndexed()
+    indexed = _default_indexed()
     rgb = indexed.to_rgb(indexed.get_initial_color().get_components())
     assert len(rgb) == 3
     for channel in rgb:
@@ -103,7 +120,7 @@ def test_to_raw_image_awt_delegates_to_to_raw_image() -> None:
 
 
 def test_get_cos_object_for_array_form_returns_array() -> None:
-    indexed = PDIndexed()
+    indexed = _default_indexed()
     assert indexed.get_cos_object() is indexed.get_array()
 
 

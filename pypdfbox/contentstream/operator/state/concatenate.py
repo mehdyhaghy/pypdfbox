@@ -39,21 +39,32 @@ class Concatenate(OperatorProcessor):
             # ConcatenateMatrix handler); fall back to nudging the
             # graphics-state CTM directly to match upstream semantics
             # for engines that don't expose ``transform``.
-            transform = getattr(context, "transform", None)
-            if transform is not None:
-                transform(matrix)
-                return
-            graphics_state = context.get_graphics_state()
-            ctm = getattr(graphics_state, "get_current_transformation_matrix", None)
-            ctm_obj = ctm() if ctm is not None else None
-            concat = getattr(ctm_obj, "concatenate", None) if ctm_obj else None
-            if concat is not None:
-                # Upstream calls ``CTM.concatenate(matrix)`` with a Matrix,
-                # not the raw six floats; ``Matrix.concatenate`` reads
-                # ``matrix._single`` and would crash on a plain tuple.
-                from pypdfbox.util.matrix import Matrix  # noqa: PLC0415
+            # PDFBOX-6255: ``Matrix.concatenate`` rejects a product that
+            # contains NaN / infinity (``checkFloatValues`` ->
+            # ``IllegalArgumentException``, ported here as ``ValueError``).
+            # Upstream used to let that unchecked exception escape the
+            # operator dispatch loop, which aborts the whole page walk with
+            # a non-IOException; it is now rethrown as an IOException
+            # (``OSError`` here) so the engine's normal malformed-operator
+            # handling applies.
+            try:
+                transform = getattr(context, "transform", None)
+                if transform is not None:
+                    transform(matrix)
+                    return
+                graphics_state = context.get_graphics_state()
+                ctm = getattr(graphics_state, "get_current_transformation_matrix", None)
+                ctm_obj = ctm() if ctm is not None else None
+                concat = getattr(ctm_obj, "concatenate", None) if ctm_obj else None
+                if concat is not None:
+                    # Upstream calls ``CTM.concatenate(matrix)`` with a Matrix,
+                    # not the raw six floats; ``Matrix.concatenate`` reads
+                    # ``matrix._single`` and would crash on a plain tuple.
+                    from pypdfbox.util.matrix import Matrix  # noqa: PLC0415
 
-                concat(Matrix(*matrix))
+                    concat(Matrix(*matrix))
+            except ValueError as ex:
+                raise OSError(str(ex)) from ex
 
     def get_name(self) -> str:
         return OperatorName.CONCAT

@@ -16,7 +16,11 @@ EXPECTED_EXPORTS: dict[str, tuple[str, ...]] = {
         "__version__",
     ),
     "pypdfbox.pdmodel": (
+        "AbstractGlyphLayoutProcessor",
+        "ContentStreamForGlyphLayoutInterface",
         "DefaultResourceCacheCreateImpl",
+        "GlyphLayoutProcessorInterface",
+        "GlyphsAndPositions",
         "MissingResourceException",
         "PDAbstractContentStream",
         "PDDeveloperExtension",

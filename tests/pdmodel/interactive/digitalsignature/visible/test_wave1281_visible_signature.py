@@ -75,11 +75,36 @@ class TestPDVisibleSigBuilder:
         assert rect.get_upper_right_x() == 100
         assert rect.get_upper_right_y() == 200
 
-    def test_append_raw_commands_writes_iso_8859_1(self) -> None:
+    def test_write_raw_commands_writes_utf_8(self) -> None:
+        """PDFBox 4.0 removed ``appendRawCommands`` (adopted in pypdfbox
+        2.0.0); the UTF-8 encoding + close contract it pinned now runs
+        through ``write_raw_commands``, which opens the stream itself."""
         builder = PDVisibleSigBuilder()
+        assert not hasattr(builder, "append_raw_commands")
+
         buf = io.BytesIO()
-        builder.append_raw_commands(buf, "q Q")
-        assert buf.getvalue() == b"q Q"
+        written: list[bytes] = []
+        buf.close = lambda: written.append(buf.getvalue())  # type: ignore[method-assign]
+
+        class _Stream:
+            def create_output_stream(self) -> io.BytesIO:
+                return buf
+
+        builder.write_raw_commands(_Stream(), "q Q")
+        assert written == [b"q Q"]
+
+    def test_write_raw_commands_takes_a_pd_stream(self) -> None:
+        """PDFBox 4.0 renamed ``appendRawCommands`` to ``writeRawCommands``
+        and made the first parameter a ``PDStream``: the builder opens and
+        closes the output stream itself."""
+        from pypdfbox.pdmodel.common.pd_stream import PDStream
+        from pypdfbox.pdmodel.pd_document import PDDocument
+
+        builder = PDVisibleSigBuilder()
+        with PDDocument() as doc:
+            pd_stream = PDStream(doc)
+            builder.write_raw_commands(pd_stream, "q 1 0 0 1 0 0 cm /FRM Do Q\n")
+            assert pd_stream.to_byte_array() == b"q 1 0 0 1 0 0 cm /FRM Do Q\n"
 
 
 class TestPDVisibleSigProperties:

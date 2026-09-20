@@ -31,6 +31,23 @@ from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
 from pypdfbox.pdmodel.graphics.color.pd_lab import PDLab
 from pypdfbox.pdmodel.graphics.color.pd_separation import PDSeparation
 
+
+def _default_indexed() -> PDIndexed:
+    """Build ``[/Indexed /DeviceRGB 255 null]`` — the array that PDFBox
+    3.x's no-arg ``PDIndexed()`` constructed. PDFBox 4.0 made that
+    constructor private (adopted in pypdfbox 2.0.0), so the array is
+    spelled out here instead."""
+    from pypdfbox.cos import COSArray, COSInteger, COSName, COSNull
+    from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
+    from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
+
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("Indexed"))
+    arr.add(PDDeviceRGB.INSTANCE.get_cos_object())
+    arr.add(COSInteger.get(255))
+    arr.add(COSNull.NULL)
+    return PDIndexed(arr)
+
 # ---------- helpers ----------
 
 
@@ -66,7 +83,7 @@ def test_pd_indexed_str_includes_base_hival_and_lookup_count() -> None:
 def test_pd_indexed_str_handles_empty_lookup_gracefully() -> None:
     """A default-ctor PDIndexed has a ``COSNull`` lookup slot — string
     form must not blow up; report ``0 entries``."""
-    s = str(PDIndexed())
+    s = str(_default_indexed())
     assert s.startswith("Indexed{base:DeviceRGB hival:255")
     assert "lookup:(0 entries)" in s
 

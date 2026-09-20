@@ -100,20 +100,16 @@ class PDExportFormatAttributeObject(PDLayoutAttributeObject):
 
     # ---------- /Headers ----------
 
-    def get_headers(self) -> list[str]:
-        array = self._get_array(PDTableAttributeObject.HEADERS)
-        if array is None:
-            return []
-        out: list[str] = []
-        for index in range(array.size()):
-            item = array.get_object(index)
-            if isinstance(item, COSString):
-                raw = item.get_bytes()
-                try:
-                    out.append(raw.decode("utf-8"))
-                except UnicodeDecodeError:
-                    out.append(raw.decode("latin-1"))
-        return out
+    def get_headers(self) -> list[str | None] | None:
+        """Return ``/Headers``, or ``None`` if there are none.
+
+        PDFBOX-6261: delegates to ``getArrayOfString`` exactly as upstream
+        does, so the result is positional — a non-string element yields
+        ``None`` in its slot instead of being dropped — and each element is
+        decoded by ``COSString.get_string()`` (UTF-16 BOM sniffing, else
+        PDFDocEncoding), not by a UTF-8-first guess.
+        """
+        return self._get_array_of_string(PDTableAttributeObject.HEADERS)
 
     def set_headers(self, headers: list[str]) -> None:
         if not headers:
@@ -121,7 +117,10 @@ class PDExportFormatAttributeObject(PDLayoutAttributeObject):
             return
         array = COSArray()
         for value in headers:
-            array.add(COSString(value.encode("utf-8")))
+            # ``new COSString(value)`` upstream — PDFDocEncoding, or UTF-16BE
+            # with a BOM when not representable; raw UTF-8 would not round-trip
+            # through ``COSString.get_string()``.
+            array.add(COSString(value))
         self._dictionary.set_item(PDTableAttributeObject.HEADERS, array)
 
     # ---------- /Scope ----------

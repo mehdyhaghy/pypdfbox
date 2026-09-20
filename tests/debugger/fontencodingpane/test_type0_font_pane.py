@@ -98,6 +98,10 @@ class _StubParentNoUnicode:
     def to_unicode(self, _code: int) -> str | None:
         return None
 
+    def get_path(self, _code: int) -> list[tuple[str, int, int]]:
+        # Glyph outlines are read from the parent since upstream 10950c29.
+        return []
+
 
 def test_read_cid_to_gid_map_decodes_big_endian_pairs() -> None:
     """``read_cid_to_gid_map`` walks the byte stream as big-endian
@@ -151,8 +155,12 @@ def test_read_cid_to_gid_map_alias_matches_public() -> None:
 # ---- read_map --------------------------------------------------------------
 
 
-class _SmallGlyphCIDFont:
-    """Descendant stub that claims exactly three glyphs."""
+class _SmallParentFont:
+    """Parent Type 0 stub that claims a fixed glyph set.
+
+    Upstream 10950c29 moved every glyph lookup in ``readMap`` from the
+    descendant CIDFont to the parent Type 0 font.
+    """
 
     def __init__(self, glyph_codes: set[int]) -> None:
         self._glyph_codes = glyph_codes
@@ -169,20 +177,17 @@ class _SmallGlyphCIDFont:
     def get_path(self, _code: int) -> list[tuple[str, int, int]]:
         return []
 
-
-class _SmallParentFont:
     def to_unicode(self, code: int) -> str | None:
         return chr(code) if 32 <= code <= 126 else None
 
 
 def test_read_map_returns_one_row_per_glyph_code() -> None:
     """``read_map`` produces one row per code that ``has_glyph`` accepts.
-    With a 3-glyph descendant we expect exactly 3 rows."""
-    descendant = _SmallGlyphCIDFont(glyph_codes={65, 66, 67})  # A B C
-    parent = _SmallParentFont()
+    With a 3-glyph parent we expect exactly 3 rows."""
+    parent = _SmallParentFont(glyph_codes={65, 66, 67})  # A B C
     pane = Type0Font.__new__(Type0Font)
     pane._total_available_glyphs = 0
-    rows = pane.read_map(descendant, parent)  # type: ignore[arg-type]
+    rows = pane.read_map(parent)  # type: ignore[arg-type]
     assert len(rows) == 3
     # Each row: [code, cid, gid, unicode_char, path].
     codes = [row[0] for row in rows]
@@ -194,11 +199,10 @@ def test_read_map_returns_one_row_per_glyph_code() -> None:
 
 
 def test_read_map_empty_when_no_glyphs() -> None:
-    descendant = _SmallGlyphCIDFont(glyph_codes=set())
-    parent = _SmallParentFont()
+    parent = _SmallParentFont(glyph_codes=set())
     pane = Type0Font.__new__(Type0Font)
     pane._total_available_glyphs = 0
-    rows = pane.read_map(descendant, parent)  # type: ignore[arg-type]
+    rows = pane.read_map(parent)  # type: ignore[arg-type]
     assert rows == []
 
 

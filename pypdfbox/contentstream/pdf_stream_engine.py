@@ -1329,19 +1329,35 @@ class PDFStreamEngine:
         ``font`` exposes a ``get_char_proc(code)`` method we follow that
         contract; otherwise the call is a no-op so subclasses without a
         Type3 font can ignore the hook.
+
+        PDFBOX-6266: a Type3 charproc whose content stream shows the same
+        Type3 glyph again (directly or through a cycle of charprocs)
+        recurses without bound and blows the stack. Upstream bumps the
+        recursion level for the duration of the charproc walk and bails
+        out above depth 50 — the same cap ``DrawObject`` uses for
+        form-XObject recursion. The bump lives *here only*: ``process_stream``
+        deliberately leaves ``_level`` alone (see its docstring) so the two
+        recursion paths each count their own depth, exactly like upstream.
         """
-        if font is None:
-            return
-        getter = getattr(font, "get_char_proc", None)
-        if getter is None:
-            return
         try:
-            charproc = getter(code)
-        except (OSError, KeyError, ValueError):
-            return
-        if charproc is None:
-            return
-        self.process_type3_stream(charproc, text_rendering_matrix)
+            self.increase_level()
+            if self.get_level() > 50:
+                _log.error("recursion is too deep, skipping Type3 glyph")
+                return
+            if font is None:
+                return
+            getter = getattr(font, "get_char_proc", None)
+            if getter is None:
+                return
+            try:
+                charproc = getter(code)
+            except (OSError, KeyError, ValueError):
+                return
+            if charproc is None:
+                return
+            self.process_type3_stream(charproc, text_rendering_matrix)
+        finally:
+            self.decrease_level()
 
     # ---------- text-adjustment / coordinate helpers ----------
 

@@ -275,7 +275,12 @@ class PDAttributeObject:
             )
         parts: list[str] = []
         for item in array:
-            if isinstance(item, float):
+            if item is None:
+                # Java's StringJoiner renders a null element as "null".
+                # PDFBOX-6261 made ``getArrayOfString`` positional, so a
+                # non-string slot now reaches here as ``None``.
+                parts.append("null")
+            elif isinstance(item, float):
                 parts.append(PDAttributeObject._java_float_repr(item))
             else:
                 parts.append(str(item))

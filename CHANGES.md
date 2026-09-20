@@ -5030,6 +5030,126 @@ than "False arm missing".
   upstream: PDFBox 3.0.x `org.apache.pdfbox.cos.COSObject#getKey`
   reason: internal-representation divergence only; documented so a future refactor doesn't "fix" it blind (see `cos_writer_object_stream.py` remap usage).
 
+- **Incremental saves now seed the object counter from the origin trailer `/Size`** — `COSWriter.write()` clamps the numbering cursor with `number = max(trailer_size - 1, number)` inside the incremental branch, so an appended revision never mints an object number the origin document already reserved (sparse, repaired or truncated xrefs whose `/Size` exceeds the highest loaded key). A `/Size` *below* the highest loaded object number is logged at WARNING and the higher number is kept. A trailer without `/Size` reads as `-1` (upstream `getLong` default) and leaves numbering untouched.
+  upstream: PDFBox 3.0 branch `org.apache.pdfbox.pdfwriter.COSWriter#write` (PDFBOX-6236, commits `f02aa594`, `b777f977`)
+  reason: forward-port from the post-3.0.8 upstream branch.
+
+- **Cross-reference streams whose `/W` array sums to zero are rejected** — `PDFXrefStreamParser` now raises `PDFParseError("Incorrect /W array in XRef: …")` for `sum(/W) == 0` as well as `sum(/W) > 20`; a zero-length record never advances the read cursor, so the parse loop would otherwise spin once per `/Index`-declared object on attacker-controlled input.
+  upstream: PDFBox 3.0 branch `org.apache.pdfbox.pdfparser.PDFXrefStreamParser#initParserValues` (PDFBOX-6229, commit `ddb7e789`)
+  reason: forward-port from the post-3.0.8 upstream branch.
+
+- **PDFBOX-6247 not ported (no-op in Python)** — upstream's switch from `encryptDataRC4(key, ByteArrayInputStream, out)` to the `byte[]` overload in `StandardSecurityHandler` is a Java API-shape change with identical semantics; pypdfbox's RC4 helper is `_rc4(key: bytes, data: bytes) -> bytes` and already takes byte strings at every affected site.
+  upstream: PDFBox 3.0 branch `org.apache.pdfbox.pdmodel.encryption.StandardSecurityHandler` (PDFBOX-6247)
+  reason: no Python equivalent of the Java overload; nothing observable changes.
+
+- **`PDVisibleSigBuilder` gains the PDFBox 4.0 `write_raw_commands`.** `pypdfbox/pdmodel/interactive/digitalsignature/visible/pd_visible_sig_builder.py` adds `write_raw_commands(stream, commands)` — the 4.0 shape, taking a `PDStream` and owning the open/write/close of the output stream (upstream's try-with-resources). A bare 3.x-style writable is forwarded to `append_raw_commands` so a legacy call site cannot silently no-op. Note `writeRawCommands` is on the concrete builder only upstream — it is NOT part of the `PDFTemplateBuilder` interface.
+  upstream: PDFBox 4.0.0-SNAPSHOT `org.apache.pdfbox.pdmodel.interactive.digitalsignature.visible.PDVisibleSigBuilder#writeRawCommands` (was `#appendRawCommands` in 3.0.x)
+  reason: PDFBox 4.0 convergence.
+
+- **`append_raw_commands` now encodes UTF-8 and closes the stream.** It previously encoded ISO-8859-1 — divergent from upstream above U+007F, and *raising* above U+00FF where upstream silently encodes — and never called `close()`, so the upstream call pattern `append_raw_commands(pd_stream.create_output_stream(), content)` committed nothing at all (a `COSStream` output stream only writes its body on close).
+  upstream: PDFBox 3.0.7 `PDVisibleSigBuilder#appendRawCommands` (`os.write(commands.getBytes(StandardCharsets.UTF_8)); os.close();`)
+  reason: restores byte-level and lifecycle parity with upstream; found during the 4.0 audit.
+
+- **`show_type3_glyph` caps Type3 charproc recursion at depth 50.** `pypdfbox/contentstream/pdf_stream_engine.py` bumps the recursion level around the charproc walk and logs `"recursion is too deep, skipping Type3 glyph"` above level 50, so a `/CharProc` that paints the glyph it defines (directly or through a cycle) no longer blows the stack. The bump lives in `show_type3_glyph` only — `process_stream` still leaves `_level` alone (wave 1472), so Type3 recursion and form-XObject `Do` recursion each count their own depth, matching upstream.
+  upstream: PDFBox 3.0 branch `org.apache.pdfbox.contentstream.PDFStreamEngine#showType3Glyph` (PDFBOX-6266, commit `1cce0674`)
+  reason: forward-port from the post-3.0.8 upstream branch.
+
+- **Predictor row length is capped at 10,000,000 bytes.** `pypdfbox/filter/predictor_output_stream.py` rejects a `/DecodeParms` whose `(columns × colors × bitsPerComponent + 7) // 8` exceeds the cap with `OSError("Calculated row length is too high: …")`, before the two row buffers are allocated. `Filter.SYSPROP_PREDICTOR_MAX_ROW_LENGTH` (`org.apache.pdfbox.filter.predictormaxrowlength`) raises the cap; it is read from the environment (Python has no system-properties facility), and zero/negative/unparseable values are ignored. Python-only addition: row-state attributes are seeded before validation so CPython's `RawIOBase.__del__` → `close()` → `flush()` on a throwing constructor does not surface an unraisable `AttributeError`.
+  upstream: PDFBox 3.0 branch `org.apache.pdfbox.filter.Filter` / `Predictor$PredictorOutputStream` (PDFBOX-6265, commits `d5d4ba03`, `19237f92`)
+  reason: forward-port from the post-3.0.8 upstream branch.
+
+- **The CCITT decode-size cap now charges the `changes` arrays too.** `pypdfbox/filter/ccitt_fax_decode.py` adds `changes_size = (columns + 2) * 4 * 2` — the decoder's two `changesReferenceRow` / `changesCurrentRow` int arrays — to the bitmap size before comparing against the 256 MB budget, and reports both halves. A single-row image with an absurd `/Columns` previously passed the wave-1602 bitmap-only cap while still asking for hundreds of megabytes.
+  upstream: PDFBox 3.0 branch `org.apache.pdfbox.filter.CCITTFaxFilter#decode` (PDFBOX-6243, commit `a889761c`)
+  reason: forward-port from the post-3.0.8 upstream branch.
+
+- **The `cm` operator rethrows a matrix failure as an I/O error.** `pypdfbox/contentstream/operator/state/concatenate.py` converts `Matrix`'s `ValueError("Multiplying two matrices produces illegal values")` (upstream's `IllegalArgumentException` from `Matrix.checkFloatValues`) into `OSError`, chaining the original, so an operand pair whose product overflows to infinity hits the engine's normal malformed-operator handling instead of aborting the page walk. A singular (all-zero) matrix is still accepted — upstream rejects only non-finite products.
+  upstream: PDFBox 3.0 branch `org.apache.pdfbox.contentstream.operator.state.Concatenate#process` (PDFBOX-6255, commit `88a0c56d`)
+  reason: forward-port from the post-3.0.8 upstream branch.
+
+- **Text extraction no longer probes `/Contents` per page.** `PDFTextStripper.process_pages` and `PDFTextStripperByArea.extract_regions` dropped their `page.has_contents()` gates, so `process_page` runs for every page in range. `hasContents()` resolved `/Contents` — an indirect reference, sometimes an array of them — for every page in the tree, which dominated single-page extraction from a large document. Behavioural consequence: the per-page hooks (`start_page` / `end_page`, and the per-region writer) now fire for contentless pages too, so `PDFTextStripperByArea.get_text_for_region` returns the line separator rather than `""` for a page with no content stream — identical to what it already returned for a page whose text misses every region.
+  upstream: PDFBox 3.0 branch `org.apache.pdfbox.text.PDFTextStripper#processPages` / `PDFTextStripperByArea#extractRegions` (PDFBOX-6145, commit `50d95a47`)
+  reason: forward-port from the post-3.0.8 upstream branch.
+
+- **BREAKING (API removal): the CIDFont / FontDescriptor resource-cache surface is gone.** `PDResourceCache` and `DefaultResourceCache` no longer expose `get_cid_font` / `put_cid_font` / `remove_cid_font` / `get_font_descriptor` / `put_font_descriptor` / `remove_font_descriptor`, and `PDFont` / `PDType0Font` no longer accept a `resource_cache` constructor argument. Wave 1603 forward-ported the PDFBOX-6175 extension (shipped in pypdfbox 1.0.0); upstream reverted it in `cab99713` *before* 3.0.8 shipped, because a descendant font refers to its parent font and therefore cannot be shared or cached. `PDType0Font.get_descendant_font` builds a fresh `PDCIDFont` per call again, `PDFont.load_font_descriptor` builds a fresh `PDFontDescriptor` per call, `PDFontFactory.create_font` no longer forwards the cache on the `/Type0` arm, and `PDPage.remove_resources` no longer evicts descendant entries. No deprecation shim — upstream ships none. Port note: because pypdfbox's `PDCIDFont` subclasses `PDFont` (upstream's implements `PDFontLike`), `DefaultResourceCache.put` now routes a `PDCIDFont` to the single font slot, matching upstream's lone `put(COSObject, PDFont)` overload.
+  upstream: PDFBox 3.0.8 `org.apache.pdfbox.pdmodel.ResourceCache` / `DefaultResourceCache` / `PDPage#removeResources`, `org.apache.pdfbox.pdmodel.font.PDFont` / `PDFontFactory` / `PDType0Font` (PDFBOX-6175 revert, commit `cab99713`)
+  reason: back out a feature upstream deleted; matches 3.0.8 exactly.
+
+- **`PDCIDFont.get_parent` is deprecated** and the debugger's Type 0 encoding pane now reads glyphs through the parent `PDType0Font` (`has_glyph` / `code_to_cid` / `code_to_gid` / `get_path`) instead of the descendant `PDCIDFont`; `Type0Font.read_map` consequently takes only the parent font. Deprecation is a docstring `.. deprecated::` directive, matching the existing pypdfbox idiom — no `DeprecationWarning` is emitted.
+  upstream: PDFBox 3.0.8 `org.apache.pdfbox.pdmodel.font.PDCIDFont#getParent`, `org.apache.pdfbox.debugger.fontencodingpane.Type0Font` (PDFBOX-6175 follow-up, commit `10950c29`)
+  reason: forward-port from the 3.0.8 watchlist.
+
+- **Composite-glyph resolution aborts once the running point index passes 32767** — `GlyfCompositeDescript.resolve()` checks `first_index > Short.MAX_VALUE` at the top of the component loop, logs `firstIndex is <n>, aborting resolve` at ERROR and breaks, so a maliciously wide/nested composite glyph cannot keep accumulating point indices. Components past the break keep their default `first_index`/`first_contour` of 0 and the descript is still marked resolved.
+  upstream: PDFBox 3.0 branch `org.apache.fontbox.ttf.GlyfCompositeDescript#resolve` (PDFBOX-6231, commit `ee6ce775`)
+  reason: forward-port from the post-3.0.8 upstream branch.
+
+- **`usecmap` no longer merges the used CMap's CID mappings — the used CMap is kept as a parent and consulted only for codes the importing CMap does not map itself.** `CMap.use_cmap` appends `other` to a new `_parent_cmaps` list instead of folding `other`'s `codeToCid` dicts and `codeToCidRanges` into its own; a new private `CMap._find_cid(code, length)` resolves own cidchars → own cidranges → each parent in declaration order and returns `-1` for "not mapped", so a deliberate `.notdef` (CID 0) is told apart from the absence of a mapping. `to_cid` / `to_cid_with_length` / `to_cid_bytes` are thin wrappers over it, and `has_cid_mappings()` reports `True` when only an inherited CMap has mappings (Identity-V). Net effect: a CMap's own mappings always beat everything it inherits, and a `usecmap` chain resolves nearest-first. Codespace and Unicode mappings are still copied as before.
+  upstream: PDFBox 3.0 branch `org.apache.fontbox.cmap.CMap` (PDFBOX-6251, commits `220c31c5`, `39830570`)
+  reason: forward-port from the post-3.0.8 upstream branch.
+
+- **Port note: `CMap.to_cid_from_ranges(...)` (a pypdfbox-only public probe) keeps its `0` "no range covers the code" sentinel** while the private helpers it wraps now return upstream's `-1`, and it deliberately consults only the ranges the CMap declares itself — inherited ranges belong to the parent and are resolved by `to_cid_with_length`.
+  upstream: PDFBox 3.0 branch `org.apache.fontbox.cmap.CMap#toCIDFromRanges` (PDFBOX-6251)
+  reason: the public entry is a pypdfbox enrichment with an established 0-sentinel contract; upstream's `-1` is an internal marker, not API.
+
+- **Type 1 `rmoveto` takes the last two operands, not the first two** — `Type1CharString.handle_type1_command` calls `rmove_to(ctx, n[-2], n[-1])` on the non-flex branch, so stale operands left on the stack ahead of the operator are ignored (glyphs from affected fonts no longer render with "holes"). The flex branch still collects `n[0]`/`n[1]`, as upstream.
+  upstream: PDFBox 3.0 branch `org.apache.fontbox.cff.Type1CharString#handleType1Command` (PDFBOX-6267, commit `12981bfc`)
+  reason: forward-port from the post-3.0.8 upstream branch.
+
+- **PDFBOX-6251 follow-up (`6dfa7d3a`) not ported (no landing site)** — upstream added an `otf != null && otf.isPostScript() → codeToCID(code)` arm to the *non-embedded* branch of `PDCIDFontType2.codeToGID`. pypdfbox's `PDCIDFontType2.code_to_gid` implements only the embedded branch, which already returns the CID unbounded for an OpenType-with-PostScript-outlines program, so the post-fix outcome already holds. Re-check when the non-embedded substitute-font `codeToGID` path is ported.
+  upstream: PDFBox 3.0 branch `org.apache.pdfbox.pdmodel.font.PDCIDFontType2#codeToGID` (PDFBOX-6251)
+  reason: no equivalent code path in the port.
+
+- **Cyclic `/Parent` chains no longer hang the AcroForm orphan-widget repair.** `resolve_non_root_field` keeps a visited set of parent dictionaries, logs `"Field ignored: <dict>"` and returns `None` the moment one repeats. Upstream's `HashSet<COSDictionary>` is identity-based (`COSDictionary` overrides neither `equals` nor `hashCode`), so the port keys on `id()`.
+  upstream: PDFBox 3.0 branch `org.apache.pdfbox.pdmodel.fixup.processor.AcroFormOrphanWidgetsProcessor#resolveNonRootField` (PDFBOX-6227, commits `0b6e1e84`, `afd9fad9`, `01558b18`)
+  reason: forward-port from the post-3.0.8 upstream branch.
+
+- **`PDStructureElement.get_structure_tree_root` is cycle-guarded and no longer depth-capped.** The `/P` walk now runs unbounded, guarded only by a visited set, and logs `"Element ignored: <dict>"` before returning `None` on a loop. The previous port also capped the walk at 16 hops (`_MAX_ROLE_MAP_DEPTH`), which upstream never did — a legitimately deep structure tree silently reported "not attached to a tree". The cap stays in place for the `/RoleMap` walk, which is a different traversal.
+  upstream: PDFBox 3.0 branch `org.apache.pdfbox.pdmodel.documentinterchange.logicalstructure.PDStructureElement#getStructureTreeRoot` (PDFBOX-6228, commit `276bd3ea`)
+  reason: forward-port from the post-3.0.8 upstream branch.
+
+- **Standard-attribute string arrays are positional, and `/Headers` round-trips through `COSString`.** `PDStandardAttributeObject.get_array_of_string` now mirrors upstream exactly: one slot per `COSArray` entry, read with `COSArray.get_string(i)`, `None` where the entry is not a direct `COSString` (logged per slot). It previously *dropped* non-string entries, so a `/Headers` array with one bad slot shifted every later header off its column. `PDTableAttributeObject.get_headers` / `PDExportFormatAttributeObject.get_headers` delegate to it instead of reimplementing the loop, which has three visible consequences: absent `/Headers` returns `None` rather than `[]`; elements are decoded by `COSString.get_string()` (UTF-16 BOM sniffing, else PDFDocEncoding) rather than a UTF-8-first guess; and `set_headers` / `add_header` write `COSString(value)` rather than raw UTF-8 bytes, so a non-ASCII header survives the round trip. `PDAttributeObject.array_to_string` renders a `None` slot as `"null"`, matching Java's `StringJoiner`.
+  upstream: PDFBox 3.0 branch `org.apache.pdfbox.pdmodel.documentinterchange.taggedpdf.PDStandardAttributeObject#getArrayOfString` (PDFBOX-6261 / TIKA-4891, commits `aecc2323`, `def6da8f`, `54427197`)
+  reason: forward-port from the post-3.0.8 upstream branch.
+
+- **XFDF output is escaped for XML 1.0.** New `pypdfbox/pdmodel/fdf/fdf_utils.py` (`FDFUtils.escape_xml10`) is the single escaper for `FDFField.write_xml` and `FDFDictionary.write_xml`. Code points XML 1.0 forbids outright — the C0 controls other than tab/LF/CR, the surrogate block, `U+FFFE` and `U+FFFF` — are replaced with `U+FFFD` and the replacement count is logged at INFO. Two call sites changed with the extraction: `FDFField.write_xml` now escapes the partial field *name* (previously emitted raw into `name="…"`), and `FDFDictionary.write_xml` escapes the `<f href>` value and omits the `<f>` element entirely when `/F` carries no file name. Python strings iterate by code point, so upstream's `codePointAt`/`charCount` loop maps to plain iteration and a supplementary character yields one numeric reference rather than two surrogate ones. `8dc48b9b` (logger-class fix) skipped: Python's `logging.getLogger(__name__)` cannot carry the wrong class name.
+  upstream: PDFBox 3.0 branch `org.apache.pdfbox.pdmodel.fdf.FDFUtils#escapeXML10` (PDFBOX-6242, commits `8e4343e5`, `aff3a221`; extraction per PDFBOX-5660, commit `96a9be9b`)
+  reason: forward-port from the post-3.0.8 upstream branch.
+
+- **The PDF/A extension "closed/open Choice of" prefix check is case-insensitive.** `PdfaExtensionHelper.transform_value_type` lower-cases the value type once and tests a single lower-case prefix (only `"closed Choice of "` and `"Closed Choice of "` matched before). Following upstream, the four public constants `CLOSED_CHOICE`, `CLOSED_CHOICE_U`, `OPEN_CHOICE` and `OPEN_CHOICE_U` are removed from the module, the class and `__all__`. Minor divergence: Python's `str.lower()` is locale-independent, so unlike Java's default-locale `toLowerCase()` the match cannot misfire in a Turkish locale.
+  upstream: PDFBox 3.0 branch `org.apache.xmpbox.xml.PdfaExtensionHelper#transformValueType` (PDFBOX-6257, commit `8f3b4ac4`)
+  reason: forward-port from the post-3.0.8 upstream branch.
+
+- **BREAKING (2.0.0): `PDIndexed` has no public no-argument constructor.** `__init__` now requires the `COSArray`; the `[/Indexed /DeviceRGB 255 null]` default-array construction is gone. Build the array and pass it, or use `PDIndexed.create(base, hival, lookup_data)`.
+  upstream: PDFBox trunk (4.0.0-SNAPSHOT) `org.apache.pdfbox.pdmodel.graphics.color.PDIndexed#PDIndexed()` — made `private`; the COSArray construction moved into `create(...)`
+  reason: adopting the 4.0 removal at the 2.0.0 major bump. 3.0.x marks the constructor `@Deprecated ... will be removed in 4.0`.
+
+- **BREAKING (2.0.0): `PDIndexed.set_base_color_space` is removed.** The base color space is fixed at construction — via the `/Indexed` array or `PDIndexed.create(...)`. The "base color space with no COS form" rejection now surfaces from `create` as `ValueError: base color space has no COS form` (it was `TypeError` from the setter).
+  upstream: PDFBox trunk (4.0.0-SNAPSHOT) `PDIndexed#setBaseColorSpace` — deleted
+  reason: adopting the 4.0 removal at the 2.0.0 major bump.
+
+- **BREAKING (2.0.0): `PDIndexed.set_high_value` is removed.** It was a thin alias for `set_hival`, which remains. The cannot-exceed-255 contract is unchanged: no setter-side clamp, `get_hival()` clamps on read.
+  upstream: PDFBox trunk (4.0.0-SNAPSHOT) `PDIndexed#setHighValue` — deleted
+  reason: adopting the 4.0 removal at the 2.0.0 major bump.
+
+- **BREAKING (2.0.0): `PDVisibleSigBuilder.append_raw_commands` is removed; use `write_raw_commands(stream, commands)`.** The 3.x-shaped forwarding branch inside `write_raw_commands` is gone with it, so a bare writable object (the old `OutputStream` shape) is now silently ignored rather than written to — `write_raw_commands` requires a `PDStream` (anything exposing `create_output_stream()`), and the builder owns opening and closing it.
+  upstream: PDFBox trunk (4.0.0-SNAPSHOT) `PDVisibleSigBuilder#writeRawCommands(PDStream, String)` (renamed from `appendRawCommands(OutputStream, String)`)
+  reason: adopting the 4.0 rename at the 2.0.0 major bump; 1.x kept both names additively.
+
+- **BREAKING (2.0.0): `Overlay` no longer subtracts the overlay's own lower-left corner when centring.** `_calculate_affine_transform` now computes exactly upstream's `pageMediaBox.getLowerLeftX() + (pw - ow) / 2` (and the Y counterpart). pypdfbox 1.x additionally subtracted `overlayMediaBox.getLowerLeftX()/Y()`; upstream instead sets the form XObject's `/BBox` to `createRetranslatedRectangle()` (`[0 0 w h]`), which clips a non-origin overlay. No-op for an origin-based overlay MediaBox (the ordinary case), so ordinary output is byte-identical; output moves only when the overlay's own MediaBox does not start at the origin.
+  upstream: PDFBox trunk (4.0.0-SNAPSHOT) `org.apache.pdfbox.multipdf.Overlay#calculateAffineTransform` lines 615-616 (PDFBOX-6048)
+  reason: the extra term was behaviour upstream does not have; behavioural compatibility beats local improvement (CLAUDE.md "Behavior over style").
+
+- **Port note: `PDIndexed.get_hival` stays public** although upstream's `getHival()` is `private` in both 3.0 and trunk. It is a faithful port (not an invention), and this file's convention keeps ported-private helpers un-underscored so the parity tracker pairs them 1:1 (`read_lookup_data`, `read_color_table`, `init_rgb_color_table` do the same). It is also duck-typed by `PDColor._indexed_to_rgb`, where a rename would silently disable the out-of-range index clamp.
+  upstream: PDFBox 3.0 / trunk `PDIndexed#getHival` (private)
+  reason: documented deliberate visibility divergence; see the docstring on the method.
+
+- **Glyph layout is a pluggable, absent-by-default extension point (PDFBOX-4951).** `PDAbstractContentStream` and `PDPageContentStream` implement the new `ContentStreamForGlyphLayoutInterface` (`show_glyphs_with_positioning` / `show_glyph_codes` / `set_text_rise`) and accept a `GlyphLayoutProcessorInterface` via `set_glyph_layout_processor()`; `PDAcroForm` gained `set_glyph_layout_processor()` / `get_glyph_layout_processor()`, propagated onto every appearance content stream the form generates. pypdfbox ships **no** implementation and adds **no** text-shaping dependency — matching upstream, which keeps its FOP / AWT backends in separate optional Maven modules. With none registered every emitted byte is unchanged. Two pypdfbox-shaped divergences: (1) upstream's single `PDAbstractContentStream` maps to two classes here, since `PDPageContentStream` is the base of the pypdfbox writer hierarchy rather than a subclass, so the wiring is duplicated onto both; (2) upstream propagates the processor inside `AppearanceGeneratorHelper.insertGeneratedAppearance`, whereas pypdfbox opens its appearance content streams in `PDAppearanceGenerator`, so the propagation happens there. `AbstractGlyphLayoutProcessor` uses `pypdfbox.text.bidi` (the stdlib UAX #9 port already backing `PDFTextStripper.handle_direction`) in place of `java.text.Bidi`; `pypdfbox.text.bidi.requires_bidi()` is a new port of the static `Bidi.requiresBidi`.
+  upstream: PDFBox 3.0 branch `org.apache.pdfbox.pdmodel.{ContentStreamForGlyphLayoutInterface,GlyphLayoutProcessorInterface,GlyphsAndPositions,AbstractGlyphLayoutProcessor,PDAbstractContentStream}` + `interactive.form.{PDAcroForm,AppearanceGeneratorHelper}` (PDFBOX-4951, commits `be4341e0`, `0efb8219`, `90813af0`, `8d8702f3`)
+  reason: forward-port of the first new upstream feature module after parity; PDFBox 4.0 convergence.
+
+- **`show_text_with_positioning()` now asserts `begin_text()` + `set_font()` up front.** Both content-stream writers raise `RuntimeError` before emitting anything, so an empty array outside a text block no longer emits a bare `[] TJ`. `show_text()` additionally asserts the font size is set ("Font is set, but fontSize is not set") — unreachable through the public API, since `set_font()` fills both stacks.
+  upstream: PDFBox 3.0 branch `org.apache.pdfbox.pdmodel.PDAbstractContentStream#showTextWithPositioning` / `#showText` (PDFBOX-4951, commit `be4341e0`)
+  reason: forward-port from the post-3.0.8 upstream branch.
+
 ## See also
 
 - [`PROVENANCE.md`](PROVENANCE.md) — per-file upstream porting provenance (Apache 2.0 §4(b)).

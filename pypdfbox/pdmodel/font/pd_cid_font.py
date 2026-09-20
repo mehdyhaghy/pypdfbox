@@ -69,6 +69,16 @@ class PDCIDFont(PDFont):
     # ---------- parent Type0 font ----------
 
     def get_parent(self) -> PDType0Font | None:
+        """Return the Type 0 font which is the parent of this font.
+
+        Mirrors upstream ``PDCIDFont.getParent``.
+
+        .. deprecated:: upstream marked ``getParent`` deprecated in the
+           PDFBOX-6175 follow-up; it will be removed in a future release.
+           Reach the descendant through its parent
+           :class:`~pypdfbox.pdmodel.font.pd_type0_font.PDType0Font`
+           instead of navigating back up from the descendant.
+        """
         return self._parent
 
     # ---------- /CIDSystemInfo ----------

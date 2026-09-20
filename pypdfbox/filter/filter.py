@@ -52,6 +52,17 @@ class Filter(ABC):
     #: ``org.apache.pdfbox.filter.Filter#SYSPROP_CCITTFAX_MAXBYTES``.
     SYSPROP_CCITTFAX_MAXBYTES: Final[str] = "org.apache.pdfbox.filter.ccittmaxbytes"
 
+    #: Environment-variable name capping the ``PredictorOutputStream`` row
+    #: length, obtained by computing
+    #: ``(columns * colors * bits_per_component + 7) // 8``. Mirrors
+    #: ``org.apache.pdfbox.filter.Filter#SYSPROP_PREDICTOR_MAX_ROW_LENGTH``
+    #: (PDFBOX-6265). To raise the cap for high-resolution legitimate
+    #: documents, set the environment variable, e.g.
+    #: ``os.environ[Filter.SYSPROP_PREDICTOR_MAX_ROW_LENGTH] = "10000000"``.
+    SYSPROP_PREDICTOR_MAX_ROW_LENGTH: Final[str] = (
+        "org.apache.pdfbox.filter.predictormaxrowlength"
+    )
+
     @abstractmethod
     def decode(
         self,

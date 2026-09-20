@@ -11,7 +11,9 @@ Targets:
 - palette validation (truncate-when-overflow, pad-when-short)
 - ``to_rgb`` lookup with index clamping
 - ``to_rgb_image`` Pillow palette dispatch
-- cache invalidation on setters (hival / lookup / base)
+- cache invalidation on the setters that survive PDFBox 4.0 (hival /
+  lookup); the base color space is now fixed at construction, so the
+  pre-2.0 ``set_base_color_space`` route is pinned as removed instead
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ from pypdfbox.cos import (
     COSArray,
     COSInteger,
     COSName,
+    COSNull,
     COSStream,
     COSString,
 )
@@ -128,9 +131,12 @@ def test_set_hival_invalidates_cache() -> None:
     assert cs._rgb_color_table_cache is None
 
 
-def test_set_high_value_alias_dispatches_to_set_hival() -> None:
+def test_set_high_value_removed_in_4_0() -> None:
+    """3.0.x's deprecated ``setHighValue`` alias is deleted on trunk;
+    pypdfbox 2.0.0 adopts the removal. ``set_hival`` remains."""
     cs = _indexed(0, b"\xff\x00\x00")
-    cs.set_high_value(5)
+    assert not hasattr(cs, "set_high_value")
+    cs.set_hival(5)
     assert cs.get_hival() == 5
 
 
@@ -206,11 +212,44 @@ def test_base_color_space_round_trip() -> None:
     assert cs.has_base_color_space() is True
 
 
-def test_set_base_color_space_invalidates_cache() -> None:
+def test_set_base_color_space_removed_in_4_0() -> None:
+    """3.0.x's deprecated ``setBaseColorSpace`` is deleted on trunk;
+    pypdfbox 2.0.0 adopts the removal. The base color space is fixed at
+    construction — via the array, or via :meth:`PDIndexed.create`."""
+    assert not hasattr(PDIndexed, "set_base_color_space")
+    gray = PDIndexed.create(PDDeviceGray.INSTANCE, 0, b"\x80")
+    assert gray.get_base_color_space() is PDDeviceGray.INSTANCE
+    # A DeviceGray palette entry expands to a neutral RGB triple, which
+    # is what the pre-2.0 "swap the base, re-decode" test was checking.
+    assert gray.get_rgb_color_table() == [(128, 128, 128)]
+
+
+def test_invalidate_caches_clears_every_memoised_field() -> None:
+    """The cache-invalidation path wave 1368 reached through
+    ``set_base_color_space`` is still exercised — via the setters that
+    survive into 4.0 — and all three memoised fields are cleared, not
+    just the RGB table."""
     cs = _indexed(0, b"\xff\x00\x00")
-    cs.get_rgb_color_table()  # prime
+    # Prime every cache.
+    cs.get_color_table()
+    cs.get_actual_max_index()
+    cs.get_rgb_color_table()
+    assert cs._color_table_cache is not None
+    assert cs._actual_max_index_cache is not None
     assert cs._rgb_color_table_cache is not None
-    cs.set_base_color_space(PDDeviceGray.INSTANCE)
+
+    cs.set_lookup_data(b"\x00\xff\x00")
+
+    assert cs._color_table_cache is None
+    assert cs._actual_max_index_cache is None
+    assert cs._rgb_color_table_cache is None
+    # And the next read really re-decodes against the new palette.
+    assert cs.get_rgb_color_table() == [(0, 255, 0)]
+
+    cs.get_rgb_color_table()
+    cs.set_hival(0)
+    assert cs._color_table_cache is None
+    assert cs._actual_max_index_cache is None
     assert cs._rgb_color_table_cache is None
 
 
@@ -272,7 +311,14 @@ def test_to_rgb_rejects_multi_component_input() -> None:
 
 def test_to_rgb_empty_palette_returns_black() -> None:
     """A PDIndexed with no Lookup data should map every index to black."""
-    cs = PDIndexed()  # default ctor: no /Lookup
+    # ``[/Indexed /DeviceRGB 255 null]`` — what 3.x's no-arg ctor built
+    # before 4.0 privatised it.
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("Indexed"))
+    arr.add(PDDeviceRGB.INSTANCE.get_cos_object())
+    arr.add(COSInteger.get(255))
+    arr.add(COSNull.NULL)
+    cs = PDIndexed(arr)
     assert cs.to_rgb([0]) == [0.0, 0.0, 0.0]
 
 

@@ -111,7 +111,7 @@ def test_table_attribute_has_and_clear_helpers() -> None:
     assert not obj.has_row_span()
     assert not obj.has_headers()
     assert obj.get_row_span() == 1
-    assert obj.get_headers() == []
+    assert obj.get_headers() is None
 
 
 def test_export_format_has_and_clear_helpers() -> None:

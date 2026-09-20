@@ -191,7 +191,14 @@ def test_create_overlay_stream_swaps_media_box_for_rotated_overlay() -> None:
         page, layout, COSName.get_pdf_name("OL0")
     )
 
-    assert b"1.0 0.0 0.0 1.0 30.0 140.0  cm\n /OL0 Do" in _decoded(stream)
+    # Page is 300 x 400; the rotated overlay box swaps to 200 x 100.
+    # Upstream formula (2.0.0 parity correction — the overlay box's own
+    # lower-left corner is NOT subtracted):
+    #   h = page_llx + (300 - 200) / 2 =  50
+    #   v = page_lly + (400 - 100) / 2 = 150
+    # pypdfbox 1.x produced (30, 140) by also subtracting the swapped
+    # overlay box's (20, 10) corner.
+    assert b"1.0 0.0 0.0 1.0 50.0 150.0  cm\n /OL0 Do" in _decoded(stream)
 
 
 def test_create_stream_only_compresses_long_content_and_float_formatting() -> None:

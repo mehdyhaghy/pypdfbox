@@ -188,3 +188,45 @@ def test_acro_form_set_fields_round_trip(
     assert len(fields) == 1
     assert fields[0].get_partial_name() == "SampleField"
     assert form.get_field("SampleField") is not None
+
+
+def test_cycle() -> None:
+    """Upstream: ``testCycle`` (PDFBOX-6227).
+
+    A widget whose ``/Parent`` points at itself used to make the orphan-widget
+    repair loop forever. The repair must terminate and produce no fields.
+    """
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_widget import (
+        PDAnnotationWidget,
+    )
+    from pypdfbox.pdmodel.pd_page import PDPage
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+    from pypdfbox.pdmodel.pd_resources import PDResources
+
+    with PDDocument() as doc:
+        page = PDPage()
+        doc.add_page(page)
+
+        the_acro_form = PDAcroForm(doc)
+        the_acro_form.set_need_appearances(True)
+        doc.get_document_catalog().set_acro_form(the_acro_form)
+        the_acro_form.set_default_resources(PDResources())
+
+        text_box = PDTextField(the_acro_form)
+        text_box.set_partial_name("SampleField")
+
+        text_box.set_default_appearance("/Helv 0 Ff 0 g")
+        # field not added to force repair
+
+        widget: PDAnnotationWidget = text_box.get_widgets()[0]
+        rect = PDRectangle(50, 750, 200, 20)
+        # upstream asserts IllegalArgumentException; pypdfbox raises ValueError
+        with pytest.raises(ValueError):
+            widget.set_parent(text_box)
+        widget.get_cos_object().set_item(COSName.PARENT, widget.get_cos_object())
+        widget.set_rectangle(rect)
+        widget.set_page(page)
+
+        page.get_annotations().append(widget)
+
+        assert doc.get_document_catalog().get_acro_form().get_fields() == []

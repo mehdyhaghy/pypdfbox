@@ -16,9 +16,46 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 from typing import BinaryIO
 
 from ._predictor import calculate_row_length, decode_predictor_row
+
+#: PDFBOX-6265: default cap on the computed scanline length. A crafted
+#: ``/DecodeParms`` with extreme ``/Colors``, ``/BitsPerComponent`` or
+#: ``/Columns`` otherwise asks for two multi-GB row buffers before a
+#: single encoded byte is inspected.
+_DEFAULT_MAX_ROW_LENGTH = 10_000_000
+
+
+def _max_row_length() -> int:
+    """Resolve the predictor row-length cap (PDFBOX-6265).
+
+    Mirrors upstream's read of the
+    ``Filter.SYSPROP_PREDICTOR_MAX_ROW_LENGTH`` system property —
+    consumed as an environment variable on the Python side, the same
+    convention :meth:`Filter.get_compression_level` uses for
+    ``SYSPROP_DEFLATELEVEL``. A positive integer overrides the 10,000,000
+    default; zero, negative or unparseable values are ignored (default
+    kept), matching upstream.
+    """
+    # Imported lazily: ``filter`` pulls in the whole codec surface and
+    # this module sits below it in the import graph.
+    from .filter import Filter  # noqa: PLC0415
+
+    max_row_length = _DEFAULT_MAX_ROW_LENGTH
+    sys_prop = os.environ.get(Filter.SYSPROP_PREDICTOR_MAX_ROW_LENGTH)
+    if sys_prop is not None:
+        try:
+            parsed = int(sys_prop)
+        except ValueError:
+            # ignore invalid value, keep default
+            pass
+        else:
+            if parsed > 0:
+                max_row_length = parsed
+            # else ignore zero/negative values
+    return max_row_length
 
 
 class PredictorOutputStream(io.RawIOBase):
@@ -42,16 +79,32 @@ class PredictorOutputStream(io.RawIOBase):
         self._colors: int = colors
         self._bits_per_component: int = bits_per_component
         self._columns: int = columns
+        # Seed the row state before the validation below. Java simply never
+        # publishes an object whose constructor threw; CPython still runs
+        # ``RawIOBase.__del__`` -> ``close()`` -> ``flush()`` on the
+        # half-built instance, which would blow up on the missing
+        # attributes and surface as an unraisable exception.
+        self._row_length: int = 0
+        self._predictor_per_row: bool = predictor >= 10
+        self._current_row: bytearray = bytearray()
+        self._last_row: bytearray = bytearray()
+        self._current_row_data: int = 0
+        self._predictor_read: bool = False
         row_length = calculate_row_length(colors, bits_per_component, columns)
         if row_length < 0:
             raise OSError(f"Calculated row length is negative: {row_length}")
-        self._row_length: int = row_length
+        # PDFBOX-6265: prevent OOM with extreme values
+        max_row_length = _max_row_length()
+        if row_length > max_row_length:
+            raise OSError(
+                f"Calculated row length is too high: {row_length} "
+                f"(colors: {colors}, bitsPerComponent: {bits_per_component}, "
+                f"columns: {columns})"
+            )
+        self._row_length = row_length
         # PNG predictor (>=10) means each row starts with a per-row tag.
-        self._predictor_per_row: bool = predictor >= 10
-        self._current_row: bytearray = bytearray(row_length)
-        self._last_row: bytearray = bytearray(row_length)
-        self._current_row_data: int = 0
-        self._predictor_read: bool = False
+        self._current_row = bytearray(row_length)
+        self._last_row = bytearray(row_length)
 
     # ------------------------------------------------------------------
     # IOBase

@@ -4,7 +4,9 @@ from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.documentinterchange.taggedpdf import PDTableAttributeObject
 
 
-def test_headers_decode_latin1_fallback_and_skip_non_strings() -> None:
+def test_headers_decode_and_none_for_non_strings() -> None:
+    # PDFBOX-6261: getHeaders() is positional — a non-string slot becomes
+    # None (rendered "null" by toString()) instead of being dropped.
     dictionary = COSDictionary()
     dictionary.set_name("O", "Table")
     headers = COSArray()
@@ -14,8 +16,8 @@ def test_headers_decode_latin1_fallback_and_skip_non_strings() -> None:
 
     obj = PDTableAttributeObject(dictionary)
 
-    assert obj.get_headers() == ["ÿ"]
-    assert str(obj) == "O=Table, Headers=[ÿ]"
+    assert obj.get_headers() == ["ÿ", None]
+    assert str(obj) == "O=Table, Headers=[ÿ, null]"
 
 
 def test_clear_helpers_remove_written_values_and_aliases_track_presence() -> None:
@@ -45,7 +47,7 @@ def test_clear_helpers_remove_written_values_and_aliases_track_presence() -> Non
     assert obj.has_summary() is False
     assert obj.get_row_span() == 1
     assert obj.get_col_span() == 1
-    assert obj.get_headers() == []
+    assert obj.get_headers() is None
     assert obj.get_scope() is None
     assert obj.get_summary() is None
     assert str(obj) == "O=Table"
@@ -57,7 +59,7 @@ def test_set_headers_empty_removes_entry_after_existing_value() -> None:
 
     obj.set_headers([])
 
-    assert obj.get_headers() == []
+    assert obj.get_headers() is None
     assert obj.has_headers() is False
     assert obj.get_cos_object().get_dictionary_object("Headers") is None
 

@@ -964,8 +964,31 @@ def test_show_text_with_positioning_empty_list() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
+        cs.set_font(_make_font(), 12)
         cs.show_text_with_positioning([])
-    assert _stream_bytes(page) == b"[] TJ\n"
+        cs.end_text()
+    assert b"[] TJ\n" in _stream_bytes(page)
+
+
+def test_show_text_with_positioning_requires_text_mode() -> None:
+    """PDFBOX-4951 moved the ``beginText`` / ``setFont`` assertions to the
+    top of ``showTextWithPositioning``, so they now fire even for an empty
+    array (upstream previously emitted ``[] TJ`` unguarded)."""
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs, pytest.raises(RuntimeError):
+        cs.show_text_with_positioning([])
+
+
+def test_show_text_with_positioning_requires_a_font() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
+        with pytest.raises(RuntimeError):
+            cs.show_text_with_positioning([])
+        cs.end_text()
 
 
 # ------------------------------------------------------------------

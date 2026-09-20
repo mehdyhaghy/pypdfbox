@@ -499,17 +499,28 @@ def test_overlay_unknown_position_raises() -> None:
         overlay.overlay({})
 
 
-def test_overlay_addresses_pdfbox_6048_with_overlay_lower_left_offset() -> None:
+def test_overlay_ignores_the_overlay_boxes_own_lower_left() -> None:
     """Mirror of the lower-left-corner test, but with the **overlay** box
-    starting away from origin. The translation must subtract the overlay's
-    own lower-left in addition to the page math."""
+    starting away from the origin.
+
+    Upstream trunk (``Overlay.java`` lines 615-616) uses only the
+    *destination page's* lower-left corner::
+
+        hShift = pageMediaBox.getLowerLeftX() + (pw - ow) / 2
+
+    A non-origin overlay box is handled by the form XObject's
+    retranslated ``/BBox`` (``[0 0 w h]``), not by the transform.
+    pypdfbox 1.x additionally subtracted the overlay's own corner; 2.0.0
+    dropped that invented term for byte-exact upstream parity.
+    """
     inst = Overlay()
     page = PDPage(PDRectangle.from_width_height(600.0, 800.0))
     overlay_box = PDRectangle(50.0, 100.0, 250.0, 300.0)  # 200 x 200, offset
     matrix = inst.calculate_affine_transform(page, overlay_box)
-    # h_shift = (600 - 200) / 2 + 0 - 50 = 150
-    # v_shift = (800 - 200) / 2 + 0 - 100 = 200
-    assert matrix == [1.0, 0.0, 0.0, 1.0, 150.0, 200.0]
+    # h_shift = 0 + (600 - 200) / 2 = 200
+    # v_shift = 0 + (800 - 200) / 2 = 300
+    # (pypdfbox 1.x produced [150, 200] here.)
+    assert matrix == [1.0, 0.0, 0.0, 1.0, 200.0, 300.0]
 
 
 def test_overlay_close_clears_specific_page_layout() -> None:

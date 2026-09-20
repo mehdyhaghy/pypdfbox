@@ -33,6 +33,16 @@ Fast pass (no coverage):
 .venv/bin/pytest -q --no-cov
 ```
 
+That runs the whole suite (~57k tests, ~4.5 min) with the JVM-backed
+differential tests deselected. Those carry a `live_oracle` marker
+(applied automatically to any module using the oracle harness) and are
+excluded by default because each one starts a JVM. Run them
+deliberately before a release or after swapping the oracle jar:
+
+```sh
+.venv/bin/pytest -q --no-cov -m live_oracle
+```
+
 This is the default during development. The full suite is currently
 in the tens of thousands of tests and completes in around a minute
 on a modern laptop. Run this before every substantive change.

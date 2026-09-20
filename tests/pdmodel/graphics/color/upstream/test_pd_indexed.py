@@ -22,6 +22,23 @@ from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
 from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
 
 
+def _default_indexed() -> PDIndexed:
+    """Build ``[/Indexed /DeviceRGB 255 null]`` — the array that PDFBox
+    3.x's no-arg ``PDIndexed()`` constructed. PDFBox 4.0 made that
+    constructor private (adopted in pypdfbox 2.0.0), so the array is
+    spelled out here instead."""
+    from pypdfbox.cos import COSArray, COSInteger, COSName, COSNull
+    from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
+    from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
+
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("Indexed"))
+    arr.add(PDDeviceRGB.INSTANCE.get_cos_object())
+    arr.add(COSInteger.get(255))
+    arr.add(COSNull.NULL)
+    return PDIndexed(arr)
+
+
 def _indexed_rgb(hival: int, palette: bytes) -> PDIndexed:
     arr = COSArray()
     arr.add(COSName.get_pdf_name("Indexed"))
@@ -174,7 +191,7 @@ def test_to_raw_image_for_device_gray_base_returns_decoded_rgb() -> None:
 
 
 def test_get_initial_color_is_zero_index_pd_color() -> None:
-    cs = PDIndexed()
+    cs = _default_indexed()
     initial = cs.get_initial_color()
     assert initial.get_components() == [0.0]
     assert initial.get_color_space() is cs
@@ -185,7 +202,7 @@ def test_get_initial_color_is_zero_index_pd_color() -> None:
 
 def test_get_default_decode_at_eight_bits_is_zero_to_two_pow_n_minus_one() -> None:
     # Upstream: `new float[] { 0, (float)Math.pow(2, bpc) - 1 }` (line 116).
-    cs = PDIndexed()
+    cs = _default_indexed()
     assert cs.get_default_decode(8) == [0.0, 255.0]
     assert cs.get_default_decode(4) == [0.0, 15.0]
     assert cs.get_default_decode(1) == [0.0, 1.0]
@@ -196,20 +213,22 @@ def test_get_default_decode_at_eight_bits_is_zero_to_two_pow_n_minus_one() -> No
 
 def test_get_name_returns_indexed() -> None:
     # Upstream: `COSName.INDEXED.getName()` (line 104).
-    assert PDIndexed().get_name() == "Indexed"
+    assert _default_indexed().get_name() == "Indexed"
 
 
 def test_get_number_of_components_is_one() -> None:
     # Upstream: returns literal `1` (line 110).
-    assert PDIndexed().get_number_of_components() == 1
+    assert _default_indexed().get_number_of_components() == 1
 
 
 # ---------- get_base_color_space (PDIndexed.java line 246) ----------
 
 
-def test_get_base_color_space_round_trip_through_setter() -> None:
-    cs = PDIndexed()
-    cs.set_base_color_space(PDDeviceGray.INSTANCE)
+def test_get_base_color_space_reads_array_slot_one() -> None:
+    # Upstream's ``setBaseColorSpace`` is deleted on trunk (adopted in
+    # pypdfbox 2.0.0), so the base CS is fixed at construction — the
+    # getter reads array slot 1 either way.
+    cs = PDIndexed.create(PDDeviceGray.INSTANCE, 0, b"\x80")
     base = cs.get_base_color_space()
     assert base is not None
     assert base.get_name() == "DeviceGray"

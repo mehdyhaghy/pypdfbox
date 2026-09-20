@@ -70,7 +70,8 @@ def test_wave557_array_helpers_ignore_wrong_item_types() -> None:
 
     assert obj._get_array("MixedStrings") is array
     assert obj._get_array("Missing") is None
-    assert obj.get_array_of_string("MixedStrings") == ["NameValue", "StringValue"]
+    # PDFBOX-6261: positional — COSName / COSInteger slots read back as None.
+    assert obj.get_array_of_string("MixedStrings") == [None, "StringValue", None]
     assert obj.get_array_of_name("MissingNames") is None
 
     numbers = COSArray()

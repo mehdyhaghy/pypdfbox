@@ -13,13 +13,8 @@ from xml.dom.minidom import parseString
 
 import pytest
 
-from pypdfbox.xmpbox.xml.pdfa_extension_helper import (
-    CLOSED_CHOICE,
-    CLOSED_CHOICE_U,
-    OPEN_CHOICE,
-    OPEN_CHOICE_U,
-    PdfaExtensionHelper,
-)
+from pypdfbox.xmpbox.xml import pdfa_extension_helper as helper_mod
+from pypdfbox.xmpbox.xml.pdfa_extension_helper import PdfaExtensionHelper
 from pypdfbox.xmpbox.xmp_metadata import XMPMetadata
 
 # ---------------------------------------------------------------------------
@@ -57,28 +52,28 @@ def test_populate_schema_mapping_repeated_calls_safe() -> None:
 
 def test_transform_value_type_strips_lowercase_closed_choice() -> None:
     assert (
-        PdfaExtensionHelper.transform_value_type(None, CLOSED_CHOICE + "Text")
+        PdfaExtensionHelper.transform_value_type(None, "closed Choice of Text")
         == "Text"
     )
 
 
 def test_transform_value_type_strips_uppercase_closed_choice() -> None:
     assert (
-        PdfaExtensionHelper.transform_value_type(None, CLOSED_CHOICE_U + "Integer")
+        PdfaExtensionHelper.transform_value_type(None, "Closed Choice of Integer")
         == "Integer"
     )
 
 
 def test_transform_value_type_strips_lowercase_open_choice() -> None:
     assert (
-        PdfaExtensionHelper.transform_value_type(None, OPEN_CHOICE + "Real")
+        PdfaExtensionHelper.transform_value_type(None, "open Choice of Real")
         == "Real"
     )
 
 
 def test_transform_value_type_strips_uppercase_open_choice() -> None:
     assert (
-        PdfaExtensionHelper.transform_value_type(None, OPEN_CHOICE_U + "Date")
+        PdfaExtensionHelper.transform_value_type(None, "Open Choice of Date")
         == "Date"
     )
 
@@ -188,15 +183,20 @@ def test_require_non_null_value_present_is_noop() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Class-level constants are exposed on the class for upstream parity.
+# PDFBOX-6257 removed the public choice-prefix constants from the class.
 # ---------------------------------------------------------------------------
 
 
-def test_class_level_constants_match_module_level() -> None:
-    assert PdfaExtensionHelper.CLOSED_CHOICE == CLOSED_CHOICE
-    assert PdfaExtensionHelper.CLOSED_CHOICE_U == CLOSED_CHOICE_U
-    assert PdfaExtensionHelper.OPEN_CHOICE == OPEN_CHOICE
-    assert PdfaExtensionHelper.OPEN_CHOICE_U == OPEN_CHOICE_U
+def test_choice_constants_are_module_private() -> None:
+    assert helper_mod._CLOSED_CHOICE == "closed choice of "
+    assert helper_mod._OPEN_CHOICE == "open choice of "
+    for removed in (
+        "CLOSED_CHOICE",
+        "CLOSED_CHOICE_U",
+        "OPEN_CHOICE",
+        "OPEN_CHOICE_U",
+    ):
+        assert not hasattr(PdfaExtensionHelper, removed)
 
 
 # ---------------------------------------------------------------------------

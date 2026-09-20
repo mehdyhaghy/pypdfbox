@@ -22,6 +22,23 @@ from pypdfbox.pdmodel.graphics.color.pd_lab import PDLab
 from pypdfbox.pdmodel.graphics.color.pd_pattern import PDPattern
 from pypdfbox.pdmodel.graphics.color.pd_separation import PDSeparation
 
+
+def _default_indexed() -> PDIndexed:
+    """Build ``[/Indexed /DeviceRGB 255 null]`` — the array that PDFBox
+    3.x's no-arg ``PDIndexed()`` constructed. PDFBox 4.0 made that
+    constructor private (adopted in pypdfbox 2.0.0), so the array is
+    spelled out here instead."""
+    from pypdfbox.cos import COSArray, COSInteger, COSName, COSNull
+    from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
+    from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
+
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("Indexed"))
+    arr.add(PDDeviceRGB.INSTANCE.get_cos_object())
+    arr.add(COSInteger.get(255))
+    arr.add(COSNull.NULL)
+    return PDIndexed(arr)
+
 # ---------- get_name correctness ----------
 
 
@@ -30,7 +47,7 @@ def test_pd_pattern_name() -> None:
 
 
 def test_pd_indexed_name() -> None:
-    assert PDIndexed().get_name() == "Indexed"
+    assert _default_indexed().get_name() == "Indexed"
 
 
 def test_pd_separation_name() -> None:
@@ -65,7 +82,7 @@ def test_pd_pattern_components() -> None:
 
 
 def test_pd_indexed_components() -> None:
-    assert PDIndexed().get_number_of_components() == 1
+    assert _default_indexed().get_number_of_components() == 1
 
 
 def test_pd_separation_components() -> None:
@@ -115,7 +132,7 @@ def test_all_subclasses_extend_pd_color_space() -> None:
 
 
 def test_pd_indexed_initial_color_is_zero() -> None:
-    assert PDIndexed().get_initial_color().get_components() == [0.0]
+    assert _default_indexed().get_initial_color().get_components() == [0.0]
 
 
 def test_pd_separation_initial_color_is_one() -> None:
@@ -130,8 +147,10 @@ def test_pd_cal_rgb_initial_color_is_black() -> None:
 
 
 def test_pd_indexed_round_trip_hival_and_base() -> None:
-    cs = PDIndexed()
-    cs.set_base_color_space(PDDeviceRGB.INSTANCE)
+    # The base CS is DeviceRGB from construction — PDFBox 4.0 deleted
+    # ``setBaseColorSpace`` (adopted in pypdfbox 2.0.0).
+    cs = _default_indexed()
+    assert cs.get_base_color_space() is PDDeviceRGB.INSTANCE
     cs.set_hival(127)
     assert cs.get_hival() == 127
     arr = cs.get_cos_object()
@@ -144,7 +163,7 @@ def test_pd_indexed_round_trip_lookup_bytes() -> None:
     # Default PDIndexed: hival=255, base=DeviceRGB (3 components), so the
     # canonical palette length is 768. get_lookup_data clamps the returned
     # bytes to that length — short payloads are right-padded with NULs.
-    cs = PDIndexed()
+    cs = _default_indexed()
     payload = bytes(range(0, 256, 4))  # 64 bytes < expected 768
     cs.set_lookup_data(payload)
     out = cs.get_lookup_data()

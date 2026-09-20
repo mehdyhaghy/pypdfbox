@@ -57,8 +57,9 @@ class PDFXrefStreamParser(BaseParser):
             self._w[i] = w_array.get_int(i, 0)
         if any(v < 0 for v in self._w):
             raise PDFParseError(f"Incorrect /W array in XRef: {list(self._w)}")
-        # PDFBOX-6037: refuse pathological widths.
-        if sum(self._w) > 20:
+        # PDFBOX-6037/PDFBOX-6229: refuse pathological widths — too wide, or a
+        # zero-length row (a /W array summing to 0 would never advance).
+        if sum(self._w) > 20 or sum(self._w) == 0:
             raise PDFParseError(f"Incorrect /W array in XRef: {list(self._w)}")
 
         index_array = stream.get_cos_array(COSName.INDEX)

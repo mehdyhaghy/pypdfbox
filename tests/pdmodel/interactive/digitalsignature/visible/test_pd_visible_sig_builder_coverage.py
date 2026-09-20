@@ -18,7 +18,6 @@ records ``image`` without raising.
 
 from __future__ import annotations
 
-import io
 import sys
 import types
 from collections.abc import Iterator
@@ -33,6 +32,21 @@ from pypdfbox.pdmodel.interactive.digitalsignature.visible.pd_visible_sign_desig
     PDVisibleSignDesigner,
 )
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+
+
+class _RecordingStream:
+    """Writable that survives ``close()`` so the test can still inspect
+    what was written (``io.BytesIO.getvalue()`` raises after close)."""
+
+    def __init__(self) -> None:
+        self.written = b""
+        self.closed_count = 0
+
+    def write(self, data: bytes) -> None:
+        self.written += data
+
+    def close(self) -> None:
+        self.closed_count += 1
 
 
 @pytest.fixture
@@ -284,16 +298,66 @@ def test_create_signature_image_records_image_passthrough() -> None:
     assert builder.get_structure().get_image() == b"<png bytes>"
 
 
-def test_append_raw_commands_encodes_iso_8859_1() -> None:
-    """``appendRawCommands`` writes the literal bytes using ISO-8859-1
-    (matches Java upstream which has no encoding parameter)."""
-    builder = PDVisibleSigBuilder()
-    buf = io.BytesIO()
-    builder.append_raw_commands(buf, "q Q")
-    assert buf.getvalue() == b"q Q"
+class _FakePDStream:
+    """Minimal ``PDStream`` stand-in: ``create_output_stream()`` hands
+    back a recording writable, exactly as the real one hands back a
+    COSStream output stream."""
+
+    def __init__(self, inner: _RecordingStream) -> None:
+        self.inner = inner
+        self.opened = 0
+
+    def create_output_stream(self) -> _RecordingStream:
+        self.opened += 1
+        return self.inner
 
 
-def test_append_raw_commands_writes_nothing_when_stream_has_no_write() -> None:
-    """An output target without ``.write`` is silently skipped."""
+def test_write_raw_commands_encodes_utf_8_and_closes() -> None:
+    """``writeRawCommands`` writes the bytes using UTF-8 and closes the
+    stream it opened, matching upstream's try-with-resources around
+    ``stream.createOutputStream()`` plus
+    ``commands.getBytes(StandardCharsets.UTF_8)``.
+
+    (Pre-2.0.0 this was ``append_raw_commands``, which took the already
+    open stream. PDFBox 4.0 removed that name; pypdfbox 2.0.0 follows.)
+    """
     builder = PDVisibleSigBuilder()
-    builder.append_raw_commands(object(), "BT ET")  # no AttributeError raised
+    buf = _RecordingStream()
+    stream = _FakePDStream(buf)
+    builder.write_raw_commands(stream, "q Q")
+    assert stream.opened == 1
+    assert buf.written == b"q Q"
+    assert buf.closed_count == 1
+
+    buf = _RecordingStream()
+    builder.write_raw_commands(_FakePDStream(buf), "q (é) Q")
+    assert buf.written == "q (é) Q".encode()
+
+
+def test_write_raw_commands_closes_even_when_write_raises() -> None:
+    class _Boom(_RecordingStream):
+        def write(self, data: bytes) -> None:
+            raise OSError("disk full")
+
+    builder = PDVisibleSigBuilder()
+    buf = _Boom()
+    with pytest.raises(OSError, match="disk full"):
+        builder.write_raw_commands(_FakePDStream(buf), "q Q")
+    assert buf.closed_count == 1
+
+
+def test_write_raw_commands_writes_nothing_without_create_output_stream() -> None:
+    """A target that is not a PDStream is silently skipped. Before 2.0.0
+    this branch forwarded to ``append_raw_commands``; that 3.x fallback
+    is gone along with the method."""
+    builder = PDVisibleSigBuilder()
+    builder.write_raw_commands(object(), "BT ET")  # no AttributeError raised
+    # A bare writable (the 3.x OutputStream shape) is no longer written to.
+    buf = _RecordingStream()
+    builder.write_raw_commands(buf, "BT ET")
+    assert buf.written == b""
+    assert buf.closed_count == 0
+
+
+def test_write_raw_commands_ignores_none_stream() -> None:
+    PDVisibleSigBuilder().write_raw_commands(None, "q Q")  # no raise

@@ -46,6 +46,23 @@ from pypdfbox.pdmodel.graphics.image import PDImageXObject
 from pypdfbox.pdmodel.pd_resources import PDResources
 from pypdfbox.rendering import PDFRenderer
 
+
+def _default_indexed() -> PDIndexed:
+    """Build ``[/Indexed /DeviceRGB 255 null]`` — the array that PDFBox
+    3.x's no-arg ``PDIndexed()`` constructed. PDFBox 4.0 made that
+    constructor private (adopted in pypdfbox 2.0.0), so the array is
+    spelled out here instead."""
+    from pypdfbox.cos import COSArray, COSInteger, COSName, COSNull
+    from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
+    from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
+
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("Indexed"))
+    arr.add(PDDeviceRGB.INSTANCE.get_cos_object())
+    arr.add(COSInteger.get(255))
+    arr.add(COSNull.NULL)
+    return PDIndexed(arr)
+
 # ---------------------------------------------------------------- helpers
 
 
@@ -445,7 +462,7 @@ def test_form_xobject_recursion_cap_is_per_invocation() -> None:
     "wrapper",
     [
         PDDeviceRGB.INSTANCE,
-        PDIndexed(),
+        _default_indexed(),
         PDICCBased(),
     ],
     ids=["device_rgb", "indexed_default", "icc_based_default"],

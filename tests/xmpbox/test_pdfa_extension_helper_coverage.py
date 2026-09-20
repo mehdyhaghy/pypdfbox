@@ -19,13 +19,7 @@ from xml.dom.minidom import parseString
 import pytest
 
 from pypdfbox.xmpbox.xml import pdfa_extension_helper as helper_mod
-from pypdfbox.xmpbox.xml.pdfa_extension_helper import (
-    CLOSED_CHOICE,
-    CLOSED_CHOICE_U,
-    OPEN_CHOICE,
-    OPEN_CHOICE_U,
-    PdfaExtensionHelper,
-)
+from pypdfbox.xmpbox.xml.pdfa_extension_helper import PdfaExtensionHelper
 
 
 def _make_description(xml: str):
@@ -149,22 +143,22 @@ def test_stub_populators_run_without_error() -> None:
 
 def test_transform_value_type_strips_closed_choice_prefix() -> None:
     assert (
-        PdfaExtensionHelper.transform_value_type(None, CLOSED_CHOICE + "Text")
+        PdfaExtensionHelper.transform_value_type(None, "closed Choice of Text")
         == "Text"
     )
     assert (
-        PdfaExtensionHelper.transform_value_type(None, CLOSED_CHOICE_U + "Text")
+        PdfaExtensionHelper.transform_value_type(None, "Closed Choice of Text")
         == "Text"
     )
 
 
 def test_transform_value_type_strips_open_choice_prefix() -> None:
     assert (
-        PdfaExtensionHelper.transform_value_type(None, OPEN_CHOICE + "Integer")
+        PdfaExtensionHelper.transform_value_type(None, "open Choice of Integer")
         == "Integer"
     )
     assert (
-        PdfaExtensionHelper.transform_value_type(None, OPEN_CHOICE_U + "Integer")
+        PdfaExtensionHelper.transform_value_type(None, "Open Choice of Integer")
         == "Integer"
     )
 
@@ -191,8 +185,11 @@ def test_require_non_null_raises_with_callable_supplier() -> None:
         PdfaExtensionHelper.require_non_null(None, lambda: "lazy message")
 
 
-def test_module_constants_exposed() -> None:
-    assert helper_mod.CLOSED_CHOICE == "closed Choice of "
-    assert helper_mod.OPEN_CHOICE == "open Choice of "
-    assert helper_mod.CLOSED_CHOICE_U == "Closed Choice of "
-    assert helper_mod.OPEN_CHOICE_U == "Open Choice of "
+def test_module_constants_are_lowercase_and_private() -> None:
+    # PDFBOX-6257 folded the cased spellings into one lower-case constant and
+    # dropped them from the public surface.
+    assert helper_mod._CLOSED_CHOICE == "closed choice of "
+    assert helper_mod._OPEN_CHOICE == "open choice of "
+    assert helper_mod.__all__ == ["PdfaExtensionHelper"]
+    assert not hasattr(helper_mod, "CLOSED_CHOICE_U")
+    assert not hasattr(helper_mod, "OPEN_CHOICE_U")

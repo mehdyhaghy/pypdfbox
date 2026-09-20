@@ -1218,6 +1218,23 @@ class COSWriter(ICOSVisitor):
         self._number = max((k.object_number for k in existing_keys), default=0)
 
         if self._incremental_update:
+            # PDFBOX-6236: use the size of the origin document trailer as the
+            # starter for the incremented one. A /Size larger than the highest
+            # object number we actually loaded means the origin reserved those
+            # numbers (sparse or repaired xref); minting them again would make
+            # the appended revision collide with the original.
+            trailer = cos_document.get_trailer()
+            trailer_size = (
+                trailer.get_long(COSName.SIZE) if trailer is not None else -1  # type: ignore[attr-defined]
+            )
+            if self._number > trailer_size:
+                _logger.warning(
+                    "The highest object number %d of the origin pdf is bigger "
+                    "than the trailer entry %d",
+                    self._number,
+                    trailer_size,
+                )
+            self._number = max(trailer_size - 1, self._number)
             # Auto-pull the input source from the document if the caller
             # did not pass one explicitly (matches the convenience wiring
             # PDDocument provides upstream).

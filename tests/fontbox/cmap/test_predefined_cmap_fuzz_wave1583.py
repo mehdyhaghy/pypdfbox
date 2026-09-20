@@ -189,9 +189,13 @@ def test_usecmap_inherits_codespace(v_name, h_name):
 def test_usecmap_inherits_cid_ranges(v_name, h_name):
     h = CMapParser.parse_predefined(h_name)
     v = CMapParser.parse_predefined(v_name)
-    # V folds in H's CID ranges (then may append its own vertical
-    # overrides), so it has at least as many as H.
-    assert len(v._code_to_cid_ranges) >= len(h._code_to_cid_ranges)
+    # PDFBOX-6251: V no longer folds H's CID ranges into its own list — it
+    # keeps H as a parent and only declares its vertical overrides. So V's
+    # own range list is the *smaller* one, while H stays reachable through
+    # the usecmap chain for every code V does not redefine.
+    assert len(v._code_to_cid_ranges) <= len(h._code_to_cid_ranges)
+    assert [p.get_name() for p in v._parent_cmaps] == [h.get_name()]
+    assert v.has_cid_mappings()
 
 
 def test_usecmap_shared_code_maps_identically():

@@ -4,10 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pypdfbox"
-version = "1.0.0"
+version = "2.0.0"
 description = "Python-native port of Apache PDFBox-compatible APIs (Apache 2.0)"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 authors = [
@@ -32,8 +32,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: Implementation :: CPython",
     "Topic :: Multimedia :: Graphics",
@@ -53,8 +51,10 @@ classifiers = [
 # fonttools dep. asn1crypto / pyHanko intentionally NOT adopted; see
 # CHANGES.md for rationale.
 dependencies = [
-    "cryptography>=42",   # Apache-2.0 / BSD
-    "Pillow>=12.2.0",     # HPND (MIT-CMU) — KEEP for ICC color transforms via ImageCms (LittleCMS2-backed) + a few stragglers
+    "cryptography>=50",   # Apache-2.0 / BSD — floor raised in 2.0.0: <50 carries 7 known
+                          # advisories incl. GHSA-g6cj-pr64-35w5 (PKCS#7 EnvelopedData
+                          # Bleichenbacher oracle), which is on the PDSignature verify path
+    "Pillow>=12.3.0",     # HPND (MIT-CMU) — 12.2.0 carries 26 advisories; 12.3.0 clears them — KEEP for ICC color transforms via ImageCms (LittleCMS2-backed) + a few stragglers
     "fontTools>=4",       # MIT — TTF/CFF/OTF/Type1 parsing for pypdfbox.fontbox
     # aggdraw removed in wave 1329 — replaced by skia-python (same draw
     # functionality, BSD-3, actively maintained). aggdraw was stale
@@ -122,7 +122,12 @@ package = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
+# ``live_oracle`` (auto-applied in tests/conftest.py) is deselected by
+# default: those ~44 modules each launch a JVM against the pinned
+# Apache PDFBox jar. Run them deliberately -- before a release or a jar
+# swap -- with ``pytest -m live_oracle`` (a -m on the command line
+# overrides this one).
+addopts = "-ra --strict-markers -m 'not live_oracle'"
 
 [tool.ruff]
 line-length = 100
@@ -140,7 +145,7 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 ignore = ["UP012"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 strict = true
 warn_unused_ignores = true
 warn_redundant_casts = true

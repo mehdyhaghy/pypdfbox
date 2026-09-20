@@ -407,7 +407,7 @@ def test_table_headers_round_trip() -> None:
     obj.set_headers(["h1", "h2", "h3"])
     assert obj.get_headers() == ["h1", "h2", "h3"]
     obj.set_headers([])
-    assert obj.get_headers() == []
+    assert obj.get_headers() is None
 
 
 # ---------------------------------------------------------------------------

@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from pypdfbox.fontbox.cmap import CMapParser
+from pypdfbox.fontbox.cmap import CMap, CMapParser
 
 _FIXTURES = Path(__file__).resolve().parents[3] / "fixtures" / "fontbox" / "cmap"
 
@@ -329,3 +329,170 @@ def test_predefined_map() -> None:
 
     cmap = CMapParser.parse_predefined("Identity-V")
     assert cmap is not None
+
+
+# ---------------------------------------------------------------------------
+# PDFBOX-6251 — "don't override CID mappings by inherited maps" (r1938041,
+# Sonar follow-up r1938052). A CMap's own mappings must beat everything it
+# inherits through ``usecmap``, and a chain resolves nearest-first.
+# ---------------------------------------------------------------------------
+
+# Skipped: testUseCmapOwnMappingsWin, testUseCmapChainKeepsNearestMapping and
+# testUseCmapOwnMappingsBeatInheritedRanges need ETen-B5-H / ETenms-B5-H /
+# ETenms-B5-V / UniJIS-UCS2-HW-H, which are outside the curated predefined-CMap
+# subset pypdfbox bundles; the hand-built equivalents below cover the same
+# behaviour.
+
+
+# Translated from testUseCmapOnlyInheritedMappings.
+def test_use_cmap_only_inherited_mappings() -> None:
+    """Identity-V is the one predefined CMap that declares no cid mappings at
+    all, it only uses Identity-H — which also makes it the case that proves
+    ``has_cid_mappings`` has to account for what a CMap inherited.
+
+    pypdfbox short-circuits ``parse_predefined("Identity-V")`` to the
+    programmatic identity builder, so here the mappings are the CMap's own;
+    the file-backed ``usecmap`` path is covered in
+    ``tests/fontbox/cmap/test_cmap_usecmap_wave1605.py``.
+    """
+    cmap = CMapParser.parse_predefined("Identity-V")
+
+    assert cmap.get_wmode() == 1
+    assert cmap.has_cid_mappings() is True
+
+    assert cmap.to_cid_bytes(bytes([0, 65])) == 65
+    assert cmap.to_cid_bytes(bytes([0x30, 0x39])) == 12345
+    assert cmap.to_cid_bytes(bytes([0xFF, 0xFF])) == 0xFFFF
+    assert cmap.to_cid_with_length(0x3039, 2) == 12345
+
+
+# Translated from testUseCmapDoesNotShareMappingsWithTheUsedCMap.
+def test_use_cmap_does_not_share_mappings_with_the_used_cmap() -> None:
+    used = CMap()
+    used.add_cid_mapping(b"\x41", 100)
+    used.add_cid_range(b"\x50", b"\x5f", 200)
+
+    cmap = CMap()
+    cmap.use_cmap(used)
+    assert cmap.to_cid_with_length(0x41, 1) == 100
+    assert cmap.to_cid_with_length(0x55, 1) == 205
+
+    cmap.add_cid_mapping(b"\x41", 300)
+    cmap.add_cid_range(b"\x50", b"\x5f", 400)
+
+    assert cmap.to_cid_with_length(0x41, 1) == 300
+    assert cmap.to_cid_with_length(0x55, 1) == 405
+    assert used.to_cid_with_length(0x41, 1) == 100
+    assert used.to_cid_with_length(0x55, 1) == 205
+
+
+# Translated from testUseCmapOwnRangeBeatsInheritedChar.
+def test_use_cmap_own_range_beats_inherited_char() -> None:
+    used = CMap()
+    used.add_cid_mapping(b"\x41", 100)
+
+    cmap = CMap()
+    cmap.use_cmap(used)
+    cmap.add_cid_range(b"\x40", b"\x4f", 200)
+
+    assert cmap.to_cid_with_length(0x41, 1) == 201
+    assert cmap.to_cid_with_length(0x40, 1) == 200
+    assert used.to_cid_with_length(0x41, 1) == 100
+
+
+# Translated from testUseCmapNearerCMapWins.
+def test_use_cmap_nearer_cmap_wins() -> None:
+    far = CMap()
+    far.add_cid_mapping(b"\x41", 100)
+
+    near = CMap()
+    near.use_cmap(far)
+    near.add_cid_range(b"\x40", b"\x4f", 200)
+
+    cmap = CMap()
+    cmap.use_cmap(near)
+
+    assert cmap.to_cid_with_length(0x41, 1) == 201
+    assert far.to_cid_with_length(0x41, 1) == 100
+
+
+# Translated from testUseCmapNestedToFiveLevels.
+def test_use_cmap_nested_to_five_levels() -> None:
+    cmap = CMap()
+    cmap.add_cid_mapping(b"\x01", 10)
+    for level in range(2, 6):
+        nested = CMap()
+        nested.use_cmap(cmap)
+        # redefine the code the level below just defined, and add one of its own
+        nested.add_cid_mapping(bytes([level - 1]), 10 * level)
+        nested.add_cid_mapping(bytes([level]), 10 * level)
+        cmap = nested
+
+    assert cmap.has_cid_mappings()
+    # every code but the last was redefined one level up, the last one wasn't
+    assert cmap.to_cid_with_length(0x01, 1) == 20
+    assert cmap.to_cid_with_length(0x02, 1) == 30
+    assert cmap.to_cid_with_length(0x03, 1) == 40
+    assert cmap.to_cid_with_length(0x04, 1) == 50
+    assert cmap.to_cid_with_length(0x05, 1) == 50
+
+
+# Translated from testUseCmapPassesThroughEmptyLevels.
+def test_use_cmap_passes_through_empty_levels() -> None:
+    cmap = CMap()
+    cmap.add_cid_mapping(b"\x41", 100)
+    for _level in range(2, 6):
+        nested = CMap()
+        nested.use_cmap(cmap)
+        cmap = nested
+
+    assert cmap.has_cid_mappings()
+    assert cmap.to_cid_with_length(0x41, 1) == 100
+    assert cmap.to_cid_with_length(0x42, 1) == 0
+
+
+# Translated from testUseCmapSeveralUsedCMaps.
+def test_use_cmap_several_used_cmaps() -> None:
+    first = CMap()
+    first.add_cid_mapping(b"\x41", 100)
+    first.add_cid_mapping(b"\x42", 101)
+
+    second = CMap()
+    second.add_cid_mapping(b"\x42", 200)
+    second.add_cid_mapping(b"\x43", 201)
+
+    cmap = CMap()
+    cmap.use_cmap(first)
+    cmap.use_cmap(second)
+    cmap.add_cid_mapping(b"\x41", 300)
+
+    assert cmap.to_cid_with_length(0x41, 1) == 300
+    assert cmap.to_cid_with_length(0x42, 1) == 101
+    assert cmap.to_cid_with_length(0x43, 1) == 201
+    assert cmap.to_cid_with_length(0x44, 1) == 0
+
+
+# Translated from testUseCmapOwnMappingToCidZeroIsNotAFallthrough.
+def test_use_cmap_own_mapping_to_cid_zero_is_not_a_fallthrough() -> None:
+    used = CMap()
+    used.add_cid_range(b"\x00", b"\xff", 500)
+
+    cmap = CMap()
+    cmap.use_cmap(used)
+    cmap.add_cid_range(b"\x41", b"\x41", 0)
+
+    assert cmap.to_cid_with_length(0x41, 1) == 0
+    assert cmap.to_cid_bytes(b"\x41") == 0
+    assert cmap.to_cid_with_length(0x42, 1) == 566
+    assert used.to_cid_with_length(0x41, 1) == 565
+
+
+# Translated from testToCidZeroAtShortestLengthStopsTheLengthProbing.
+def test_to_cid_zero_at_shortest_length_stops_the_length_probing() -> None:
+    cmap = CMap()
+    cmap.add_cid_mapping(b"\x41", 0)
+    cmap.add_cid_mapping(b"\x00\x41", 700)
+
+    assert cmap.to_cid_with_length(0x41, 1) == 0
+    assert cmap.to_cid_with_length(0x41, 2) == 700
+    assert cmap.to_cid(0x41) == 0

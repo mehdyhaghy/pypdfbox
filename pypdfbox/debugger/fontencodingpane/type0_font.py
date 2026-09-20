@@ -64,7 +64,7 @@ class Type0Font(FontPane):
                 self.get_y_bounds(cid_to_gid, 3),
             )
         else:
-            tab = self.read_map(descendant_font, parent_font)
+            tab = self.read_map(parent_font)
             attributes["CIDs"] = str(len(tab))
             attributes["Glyphs"] = str(self._total_available_glyphs)
             attributes["Standard 14"] = str(bool(parent_font.is_standard14()))
@@ -99,25 +99,29 @@ class Type0Font(FontPane):
 
     # ---- helpers -----------------------------------------------------------
 
-    def read_map(
-        self, descendant_font: PDCIDFont, parent_font: PDType0Font
-    ) -> list[list[Any]]:
-        """Mirror upstream ``readMap`` — one row per code with a glyph."""
+    def read_map(self, parent_font: PDType0Font) -> list[list[Any]]:
+        """Mirror upstream ``readMap`` — one row per code with a glyph.
+
+        Every lookup goes through the parent ``PDType0Font`` rather than
+        the descendant ``PDCIDFont``; upstream reduced the direct usage of
+        the descendant font in the PDFBOX-6175 follow-up because a
+        descendant is bound to its parent and must be reached through it.
+        """
         rows: list[list[Any]] = []
         for code in range(65535):
             try:
-                if not descendant_font.has_glyph(code):
+                if not parent_font.has_glyph(code):
                     continue
             except OSError:
                 continue
-            cid = self._safe_call(descendant_font.code_to_cid, code)
-            gid = self._safe_call(descendant_font.code_to_gid, code)
+            cid = self._safe_call(parent_font.code_to_cid, code)
+            gid = self._safe_call(parent_font.code_to_gid, code)
             try:
                 unicode_char = parent_font.to_unicode(code)
             except OSError:
                 unicode_char = None
             try:
-                path = descendant_font.get_path(code)
+                path = parent_font.get_path(code)
             except OSError:
                 path = []
             rows.append([code, cid, gid, unicode_char, path])
@@ -126,11 +130,15 @@ class Type0Font(FontPane):
         return rows
 
     def read_cid_to_gid_map(
-        self, font: PDCIDFont, parent_font: PDFont
+        self, font: PDCIDFont, parent_font: PDType0Font
     ) -> list[list[Any]] | None:
         """Mirror upstream ``readCIDToGIDMap`` — parse ``/CIDToGIDMap``
         as a 16-bit big-endian array of GIDs, indexed by CID.
         Returns ``None`` when the entry is absent / not a stream.
+
+        The descendant font is consulted only for the ``/CIDToGIDMap``
+        dictionary entry; glyph outlines come from ``parent_font`` (see
+        :meth:`read_map`).
         """
         cos_dict: COSDictionary = font.get_cos_object()
         entry = cos_dict.get_dictionary_object(_CID_TO_GID_MAP)
@@ -157,7 +165,7 @@ class Type0Font(FontPane):
                 except OSError:
                     unicode_char = None
             try:
-                path = font.get_path(index)
+                path = parent_font.get_path(index)
             except OSError:
                 path = []
             rows.append([index, gid, unicode_char, path])

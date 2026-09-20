@@ -74,8 +74,18 @@ def test_namespace_finder_stack() -> None:
 
 
 def test_pdfa_extension_helper_constants() -> None:
-    assert PdfaExtensionHelper.CLOSED_CHOICE == "closed Choice of "
-    assert PdfaExtensionHelper.OPEN_CHOICE_U == "Open Choice of "
+    # PDFBOX-6257: the cased public constants are gone; the prefix test is
+    # case-insensitive instead.
+    assert not hasattr(PdfaExtensionHelper, "CLOSED_CHOICE")
+    assert not hasattr(PdfaExtensionHelper, "OPEN_CHOICE_U")
+    assert (
+        PdfaExtensionHelper.transform_value_type(None, "closed Choice of Text")
+        == "Text"
+    )
+    assert (
+        PdfaExtensionHelper.transform_value_type(None, "Open Choice of Text")
+        == "Text"
+    )
 
 
 def test_pdfa_extension_helper_validate_naming_ok() -> None:

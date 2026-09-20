@@ -600,7 +600,9 @@ class Type1CharString:
                 if ctx.is_flex:
                     ctx.flex_points.append((float(n[0]), float(n[1])))
                 else:
-                    self.rmove_to(ctx, n[0], n[1])
+                    # PDFBOX-6267 / https://github.com/mozilla/pdf.js/issues/10175
+                    # use the last two instead of the first two numbers
+                    self.rmove_to(ctx, n[-2], n[-1])
         elif op == "vmoveto":
             if n:
                 if ctx.is_flex:

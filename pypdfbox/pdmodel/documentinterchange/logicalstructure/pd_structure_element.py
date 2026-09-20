@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
@@ -15,6 +16,8 @@ from pypdfbox.cos import (
 )
 
 from .pd_structure_node import PDStructureNode
+
+_log = logging.getLogger(__name__)
 
 _S: COSName = COSName.get_pdf_name("S")
 _P: COSName = COSName.get_pdf_name("P")
@@ -414,15 +417,24 @@ class PDStructureElement(PDStructureNode):
         reachable. Mirrors upstream's private
         ``PDStructureElement.getStructureTreeRoot()`` (lifted to a public
         accessor — pypdfbox callers commonly need root-level role-map /
-        class-map traversal from a leaf element)."""
+        class-map traversal from a leaf element).
+
+        PDFBOX-6228: a ``/P`` chain that loops back on itself is abandoned
+        (``None`` is returned) as soon as a dictionary is seen twice, and the
+        offending dictionary is logged at WARNING level. Upstream's
+        ``HashSet<COSDictionary>`` is identity-based (``COSDictionary`` does
+        not override ``equals``/``hashCode``), so ``id()`` is the faithful
+        Python equivalent. The walk itself is unbounded, as upstream's is.
+        """
         from .pd_structure_tree_root import PDStructureTreeRoot
 
         node: COSDictionary | None = self._dictionary
-        seen: set[int] = set()
-        for _ in range(_MAX_ROLE_MAP_DEPTH):
-            if node is None or id(node) in seen:
-                return None
-            seen.add(id(node))
+        visited: set[int] = set()
+        while node is not None:
+            if id(node) in visited:
+                _log.warning("Element ignored: %s", node)
+                return None  # Cycle detected
+            visited.add(id(node))
             if node.get_name_as_string(_TYPE) == _STRUCT_TREE_ROOT_NAME:
                 return PDStructureTreeRoot(node)
             parent = node.get_dictionary_object(_P)

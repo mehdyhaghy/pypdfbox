@@ -17,6 +17,9 @@ from pypdfbox.cos import (
 from .pd_field_factory import PDFieldFactory
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.glyph_layout_processor_interface import (
+        GlyphLayoutProcessorInterface,
+    )
     from pypdfbox.pdmodel.pd_resources import PDResources
 
     from .pd_field import PDField
@@ -80,6 +83,33 @@ class PDAcroForm:
         # this as a ``ScriptingHandler`` instance — that interface is not
         # yet ported, so we accept any object the caller wants to pass.
         self._scripting_handler: object | None = None
+        # Optional pluggable text-shaping backend (PDFBOX-4951). ``None``
+        # by default; propagated onto the appearance content streams the
+        # form generates so a registered backend shapes field appearances.
+        self._glyph_layout_processor: GlyphLayoutProcessorInterface | None = None
+
+    # ---------- glyph layout (PDFBOX-4951) ----------
+
+    def set_glyph_layout_processor(
+        self, glyph_layout_processor: GlyphLayoutProcessorInterface | None
+    ) -> None:
+        """Set the glyph layout processor.
+
+        Mirrors ``PDAcroForm.setGlyphLayoutProcessor`` (Java lines
+        113-116). The core library ships no implementation — a backend
+        comes from a separate optional package, exactly as upstream keeps
+        its shaping backends in the standalone ``pdfbox-layout-*`` Maven
+        modules.
+        """
+        self._glyph_layout_processor = glyph_layout_processor
+
+    def get_glyph_layout_processor(self) -> GlyphLayoutProcessorInterface | None:
+        """Return the glyph layout processor or ``None``.
+
+        Mirrors ``PDAcroForm.getGlyphLayoutProcessor`` (Java lines
+        123-126).
+        """
+        return self._glyph_layout_processor
 
     # ---------- core ----------
 

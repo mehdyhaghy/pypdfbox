@@ -22,6 +22,8 @@ from .pdf_template_builder import PDFTemplateBuilder
 from .pdf_template_structure import PDFTemplateStructure
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.common.pd_stream import PDStream
+
     from .pd_visible_sign_designer import PDVisibleSignDesigner
 
 _log = logging.getLogger(__name__)
@@ -294,11 +296,42 @@ class PDVisibleSigBuilder(PDFTemplateBuilder):
         # surrounding pdmodel content-stream classes when they land.
         _log.debug("inject_appearance_streams (no-op parity stub)")
 
-    def append_raw_commands(self, output_stream: Any, commands: str) -> None:
-        """Mirrors ``appendRawCommands`` (Java line 376)."""
-        encoded = commands.encode("ISO-8859-1")
-        if hasattr(output_stream, "write"):
-            output_stream.write(encoded)
+    def write_raw_commands(self, stream: PDStream | Any, commands: str) -> None:
+        """Write ``commands`` into ``stream``'s body as UTF-8.
+
+        This is the PDFBox 4.0 shape of the method: the 4.0 migration
+        guide ("Signing") renames ``appendRawCommands`` to
+        ``writeRawCommands`` and changes the first parameter from an
+        ``OutputStream`` to a :class:`PDStream`, so the builder — not the
+        caller — owns opening and closing the output stream.
+
+        Mirrors ``PDVisibleSigBuilder.writeRawCommands(PDStream, String)``
+        (PDFBox trunk / 4.0.0-SNAPSHOT), whose body is a
+        try-with-resources around ``stream.createOutputStream()``.
+
+        The 3.x-shaped ``append_raw_commands(output_stream, commands)``
+        was removed in pypdfbox 2.0.0 along with its forwarding branch
+        here, matching 4.0's rename.
+
+        :param stream: a :class:`PDStream` — anything exposing
+            ``create_output_stream()``.
+        :param commands: raw PDF operators to write.
+        """
+        if stream is None:
+            return
+        factory = getattr(stream, "create_output_stream", None)
+        if factory is None:
+            return
+        out = factory()
+        try:
+            out.write(commands.encode("utf-8"))
+        finally:
+            # Upstream's try-with-resources close — a COSStream output
+            # stream only commits its body on close, so skipping it
+            # would silently drop the commands.
+            closer = getattr(out, "close", None)
+            if closer is not None:
+                closer()
 
     def create_visual_signature(self, template: Any) -> None:
         getter = getattr(template, "get_document", None)

@@ -31,14 +31,20 @@ def test_indexed_malformed_array_getters_are_lenient_and_setters_repair() -> Non
     assert cs.get_lookup_data() is None
     assert not cs.has_lookup_data()
 
-    cs.set_base_color_space(PDDeviceRGB.INSTANCE)
+    # PDFBox 4.0 deleted ``setBaseColorSpace`` (adopted in pypdfbox
+    # 2.0.0), so slot 1 can no longer be repaired in place — the base CS
+    # is fixed at construction. The hival / lookup setters still repair
+    # their own slots on a short array via ``_ensure_array_size``.
+    assert not hasattr(cs, "set_base_color_space")
     cs.set_hival(1)
     cs.set_lookup_data(b"\x00\x7f\xff")
 
-    assert cs.has_base_color_space()
+    assert not cs.has_base_color_space()
     assert cs.get_hival() == 1
     assert cs.has_lookup_data()
-    assert cs.get_lookup_data() == b"\x00\x7f\xff\x00\x00\x00"
+    # With no resolvable base CS there is no component count to pad
+    # against, so the raw palette bytes come back verbatim.
+    assert cs.get_lookup_data() == b"\x00\x7f\xff"
 
     cs.clear_lookup_data()
     assert not cs.has_lookup_data()

@@ -16,11 +16,17 @@ from __future__ import annotations
 
 import logging
 from collections import deque
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, BinaryIO
 
+from .content_stream_for_glyph_layout_interface import (
+    ContentStreamForGlyphLayoutInterface,
+)
+from .glyphs_and_positions import GlyphsAndPositions
 from .pd_page_content_stream import _format_number
 
 if TYPE_CHECKING:
+    from .glyph_layout_processor_interface import GlyphLayoutProcessorInterface
     from .pd_document import PDDocument
     from .pd_resources import PDResources
 
@@ -49,14 +55,18 @@ def _format_decimal(value: float, max_fraction_digits: int = 4) -> bytes:
     return _format_number(value, max_fraction_digits)
 
 
-class PDAbstractContentStream:
+class PDAbstractContentStream(ContentStreamForGlyphLayoutInterface):
     """Abstract base for the content-stream writer hierarchy.
 
     Mirrors package-private ``org.apache.pdfbox.pdmodel.PDAbstractContentStream``
-    (Java lines 77-1769). Operator emission methods write directly to
+    (Java lines 77-1915). Operator emission methods write directly to
     ``self._output_stream`` so the base class is usable on its own
     (subclasses like :class:`PDPageContentStream` may override with
     buffered/optimised variants).
+
+    Since PDFBOX-4951 upstream declares ``implements
+    ContentStreamForGlyphLayoutInterface`` so an optional glyph-layout
+    backend can drive it; the port mirrors that.
     """
 
     #: Default maximum number of fractional digits emitted for floating
@@ -80,9 +90,28 @@ class PDAbstractContentStream:
 
         self._in_text_mode: bool = False
         self._font_stack: deque[Any] = deque()
+        # PDFBOX-4951: upstream added a parallel ``Deque<Float> fontSizeStack``
+        # so ``showText`` can hand the active font size to a glyph-layout
+        # processor (Java line 92). Like upstream it is *not* pushed/popped by
+        # ``q``/``Q`` — only ``set_font`` writes it.
+        self._font_size_stack: deque[float] = deque()
         self._non_stroking_color_space_stack: deque[Any] = deque()
         self._stroking_color_space_stack: deque[Any] = deque()
         self._max_fraction_digits: int = self.DEFAULT_MAX_FRACTION_DIGITS
+        # Optional pluggable text-shaping backend (PDFBOX-4951). ``None``
+        # by default — upstream ships no implementation in the core
+        # artifact either, and the whole show-text path behaves exactly as
+        # before while it stays unset.
+        self._glyph_layout_processor: GlyphLayoutProcessorInterface | None = None
+
+    def set_glyph_layout_processor(
+        self, glyph_layout_processor: GlyphLayoutProcessorInterface | None
+    ) -> None:
+        """Set the glyph layout processor.
+
+        Mirrors ``setGlyphLayoutProcessor`` (Java lines 127-130).
+        """
+        self._glyph_layout_processor = glyph_layout_processor
 
     # ---------- accessors (mirror protected getters) ----------
 
@@ -198,25 +227,132 @@ class PDAbstractContentStream:
         self._in_text_mode = False
 
     def set_font(self, font: Any, font_size: float) -> None:
-        """Emit ``Tf``. Mirrors ``setFont`` (Java line 168)."""
+        """Emit ``Tf``. Mirrors ``setFont`` (Java line 184)."""
         if not self._font_stack:
             self._font_stack.append(font)
         else:
             self._font_stack.pop()
             self._font_stack.append(font)
+        # PDFBOX-4951 (Java lines 196-204).
+        if not self._font_size_stack:
+            self._font_size_stack.append(font_size)
+        else:
+            self._font_size_stack.pop()
+            self._font_size_stack.append(font_size)
         if self._resources is not None:
             self.write_operand(self._resources.add(font))
         self.write_operand(font_size)
         self.write_operator("Tf")
 
     def show_text(self, text: str) -> None:
-        """Emit ``Tj``. Mirrors ``showText`` (Java line 265)."""
+        """Emit ``Tj``. Mirrors ``showText`` (Java lines 337-364).
+
+        When a glyph-layout processor has been registered (see
+        :meth:`set_glyph_layout_processor`) and it claims the current font,
+        the text is handed to the processor instead — it then drives
+        :meth:`show_glyphs_with_positioning` / :meth:`show_glyph_codes`.
+        With no processor registered (the default, and the only shape the
+        core library ships) the emitted bytes are unchanged.
+        """
+        if not self._in_text_mode:
+            raise RuntimeError("Must call begin_text() before show_text()")
+        if not self._font_stack:
+            raise RuntimeError("Must call set_font() before show_text()")
+        if not self._font_size_stack:
+            raise RuntimeError("Font is set, but fontSize is not set")
+        font = self._font_stack[-1]
+        processor = self._glyph_layout_processor
+        if processor is not None and processor.supports_font(font):
+            font_size = self._font_size_stack[-1]
+            processor.show_text(self, font, font_size, text)
+            return
         self.show_text_internal(text)
         self.write(" ")
         self.write_operator("Tj")
 
+    def show_glyph_codes(self, glyph_codes: Sequence[int]) -> None:
+        """Emit ``Tj`` for raw glyph codes — only for ``PDType0Font``.
+
+        Mirrors ``showGlyphCodes(int[])`` (Java lines 373-378).
+        """
+        self.write_text_pd_type0_font(glyph_codes)
+        self.write(" ")
+        self.write_operator("Tj")
+
+    def write_text_pd_type0_font(self, glyph_codes: Sequence[int]) -> None:
+        """Output the given glyph codes — only for ``PDType0Font``.
+
+        Mirrors the protected ``writeTextPDType0Font(int[])``
+        (Java lines 388-424).
+        """
+        from pypdfbox.pdfwriter.cos_writer import COSWriter
+        from pypdfbox.pdmodel.font.pd_type0_font import PDType0Font
+
+        if not self._in_text_mode:
+            raise RuntimeError(
+                "Must call begin_text() before write_text_pd_type0_font()"
+            )
+        if not self._font_stack:
+            raise RuntimeError(
+                "Must call set_font() before write_text_pd_type0_font()"
+            )
+        font = self._font_stack[-1]
+        if not isinstance(font, PDType0Font):
+            raise RuntimeError(
+                "Must be called with current font instance of PDType0Font"
+            )
+
+        # encode glyphs, update set of used glyphs
+        out = bytearray()
+        glyph_ids: set[int] = set()
+        for glyph_code in glyph_codes:
+            out.extend(font.encode_glyph_id(glyph_code))
+            if glyph_code < 0xFFFF:
+                glyph_ids.add(glyph_code)
+        encoded_text = bytes(out)
+
+        # add glyphs to subset
+        if font.will_be_subset():
+            font.add_glyphs_to_subset(glyph_ids)
+        # write encoded text and the PDF operator
+        COSWriter.write_string(encoded_text, self._output_stream)
+
+    def show_glyphs_with_positioning(
+        self, glyphs_and_positions: GlyphsAndPositions
+    ) -> None:
+        """Emit ``TJ`` from a :class:`GlyphsAndPositions` built by a
+        glyph-layout processor.
+
+        Mirrors ``showGlyphsWithPositioning`` (Java lines 302-330). This
+        method is meant to be called from within a
+        ``GlyphLayoutProcessorInterface`` implementation and only for
+        ``PDType0Font``.
+        """
+        self.write("[")
+        for obj in glyphs_and_positions.to_array():
+            if isinstance(obj, GlyphsAndPositions.GlyphSubList):
+                self.write_text_pd_type0_font(obj.to_int_array())
+            elif isinstance(obj, float):
+                self.write_operand(obj)
+            elif obj is None:
+                raise TypeError("Argument contains null entry")
+            else:
+                raise ValueError(
+                    "Argument must consist of array of Float and "
+                    "GlyphsAndPositions.GlyphSubList types, not "
+                    f"{type(obj).__name__}"
+                )
+        self.write("] ")
+        self.write_operator("TJ")
+
     def show_text_internal(self, text: str) -> None:
-        """Mirrors the protected ``showTextInternal`` (Java line 279)."""
+        """Mirrors the protected ``showTextInternal`` (Java line 435).
+
+        Upstream moved the ``beginText`` / ``setFont`` guards up into
+        ``showText`` for PDFBOX-4951; the port keeps them here as well
+        because the ``'`` / ``"`` operator helpers reach this method
+        directly.
+        """
         if not self._in_text_mode:
             raise RuntimeError("Must call begin_text() before show_text()")
         if not self._font_stack:
@@ -229,7 +365,16 @@ class PDAbstractContentStream:
         self._output_stream.write(b">")
 
     def show_text_with_positioning(self, array: list[Any]) -> None:
-        """Emit ``TJ``. Mirrors ``showTextWithPositioning`` (Java line 236)."""
+        """Emit ``TJ``. Mirrors ``showTextWithPositioning`` (Java lines
+        261-288, including the PDFBOX-4951 up-front state guards)."""
+        if not self._in_text_mode:
+            raise RuntimeError(
+                "Must call begin_text() before show_text_with_positioning()"
+            )
+        if not self._font_stack:
+            raise RuntimeError(
+                "Must call set_font() before show_text_with_positioning()"
+            )
         self.write("[")
         for obj in array:
             if isinstance(obj, str):

@@ -38,39 +38,43 @@ from pypdfbox.multipdf import Overlay
 
 # Golden table: input double -> expected string, captured from Java
 # PDFBox 3.0.7 ``float2String((float) input)`` (BigDecimal pipeline).
-_GOLDEN: dict[float, str] = {
-    0.0: "0.0",
-    1.0: "1.0",
-    1.5: "1.5",
-    0.1: "0.1",
-    150.0: "150.0",
-    200.5: "200.5",
-    12.34: "12.34",
-    283.46: "283.46",
-    0.000001: "0.000001",
-    99.95: "99.95",
-    197.625: "197.625",
-    123456.789: "123456.79",  # float32 rounds the double down
-    0.0000001: "0.0000001",
-    1234567.0: "1234567.0",
-    0.333333333333: "0.33333334",  # float32 shortest repr
-    66.66666666: "66.666664",  # float32 shortest repr
-    1e8: "100000000",  # toPlainString drops the point -> no .0
-    0.00012345678: "0.00012345678",
-    -36.5: "-36.5",
-    -0.0: "0.0",  # BigDecimal normalises the sign away
-    1e-4: "0.0001",
-    0.0009999: "0.0009999",
-    1e7: "10000000",  # >= 1e7 uses E-notation upstream; plain -> no .0
-    9999999.0: "9999999.0",
-    5e-4: "0.0005",
-}
+#
+# A list of pairs, NOT a dict: ``-0.0 == 0.0`` and the two hash alike, so as a
+# dict the ``-0.0`` row silently collapsed into the ``0.0`` one and the
+# sign-normalisation case never ran (ruff F601).
+_GOLDEN: list[tuple[float, str]] = [
+    (0.0, "0.0"),
+    (1.0, "1.0"),
+    (1.5, "1.5"),
+    (0.1, "0.1"),
+    (150.0, "150.0"),
+    (200.5, "200.5"),
+    (12.34, "12.34"),
+    (283.46, "283.46"),
+    (0.000001, "0.000001"),
+    (99.95, "99.95"),
+    (197.625, "197.625"),
+    (123456.789, "123456.79"),  # float32 rounds the double down
+    (0.0000001, "0.0000001"),
+    (1234567.0, "1234567.0"),
+    (0.333333333333, "0.33333334"),  # float32 shortest repr
+    (66.66666666, "66.666664"),  # float32 shortest repr
+    (1e8, "100000000"),  # toPlainString drops the point -> no .0
+    (0.00012345678, "0.00012345678"),
+    (-36.5, "-36.5"),
+    (-0.0, "0.0"),  # BigDecimal normalises the sign away
+    (1e-4, "0.0001"),
+    (0.0009999, "0.0009999"),
+    (1e7, "10000000"),  # >= 1e7 uses E-notation upstream; plain -> no .0
+    (9999999.0, "9999999.0"),
+    (5e-4, "0.0005"),
+]
 
 
 @pytest.mark.parametrize(
     ("value", "expected"),
-    list(_GOLDEN.items()),
-    ids=[f"{k!r}" for k in _GOLDEN],
+    _GOLDEN,
+    ids=[f"{value!r}" for value, _ in _GOLDEN],
 )
 def test_float_to_string_matches_java_float2string(
     value: float, expected: str
@@ -80,8 +84,8 @@ def test_float_to_string_matches_java_float2string(
 
 @pytest.mark.parametrize(
     ("value", "expected"),
-    list(_GOLDEN.items()),
-    ids=[f"{k!r}" for k in _GOLDEN],
+    _GOLDEN,
+    ids=[f"{value!r}" for value, _ in _GOLDEN],
 )
 def test_public_float2_string_matches_java(value: float, expected: str) -> None:
     # The public parity mirror must agree byte-for-byte.

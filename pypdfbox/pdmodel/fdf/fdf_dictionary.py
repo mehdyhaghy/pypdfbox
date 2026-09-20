@@ -19,6 +19,7 @@ from .fdf_annotation import FDFAnnotation
 from .fdf_field import FDFField
 from .fdf_java_script import FDFJavaScript
 from .fdf_page import FDFPage
+from .fdf_utils import FDFUtils
 
 _FIELDS: COSName = COSName.get_pdf_name("Fields")
 _F: COSName = COSName.get_pdf_name("F")
@@ -381,8 +382,11 @@ class FDFDictionary:
         upstream ``writeXML`` either.
         """
         fs = self.get_file()
-        if fs is not None:
-            output.write('<f href="' + (fs.get_file() or "") + '" />\n')
+        file_name = fs.get_file() if fs is not None else None
+        if file_name is not None:
+            # PDFBOX-5660: skip the element entirely when /F has no file name,
+            # and escape the href (PDFBOX-6242 makes that XML 1.0 safe).
+            output.write('<f href="' + FDFUtils.escape_xml10(file_name) + '" />\n')
         ids = self.get_id()
         if ids is not None:
             original = ids.get_object(0)

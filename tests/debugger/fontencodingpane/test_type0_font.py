@@ -239,11 +239,47 @@ class _StubCIDFont:
 
 
 class _StubParentFont:
+    """Stub parent Type 0 font.
+
+    Since upstream 10950c29 the pane reads glyphs through the *parent*
+    font, not the descendant, so the glyph surface lives here.
+    """
+
     def __init__(
         self,
+        glyph_codes: set[int] | None = None,
+        raise_has_glyph: set[int] | None = None,
         raise_to_unicode: set[int] | None = None,
+        raise_get_path: set[int] | None = None,
+        raise_code_to_cid: set[int] | None = None,
     ) -> None:
+        self._glyph_codes = glyph_codes if glyph_codes is not None else set()
+        self._raise_has = raise_has_glyph or set()
         self._raise_unicode = raise_to_unicode or set()
+        self._raise_path = raise_get_path or set()
+        self._raise_cid = raise_code_to_cid or set()
+
+    def has_glyph(self, code: int) -> bool:
+        if code in self._raise_has:
+            raise OSError("forced has_glyph fail")
+        return code in self._glyph_codes
+
+    def code_to_cid(self, code: int) -> int:
+        if code in self._raise_cid:
+            raise OSError("forced code_to_cid fail")
+        return code
+
+    def code_to_gid(self, code: int) -> int:
+        return code
+
+    def get_path(self, code: int):
+        if code in self._raise_path:
+            raise OSError("forced get_path fail")
+        # Return a non-empty path for some codes, empty for others, to
+        # exercise both ``_path_non_empty`` branches.
+        if code == 100:
+            return [("moveTo", 0, 0), ("lineTo", 1, 1)]
+        return []
 
     def to_unicode(self, code: int) -> str | None:
         if code in self._raise_unicode:
@@ -263,15 +299,15 @@ class _StubParentFont:
 
 
 def test_type0_read_map_with_constrained_glyph_set(tk_root):
-    """Exercise ``_read_map`` against a stub descendant that only reports
+    """Exercise ``_read_map`` against a stub *parent* that only reports
     a handful of glyphs (lines 110-112, 117-118, 121-122, 125)."""
-    descendant = _StubCIDFont(
+    descendant = _StubCIDFont(glyph_codes={50, 100, 200, 300, 400})
+    parent = _StubParentFont(
         glyph_codes={50, 100, 200, 300, 400},
         raise_has_glyph={500},  # OSError branch in has_glyph
         raise_to_unicode={50},  # forces parent_font.to_unicode OSError
         raise_get_path={200},  # forces get_path OSError
     )
-    parent = _StubParentFont(raise_to_unicode={50})
     pane = Type0Font(descendant, parent, tk_root)  # type: ignore[arg-type]
     assert pane.view is not None
     # Five glyph codes → 5 rows.
@@ -281,10 +317,10 @@ def test_type0_read_map_with_constrained_glyph_set(tk_root):
 
 
 def test_type0_read_map_with_zero_glyphs_uses_empty_frame(tk_root):
-    """When the descendant reports no glyphs, the constructor still
+    """When the parent reports no glyphs, the constructor still
     builds a view from the empty rows table."""
     descendant = _StubCIDFont(glyph_codes=set())
-    parent = _StubParentFont()
+    parent = _StubParentFont(glyph_codes=set())
     pane = Type0Font(descendant, parent, tk_root)  # type: ignore[arg-type]
     assert pane.view is not None
     assert pane.total_available_glyphs == 0
@@ -358,6 +394,14 @@ class _StubParentForCidMap:
     def __init__(self, raise_to_unicode: set[int] | None = None) -> None:
         self._raise = raise_to_unicode or set()
 
+    def get_path(self, code: int):
+        # Glyph outlines come from the parent since upstream 10950c29.
+        if code == 1:
+            raise OSError("forced get_path fail")
+        if code == 2:
+            return [("moveTo", 0, 0), ("lineTo", 1, 1)]
+        return []
+
     def to_unicode(self, code: int) -> str | None:
         if code in self._raise:
             raise OSError("forced parent to_unicode fail")
@@ -375,7 +419,7 @@ class _StubParentForCidMap:
 def test_type0_cid_to_gid_map_byte_array_fallback(tk_root):
     """Exercise lines 141-146: ``to_byte_array`` raises ``AttributeError``,
     fall back to ``create_input_stream``. Also exercises 157-158
-    (parent.to_unicode OSError), 161-162 (font.get_path OSError),
+    (parent.to_unicode OSError), 161-162 (parent.get_path OSError),
     and 165 (path_non_empty increments counter)."""
     descendant = _StubCIDFontWithMap()
     parent = _StubParentForCidMap(raise_to_unicode={1})
@@ -394,7 +438,7 @@ def test_type0_get_panel_returns_empty_frame_when_view_is_none(tk_root):
     """When ``_view`` is ``None``, ``get_panel`` returns a fresh empty
     ``ttk.Frame`` (line 90)."""
     descendant = _StubCIDFont(glyph_codes={1, 2})
-    parent = _StubParentFont()
+    parent = _StubParentFont(glyph_codes={1, 2})
     pane = Type0Font(descendant, parent, tk_root)  # type: ignore[arg-type]
     # Force _view to None to exercise the fallback path.
     pane._view = None
@@ -448,7 +492,7 @@ def test_type0_cid_to_gid_map_both_byte_array_and_stream_fail(tk_root):
     ``create_input_stream`` raise, ``_read_cid_to_gid_map`` returns
     ``None`` and the constructor falls through to ``_read_map``."""
     descendant = _StubCIDFontWithBrokenMap(glyph_codes={1, 2})
-    parent = _StubParentFont()
+    parent = _StubParentFont(glyph_codes={1, 2})
     pane = Type0Font(descendant, parent, tk_root)  # type: ignore[arg-type]
     # Fallback path: _read_map produced 2 rows for the 2 glyph codes.
     assert pane.view is not None

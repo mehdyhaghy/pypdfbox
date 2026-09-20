@@ -37,7 +37,9 @@ def test_wave597_array_readers_ignore_or_reject_malformed_members() -> None:
     strings.add(COSName.get_pdf_name("NameValue"))
     strings.add(COSInteger.get(7))
     obj.get_cos_object().set_item("Strings", strings)
-    assert obj.get_array_of_string("Strings") == ["NameValue"]
+    # PDFBOX-6261: positional — neither a COSName nor a COSInteger is a string,
+    # so both slots read back as None.
+    assert obj.get_array_of_string("Strings") == [None, None]
 
     names = COSArray()
     names.add(COSName.get_pdf_name("Before"))

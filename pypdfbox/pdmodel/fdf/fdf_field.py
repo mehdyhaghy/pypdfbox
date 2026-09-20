@@ -14,6 +14,8 @@ from pypdfbox.cos import (
     COSString,
 )
 
+from .fdf_utils import FDFUtils
+
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.common.filespecification.pd_file_specification import (
         PDFileSpecification,
@@ -499,7 +501,8 @@ class FDFField:
         """
         name = self.get_partial_field_name() or ""
         output.write('<field name="')
-        output.write(name)
+        # PDFBOX-5660: upstream now escapes the partial field name too.
+        output.write(FDFUtils.escape_xml10(name))
         output.write('">\n')
 
         value = self.get_value()
@@ -534,36 +537,21 @@ class FDFField:
     def escape_xml(text: str) -> str:
         """Escape ``text`` for embedding in an XFDF XML element value.
 
-        Mirrors upstream private ``FDFField.escapeXML(String)`` (line
-        787 of ``FDFField.java``). Surfaced as a public ``@staticmethod``
-        on the class so PDFBox-trained callers can reach it via
-        ``FDFField.escape_xml(...)``; the existing
-        :func:`_escape_xml` module-level helper continues to delegate
-        to this implementation.
+        PDFBOX-5660 moved the implementation out of the private
+        ``FDFField.escapeXML(String)`` into
+        :meth:`~pypdfbox.pdmodel.fdf.fdf_utils.FDFUtils.escape_xml10`;
+        this staticmethod is retained as the pypdfbox-side alias for
+        callers that already reach it through ``FDFField`` and simply
+        forwards. PDFBOX-6242 additionally replaces code points that XML
+        1.0 forbids with U+FFFD.
         """
-        out: list[str] = []
-        for ch in text:
-            if ch == "<":
-                out.append("&lt;")
-            elif ch == ">":
-                out.append("&gt;")
-            elif ch == '"':
-                out.append("&quot;")
-            elif ch == "&":
-                out.append("&amp;")
-            elif ch == "'":
-                out.append("&apos;")
-            elif ord(ch) > 0x7E:
-                out.append(f"&#{ord(ch)};")
-            else:
-                out.append(ch)
-        return "".join(out)
+        return FDFUtils.escape_xml10(text)
 
 
 def _escape_xml(text: str) -> str:
-    """Mirrors upstream ``FDFField.escapeXML(String)``. Module-level
-    legacy alias — delegates to :meth:`FDFField.escape_xml`."""
-    return FDFField.escape_xml(text)
+    """Module-level legacy alias — delegates to
+    :meth:`FDFUtils.escape_xml10`."""
+    return FDFUtils.escape_xml10(text)
 
 
 def _cos_value_to_python(v: COSBase | None) -> object | None:

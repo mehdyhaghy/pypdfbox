@@ -28,6 +28,7 @@ from .fdf_option_element import FDFOptionElement
 from .fdf_page import FDFPage
 from .fdf_page_info import FDFPageInfo
 from .fdf_template import FDFTemplate
+from .fdf_utils import FDFUtils
 
 __all__ = [
     "FDFAnnotation",
@@ -58,4 +59,5 @@ __all__ = [
     "FDFPage",
     "FDFPageInfo",
     "FDFTemplate",
+    "FDFUtils",
 ]

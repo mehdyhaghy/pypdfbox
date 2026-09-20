@@ -13,6 +13,23 @@ from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
 from pypdfbox.pdmodel.graphics.color.pd_separation import PDSeparation
 
 
+def _default_indexed() -> PDIndexed:
+    """Build ``[/Indexed /DeviceRGB 255 null]`` — the array that PDFBox
+    3.x's no-arg ``PDIndexed()`` constructed. PDFBox 4.0 made that
+    constructor private (adopted in pypdfbox 2.0.0), so the array is
+    spelled out here instead."""
+    from pypdfbox.cos import COSArray, COSInteger, COSName, COSNull
+    from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
+    from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
+
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("Indexed"))
+    arr.add(PDDeviceRGB.INSTANCE.get_cos_object())
+    arr.add(COSInteger.get(255))
+    arr.add(COSNull.NULL)
+    return PDIndexed(arr)
+
+
 def _name(value: str) -> COSName:
     return COSName.get_pdf_name(value)
 
@@ -91,7 +108,7 @@ def test_to_raw_image_uses_native_modes_for_gray_and_cmyk() -> None:
 
 
 def test_to_raw_image_falls_back_to_rgb_conversion_for_indexed_space() -> None:
-    indexed = PDIndexed()
+    indexed = _default_indexed()
     indexed.set_lookup_data(bytes([255, 0, 0]))
     img = indexed.to_raw_image(bytes([0]), 1, 1)
 

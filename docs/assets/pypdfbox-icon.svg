@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">pypdfbox icon concept 3 simplified</title>
+  <desc id="desc">Simplified trademark-safe stacked document icon with three red lines on the front document.</desc>
+
+  <!-- Back document -->
+  <path d="M194 54h172l82 82v210c0 20-16 36-36 36H194c-20 0-36-16-36-36V90c0-20 16-36 36-36z" fill="#1565C0"/>
+  <path d="M366 54v54c0 15 13 28 28 28h54z" fill="#0D47A1"/>
+
+  <!-- Middle document -->
+  <path d="M142 103h172l82 82v210c0 20-16 36-36 36H142c-20 0-36-16-36-36V139c0-20 16-36 36-36z" fill="#F4C430"/>
+  <path d="M314 103v54c0 15 13 28 28 28h54z" fill="#E0A800"/>
+
+  <!-- Front document -->
+  <path d="M90 152h172l82 82v210c0 20-16 36-36 36H90c-20 0-36-16-36-36V188c0-20 16-36 36-36z" fill="#FFFFFF" stroke="#1565C0" stroke-width="18" stroke-linejoin="round"/>
+  <path d="M262 152v54c0 15 13 28 28 28h54z" fill="#1565C0"/>
+
+  <!-- Simplified content lines in Acrobat-like red -->
+  <rect x="140" y="276" width="154" height="14" rx="7" fill="#E53935"/>
+  <rect x="140" y="308" width="126" height="14" rx="7" fill="#E53935"/>
+  <rect x="140" y="340" width="142" height="14" rx="7" fill="#E53935"/>
+</svg>

@@ -23,12 +23,41 @@ def test_check_element_returns_for_non_dictionary_leaf() -> None:
 
 
 def test_check_element_recurses_from_page_element_kids() -> None:
+    # PDFBOX-6261 (def6da8f) reshaped the upstream walk: the accumulator gate
+    # moved from "has /Pg" to "has at least one attribute object", so an
+    # attribute-less element is now recursed into but not collected.
     page = PDPage()
     parent = PDStructureElement(structure_type="Div")
     parent.set_page(page)
     child = PDStructureElement(structure_type="P")
     child.set_page(page)
     parent.append_kid(child)
+    attribute_set: list[Revisions[PDAttributeObject]] = []
+    class_set: set[str] = set()
+
+    _check_element(parent.get_cos_object(), attribute_set, None, class_set)
+
+    assert attribute_set == []
+    assert class_set == set()
+
+
+def test_check_element_collects_only_elements_carrying_attributes() -> None:
+    """The recursion still reaches the kid — give both ends an /A entry and
+    both are collected."""
+    page = PDPage()
+    parent = PDStructureElement(structure_type="Div")
+    parent.set_page(page)
+    parent_attr = PDAttributeObject()
+    parent_attr.set_owner("Layout")
+    parent.add_attribute(parent_attr)
+
+    child = PDStructureElement(structure_type="P")
+    child.set_page(page)
+    child_attr = PDAttributeObject()
+    child_attr.set_owner("Layout")
+    child.add_attribute(child_attr)
+    parent.append_kid(child)
+
     attribute_set: list[Revisions[PDAttributeObject]] = []
     class_set: set[str] = set()
 

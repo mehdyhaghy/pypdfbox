@@ -118,17 +118,24 @@ def test_page_with_nonzero_lower_left_origin() -> None:
 
 
 def test_overlay_media_box_with_nonzero_lower_left_origin() -> None:
-    """An overlay whose media box has a non-zero LL also contributes a
-    subtractive correction."""
+    """An overlay whose media box has a non-zero LL contributes *nothing*
+    to the transform.
+
+    Upstream trunk offsets only by the destination page's lower-left
+    corner and lets the form XObject's retranslated ``/BBox``
+    (``[0 0 w h]``) deal with a non-origin overlay box. pypdfbox 2.0.0
+    dropped the extra ``- overlay_llx`` / ``- overlay_lly`` terms that
+    1.x carried, for byte-exact upstream parity.
+    """
     overlay = Overlay()
     page = PDPage(PDRectangle.from_width_height(400.0, 400.0))
     # Overlay media box [10, 20, 210, 220] — width 200, height 200, LL (10, 20).
     overlay_mb = PDRectangle(10.0, 20.0, 210.0, 220.0)
     matrix = overlay.calculate_affine_transform(page, overlay_mb)
-    # Horizontal: (400-200)/2 + 0 - 10 = 90.
-    assert matrix[4] == 90.0
-    # Vertical: (400-200)/2 + 0 - 20 = 80.
-    assert matrix[5] == 80.0
+    # Horizontal: 0 + (400-200)/2 = 100 (pypdfbox 1.x produced 90).
+    assert matrix[4] == 100.0
+    # Vertical: 0 + (400-200)/2 = 100 (pypdfbox 1.x produced 80).
+    assert matrix[5] == 100.0
 
 
 # ---------- background vs foreground placement ----------

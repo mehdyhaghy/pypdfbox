@@ -11,6 +11,23 @@ from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
 from pypdfbox.pdmodel.graphics.color.pd_pattern import PDPattern
 from pypdfbox.pdmodel.graphics.color.pd_separation import PDSeparation
 
+
+def _default_indexed() -> PDIndexed:
+    """Build ``[/Indexed /DeviceRGB 255 null]`` — the array that PDFBox
+    3.x's no-arg ``PDIndexed()`` constructed. PDFBox 4.0 made that
+    constructor private (adopted in pypdfbox 2.0.0), so the array is
+    spelled out here instead."""
+    from pypdfbox.cos import COSArray, COSInteger, COSName, COSNull
+    from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
+    from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
+
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("Indexed"))
+    arr.add(PDDeviceRGB.INSTANCE.get_cos_object())
+    arr.add(COSInteger.get(255))
+    arr.add(COSNull.NULL)
+    return PDIndexed(arr)
+
 # ---------- get_name ----------
 
 
@@ -45,7 +62,7 @@ def test_device_rgb_is_indexed_false() -> None:
 
 
 def test_indexed_is_indexed_true() -> None:
-    assert PDIndexed().is_indexed() is True
+    assert _default_indexed().is_indexed() is True
 
 
 # ---------- is_separation ----------
@@ -77,7 +94,7 @@ def test_get_java_color_space_returns_none() -> None:
     # Java-AWT-specific upstream API; no Python equivalent.
     assert PDDeviceRGB.INSTANCE.get_java_color_space() is None
     assert PDDeviceGray.INSTANCE.get_java_color_space() is None
-    assert PDIndexed().get_java_color_space() is None
+    assert _default_indexed().get_java_color_space() is None
 
 
 # ---------- to_rgb_image / to_raw_image ----------
@@ -112,7 +129,7 @@ def test_device_rgb_get_array_is_none() -> None:
 
 
 def test_indexed_get_array_returns_cos_array() -> None:
-    indexed = PDIndexed()
+    indexed = _default_indexed()
     arr = indexed.get_array()
     assert isinstance(arr, COSArray)
     # Same object as get_cos_object for array-form color spaces.

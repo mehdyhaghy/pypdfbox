@@ -9,7 +9,7 @@ canonical ``PDFAExtensionSchema`` / ``PDFASchemaType`` / ``PDFAFieldType``
 namespaces. The full ``populate_schema_mapping`` logic depends on a stack
 of schema/type/field helpers not yet ported individually. This module
 ports the public surface (validation entry points + closed/open choice
-constants) and leaves the deeper population logic for a future wave.
+prefix stripping) and leaves the deeper population logic for a future wave.
 """
 
 from __future__ import annotations
@@ -21,10 +21,11 @@ if TYPE_CHECKING:
     from pypdfbox.xmpbox.xmp_metadata import XMPMetadata
 
 
-CLOSED_CHOICE = "closed Choice of "
-CLOSED_CHOICE_U = "Closed Choice of "
-OPEN_CHOICE = "open Choice of "
-OPEN_CHOICE_U = "Open Choice of "
+# PDFBOX-6257: upstream folded the two cased spellings of each prefix into a
+# single lower-case constant and made the comparison case-insensitive (the
+# constants also stopped being part of the public API at that point).
+_CLOSED_CHOICE = "closed choice of "
+_OPEN_CHOICE = "open choice of "
 
 _PDFA_EXTENSION_NS = "http://www.aiim.org/pdfa/ns/extension/"
 _PDFA_SCHEMA_NS = "http://www.aiim.org/pdfa/ns/schema#"
@@ -43,11 +44,6 @@ _PREFERRED_PREFIXES = {
 
 class PdfaExtensionHelper:
     """Validator + populator for PDF/A extension namespace declarations."""
-
-    CLOSED_CHOICE = CLOSED_CHOICE
-    CLOSED_CHOICE_U = CLOSED_CHOICE_U
-    OPEN_CHOICE = OPEN_CHOICE
-    OPEN_CHOICE_U = OPEN_CHOICE_U
 
     def __init__(self) -> None:  # pragma: no cover
         raise TypeError("PdfaExtensionHelper is a utility class")
@@ -148,14 +144,17 @@ class PdfaExtensionHelper:
     @staticmethod
     def transform_value_type(type_mapping: object, value_type: str) -> object | None:
         """Mirror of ``PdfaExtensionHelper.transformValueType`` (Java line 278)."""
-        # Strip the upstream "Closed Choice of " / "Open Choice of " prefixes
+        # Strip the upstream "closed Choice of " / "open Choice of " prefixes
         # so callers can resolve the underlying primitive type via the type
-        # mapping.
+        # mapping. PDFBOX-6257 made the prefix test case-insensitive, so any
+        # casing ("Closed Choice of ", "CLOSED CHOICE OF ", ...) is accepted.
         if not isinstance(value_type, str):
             return None
-        for prefix in (CLOSED_CHOICE, CLOSED_CHOICE_U, OPEN_CHOICE, OPEN_CHOICE_U):
-            if value_type.startswith(prefix):
-                return value_type[len(prefix):]
+        lowered = value_type.lower()
+        if lowered.startswith(_CLOSED_CHOICE):
+            return value_type[len(_CLOSED_CHOICE):]
+        if lowered.startswith(_OPEN_CHOICE):
+            return value_type[len(_OPEN_CHOICE):]
         return value_type
 
     @staticmethod
@@ -172,10 +171,4 @@ class PdfaExtensionHelper:
         raise OSError(text)
 
 
-__all__ = [
-    "PdfaExtensionHelper",
-    "CLOSED_CHOICE",
-    "CLOSED_CHOICE_U",
-    "OPEN_CHOICE",
-    "OPEN_CHOICE_U",
-]
+__all__ = ["PdfaExtensionHelper"]

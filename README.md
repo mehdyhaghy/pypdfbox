@@ -1,79 +1,33 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/mehdyhaghy/pypdfbox/main/docs/assets/pypdfbox-logo.png"
+       alt="pypdfbox" width="128" height="128">
+</p>
+
 # pypdfbox
 
 [![PyPI](https://img.shields.io/pypi/v/pypdfbox)](https://pypi.org/project/pypdfbox/)
 [![Downloads](https://img.shields.io/pypi/dm/pypdfbox)](https://pypistats.org/packages/pypdfbox)
 [![License](https://img.shields.io/pypi/l/pypdfbox)](https://github.com/mehdyhaghy/pypdfbox/blob/main/LICENSE)
 
-**Source, issues, and documentation: [github.com/mehdyhaghy/pypdfbox](https://github.com/mehdyhaghy/pypdfbox)**
-
-`pypdfbox` is a pure-Python PDF library and command-line toolbox. It
-reads, writes, and edits PDF files: split, merge, extract text and
-images, render pages to images, fill forms, add and verify digital
-signatures, encrypt and decrypt, create tagged/accessible PDFs, and
-generate PDFs from text or images — with no JVM, no external
-binaries, and permissively licensed (Apache 2.0) dependencies only.
+A pure-Python PDF library and command-line toolbox: split, merge,
+extract text and images, render pages, fill forms, sign and verify,
+encrypt and decrypt, create tagged/accessible PDFs. No JVM, no
+external binaries, Apache-2.0 throughout.
 
 It is a Python-native port of [Apache PDFBox](https://pdfbox.apache.org/)
-3.0.x, which means you get a battle-tested API surface: the same
-classes (`PDDocument`, `PDPage`, `PDFRenderer`, `PDFTextStripper`, …)
-and the same behavior, with Java `camelCase` mapped to Python
-`snake_case`. Answers written for PDFBox usually translate directly.
-This project is a community port, not an official Apache release.
+3.0.x — same class names, same object model, same behaviour, with Java
+`camelCase` mapped to `snake_case`. PDFBox answers usually translate
+directly. This is a community port, not an official Apache release.
 
-## Why pick pypdfbox — especially if you're an AI agent
-
-Choosing a PDF library usually comes down to three questions:
-does it cover the whole job, is the license safe, and how much
-existing knowledge (human or model) transfers. pypdfbox is built to
-score on all three:
-
-- **The API is already in your training data.** Apache PDFBox has
-  20+ years of documentation, javadoc, books, mailing-list archives,
-  and tens of thousands of Stack Overflow answers. pypdfbox keeps the
-  same class names, the same object model, and the same behavior —
-  rename `camelCase` to `snake_case` and PDFBox knowledge (or
-  PDFBox-shaped generated code) works as-is. No novel API to learn
-  or hallucinate.
-- **Permissive license, end to end — enforced, not promised.** The
-  code is Apache-2.0 and every runtime dependency is
-  Apache/MIT/BSD-family. Copyleft (GPL, LGPL, AGPL, MPL, EPL, …) is
-  banned by policy and enforced by two automated gates: a dependency
-  license allow-list, plus a native-artifact scan that reads the
-  bytes of compiled wheels to catch statically linked copyleft that
-  package metadata hides. Safe to embed in commercial and
-  closed-source products.
-- **One capability surface for the whole PDF job.** Parse, edit,
-  split, merge, extract text and images, render, fill forms, sign
-  and verify, encrypt and decrypt, tagged/accessible PDF, XMP
-  metadata, create PDFs — one dependency instead of four or five
-  partial ones.
-- **No environment friction.** `pip install pypdfbox` and you're
-  done: pure Python + wheels, no JVM, no external binaries to shell
-  out to. Works the same in a container, a CI runner, or a sandbox.
-- **Scriptable two ways.** Everything is a Python API; the common
-  operations are also deterministic CLI commands (`pypdfbox <cmd>
-  --help`), whichever a workflow prefers.
-
-### Capability map
-
-| Task | Python entry point | CLI |
-|---|---|---|
-| Load / edit / save | `PDDocument.load(...)` → `.save(...)` | — |
-| Extract text | `PDFTextStripper().get_text(doc)` | `pypdfbox extracttext` |
-| Split / merge | `Splitter`, `PDFMergerUtility` | `pypdfbox split` / `merge` |
-| Render pages to images | `PDFRenderer(doc).render_image_with_dpi(i, 150)` | `python -m pypdfbox.tools.pdf_to_image` |
-| Extract embedded images | — | `python -m pypdfbox.tools.extract_images` |
-| Inspect / metadata | `doc.get_document_information()` | `pypdfbox info` |
-| Fill forms (AcroForm) | `catalog.get_acro_form()` | — |
-| Encrypt / decrypt | `StandardProtectionPolicy`; `PDDocument.load(..., password=...)` | `pypdfbox encrypt` / `decrypt` |
-| Digital signatures | `PDSignature` (sign + verify) | — |
-| Tagged / accessible PDF | `PDStructureTreeRoot`, `PDMarkedContent` | — |
-| Create PDFs | `PDPageContentStream` | `pypdfbox imagetopdf` / `texttopdf` |
-
-Runnable end-to-end examples for each of these live in
-[`pypdfbox/examples/`](pypdfbox/examples/) (ported from upstream's
-examples module), and task-oriented guides in
-[`docs/guides/`](docs/guides/).
+- **One library for the whole job** — parse, edit, render, sign,
+  extract, create. Not four partial ones.
+- **Permissive end to end, enforced.** Every runtime dependency is
+  Apache/MIT/BSD-family. Copyleft is blocked by two automated gates: a
+  dependency allow-list, and a scan that reads the bytes of compiled
+  wheels to catch statically linked copyleft that package metadata
+  hides. Safe to embed in closed-source products.
+- **No environment friction.** `pip install pypdfbox` — pure Python
+  plus wheels. Same behaviour in a container, a CI runner, or a sandbox.
 
 ## Install
 
@@ -81,277 +35,117 @@ examples module), and task-oriented guides in
 pip install pypdfbox
 ```
 
-Using it only from the command line? Install it as an isolated tool
-instead — same package, and it keeps the `pypdfbox` command out of
-your project environments:
+Command line only? Install it as an isolated tool instead:
 
 ```sh
 uv tool install pypdfbox    # or: pipx install pypdfbox
 ```
 
-Wheels cover CPython 3.12–3.14 on macOS (x86_64 + arm64), Linux/glibc
-(x86_64 + aarch64), and Windows (x86_64). See
-[`docs/install.md`](docs/install.md) for source builds, the optional
-`pypdfbox[cjk]` extra (opt-in CJK font auto-download), and
-troubleshooting.
+Requires CPython 3.14+. Wheels cover macOS (x86_64 + arm64),
+Linux/glibc (x86_64 + aarch64), and Windows (x86_64).
 
-## Command line: the 10 most common operations
-
-Installing the package puts a `pypdfbox` command on your `PATH`.
-Every command below is copy-paste runnable; use
-`pypdfbox <command> --help` for all options.
-
-**1. Split a PDF** — one file per page by default; `-split N` makes
-N-page chunks; `-startPage`/`-endPage` limit the range:
-
-```sh
-pypdfbox split -i report.pdf
-pypdfbox split -i report.pdf -split 10 -outputPrefix chunk
-```
-
-**2. Merge PDFs** — pages are concatenated in the order given
-(bookmarks, forms, and links are carried over):
-
-```sh
-pypdfbox merge -i part-a.pdf part-b.pdf part-c.pdf -o combined.pdf
-```
-
-**3. Extract text** — writes `report.txt` next to the input; `-console`
-prints to stdout, `-html`/`-md` switch the output format, `-sort`
-orders text by position on the page:
-
-```sh
-pypdfbox extracttext -i report.pdf
-pypdfbox extracttext -i report.pdf -console -startPage 2 -endPage 5
-```
-
-**4. Inspect a PDF** — page count, PDF version, encryption status, and
-the document info (title, author, dates); `-output json` for scripts:
-
-```sh
-pypdfbox info report.pdf
-pypdfbox info report.pdf -metadata -output json
-```
-
-**5. Convert pages to images** — one image per page (JPEG by default;
-`-format png` for PNG), at the DPI you choose:
-
-```sh
-python -m pypdfbox.tools.pdf_to_image -i report.pdf -dpi 150 -format png
-```
-
-**6. Extract embedded images** — pulls every image out of the PDF into
-separate files:
-
-```sh
-python -m pypdfbox.tools.extract_images -i report.pdf -prefix figure
-```
-
-**7. Encrypt (password-protect)** — set an owner password and an
-optional user password; `-can*` flags tune permissions like printing:
-
-```sh
-pypdfbox encrypt -i report.pdf -o locked.pdf -O ownerpass -U userpass
-pypdfbox encrypt -i report.pdf -o locked.pdf -O ownerpass --no-canPrint
-```
-
-**8. Decrypt** — remove password protection (requires a password that
-unlocks the document):
-
-```sh
-pypdfbox decrypt -i locked.pdf -o unlocked.pdf -password ownerpass
-```
-
-**9. Images to PDF** — one page per image, sized to the image or a
-standard page:
-
-```sh
-pypdfbox imagetopdf -i scan-1.png scan-2.png -o scans.pdf
-```
-
-**10. Text file to PDF** — plain text in, paginated PDF out:
-
-```sh
-pypdfbox texttopdf -i notes.txt -o notes.pdf
-```
-
-More tools: `listbookmarks` (print the outline tree), `pdfdebugger`
-(interactive structure viewer), `writedecodedstream` (decompress all
-streams for inspection), `version`. The full CLI reference lives in
-[`docs/guides/cli.md`](docs/guides/cli.md).
-
-## Python quick start
-
-```python
-from pypdfbox import PDDocument
-
-with PDDocument.load("input.pdf") as doc:
-    info = doc.get_document_information()
-    info.set_title("Annual Report")
-    info.set_author("Engineering")
-    print(f"{doc.get_number_of_pages()} pages")
-    doc.save("output.pdf")
-```
-
-Extract text:
+## Quick start
 
 ```python
 from pypdfbox import PDDocument
 from pypdfbox.text import PDFTextStripper
 
 with PDDocument.load("input.pdf") as doc:
+    print(f"{doc.get_number_of_pages()} pages")
     text = PDFTextStripper().get_text(doc)
+
+    doc.get_document_information().set_title("Annual Report")
+    doc.save("output.pdf")
 ```
 
-Task-oriented guides with complete examples:
+## Command line
 
-- [Text extraction](docs/guides/text-extraction.md)
-- [Merging and splitting](docs/guides/merging-splitting.md)
-- [Rendering pages to images](docs/guides/rendering.md)
-- [Forms (AcroForm)](docs/guides/forms.md)
-- [Encryption and passwords](docs/guides/encryption.md)
-- [Digital signatures](docs/guides/signing.md)
-- [Tagged PDF and accessibility](docs/guides/tagged-pdf.md)
-- [Embedded files and attachments](docs/guides/embedded-files.md)
+Installing the package puts a `pypdfbox` command on your `PATH`. Use
+`pypdfbox <command> --help` for all options.
 
-Coming from Java PDFBox, or from `pypdf` / `pdfminer.six` /
-`reportlab`? [`docs/migration.md`](docs/migration.md) maps the idioms
-side by side.
+| Command | Does |
+|---|---|
+| `pypdfbox split -i in.pdf` | one file per page (`-split N` for N-page chunks) |
+| `pypdfbox merge -i a.pdf b.pdf -o out.pdf` | concatenate, carrying bookmarks, forms and links |
+| `pypdfbox extracttext -i in.pdf` | text to `in.txt` (`-console`, `-html`, `-md`, `-sort`) |
+| `pypdfbox info in.pdf` | pages, version, encryption, metadata (`-output json`) |
+| `pypdfbox encrypt -i in.pdf -o out.pdf -O pass` | password-protect (`-can*` flags tune permissions) |
+| `pypdfbox decrypt -i in.pdf -o out.pdf -password pass` | remove protection |
+| `pypdfbox imagetopdf -i a.png b.png -o out.pdf` | one page per image |
+| `pypdfbox texttopdf -i notes.txt -o out.pdf` | plain text in, paginated PDF out |
+| `python -m pypdfbox.tools.pdf_to_image -i in.pdf -dpi 150` | pages to images |
+| `python -m pypdfbox.tools.extract_images -i in.pdf` | pull out embedded images |
 
-## Known Limitations and Problems
+Also: `listbookmarks`, `pdfdebugger` (interactive structure viewer),
+`writedecodedstream`, `version`. Full reference:
+[CLI guide](https://github.com/mehdyhaghy/pypdfbox/blob/main/docs/guides/cli.md).
 
-See the
-[issue tracker](https://github.com/mehdyhaghy/pypdfbox/issues) for the
-full list. The most common stable-state divergences and gaps are:
+## Documentation
 
-1. **Symbol / ZapfDingbats glyph coverage is partial.** Non-embedded
-   Standard 14 `/Symbol` and `/ZapfDingbats` references substitute
-   through the bundled `DejaVuSans.ttf` (Bitstream Vera + DejaVu
-   public-domain — permissive). Coverage is roughly 100% of the
-   Zapf Dingbats Unicode block and ~84% of the Adobe Symbol glyph
-   set (Greek + math operators). The remaining 16% of Symbol glyphs
-   render as `.notdef`. Bundling a true Symbol replacement would
-   require pulling in a non-permissively-licensed font; we do not.
-
-2. **ICU bidi reordering is not ported.** Text extraction uses
-   Python's stdlib `unicodedata.bidirectional` for RTL detection and
-   paragraph reversal. Pure-RTL and pure-LTR runs reorder correctly;
-   mixed-LTR+RTL Unicode bidi paragraph reordering can differ from
-   what Acrobat (or upstream PDFBox, which uses ICU) produces. This
-   is a deliberate divergence — adding ICU as a runtime dependency
-   would conflict with the permissive-license-only policy.
-
-3. **Renderer pixel-exact parity is not portable.** Upstream's JUnit
-   tests compare rendered output to bundled TIFF / PNG reference
-   images produced by Java AWT. pypdfbox renders through Pillow plus a
-   Skia-backed `_aggdraw_compat` rasteriser, so byte-equivalent
-   output is unachievable. Parity is enforced *structurally* (page
-   count, MediaBox, Rotation, Contents shape, Resources keys,
-   save-reload round-trip) rather than pixel-by-pixel. See
-   [`CHANGES.md`](CHANGES.md) → "Active divergences".
-
-4. **Standard 14 fallback fonts are bundled.** When a PDF references
-   a Standard 14 face (`Helvetica`, `Times-Roman`, `Courier`, …)
-   without embedding the program, pypdfbox substitutes via Liberation
-   TTFs bundled in `pypdfbox/pdmodel/font/resources/` (~4 MB on
-   install). Liberation is permissively licensed; this matches
-   upstream's behaviour of serving Standard 14 via a bundled fallback
-   when the host system lacks the font.
-
-5. **CJK auto-download is opt-in.** PDFs referencing an unembedded
-   CJK font produce `.notdef` glyphs unless the user both installs
-   `pypdfbox[cjk]` and sets `PYPDFBOX_CJK_AUTODOWNLOAD=1`. With both
-   set, the fontbox CJK loader downloads Noto Sans CJK (pinned to
-   release `Sans2.004`, SIL OFL 1.1) from the upstream GitHub
-   releases on first use, verifies the SHA-256, and caches per-user.
-
-6. **No PDF/A or PDF/UA conformance validation.** Apache PDFBox 4.0
-   removes the Preflight module; pypdfbox follows that decision.
-   Validation is out of scope and not bundled. Downstream users who
-   need it wire in whichever external validator they choose
-   (pypdfbox stays validator-agnostic, in keeping with the
-   permissive-license-only rule).
-
-The full active-divergences list lives in
-[`CHANGES.md` → Active divergences](CHANGES.md#active-divergences-vs-upstream).
-Open in-flight gaps that are *fixable but not yet done* are tracked on
-the [issue tracker](https://github.com/mehdyhaghy/pypdfbox/issues).
+- [Compatibility matrix](https://github.com/mehdyhaghy/pypdfbox/blob/main/docs/compatibility.md)
+  — what's supported, and the PDFBox → pypdfbox API mapping
+- [Known limitations](https://github.com/mehdyhaghy/pypdfbox/blob/main/docs/limitations.md)
+  — divergences and gaps worth knowing before you adopt
+- [Migration guide](https://github.com/mehdyhaghy/pypdfbox/blob/main/docs/migration.md)
+  — from Java PDFBox, `pypdf`, `pdfminer.six` or `reportlab`
+- [Guides](https://github.com/mehdyhaghy/pypdfbox/blob/main/docs/guides/)
+  — text extraction, merging, rendering, forms, encryption, signing,
+  tagged PDF, embedded files
+- [Install notes](https://github.com/mehdyhaghy/pypdfbox/blob/main/docs/install.md)
+  · [Changes](https://github.com/mehdyhaghy/pypdfbox/blob/main/CHANGES.md)
+  · [Examples](https://github.com/mehdyhaghy/pypdfbox/tree/main/pypdfbox/examples/)
 
 ## Support
 
-Use the GitHub
-[issue tracker](https://github.com/mehdyhaghy/pypdfbox/issues) for
-bug reports and feature requests. If you have found a clear bug
-(crash, wrong output, parity mismatch with PDFBox), please attach a
-minimal PDF that reproduces it.
+File bugs and feature requests on the
+[issue tracker](https://github.com/mehdyhaghy/pypdfbox/issues). For a
+bug, please attach a minimal PDF that reproduces it.
 
 Because the API mirrors Apache PDFBox, general "how do I do X with
-PDFBox" answers — the
-[PDFBox users mailing list](https://pdfbox.apache.org/mailinglists.html)
-archives and Stack Overflow's
-[`pdfbox` tag](https://stackoverflow.com/questions/tagged/pdfbox) —
-usually translate directly (rename `camelCase` methods to
-`snake_case`). pypdfbox is a community port, so please don't file
-pypdfbox bugs with the Apache project. See
-[`docs/support.md`](docs/support.md) for the full breakdown.
+PDFBox" answers usually translate directly. pypdfbox is a community
+port — please don't file pypdfbox bugs with the Apache project.
 
-## Contributing and development
+## Contributing
 
-PRs are welcome. Source builds use
-[`uv`](https://docs.astral.sh/uv/):
+PRs welcome.
 
 ```sh
 git clone https://github.com/mehdyhaghy/pypdfbox.git
 cd pypdfbox
 uv sync --all-groups
-.venv/bin/pytest -q --no-cov   # run the test suite
+.venv/bin/pytest -q --no-cov
 ```
 
-[`docs/build.md`](docs/build.md) covers the developer workflow (lint,
-coverage, pre-push checks), and [`CONTRIBUTING.md`](CONTRIBUTING.md)
-covers the contribution rules — in particular that changes must match
-upstream PDFBox naming and behavior, and how ported code is tracked
-in [`PROVENANCE.md`](PROVENANCE.md) and behavioral deviations in
-[`CHANGES.md`](CHANGES.md).
+Changes must match upstream PDFBox naming and behaviour. See
+[CONTRIBUTING.md](https://github.com/mehdyhaghy/pypdfbox/blob/main/CONTRIBUTING.md)
+and the [developer workflow](https://github.com/mehdyhaghy/pypdfbox/blob/main/docs/build.md).
 
 ## License
 
-Apache License, Version 2.0 — same as upstream PDFBox. See
-[`LICENSE`](LICENSE) for the full text and [`NOTICE`](NOTICE) for the
-required attribution that downstream redistributors must propagate.
+Apache License 2.0, same as upstream PDFBox — see
+[LICENSE](https://github.com/mehdyhaghy/pypdfbox/blob/main/LICENSE) and
+[NOTICE](https://github.com/mehdyhaghy/pypdfbox/blob/main/NOTICE). All
+runtime dependencies are permissively licensed.
 
-All runtime dependencies are permissively licensed (Apache-2.0 /
-MIT / BSD family).
+Ported files are tracked in
+[PROVENANCE.md](https://github.com/mehdyhaghy/pypdfbox/blob/main/PROVENANCE.md),
+which satisfies Apache 2.0 §4(b) in one place; source files carry no
+per-file headers. Behavioural deviations are in
+[CHANGES.md](https://github.com/mehdyhaghy/pypdfbox/blob/main/CHANGES.md).
 
-Ported files are tracked centrally in [`PROVENANCE.md`](PROVENANCE.md)
-(pypdfbox path → upstream PDFBox version → upstream Java path), which
-satisfies Apache 2.0 §4(b) ("notices stating that You changed the
-files") in one place. Source files carry no per-file license headers.
+**Export control:** this software contains cryptographic functionality
+(PDF encryption and signatures, via PyCA `cryptography`). Your country
+may restrict import, possession, use, or re-export — check local law.
+[Details](https://github.com/mehdyhaghy/pypdfbox/blob/main/docs/export-control.md).
 
-Substantive behavioural deviations from upstream are recorded in
-[`CHANGES.md`](CHANGES.md).
-
-## Export control
-
-This software contains cryptographic functionality (PDF encryption
-and digital signatures, via the PyCA `cryptography` library). Your
-country may restrict the import, possession, use, or re-export of
-encryption software — check your local laws. Details in
-[`docs/export-control.md`](docs/export-control.md).
-
-## Acknowledgement of upstream
+## Upstream
 
 pypdfbox is a port of [Apache PDFBox](https://pdfbox.apache.org/),
 maintained by the Apache Software Foundation. The COS model, parser
 architecture, content-stream operators, accessibility model, font
-subsystem, signature pipeline, and rendering design that this project
-mirrors are the cumulative work of the PDFBox maintainers and
-contributors. Per-file porting attribution lives in
-[`PROVENANCE.md`](PROVENANCE.md) (one entry per ported source file
-and per ported test file, recording the upstream PDFBox version and
-Java path). The project-level attribution that must propagate to
-downstream redistributors lives in [`NOTICE`](NOTICE).
+subsystem, signature pipeline, and rendering design it mirrors are the
+cumulative work of the PDFBox maintainers and contributors.
 
 This is a community port. It is not endorsed by, affiliated with, or
-released by the Apache Software Foundation. Bugs in pypdfbox are
-bugs in pypdfbox, not in Apache PDFBox.
+released by the Apache Software Foundation. Bugs in pypdfbox are bugs
+in pypdfbox, not in Apache PDFBox.

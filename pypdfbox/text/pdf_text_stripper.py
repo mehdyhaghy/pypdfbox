@@ -4145,16 +4145,18 @@ class PDFTextStripper:
         self._start_bookmark_page_number = start_pg
         self._end_bookmark_page_number = end_pg
         for page in pages:
-            # ``has_contents()`` is O(1) (a ``/Contents`` presence + non-empty
-            # check) and mirrors upstream ``PDFTextStripper.processPages``,
-            # which gates on ``page.hasContents()``. The prior
-            # ``if page.get_contents():`` fully decoded (and discarded) the
-            # content stream here, then ``process_page`` decoded it a second
-            # time — a redundant per-page decode. ``process_page`` re-checks
-            # the decoded body and emits the empty-article wrap for the
-            # decodes-to-empty edge case, so output is unchanged.
-            if page.has_contents():
-                chunks.append(self.process_page(page))
+            # PDFBOX-6145: upstream dropped the ``if (page.hasContents())``
+            # gate here. ``hasContents()`` resolves ``/Contents`` — an
+            # indirect reference, sometimes an array of them — for *every*
+            # page in the tree, which for a large document is the dominant
+            # cost of extracting a single page ("extremely slow text
+            # extraction of single page of large PDF"). ``process_page``
+            # already short-circuits a contentless page to the empty-article
+            # wrap, and ``PDFStreamEngine.processPage`` keeps its own
+            # ``hasContents()`` guard, so the only observable change is that
+            # the per-page hooks now fire for contentless pages too — which
+            # is exactly what upstream now does.
+            chunks.append(self.process_page(page))
             self._current_page_no += 1
         return "".join(chunks)
 

@@ -105,14 +105,17 @@ def test_add_header_appends_to_existing_array() -> None:
     assert obj.get_headers() == ["h1", "h2", "h3"]
 
 
-def test_add_header_encodes_utf8() -> None:
+def test_add_header_encodes_like_cos_string() -> None:
+    # PDFBOX-6261: elements are read back with COSString.get_string(), so they
+    # must be written with the COSString text constructor (PDFDocEncoding, or
+    # UTF-16BE + BOM when not representable) rather than as raw UTF-8.
     obj = PDTableAttributeObject()
     obj.add_header("café")
     raw = obj.get_cos_object().get_dictionary_object("Headers")
     assert isinstance(raw, COSArray)
     item = raw.get_object(0)
     assert isinstance(item, COSString)
-    assert item.get_bytes() == "café".encode("utf-8")
+    assert item.get_bytes() == COSString("café").get_bytes()
     assert obj.get_headers() == ["café"]
 
 

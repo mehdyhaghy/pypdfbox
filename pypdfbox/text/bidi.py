@@ -62,6 +62,30 @@ def _bidi_class(ch: str) -> str:
     return cls if cls else "L"
 
 
+# Bidi classes whose presence forces the full algorithm to run. Mirrors the
+# ``RTLMask`` of ``java.text.Bidi.requiresBidi`` (RIGHT_TO_LEFT,
+# RIGHT_TO_LEFT_ARABIC, RIGHT_TO_LEFT_EMBEDDING, RIGHT_TO_LEFT_OVERRIDE,
+# ARABIC_NUMBER).
+_REQUIRES_BIDI_TYPES = frozenset({"R", "AL", "RLE", "RLO", "AN"})
+
+
+def requires_bidi(text: str, start: int = 0, limit: int | None = None) -> bool:
+    """Return ``True`` when ``text[start:limit]`` needs bidi processing.
+
+    Mirrors Java's static ``Bidi.requiresBidi(char[] text, int start,
+    int limit)``: the scan returns ``True`` as soon as a character whose
+    bidi class is right-to-left, right-to-left Arabic, an RTL embedding /
+    override, or an Arabic number is found. Pure left-to-right text (the
+    overwhelmingly common case) short-circuits to ``False`` so callers can
+    skip the resolver entirely.
+    """
+    if limit is None:
+        limit = len(text)
+    return any(
+        _bidi_class(ch) in _REQUIRES_BIDI_TYPES for ch in text[start:limit]
+    )
+
+
 def get_paragraph_direction(text: str) -> int:
     """Return paragraph base direction per UAX #9 P2 / P3.
 

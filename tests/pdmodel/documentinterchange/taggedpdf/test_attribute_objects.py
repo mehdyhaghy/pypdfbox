@@ -177,7 +177,7 @@ def test_table_defaults_when_absent() -> None:
     obj = PDTableAttributeObject()
     assert obj.get_row_span() == 1
     assert obj.get_col_span() == 1
-    assert obj.get_headers() == []
+    assert obj.get_headers() is None
     assert obj.get_scope() is None
     assert obj.get_summary() is None
 
@@ -208,7 +208,7 @@ def test_table_set_headers_empty_removes_entry() -> None:
     assert obj.get_cos_object().get_dictionary_object("Headers") is not None
     obj.set_headers([])
     assert obj.get_cos_object().get_dictionary_object("Headers") is None
-    assert obj.get_headers() == []
+    assert obj.get_headers() is None
 
 
 def test_table_set_scope_writes_cos_name() -> None:
@@ -230,12 +230,15 @@ def test_table_scope_constants_round_trip() -> None:
         assert obj.get_scope() == scope
 
 
-def test_table_get_headers_decodes_utf8_cos_string() -> None:
+def test_table_get_headers_decodes_with_cos_string_get_string() -> None:
+    # PDFBOX-6261: decoding is COSString.get_string(), matching upstream's
+    # COSArray.getString(int).
     obj = PDTableAttributeObject()
     array = COSArray()
-    array.add(COSString("café".encode("utf-8")))
+    raw = COSString("café")
+    array.add(raw)
     obj.get_cos_object().set_item("Headers", array)
-    assert obj.get_headers() == ["café"]
+    assert obj.get_headers() == [raw.get_string()] == ["café"]
 
 
 def test_user_set_and_get_property() -> None:

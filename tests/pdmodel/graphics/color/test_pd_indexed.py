@@ -14,6 +14,23 @@ from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
 from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
 
 
+def _default_indexed() -> PDIndexed:
+    """Build ``[/Indexed /DeviceRGB 255 null]`` — the array that PDFBox
+    3.x's no-arg ``PDIndexed()`` constructed. PDFBox 4.0 made that
+    constructor private (adopted in pypdfbox 2.0.0), so the array is
+    spelled out here instead."""
+    from pypdfbox.cos import COSArray, COSInteger, COSName, COSNull
+    from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
+    from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
+
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("Indexed"))
+    arr.add(PDDeviceRGB.INSTANCE.get_cos_object())
+    arr.add(COSInteger.get(255))
+    arr.add(COSNull.NULL)
+    return PDIndexed(arr)
+
+
 def _make_indexed(hival: int, lookup_entry: COSString | COSStream) -> PDIndexed:
     arr = COSArray()
     arr.add(COSName.get_pdf_name("Indexed"))
@@ -107,7 +124,7 @@ def test_pd_color_to_rgb_through_flate_stream_lookup() -> None:
 def test_default_ctor_uses_device_rgb_hival_255_and_null_lookup() -> None:
     """The no-arg ctor mirrors upstream's default form:
     ``[/Indexed /DeviceRGB 255 null]``."""
-    cs = PDIndexed()
+    cs = _default_indexed()
     assert cs.get_name() == "Indexed"
     assert cs.NAME == "Indexed"
     assert cs.get_number_of_components() == 1
@@ -121,7 +138,7 @@ def test_default_ctor_uses_device_rgb_hival_255_and_null_lookup() -> None:
 def test_default_ctor_initial_color_is_zero_index_in_self() -> None:
     """``initial_color`` is the single-component PDColor ``[0]`` and its
     color space round-trips back to this PDIndexed instance."""
-    cs = PDIndexed()
+    cs = _default_indexed()
     initial = cs.get_initial_color()
     assert initial.get_components() == [0.0]
     assert initial.get_color_space() is cs
@@ -130,7 +147,7 @@ def test_default_ctor_initial_color_is_zero_index_in_self() -> None:
 def test_initial_color_is_cached_singleton() -> None:
     """``get_initial_color`` returns the same object on every call —
     upstream caches it as a final field."""
-    cs = PDIndexed()
+    cs = _default_indexed()
     assert cs.get_initial_color() is cs.get_initial_color()
 
 
@@ -139,19 +156,19 @@ def test_initial_color_is_cached_singleton() -> None:
 
 def test_default_decode_at_one_bit() -> None:
     """``[0, 1]`` for 1-bit images — 2 entries fit in two indices."""
-    cs = PDIndexed()
+    cs = _default_indexed()
     assert cs.get_default_decode(1) == [0.0, 1.0]
 
 
 def test_default_decode_at_four_bits() -> None:
     """``[0, 15]`` for 4-bit images — 16 entries."""
-    cs = PDIndexed()
+    cs = _default_indexed()
     assert cs.get_default_decode(4) == [0.0, 15.0]
 
 
 def test_default_decode_at_eight_bits() -> None:
     """``[0, 255]`` for 8-bit images — 256 entries."""
-    cs = PDIndexed()
+    cs = _default_indexed()
     assert cs.get_default_decode(8) == [0.0, 255.0]
 
 
@@ -167,16 +184,18 @@ def test_default_decode_independent_of_hival() -> None:
 
 
 def test_set_hival_round_trip_via_getter() -> None:
-    cs = PDIndexed()
+    cs = _default_indexed()
     cs.set_hival(7)
     assert cs.get_hival() == 7
     cs.set_hival(0)
     assert cs.get_hival() == 0
 
 
-def test_set_base_color_space_round_trip_via_getter() -> None:
-    cs = PDIndexed()
-    cs.set_base_color_space(PDDeviceGray.INSTANCE)
+def test_base_color_space_is_fixed_at_construction() -> None:
+    # PDFBox 4.0 deleted ``setBaseColorSpace`` (adopted in pypdfbox
+    # 2.0.0): the base CS comes from the array or from ``create``.
+    assert not hasattr(PDIndexed, "set_base_color_space")
+    cs = PDIndexed.create(PDDeviceGray.INSTANCE, 0, b"\x80")
     base = cs.get_base_color_space()
     assert base is not None
     assert base.get_name() == "DeviceGray"
@@ -211,7 +230,7 @@ def test_set_lookup_data_none_writes_cos_null_and_getter_returns_none() -> None:
 def test_set_hival_then_set_lookup_then_str_form() -> None:
     """End-to-end: build via the no-arg ctor, populate hival + lookup
     via setters, and confirm the ``__str__`` reflects the new state."""
-    cs = PDIndexed()
+    cs = _default_indexed()
     cs.set_hival(3)
     cs.set_lookup_data(bytes(range(12)))
     assert str(cs) == "Indexed{base:DeviceRGB hival:3 lookup:(4 entries)}"
@@ -222,7 +241,7 @@ def test_set_hival_then_set_lookup_then_str_form() -> None:
 
 def test_str_default_constructor_form() -> None:
     """Default ctor: hival=255, lookup is COSNull → ``0 entries``."""
-    cs = PDIndexed()
+    cs = _default_indexed()
     assert str(cs) == "Indexed{base:DeviceRGB hival:255 lookup:(0 entries)}"
 
 
@@ -438,19 +457,25 @@ def test_wave1262_set_lookup_data_invalidates_cached_palette() -> None:
     assert second[0] == (0x10, 0x20, 0x30)
 
 
-def test_wave1262_set_base_color_space_invalidates_cached_palette() -> None:
-    """Switching the base CS drops the memoised palette so the new
-    component count drives the next decode."""
+def test_wave1262_base_component_count_drives_the_palette_decode() -> None:
+    """The base CS's component count drives the decode. Pre-2.0 this was
+    checked by swapping the base with ``set_base_color_space`` and
+    watching the memoised palette drop; PDFBox 4.0 deleted that setter,
+    so the two shapes are now built separately. (The cache-invalidation
+    half lives in ``test_pd_indexed_wave1368.py``.)"""
     from pypdfbox.pdmodel.graphics.color.pd_device_gray import PDDeviceGray
 
-    cs = _make_indexed(2, COSString(b"\xff\x00\x00\x00\xff\x00\x00\x00\xff"))
-    first = cs.get_color_table()
-    cs.set_base_color_space(PDDeviceGray.INSTANCE)
-    second = cs.get_color_table()
-    assert second is not first
-    # DeviceGray has 1 component, so the same 9 bytes now read as
-    # 9 single-channel entries (not 3 RGB entries).
-    assert len(second[0]) == 1
+    payload = b"\xff\x00\x00\x00\xff\x00\x00\x00\xff"
+    rgb_based = _make_indexed(2, COSString(payload))
+    gray_based = PDIndexed.create(PDDeviceGray.INSTANCE, 8, payload)
+
+    # DeviceRGB has 3 components → 3 RGB entries.
+    assert len(rgb_based.get_color_table()) == 3
+    assert len(rgb_based.get_color_table()[0]) == 3
+    # DeviceGray has 1 component, so the same 9 bytes read as
+    # 9 single-channel entries.
+    assert len(gray_based.get_color_table()) == 9
+    assert len(gray_based.get_color_table()[0]) == 1
 
 
 def test_wave1262_actual_max_index_negative_for_empty_lookup() -> None:

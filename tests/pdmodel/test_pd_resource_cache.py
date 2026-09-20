@@ -156,31 +156,24 @@ def test_register_true_type_font_for_closing_is_a_noop() -> None:
     assert sentinel in doc._fonts_to_close  # noqa: SLF001 — test invariant
 
 
-# ---------- CID font / font descriptor (upstream defaults) ----------
+# ---------- CID font / font descriptor: removed upstream (cab99713) ----------
 
 
-def test_put_cid_font_get_cid_font_round_trip() -> None:
-    cache = DefaultResourceCache()
-    key = _ref(20)
-    cid_font: Any = COSDictionary()  # stand-in for a PDCIDFont wrapper
-    cache.put_cid_font(key, cid_font)
-    assert cache.get_cid_font(key) is cid_font
-
-
-def test_get_cid_font_missing_returns_none() -> None:
-    assert DefaultResourceCache().get_cid_font(_ref(21)) is None
-
-
-def test_put_font_descriptor_get_font_descriptor_round_trip() -> None:
-    cache = DefaultResourceCache()
-    key = _ref(22)
-    descriptor: Any = COSDictionary()  # stand-in for a PDFontDescriptor
-    cache.put_font_descriptor(key, descriptor)
-    assert cache.get_font_descriptor(key) is descriptor
-
-
-def test_get_font_descriptor_missing_returns_none() -> None:
-    assert DefaultResourceCache().get_font_descriptor(_ref(23)) is None
+def test_cid_font_and_font_descriptor_cache_methods_are_absent() -> None:
+    """PDFBOX-6175 added ``getCIDFont`` / ``getFontDescriptor`` and their
+    ``put`` / ``remove`` companions; upstream reverted the whole extension
+    in cab99713 (shipped in 3.0.8) because a descendant font refers to its
+    parent and therefore can't be shared. The surface must stay gone."""
+    for name in (
+        "get_cid_font",
+        "put_cid_font",
+        "remove_cid_font",
+        "get_font_descriptor",
+        "put_font_descriptor",
+        "remove_font_descriptor",
+    ):
+        assert not hasattr(PDResourceCache, name)
+        assert not hasattr(DefaultResourceCache, name)
 
 
 # ---------- removal hooks ----------
@@ -231,25 +224,10 @@ def test_remove_methods_return_value_and_clear_each_category() -> None:
     assert cache.get_property_list(key) is None
 
 
-def test_remove_cid_font_and_font_descriptor_round_trip() -> None:
-    cache = DefaultResourceCache()
-    key = _ref(33)
-    cid_font: Any = COSDictionary()
-    descriptor: Any = COSDictionary()
-    cache.put_cid_font(key, cid_font)
-    cache.put_font_descriptor(key, descriptor)
-
-    assert cache.remove_cid_font(key) is cid_font
-    assert cache.remove_font_descriptor(key) is descriptor
-    assert cache.get_cid_font(key) is None
-    assert cache.get_font_descriptor(key) is None
-
-
 class _MinimalCache(PDResourceCache):
-    """Bare-bones subclass exercising abstract defaults (cid font, font
-    descriptor, ``remove_*``) — none of which are abstract on
-    :class:`PDResourceCache`. Mirrors the upstream ``ResourceCache`` defaults
-    that return ``null``."""
+    """Bare-bones subclass exercising the non-abstract ``remove_*`` defaults
+    on :class:`PDResourceCache`. Mirrors the upstream ``ResourceCache``
+    defaults that return ``null``."""
 
     def get_font(self, indirect: COSObject) -> Any:
         return None
@@ -295,22 +273,15 @@ class _MinimalCache(PDResourceCache):
 
 
 def test_pd_resource_cache_defaults_match_upstream_null_returns() -> None:
-    """Upstream ``ResourceCache`` declares CID-font / font-descriptor /
-    remove-* methods as ``default ... return null``. Subclasses that omit
-    them must inherit those ``None`` returns."""
+    """Upstream ``ResourceCache`` declares the ``remove*`` methods as
+    ``default ... return null``. Subclasses that omit them must inherit
+    those ``None`` returns."""
     cache = _MinimalCache()
     key = _ref(40)
-
-    assert cache.get_cid_font(key) is None
-    assert cache.get_font_descriptor(key) is None
-    cache.put_cid_font(key, object())  # type: ignore[arg-type]
-    cache.put_font_descriptor(key, object())  # type: ignore[arg-type]
 
     assert cache.remove_color_space(key) is None
     assert cache.remove_ext_g_state(key) is None
     assert cache.remove_font(key) is None
-    assert cache.remove_cid_font(key) is None
-    assert cache.remove_font_descriptor(key) is None
     assert cache.remove_shading(key) is None
     assert cache.remove_pattern(key) is None
     assert cache.remove_property_list(key) is None
@@ -525,13 +496,11 @@ def test_default_cache_remove_ext_state_applies_stable_cache_guard() -> None:
 
 
 def test_default_cache_put_dispatches_by_resource_type() -> None:
-    """The single-name ``put`` dispatcher mirrors upstream's nine
-    ``put(COSObject, ...)`` overloads (lines 119, 137, 154, 173, 198, 230,
-    263, 289, 318) — each runtime type must land in the matching backing
-    store."""
+    """The single-name ``put`` dispatcher mirrors upstream's seven
+    ``put(COSObject, ...)`` overloads — each runtime type must land in the
+    matching backing store."""
     from pypdfbox.cos import COSDictionary, COSStream
     from pypdfbox.pdmodel.font.pd_cid_font import PDCIDFont
-    from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
     from pypdfbox.pdmodel.graphics.color.pd_device_n import PDDeviceN
     from pypdfbox.pdmodel.graphics.form import PDFormXObject
     from pypdfbox.pdmodel.graphics.pattern.pd_shading_pattern import (
@@ -567,21 +536,18 @@ def test_default_cache_put_dispatches_by_resource_type() -> None:
     cache.put(_ref(84), pattern)
     assert cache.get_pattern(_ref(84)) is pattern
 
-    descriptor = PDFontDescriptor(COSDictionary())
-    cache.put(_ref(85), descriptor)
-    assert cache.get_font_descriptor(_ref(85)) is descriptor
-
     prop = PDPropertyList(COSDictionary())
     cache.put(_ref(86), prop)
     assert cache.get_property_list(_ref(86)) is prop
 
-    # PDCIDFont must route to the CID slot, not the generic font slot.
+    # cab99713 removed the dedicated CID slot: a PDCIDFont (a PDFont
+    # subclass in pypdfbox) now lands in the single font slot, matching
+    # upstream's lone ``put(COSObject, PDFont)`` overload.
     cid_dict = COSDictionary()
     cid_font = PDCIDFont.__new__(PDCIDFont)
     cid_font.dict = cid_dict  # type: ignore[attr-defined]
     cache.put(_ref(87), cid_font)
-    assert cache.get_cid_font(_ref(87)) is cid_font
-    assert cache.get_font(_ref(87)) is None
+    assert cache.get_font(_ref(87)) is cid_font
 
 
 def test_default_cache_put_rejects_unsupported_types() -> None:

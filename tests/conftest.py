@@ -23,6 +23,7 @@ this module only provides the global skip hook and marker registration.
 from __future__ import annotations
 
 import os
+import pathlib
 
 import pytest
 
@@ -33,6 +34,49 @@ def pytest_configure(config: pytest.Config) -> None:
         "serial: test must not run concurrently with other Tk tests "
         "(advisory; use ``pytest -m 'not serial'`` to deselect).",
     )
+    config.addinivalue_line(
+        "markers",
+        "live_oracle: test shells out to Java PDFBox via "
+        "``tests/oracle/harness.py``. Applied automatically (see "
+        "``pytest_collection_modifyitems`` below) and deselected by "
+        "default in ``pyproject.toml``; run with ``pytest -m live_oracle``.",
+    )
+
+
+# Auto-marking the live-differential tests
+# ---------------------------------------
+# ~44 hand-written test modules embed a live differential against
+# ``archive/oracle/jars/pdfbox-app-*.jar``. They are NOT under a
+# ``*/oracle/*`` path, so the ``--ignore-glob='*/oracle/*'`` filter never
+# excluded them, and each one pays JVM start-up -- which is what turned the
+# "fast" suite into a multi-minute, CPU-saturating run.
+#
+# Detection is by module source rather than by a decorator because the
+# modules reach the harness through several idioms (``requires_oracle``,
+# a bare ``run_probe``, a try/except import fallback). One substring check
+# per file, cached, catches all of them and cannot drift out of sync with
+# a decorator someone forgets to apply.
+_ORACLE_HARNESS_IMPORT = "oracle.harness"
+_uses_live_oracle: dict[str, bool] = {}
+
+
+def _module_uses_live_oracle(path: pathlib.Path) -> bool:
+    key = str(path)
+    cached = _uses_live_oracle.get(key)
+    if cached is None:
+        try:
+            cached = _ORACLE_HARNESS_IMPORT in path.read_text(encoding="utf-8")
+        except OSError:  # pragma: no cover - unreadable/synthetic module
+            cached = False
+        _uses_live_oracle[key] = cached
+    return cached
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    for item in items:
+        path = getattr(item, "path", None)
+        if path is not None and _module_uses_live_oracle(path):
+            item.add_marker(pytest.mark.live_oracle)
 
 
 @pytest.fixture(autouse=True, scope="session")

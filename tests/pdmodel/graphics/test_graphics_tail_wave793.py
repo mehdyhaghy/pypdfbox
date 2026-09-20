@@ -13,6 +13,23 @@ from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_group import 
 )
 
 
+def _default_indexed() -> PDIndexed:
+    """Build ``[/Indexed /DeviceRGB 255 null]`` — the array that PDFBox
+    3.x's no-arg ``PDIndexed()`` constructed. PDFBox 4.0 made that
+    constructor private (adopted in pypdfbox 2.0.0), so the array is
+    spelled out here instead."""
+    from pypdfbox.cos import COSArray, COSInteger, COSName, COSNull
+    from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
+    from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
+
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("Indexed"))
+    arr.add(PDDeviceRGB.INSTANCE.get_cos_object())
+    arr.add(COSInteger.get(255))
+    arr.add(COSNull.NULL)
+    return PDIndexed(arr)
+
+
 class _ArraylessColorSpace(PDColorSpace):
     def get_name(self) -> str:
         return "Arrayless"
@@ -43,11 +60,14 @@ def test_color_space_string_uses_subclass_name() -> None:
 
 
 def test_indexed_and_separation_reject_arrayless_color_spaces() -> None:
-    indexed = PDIndexed()
     separation = PDSeparation()
 
-    with pytest.raises(TypeError, match="base_color_space"):
-        indexed.set_base_color_space(_ArraylessColorSpace())
+    # PDFBox 4.0 removed ``setBaseColorSpace`` (adopted in pypdfbox
+    # 2.0.0), so the "base CS with no COS form" rejection is reached
+    # through the ``create`` factory instead.
+    assert not hasattr(PDIndexed, "set_base_color_space")
+    with pytest.raises(ValueError, match="base color space has no COS form"):
+        PDIndexed.create(_ArraylessColorSpace(), 0, b"\x00")
     with pytest.raises(TypeError, match="alternate_color_space"):
         separation.set_alternate_color_space(_ArraylessColorSpace())
     with pytest.raises(TypeError, match="COS form"):

@@ -15,7 +15,6 @@ from pypdfbox.cos import (
 
 from .pd_color import PDColor
 from .pd_color_space import PDColorSpace
-from .pd_device_rgb import PDDeviceRGB
 from .pd_special_color_space import PDSpecialColorSpace
 
 
@@ -34,20 +33,25 @@ class PDIndexed(PDSpecialColorSpace):
 
     NAME: str = "Indexed"
 
-    def __init__(self, array: COSArray | None = None) -> None:
-        if array is None:
-            array = COSArray()
-            array.add(COSName.get_pdf_name(self.NAME))
-            array.add(PDDeviceRGB.INSTANCE.get_cos_object())
-            array.add(COSInteger.get(255))
-            array.add(COSNull.NULL)
+    def __init__(self, array: COSArray) -> None:
+        """Wrap an existing ``[/Indexed <base CS> <hival> <lookup>]``
+        array. Mirrors upstream ``PDIndexed(COSArray)``, which stays
+        public in 4.0.
+
+        PDFBox 4.0 turned the no-arg ``PDIndexed()`` constructor
+        ``private`` — it survives upstream only so :meth:`create` has an
+        instance to populate, and the ``COSArray`` construction moved
+        into that factory. pypdfbox adopts the removal: there is no
+        public no-argument construction path. Build the array and pass
+        it here, or use :meth:`create`.
+        """
         super().__init__(array)
         self._initial_color = PDColor([0.0], self)
         # Upstream caches `lookupData`, `colorTable`, `actualMaxIndex` and
         # `rgbColorTable` as private fields populated once at construction
         # (PDIndexed.java lines 97-98). Mirror that here so `to_rgb` and
         # `to_rgb_image` don't re-decode the palette on every call. Lazy
-        # invalidation: setters (`set_hival`, `set_base_color_space`,
+        # invalidation: the remaining setters (`set_hival`,
         # `set_lookup_data`) clear these via :meth:`_invalidate_caches`.
         self._color_table_cache: list[list[float]] | None = None
         self._actual_max_index_cache: int | None = None
@@ -65,6 +69,10 @@ class PDIndexed(PDSpecialColorSpace):
         raw palette bytes. Mirrors upstream
         ``PDIndexed.create(PDColorSpace, int, byte[])`` (PDIndexed.java
         line 104, added by PDFBOX-6192).
+
+        This is the only supported construction path that does not start
+        from an existing ``COSArray``: 4.0 privatised the no-arg
+        constructor and moved the array construction here.
 
         :param base: base color space — must not be ``None``.
         :param hival: maximum valid index value for the lookup data.
@@ -130,22 +138,29 @@ class PDIndexed(PDSpecialColorSpace):
             return None
         return PDColorSpace.create(base)
 
-    def set_base_color_space(self, base: PDColorSpace) -> None:
-        assert self._array is not None
-        self._ensure_array_size(2)
-        cos = base.get_cos_object()
-        if cos is None:
-            raise TypeError(
-                "set_base_color_space requires a color space with a COS form"
-            )
-        self._array.set(1, cos)
-        self._invalidate_caches()
+    # Upstream's ``setBaseColorSpace`` is ``@Deprecated ... will be
+    # removed in 4.0`` in 3.0.x and is deleted outright on trunk.
+    # pypdfbox 2.0.0 adopts the removal: the base color space is fixed at
+    # construction (via the array or :meth:`create`).
 
     def has_base_color_space(self) -> bool:
         """Return ``True`` when the base color-space slot resolves."""
         return self.get_base_color_space() is not None
 
     def get_hival(self) -> int:
+        """Read the ``/Indexed`` array's hival slot, clamped to
+        ``[0, 255]``.
+
+        Visibility note: upstream's ``getHival()`` is ``private`` in both
+        3.0 and trunk, and there is no ``setHival`` upstream at all
+        (4.0 fixes hival at construction). This pair stays public
+        because :meth:`PDColor._indexed_to_rgb` duck-types
+        ``get_hival`` to clamp the sample index before the palette
+        dereference — renaming it would silently disable that clamp.
+        Its private-upstream siblings :meth:`read_lookup_data`,
+        :meth:`read_color_table` and :meth:`init_rgb_color_table` follow
+        the same no-underscore convention (see the block comment below).
+        """
         assert self._array is not None
         if self._array.size() <= 2:
             return 0
@@ -157,19 +172,10 @@ class PDIndexed(PDSpecialColorSpace):
         self._array.set(2, COSInteger.get(hival))
         self._invalidate_caches()
 
-    def set_high_value(self, high: int) -> None:
-        """Replace the highest allowed lookup index. Mirrors upstream
-        ``PDIndexed.setHighValue`` (``PDIndexed.java`` line 330) — the
-        cannot-exceed-255 contract is enforced by :meth:`get_hival`'s
-        clamp on the read side, matching upstream's ``array.set(2, ...)``
-        with no setter-side guard.
-
-        Upstream marks ``setHighValue`` ``@Deprecated`` and slates it for
-        removal in 4.0; pypdfbox carries it as a snake-case alias of
-        :meth:`set_hival` so PDFBox-3.x ports keep compiling without
-        renaming the call site.
-        """
-        self.set_hival(int(high))
+    # Upstream's ``setHighValue`` is ``@Deprecated ... will be removed in
+    # 4.0`` in 3.0.x and is deleted outright on trunk. pypdfbox 2.0.0
+    # adopts the removal; it was only ever a thin alias for
+    # :meth:`set_hival`, which remains.
 
     def get_lookup_data(self) -> bytes | None:
         """Return the lookup-table bytes for this Indexed color space.

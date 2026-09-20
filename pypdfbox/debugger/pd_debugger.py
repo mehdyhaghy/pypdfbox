@@ -63,6 +63,7 @@ from pypdfbox.cos import (
     COSStream,
     COSString,
 )
+from pypdfbox.debugger.app_icon import apply_window_icon
 from pypdfbox.debugger.colorpane.cs_array_based import CSArrayBased
 from pypdfbox.debugger.colorpane.cs_device_n import CSDeviceN
 from pypdfbox.debugger.colorpane.cs_indexed import CSIndexed
@@ -2097,6 +2098,9 @@ class PDFDebugger:
 
         root = tk.Tk()
         root.title(cls.TITLE)
+        # ``iconphoto(True, …)`` also covers Toplevels opened later, so the
+        # dialogs below inherit the mark without extra wiring.
+        apply_window_icon(root)
         view_mode = (
             TreeViewMenu.VIEW_STRUCTURE
             if ns.viewstructure

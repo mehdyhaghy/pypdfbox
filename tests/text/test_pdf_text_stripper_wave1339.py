@@ -233,13 +233,15 @@ def test_wave1339_process_pages_collapses_to_empty_for_identical_unresolved_book
         doc.close()
 
 
-def test_wave1339_process_pages_invokes_process_page_for_each_page_with_contents() -> None:
-    """The page-loop branch only invokes ``process_page`` for pages
-    whose ``get_contents`` is truthy — exercises lines 1667–1670."""
+def test_wave1339_process_pages_invokes_process_page_for_each_page() -> None:
+    """PDFBOX-6145: the page loop invokes ``process_page`` for **every**
+    page, including one with no ``/Contents`` — upstream dropped the
+    ``page.hasContents()`` gate because resolving ``/Contents`` for every
+    page dominated single-page extraction on large documents."""
     doc = PDDocument()
     try:
         p1 = _make_page_with_stream(doc, b"BT /F0 12 Tf 100 700 Td (hi) Tj ET")
-        # Page without content stream — skipped by the loop.
+        # Page without content stream — still walked after PDFBOX-6145.
         p2 = PDPage(PDRectangle(0.0, 0.0, 612.0, 792.0))
         doc.add_page(p2)
         s = PDFTextStripper()
@@ -254,7 +256,7 @@ def test_wave1339_process_pages_invokes_process_page_for_each_page_with_contents
         s.process_page = spy  # type: ignore[method-assign]
         result = s.process_pages([p1, p2])
 
-        assert calls == [p1]
+        assert calls == [p1, p2]
         assert isinstance(result, str)
     finally:
         doc.close()

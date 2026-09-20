@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from pypdfbox.cos import (
     COSArray,
     COSBase,
@@ -14,6 +16,8 @@ from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_attribute_object i
 )
 
 from .pd_four_colours import PDFourColours
+
+_log = logging.getLogger(__name__)
 
 
 class PDStandardAttributeObject(PDAttributeObject):
@@ -94,18 +98,30 @@ class PDStandardAttributeObject(PDAttributeObject):
             return v
         return None
 
-    def _get_array_of_string(self, name: str) -> list[str] | None:
+    def _get_array_of_string(self, name: str) -> list[str | None] | None:
+        """Mirrors upstream ``getArrayOfString(String)``.
+
+        PDFBOX-6261: upstream used to cast every element to ``COSName``,
+        which raised ``ClassCastException`` for the (spec-mandated) byte
+        strings real files carry in ``/Headers``. It now reads each slot
+        with ``COSArray.getString(int)`` and keeps the array *positional* —
+        a non-string element yields ``None`` in place (and a WARNING),
+        rather than being dropped, so element *i* still corresponds to
+        column *i*.
+        """
         v = self._dictionary.get_dictionary_object(name)
         if not isinstance(v, COSArray):
             return None
-        out: list[str] = []
+        strings: list[str | None] = []
         for i in range(v.size()):
-            item = v.get_object(i)
-            if isinstance(item, COSName):
-                out.append(item.name)
-            elif isinstance(item, COSString):
-                out.append(item.get_string())
-        return out
+            value = v.get_string(i)
+            strings.append(value)
+            if value is None:
+                # We may have to improve this.
+                _log.warning(
+                    "Element %d is %s but should be a string", i, v.get_object(i)
+                )
+        return strings
 
     def _set_array_of_string(self, name: str, values: list[str]) -> None:
         array = COSArray()
@@ -281,7 +297,7 @@ class PDStandardAttributeObject(PDAttributeObject):
 
     # ---- arrays ----
 
-    def get_array_of_string(self, name: str) -> list[str] | None:
+    def get_array_of_string(self, name: str) -> list[str | None] | None:
         return self._get_array_of_string(name)
 
     def set_array_of_string(self, name: str, values: list[str] | None) -> None:

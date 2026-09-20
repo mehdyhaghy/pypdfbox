@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSName, COSStream
@@ -57,6 +58,12 @@ class PDPatternContentStream(PDPageContentStream):
             PDAbstractContentStream.DEFAULT_MAX_FRACTION_DIGITS
         )
         self._in_text_mode = False
+        self._font_set = False
+        # Parity with the parent constructor's PDFBOX-4951 state (font /
+        # font-size stacks + the optional glyph-layout backend).
+        self._font_stack = deque()
+        self._font_size_stack = deque()
+        self._glyph_layout_processor = None
         self._target_stream = cos
         existing_res = pattern.get_resources()
         if existing_res is None:

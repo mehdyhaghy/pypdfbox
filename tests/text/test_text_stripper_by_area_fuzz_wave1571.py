@@ -335,9 +335,11 @@ def test_blank_page_no_contents_region_stays_empty() -> None:
     s = PDFTextStripperByArea()
     s.add_region("r", (0.0, 0.0, 612.0, 792.0))
     s.extract_regions(blank)
-    # hasContents() guard returns before any binning/formatting -> never
-    # written, so the empty-string default comes back (no trailing sep).
-    assert s.get_text_for_region("r") == ""
+    # PDFBOX-6145 removed the hasContents() guard: the contentless page is
+    # walked (finding no glyphs) and the per-region writePage still emits
+    # the page terminator, exactly as for an in-range but empty region.
+    assert s.get_text_for_region("r") == s.get_line_separator()
+    assert s.get_text_for_region("r").strip() == ""
 
 
 def test_no_regions_extract_is_noop() -> None:

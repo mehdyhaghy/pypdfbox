@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+from .abstract_glyph_layout_processor import AbstractGlyphLayoutProcessor
+from .content_stream_for_glyph_layout_interface import (
+    ContentStreamForGlyphLayoutInterface,
+)
 from .default_resource_cache_create_impl import DefaultResourceCacheCreateImpl
+from .glyph_layout_processor_interface import GlyphLayoutProcessorInterface
+from .glyphs_and_positions import GlyphsAndPositions
 from .missing_resource_exception import MissingResourceException
 from .page_iterator import PageIterator
 from .page_layout import PageLayout
@@ -27,7 +33,11 @@ from .resource_cache_factory import ResourceCacheFactory
 from .search_context import SearchContext
 
 __all__ = [
+    "AbstractGlyphLayoutProcessor",
+    "ContentStreamForGlyphLayoutInterface",
     "DefaultResourceCacheCreateImpl",
+    "GlyphLayoutProcessorInterface",
+    "GlyphsAndPositions",
     "MissingResourceException",
     "PDAbstractContentStream",
     "PDDeveloperExtension",

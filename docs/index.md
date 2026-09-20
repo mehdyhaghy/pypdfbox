@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/pypdfbox-logo.png" alt="pypdfbox" width="112" height="112">
+</p>
+
 # pypdfbox documentation
 
 `pypdfbox` is a pure-Python PDF library and command-line toolbox:
@@ -14,6 +18,9 @@ operations, and a Python quick start.
 
 ## Getting started
 
+- [Compatibility matrix](compatibility.md) — what pypdfbox can do,
+  how to reach it from Python or the CLI, the PDFBox → pypdfbox API
+  mapping, and supported platforms.
 - [Install guide](install.md) — `pip install pypdfbox`, supported
   Python versions and platforms, the optional `pypdfbox[cjk]` extra,
   source installs, and troubleshooting for the common
@@ -61,9 +68,9 @@ operations, and a Python quick start.
   the [issue tracker](https://github.com/mehdyhaghy/pypdfbox/issues)
   for pypdfbox bugs; upstream PDFBox resources for general PDF /
   API design questions (answers usually translate directly).
-- [`README.md` → Known limitations](../README.md#known-limitations-and-problems)
-  — the stable-state divergences (Symbol glyph coverage, bidi,
-  pixel-exact rendering, PDF/A validation scope).
+- [Known limitations](limitations.md) — the stable-state divergences
+  (Symbol glyph coverage, bidi, pixel-exact rendering, PDF/A
+  validation scope).
 
 ## Reference
 

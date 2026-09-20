@@ -3,8 +3,10 @@
 
 Targets the 8 uncovered lines after wave 1348:
 
-* line 90 — ``set_base_color_space`` raising ``TypeError`` for a base CS
-  whose ``get_cos_object()`` returns ``None``;
+* the "base color space with no COS form" rejection. Wave 1349 reached
+  it through ``set_base_color_space``; PDFBox 4.0 deletes that method
+  (adopted in pypdfbox 2.0.0), so the same guard is now driven through
+  :meth:`PDIndexed.create`, which raises for the identical condition;
 * lines 205-206 — ``read_lookup_data`` consuming a ``COSStream`` /Lookup
   entry through ``create_input_stream``;
 * line 229 — ``read_color_table`` clamping ``n`` to ``1`` when the base
@@ -41,9 +43,8 @@ from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
 
 class _NoCosColorSpace(PDColorSpace):
     """Minimal :class:`PDColorSpace` whose ``get_cos_object`` returns
-    ``None``. Mirrors the upstream code path where a caller hands an
-    in-memory color space (no COS form yet) to
-    :meth:`PDIndexed.set_base_color_space`.
+    ``None``. Mirrors the code path where a caller hands an in-memory
+    color space (no COS form yet) to :meth:`PDIndexed.create`.
     """
 
     def get_name(self) -> str:
@@ -77,13 +78,20 @@ class _ZeroComponentColorSpace(PDColorSpace):
         return [0.0, 0.0, 0.0]
 
 
-# ---------- set_base_color_space: ``cos is None`` guard (line 90) ----------
+# ---------- create(): ``base_cos is None`` guard ----------
 
 
-def test_wave1349_set_base_color_space_rejects_color_space_without_cos_form() -> None:
-    cs = PDIndexed()
-    with pytest.raises(TypeError, match="requires a color space with a COS form"):
-        cs.set_base_color_space(_NoCosColorSpace())
+def test_wave1349_create_rejects_color_space_without_cos_form() -> None:
+    """A base CS with no COS form cannot be written into the /Indexed
+    array. PDFBox 4.0 removed ``setBaseColorSpace`` (the 3.x route to
+    this guard), so :meth:`PDIndexed.create` is now the only path that
+    can hit it."""
+    with pytest.raises(ValueError, match="base color space has no COS form"):
+        PDIndexed.create(_NoCosColorSpace(), 0, b"\x00\x00\x00")
+
+
+def test_wave1349_set_base_color_space_is_removed_in_4_0() -> None:
+    assert not hasattr(PDIndexed, "set_base_color_space")
 
 
 # ---------- read_lookup_data: COSStream branch (lines 205-206) ----------
@@ -187,7 +195,16 @@ def test_wave1349_init_rgb_color_table_no_base_pads_short_entries_with_zero() ->
 
 
 def test_wave1349_to_rgb_image_returns_black_image_when_palette_empty() -> None:
-    cs = PDIndexed()  # No /Lookup data → empty palette.
+    # ``[/Indexed /DeviceRGB 255 null]`` — the array PDFBox 3.x's no-arg
+    # constructor built before 4.0 privatised it. /Lookup is the null
+    # placeholder, so the palette decodes empty.
+    array = COSArray()
+    array.add(COSName.get_pdf_name("Indexed"))
+    array.add(PDDeviceRGB.INSTANCE.get_cos_object())
+    array.add(COSInteger.get(255))
+    array.add(COSNull.NULL)
+    cs = PDIndexed(array)
+    assert cs.get_actual_max_index() == -1  # empty palette
 
     img = cs.to_rgb_image(b"\x00\x01\x02\x03", 2, 2)
 

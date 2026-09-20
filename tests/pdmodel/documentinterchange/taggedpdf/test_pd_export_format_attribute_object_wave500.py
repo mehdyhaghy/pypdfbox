@@ -39,7 +39,7 @@ def test_get_list_numbering_falls_back_when_name_helper_returns_none() -> None:
     assert obj.get_list_numbering() == PDExportFormatAttributeObject.LIST_NUMBERING_NONE
 
 
-def test_headers_skip_non_string_items_and_decode_latin1_fallback() -> None:
+def test_headers_report_none_for_non_string_items() -> None:
     obj = PDExportFormatAttributeObject()
     array = COSArray()
     array.add(COSString(b"\xff"))
@@ -47,10 +47,14 @@ def test_headers_skip_non_string_items_and_decode_latin1_fallback() -> None:
     array.add(COSInteger.get(7))
     obj.get_cos_object().set_item(PDTableAttributeObject.HEADERS, array)
 
-    assert obj.get_headers() == ["ÿ"]
+    # PDFBOX-6261: positional — non-string slots become None, not dropped.
+    assert obj.get_headers() == ["ÿ", None, None]
 
 
-def test_set_headers_writes_utf8_cos_strings() -> None:
+def test_set_headers_writes_cos_strings() -> None:
+    # PDFBOX-6261: written with the COSString text constructor (PDFDocEncoding,
+    # or UTF-16BE + BOM when not representable) so the values round-trip
+    # through COSArray.getString(int) / COSString.get_string().
     obj = PDExportFormatAttributeObject()
 
     obj.set_headers(["alpha", "café"])
@@ -58,9 +62,10 @@ def test_set_headers_writes_utf8_cos_strings() -> None:
     array = obj.get_cos_object().get_dictionary_object(PDTableAttributeObject.HEADERS)
     assert isinstance(array, COSArray)
     assert [array.get_object(i).get_bytes() for i in range(array.size())] == [
-        b"alpha",
-        "café".encode(),
+        COSString("alpha").get_bytes(),
+        COSString("café").get_bytes(),
     ]
+    assert obj.get_headers() == ["alpha", "café"]
 
 
 def test_presence_aliases_and_clear_helpers_for_each_export_key() -> None:
@@ -101,7 +106,7 @@ def test_presence_aliases_and_clear_helpers_for_each_export_key() -> None:
     assert obj.get_list_numbering() == PDExportFormatAttributeObject.LIST_NUMBERING_NONE
     assert obj.get_row_span() == 1
     assert obj.get_col_span() == 1
-    assert obj.get_headers() == []
+    assert obj.get_headers() is None
     assert obj.get_scope() is None
     assert obj.get_summary() is None
 

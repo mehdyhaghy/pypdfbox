@@ -342,6 +342,10 @@ def test_show_text_requires_font_set() -> None:
 def test_show_text_emits_hex_string_and_Tj() -> None:
     cs, out = _make()
     cs._font_stack.append(_FakeFont())
+    # PDFBOX-4951 added a parallel fontSizeStack that ``showText`` asserts on
+    # ("Font is set, but fontSize is not set"); ``set_font`` normally fills
+    # both, so seed it alongside the hand-pushed font.
+    cs._font_size_stack.append(12.0)
     cs.begin_text()
     out.seek(0)
     out.truncate()

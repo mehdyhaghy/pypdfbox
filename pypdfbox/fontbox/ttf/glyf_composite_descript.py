@@ -21,6 +21,10 @@ if TYPE_CHECKING:
 
 _LOG = logging.getLogger(__name__)
 
+# Java ``Short.MAX_VALUE`` — the point-index ceiling upstream aborts
+# ``resolve()`` at (PDFBOX-6231).
+_SHORT_MAX_VALUE = 32767
+
 
 class GlyfCompositeDescript(GlyfDescript):
     """Composite glyph description.
@@ -85,6 +89,10 @@ class GlyfCompositeDescript(GlyfDescript):
         first_index = 0
         first_contour = 0
         for comp in self._components:
+            if first_index > _SHORT_MAX_VALUE:
+                # PDFBOX-6231: protect against wide nested composite glyphs
+                _LOG.error("firstIndex is %s, aborting resolve", first_index)
+                break
             comp.set_first_index(first_index)
             comp.set_first_contour(first_contour)
             desc = self._descriptions.get(comp.get_glyph_index())

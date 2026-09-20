@@ -24,9 +24,10 @@ def test_col_span_default_is_one_when_absent() -> None:
     assert obj.get_col_span() == 1
 
 
-def test_headers_default_is_empty_list_when_absent() -> None:
+def test_headers_default_is_none_when_absent() -> None:
+    # PDFBOX-6261 javadoc: "the headers or null if there are none".
     obj = PDExportFormatAttributeObject()
-    assert obj.get_headers() == []
+    assert obj.get_headers() is None
 
 
 def test_scope_default_is_none_when_absent() -> None:
@@ -97,15 +98,18 @@ def test_set_headers_empty_removes_entry() -> None:
     assert obj.get_cos_object().get_dictionary_object("Headers") is not None
     obj.set_headers([])
     assert obj.get_cos_object().get_dictionary_object("Headers") is None
-    assert obj.get_headers() == []
+    assert obj.get_headers() is None
 
 
-def test_get_headers_decodes_utf8_cos_string() -> None:
+def test_get_headers_decodes_with_cos_string_get_string() -> None:
+    # PDFBOX-6261: decoding is COSString.get_string(), matching upstream's
+    # COSArray.getString(int) — not a UTF-8-first guess.
     obj = PDExportFormatAttributeObject()
     array = COSArray()
-    array.add(COSString("café".encode("utf-8")))
+    raw = COSString("café")
+    array.add(raw)
     obj.get_cos_object().set_item("Headers", array)
-    assert obj.get_headers() == ["café"]
+    assert obj.get_headers() == [raw.get_string()] == ["café"]
 
 
 def test_scope_round_trip_non_default() -> None:
