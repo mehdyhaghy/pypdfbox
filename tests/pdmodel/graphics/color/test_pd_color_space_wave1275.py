@@ -1,7 +1,5 @@
 """Wave 1275 parity test for PDColorSpace.create_from_cos_object factory."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName, COSObject
 from pypdfbox.pdmodel.graphics.color.pd_color_space import PDColorSpace
 from pypdfbox.pdmodel.graphics.color.pd_device_gray import PDDeviceGray

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import cast
 
 from tests.pdmodel.font import test_pd_font_like as target

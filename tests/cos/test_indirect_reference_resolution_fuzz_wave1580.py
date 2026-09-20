@@ -30,8 +30,6 @@ Deliberate divergence under test: pypdfbox ``COSObject.__eq__`` compares by
 Java identity equality (no ``equals`` override). See CHANGES.md.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos.cos_array import COSArray

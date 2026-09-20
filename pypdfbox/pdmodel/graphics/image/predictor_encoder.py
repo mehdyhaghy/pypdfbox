@@ -10,8 +10,6 @@ PNG predictors via libpng), then extracts the filtered IDAT bytes to
 populate a ``PDImageXObject`` with ``/Predictor 15``.
 """
 
-from __future__ import annotations
-
 import io
 import logging
 from typing import TYPE_CHECKING, Any

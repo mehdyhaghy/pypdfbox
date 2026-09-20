@@ -11,8 +11,6 @@ follow-ups, final 513aa3ed):
   the direct-check now applies to streams too.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos.cos_array import COSArray

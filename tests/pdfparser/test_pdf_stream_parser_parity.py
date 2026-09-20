@@ -6,8 +6,6 @@ written against PDFBox can reach the same operations under their familiar
 names.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSBase, COSDictionary, COSInteger

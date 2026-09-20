@@ -16,8 +16,6 @@ factory plus tiny synthetic PDFs to drive each branch and assert on
 observable output (image size, pixel colour, exception absence).
 """
 
-from __future__ import annotations
-
 import contextlib
 from typing import Any
 

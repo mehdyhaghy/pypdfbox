@@ -10,8 +10,6 @@ Targets the residual missing branches in ``pypdfbox.filter.jpx_decode``:
   raw-raster-too-short guard, and the OpenJPEG encode failure path.
 """
 
-from __future__ import annotations
-
 import io
 from typing import Any
 

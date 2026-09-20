@@ -9,8 +9,6 @@ Closes two partial arcs in the bfrange parser:
   ``<>`` destination token is ignored and the range loop continues.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cmap import CMap, CMapParser
 
 

@@ -16,8 +16,6 @@ against PDFBox 3.0.7 behaviour:
 * missing keys -> None / -1; set round-trips.
 """
 
-from __future__ import annotations
-
 import datetime as dt
 
 import pytest

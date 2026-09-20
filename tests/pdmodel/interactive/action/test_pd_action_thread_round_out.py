@@ -8,8 +8,6 @@ typed and form-aware accessors on top while preserving the raw
 ``get_d``/``set_d`` and ``get_b``/``set_b`` parity surface.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

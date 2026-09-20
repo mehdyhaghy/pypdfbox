@@ -8,8 +8,6 @@ ASCII digits directly into a caller-provided ``byte[]``. We mirror that
 shape for parity so callers can swap implementations transparently.
 """
 
-from __future__ import annotations
-
 import math
 
 MAX_FRACTION_DIGITS = 5

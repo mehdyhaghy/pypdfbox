@@ -1,7 +1,5 @@
 """Hand-written tests for ``pypdfbox.fontbox.util.autodetect``."""
 
-from __future__ import annotations
-
 import platform
 import tempfile
 from pathlib import Path

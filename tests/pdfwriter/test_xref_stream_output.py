@@ -13,8 +13,6 @@ Three layers of coverage:
    only honest sanity check for the field widths / index packing.
 """
 
-from __future__ import annotations
-
 import io
 import re
 import zlib

@@ -4,8 +4,6 @@
 Adds a translucent diagonal text watermark to every page of a PDF.
 """
 
-from __future__ import annotations
-
 import contextlib
 import math
 import sys

@@ -1,6 +1,4 @@
 """Tests for ``pypdfbox.examples.printing.opaque_set_graphics_state_parameters``."""
-from __future__ import annotations
-
 import logging
 
 import pytest

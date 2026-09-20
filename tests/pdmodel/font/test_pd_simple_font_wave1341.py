@@ -15,8 +15,6 @@ Targets the still-uncovered branches in the wave-1332 snapshot:
   :meth:`subset` on non-TrueType simple fonts (lines 617/628).
 """
 
-from __future__ import annotations
-
 import logging
 
 import pytest

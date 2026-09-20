@@ -3,8 +3,6 @@ Ported from upstream
 ``xmpbox/src/test/java/org/apache/xmpbox/type/TestAbstractStructuredType.java``.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 import pytest

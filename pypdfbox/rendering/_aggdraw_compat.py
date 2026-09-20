@@ -39,8 +39,6 @@ wave 1329 confirmed this — those names that do appear belong to
 Path/Draw vocabulary in case future ports lean on them.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from PIL import Image as _PILImage
@@ -380,7 +378,7 @@ class Draw:
 
     # ---- state ----------------------------------------------------------
 
-    def setantialias(self, on: bool) -> None:
+    def setantialias(self, on: bool) -> None:  # aggdraw signature
         """Record AA flag.  skia AA is per-Paint; we apply it on draw."""
         self._antialias = bool(on)
 

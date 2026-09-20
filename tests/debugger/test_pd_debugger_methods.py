@@ -6,8 +6,6 @@ same Tk-fixture conventions as ``tests/debugger/test_pd_debugger.py``
 and honour ``PYPDFBOX_SKIP_TK=1`` for headless CI shards.
 """
 
-from __future__ import annotations
-
 import contextlib
 import os
 import sys

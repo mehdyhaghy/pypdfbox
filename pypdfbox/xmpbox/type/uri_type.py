@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .text_type import TextType
 
 

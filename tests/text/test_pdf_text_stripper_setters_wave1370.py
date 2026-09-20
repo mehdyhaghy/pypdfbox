@@ -7,8 +7,6 @@ The inert holders are pinned separately under
 ``test_pdf_text_stripper_options.py`` — these tests focus on the
 behavioural impact paths.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.text import PDFTextStripper

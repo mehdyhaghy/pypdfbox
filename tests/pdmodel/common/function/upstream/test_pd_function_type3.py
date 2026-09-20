@@ -27,8 +27,6 @@ clipping shows up here. The reference iteration is the loop in
     }
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat

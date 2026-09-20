@@ -1,6 +1,4 @@
 """Wave 292 split CLI validation coverage."""
-from __future__ import annotations
-
 from collections.abc import Callable
 from pathlib import Path
 

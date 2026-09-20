@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import struct
 
 from .data_input import DataInput

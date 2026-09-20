@@ -1,6 +1,4 @@
 """Dispatcher-level tests: argparse wiring, --help, unknown subcommand."""
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.tools import cli

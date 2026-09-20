@@ -10,8 +10,6 @@ duplicate that surface — it focuses on the round-out work added in this
 wave.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSFloat, COSStream

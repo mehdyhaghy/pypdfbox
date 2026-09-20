@@ -13,8 +13,6 @@ Covers the small set of mechanical parity gaps closed in this wave:
   ``PDDeviceNAttributes.setColorants(Map)``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

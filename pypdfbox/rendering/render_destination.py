@@ -5,8 +5,6 @@ content groups are visible depending on the render purpose: graphics
 export, on-screen viewing, or printing.
 """
 
-from __future__ import annotations
-
 from enum import Enum
 
 

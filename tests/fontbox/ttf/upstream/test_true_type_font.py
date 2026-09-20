@@ -9,8 +9,6 @@ round-tripping. This file ports that flow against the pypdfbox
 ``TrueTypeFont`` surface.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

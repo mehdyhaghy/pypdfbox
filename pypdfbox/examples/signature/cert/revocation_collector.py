@@ -22,8 +22,6 @@ ecosystems (corporate CA, internal LTV harness, etc.); it wraps the
 ``cryptography`` library's :class:`OCSPResponseBuilder`.
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 import logging
 from collections.abc import Iterable

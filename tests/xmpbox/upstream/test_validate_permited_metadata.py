@@ -26,8 +26,6 @@ PDF/X, MM history etc.), so missing schema factories are skipped on a
 per-line basis rather than failing the whole suite.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

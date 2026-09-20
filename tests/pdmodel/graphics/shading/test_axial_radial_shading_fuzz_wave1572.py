@@ -22,8 +22,6 @@ Apache PDFBox 3.0.7:
   dispatches a single function vs an array of per-component functions.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

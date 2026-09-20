@@ -15,8 +15,6 @@ Pre-wave the module sat at 94.1 % (3 missing); this set takes it to
 100 %.
 """
 
-from __future__ import annotations
-
 import io
 
 import numpy as _np_preload  # noqa: F401  pre-import: see test_aggdraw_compat_coverage.py

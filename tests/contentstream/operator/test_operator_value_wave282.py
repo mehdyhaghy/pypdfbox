@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.contentstream.operator import Operator, OperatorName
 from pypdfbox.contentstream.operator.color.set_non_stroking_color_space import (
     SetNonStrokingColorSpace,

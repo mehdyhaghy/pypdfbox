@@ -3,8 +3,6 @@
 Upstream baseline: PDFBox 3.0.
 """
 
-from __future__ import annotations
-
 import datetime as dt
 
 from pypdfbox.pdmodel import PDDocument

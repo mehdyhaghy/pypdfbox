@@ -1,7 +1,5 @@
 """Tests for ``HexModel`` — exercises the pure-data behaviour fully."""
 
-from __future__ import annotations
-
 from pypdfbox.debugger.hexviewer.hex_changed_event import HexChangedEvent
 from pypdfbox.debugger.hexviewer.hex_model import HexModel
 from pypdfbox.debugger.hexviewer.hex_model_changed_event import (

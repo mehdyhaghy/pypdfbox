@@ -1,8 +1,6 @@
 """Tests for ``PDActionEmbeddedGoTo.resolve_target`` — chained ``/T``
 walk through ``/Names /EmbeddedFiles`` per PDF 32000-1 §12.6.4.4."""
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import COSDictionary, COSName

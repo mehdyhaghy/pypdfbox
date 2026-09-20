@@ -2,8 +2,6 @@
 :class:`pypdfbox.rendering.PDFRenderer`. See PDF spec §11.4.7 / §11.6.5.
 """
 
-from __future__ import annotations
-
 import io
 
 from PIL import Image

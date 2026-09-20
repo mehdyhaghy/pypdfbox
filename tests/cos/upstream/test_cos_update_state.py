@@ -8,8 +8,6 @@ incremental-save path. These tests pin the documented contract from
 port stays 1:1 with upstream behavior.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSDocumentState, COSName, COSObject
 from pypdfbox.cos.cos_update_state import COSIncrement, COSUpdateState
 

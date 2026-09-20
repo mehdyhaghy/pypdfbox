@@ -6,8 +6,6 @@ constructed with ``rows == 0`` the ``Rows`` entry is omitted from the
 check directly.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.filter import CCITTFaxDecoderStream, CCITTFaxEncoderStream

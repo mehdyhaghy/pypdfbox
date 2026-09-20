@@ -18,8 +18,6 @@ Java -> Python mappings:
 * the unscaled bilevel raster (mode ``"1"``) is unchanged from wave 1489.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

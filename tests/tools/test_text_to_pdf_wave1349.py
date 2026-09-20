@@ -10,8 +10,6 @@ Targets:
   the page-creation branch is skipped on the first iteration.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.pd_document import PDDocument

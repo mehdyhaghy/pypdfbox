@@ -13,8 +13,6 @@ items, and the byte-array decoder when entries are not strings:
 * 481->480 — ``_byte_arrays_from_cos_array`` skips non-string entries
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSString
 from pypdfbox.pdmodel.interactive.digitalsignature.pd_seed_value_certificate import (
     PDSeedValueCertificate,

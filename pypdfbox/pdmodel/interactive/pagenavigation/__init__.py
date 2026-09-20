@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .pd_thread import PDThread
 from .pd_thread_bead import PDThreadBead
 from .pd_transition import PDTransition

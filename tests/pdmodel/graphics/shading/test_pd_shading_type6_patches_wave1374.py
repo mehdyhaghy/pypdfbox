@@ -8,8 +8,6 @@ colours. Also covers shared-edge flag handling (flag=1/2/3 carries the
 previous patch's edge into the next).
 """
 
-from __future__ import annotations
-
 import math
 from collections.abc import Iterable
 

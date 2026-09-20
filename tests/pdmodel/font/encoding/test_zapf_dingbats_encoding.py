@@ -5,8 +5,6 @@ convention (a1 .. a206) — the ASCII range carries dingbat names rather
 than Latin letters.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.font.encoding import Encoding, ZapfDingbatsEncoding
 

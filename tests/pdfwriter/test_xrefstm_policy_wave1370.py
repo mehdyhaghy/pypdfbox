@@ -14,8 +14,6 @@ The selection follows the constructor flags:
 * ``hybrid_xref=True`` → both, /XRefStm announces the parallel stream.
 """
 
-from __future__ import annotations
-
 import io
 import re
 

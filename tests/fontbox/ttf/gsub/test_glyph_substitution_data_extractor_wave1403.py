@@ -8,8 +8,6 @@ LangSys) skips the default-table population and falls through to the
 per-language loop.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub.glyph_substitution_data_extractor import (
     GlyphSubstitutionDataExtractor,
 )

@@ -4,8 +4,6 @@ The pane needs a live Tk root, so each test skips itself when a display is
 not available (e.g. headless CI without Xvfb).
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 from tkinter import ttk
 

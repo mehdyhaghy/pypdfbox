@@ -17,8 +17,6 @@ canonical inline executor in
 :mod:`pypdfbox.pdmodel.common.function.pd_function_type4`.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from .. import pd_function_type4 as _legacy

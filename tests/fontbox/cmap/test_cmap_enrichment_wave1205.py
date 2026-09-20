@@ -1,7 +1,5 @@
 """Coverage for defensive branches in ``test_cmap_enrichment``."""
 
-from __future__ import annotations
-
 import pytest
 
 from tests.fontbox.cmap import test_cmap_enrichment as target

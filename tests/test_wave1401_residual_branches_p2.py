@@ -27,8 +27,6 @@ Files touched:
 * pypdfbox/pdmodel/interactive/action/pd_action.py — getter-with-None.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

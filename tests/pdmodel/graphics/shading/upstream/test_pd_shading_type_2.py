@@ -9,8 +9,6 @@ parity. The tests below mirror the structural assertions an
 upstream-style unit test would perform.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSBoolean, COSDictionary, COSFloat
 from pypdfbox.pdmodel.common.function import PDFunctionType2
 from pypdfbox.pdmodel.graphics.shading import PDShading, PDShadingType2

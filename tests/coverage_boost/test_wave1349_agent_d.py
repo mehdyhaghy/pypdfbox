@@ -24,8 +24,6 @@ Five targets pushed from ~96-98% to >=99%:
   ``_interior_components`` ``size() > 0`` branch (lines 170-172).
 """
 
-from __future__ import annotations
-
 import builtins
 from pathlib import Path
 from typing import Any

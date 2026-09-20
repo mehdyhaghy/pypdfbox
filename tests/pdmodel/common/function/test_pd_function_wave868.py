@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from . import test_pd_function as function_tests
 
 

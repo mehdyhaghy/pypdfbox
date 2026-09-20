@@ -7,8 +7,6 @@ pair, custom content type for failure paths, and EOF handling when the
 source already returns no bytes.
 """
 
-from __future__ import annotations
-
 from io import BytesIO
 from typing import IO
 

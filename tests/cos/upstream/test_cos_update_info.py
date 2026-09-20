@@ -6,8 +6,6 @@ Upstream tests the ``COSUpdateInfo`` interface plus ``COSDocumentState``
 machinery used by the incremental-save path.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSDocumentState, COSObject
 
 

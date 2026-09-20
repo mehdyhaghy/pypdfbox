@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSBase, COSDictionary, COSString
 
 from .pd_name_tree_node import PDNameTreeNode

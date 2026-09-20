@@ -5,8 +5,6 @@ The bare-``TODO`` was replaced with a comment that documents why the
 behaviour (the toggle still flips) and make sure the source file no
 longer carries a literal ``# TODO`` marker."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.tools.import_fdf import ImportFDF

@@ -13,8 +13,6 @@ Arrows closed:
 * 411->418 — ``rlinecurve`` insufficient operands
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.type2_char_string import Type2CharString

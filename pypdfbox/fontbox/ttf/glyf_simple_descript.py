@@ -23,8 +23,6 @@ us aligned with the project's "library-first" policy while still
 exposing the upstream-named API.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING, Any
 

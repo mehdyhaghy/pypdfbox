@@ -7,8 +7,6 @@ forwards to ``show_text_strings`` lives in
 separately.
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.contentstream import Operator

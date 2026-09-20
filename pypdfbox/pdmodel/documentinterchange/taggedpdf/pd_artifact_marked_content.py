@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.documentinterchange.markedcontent.pd_marked_content import (
     PDMarkedContent,

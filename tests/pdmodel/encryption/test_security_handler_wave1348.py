@@ -12,8 +12,6 @@ Targets the residual uncovered branches:
     raises (lines 555-556).
   * ``_decrypt_array`` setter path (line 620).
 """
-from __future__ import annotations
-
 import builtins
 
 import pytest

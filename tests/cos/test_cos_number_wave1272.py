@@ -1,8 +1,6 @@
 """Wave 1272: parity coverage for ``COSNumber.is_float`` (promoted from
 upstream's ``private static`` ``isFloat`` helper)."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos.cos_number import COSNumber

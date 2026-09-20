@@ -6,8 +6,6 @@ match upstream Java API surface — ``compute_internal_hash``,
 ``get_stream_index``, ``compare_to``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSObjectKey

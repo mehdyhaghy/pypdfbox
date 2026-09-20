@@ -5,8 +5,6 @@ and the freshly-ported :py:meth:`PagePane.start_extracting`. These mirror
 upstream ``startRendering()`` / ``startExtracting()`` (PDFBox 3.0).
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 
 from pypdfbox.cos import COSStream

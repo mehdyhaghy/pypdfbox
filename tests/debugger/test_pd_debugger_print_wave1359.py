@@ -14,8 +14,6 @@ exercise:
 Tests honour ``PYPDFBOX_SKIP_TK=1`` via the local ``tk_root`` fixture.
 """
 
-from __future__ import annotations
-
 import contextlib
 import os
 import tkinter as tk
@@ -85,7 +83,7 @@ def stub_render(monkeypatch: pytest.MonkeyPatch) -> None:
     from pypdfbox.rendering import pdf_renderer as _pdf_renderer
 
     def _render(
-        self: Any,
+        self: Any,  # matches the bound-method signature
         page_index: int,
         dpi: float = 72.0,
         image_type: Any = None,
@@ -121,7 +119,7 @@ def test_print_no_document_is_silent(
         "pypdfbox.debugger.pd_debugger.messagebox.showerror",
         lambda *a, **kw: called.append(("error", a, kw)),
     )
-    assert debugger._document is None
+    assert debugger._document is None  # precondition
     debugger._print_menu_item_action_performed()
     assert called == []
 

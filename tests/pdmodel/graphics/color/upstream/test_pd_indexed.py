@@ -6,8 +6,6 @@ codify the behaviour documented in
 ``org.apache.pdfbox.pdmodel.graphics.color.PDIndexed`` (line refs in
 each test) so future re-syncs surface upstream behaviour drift.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

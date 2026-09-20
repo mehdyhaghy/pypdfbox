@@ -8,8 +8,6 @@ Mirrors the defensive Java ``try/catch`` upstream wraps around
 ``ByteArrayInputStream.available()`` style callables.
 """
 
-from __future__ import annotations
-
 from pypdfbox.io.non_seekable_random_access_read_input_stream import (
     NonSeekableRandomAccessReadInputStream,
 )
@@ -39,7 +37,7 @@ class _BadGetBufferStream:
     def getbuffer(self) -> object:
         raise OSError("synthetic getbuffer failure")
 
-    def close(self) -> None:
+    def close(self) -> None:  # shim
         """Compatibility no-op."""
 
 

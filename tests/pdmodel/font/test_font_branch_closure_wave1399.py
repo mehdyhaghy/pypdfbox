@@ -23,8 +23,6 @@ extract-cmap arms, and monkeypatch-controlled stub ``FontProvider`` /
 descendant fonts for the mapper / type0 arms.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 

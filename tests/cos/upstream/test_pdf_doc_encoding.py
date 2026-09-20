@@ -7,8 +7,6 @@ implements the encoding helpers in ``pdmodel.common`` and wires them into
 ``COSString``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSString
 
 _DEVIATIONS: tuple[str, ...] = (

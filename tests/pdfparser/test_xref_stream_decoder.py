@@ -5,8 +5,6 @@ small enough to reason about end-to-end so a parser regression is easy
 to localise.
 """
 
-from __future__ import annotations
-
 import zlib
 
 import pytest

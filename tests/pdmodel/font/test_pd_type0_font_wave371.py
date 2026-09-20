@@ -4,8 +4,6 @@ These tests stay synthetic: tiny COS dictionaries, fake CMaps, and defensive
 parser monkeypatches exercise Type0 fallback paths without external fonts.
 """
 
-from __future__ import annotations
-
 import io
 from types import SimpleNamespace
 

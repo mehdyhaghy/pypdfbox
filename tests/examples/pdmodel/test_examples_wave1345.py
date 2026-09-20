@@ -17,8 +17,6 @@ Targets the residual missing branches across:
   placeholder branch and the bundled-resource import branch.
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 import io
 import sys

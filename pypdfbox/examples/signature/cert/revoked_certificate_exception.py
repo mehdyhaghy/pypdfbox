@@ -1,7 +1,5 @@
 """Port of ``RevokedCertificateException`` (upstream lines 1-48)."""
 
-from __future__ import annotations
-
 import datetime as _dt
 
 

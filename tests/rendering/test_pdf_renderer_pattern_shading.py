@@ -5,8 +5,6 @@ These tests synthesise tiny PDFs with raw content streams (the public
 verify pixel colours after :class:`PDFRenderer` paints them.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

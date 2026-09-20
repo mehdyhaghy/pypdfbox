@@ -16,8 +16,6 @@ renderer for an optional helper and exits cleanly when missing:
 * ``draw_tiling_pattern`` 633->exit — renderer lacks ``_paint_tiling_pattern``
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from PIL import Image

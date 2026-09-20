@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 
 def _to_int(data: bytes | bytearray | memoryview, data_len: int | None = None) -> int:
     """Big-endian byte sequence to int. Mirrors ``CMap.toInt`` upstream."""
@@ -69,7 +67,7 @@ class CIDRange:
             return self._unicode + (code - self._from)
         return -1
 
-    def map(
+    def map(  # mirror upstream method name; collides with builtin
         self,
         code_or_bytes: int | bytes | bytearray | memoryview,
         length: int | None = None,

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 import tests.fontbox.ttf.test_glyph_positioning_table as gpos_tests

@@ -13,8 +13,6 @@ All certs in the tests are self-signed and inline so the test suite
 stays offline.
 """
 
-from __future__ import annotations
-
 import datetime
 import io
 

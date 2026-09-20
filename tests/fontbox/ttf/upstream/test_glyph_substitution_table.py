@@ -21,8 +21,6 @@ with GSUB, read it, and confirm the public surface
 returns the expected inventory.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

@@ -14,8 +14,6 @@ Covered modules / line ranges:
 * ``pdf_split`` lines 104-105
 * ``write_decoded_doc`` line 113
 """
-from __future__ import annotations
-
 import runpy
 import sys
 from pathlib import Path

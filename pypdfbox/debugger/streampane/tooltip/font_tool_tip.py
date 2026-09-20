@@ -4,8 +4,6 @@ Ported from
 ``org.apache.pdfbox.debugger.streampane.tooltip.FontToolTip``.
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.pdmodel.pd_resources import PDResources

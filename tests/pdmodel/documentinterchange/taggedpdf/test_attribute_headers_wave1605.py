@@ -9,8 +9,6 @@ and keeps the array *positional*: a non-string element yields ``null`` in place
 with column *i*.
 """
 
-from __future__ import annotations
-
 import logging
 
 import pytest

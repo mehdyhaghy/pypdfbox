@@ -11,8 +11,6 @@ All tests use hand-built fakes for :class:`FontInfo` /
 public setters — no on-disk fonts required.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import Any
 

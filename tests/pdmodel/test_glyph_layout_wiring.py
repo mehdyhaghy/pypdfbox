@@ -15,8 +15,6 @@ things that must hold are:
 Both are asserted below against golden operator bytes.
 """
 
-from __future__ import annotations
-
 import io
 from typing import Any
 

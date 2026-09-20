@@ -1,7 +1,5 @@
 """Wave 1391 — close residual missing-line coverage in pdf_renderer."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from PIL import Image

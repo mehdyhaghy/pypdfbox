@@ -27,8 +27,6 @@ file is logged and skipped, never propagated. Matches upstream's
 ``"AccessControlException -> log and continue"`` behaviour.
 """
 
-from __future__ import annotations
-
 import contextlib
 import hashlib
 import logging
@@ -239,7 +237,7 @@ class FileSystemFontProvider(FontProvider):
         Mirrors upstream private ``computeHash`` (Java line 874-894).
         Library-first: delegates to :mod:`hashlib`.
         """
-        digest = hashlib.sha1()
+        digest = hashlib.sha1()  # parity with upstream choice
         if hasattr(stream, "read"):
             while True:
                 chunk = stream.read(65536)

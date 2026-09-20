@@ -15,8 +15,6 @@ Skipped upstream cases:
   ``test_cos_parser.py`` and ``test_cos_parser_recovery.py``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

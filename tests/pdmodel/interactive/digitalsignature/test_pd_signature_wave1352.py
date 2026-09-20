@@ -13,8 +13,6 @@ Closes the remaining uncovered branches in
 * lines 404-406 — issuer-side ``ValueError`` + unsupported-issuer-key-type.
 """
 
-from __future__ import annotations
-
 import datetime
 
 import pytest

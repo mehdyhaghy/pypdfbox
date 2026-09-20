@@ -9,8 +9,6 @@ API surface those tests exercise on ``OTFParser`` itself
 Translated to pytest per the project's conventions.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

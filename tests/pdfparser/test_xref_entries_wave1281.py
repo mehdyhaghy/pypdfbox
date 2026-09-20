@@ -1,7 +1,5 @@
 """Wave 1281: xref entry hierarchy (AbstractXReference + concrete types)."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSName, COSObjectKey, COSStream

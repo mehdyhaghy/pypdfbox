@@ -1,7 +1,5 @@
 """Wave 1367 — :class:`RandomAccessReadBufferedFile` boundary coverage."""
 
-from __future__ import annotations
-
 import os
 import tempfile
 from pathlib import Path

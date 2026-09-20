@@ -21,8 +21,6 @@ PDFBox' Java implementation); the composite ``PDType0Font`` defers to its
 active CMap and may consume 1–4 bytes.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.font import (

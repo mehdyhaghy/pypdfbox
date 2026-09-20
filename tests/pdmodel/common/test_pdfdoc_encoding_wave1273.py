@@ -1,7 +1,5 @@
 """Wave 1273 round-out: ``PDFDocEncoding.set()`` module-level helper."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.common.pdfdoc_encoding import (

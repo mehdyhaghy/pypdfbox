@@ -11,8 +11,6 @@ have a stable starting point with minimal translation.
 Each test is annotated with the upstream behaviour it pins.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from pypdfbox.pdmodel.common.function import PDFunction
 from pypdfbox.pdmodel.graphics.color.pd_separation import PDSeparation

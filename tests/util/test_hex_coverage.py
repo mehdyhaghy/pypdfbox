@@ -6,8 +6,6 @@ Targets the residual missing lines after wave 1281 -- the single-byte
 path.
 """
 
-from __future__ import annotations
-
 import io
 import logging
 

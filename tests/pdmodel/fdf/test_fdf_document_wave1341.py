@@ -13,8 +13,6 @@ Targets the remaining low-traffic branches:
   (lines 295-301).
 """
 
-from __future__ import annotations
-
 import io
 from xml.dom.minidom import parseString
 

@@ -1,8 +1,6 @@
 """Wave 1272: parity coverage for ``DictionaryEncoding.apply_differences``
 (promoted from upstream's ``private`` no-arg helper)."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSInteger, COSName
 from pypdfbox.pdmodel.font.encoding.dictionary_encoding import DictionaryEncoding
 

@@ -6,8 +6,6 @@ Targets:
 - visibility-aware ``construct_appearances`` (mirrors upstream
   ``PDSignatureField.constructAppearances`` warn-when-visible behavior).
 """
-from __future__ import annotations
-
 import logging
 
 import pytest

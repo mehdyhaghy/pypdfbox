@@ -23,8 +23,6 @@ is suppressed, while a ``d0`` charproc / a coloured tiling pattern / a normal
 page stream let it through, and the flag is restored afterwards.
 """
 
-from __future__ import annotations
-
 from pypdfbox.contentstream import PDFStreamEngine
 from pypdfbox.contentstream.operator.color.set_non_stroking_rgb import (
     SetNonStrokingRGB,

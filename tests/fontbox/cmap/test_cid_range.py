@@ -1,7 +1,5 @@
 """Hand-written tests for the public ``CIDRange`` typed value class."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cmap import CIDRange

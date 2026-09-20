@@ -5,8 +5,6 @@ Mirrors ``org.apache.pdfbox.pdmodel.fixup.processor.AcroFormDefaultsProcessor``
 ``pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fixup/processor/AcroFormDefaultsProcessor.java``).
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from .abstract_processor import AbstractProcessor

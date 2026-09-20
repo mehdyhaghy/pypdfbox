@@ -8,8 +8,6 @@ boundary-condition eval cases (single-subfunction degenerate, exact stitch
 boundary, three-subfunction routing) that the brief explicitly calls out.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger

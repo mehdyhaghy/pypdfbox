@@ -9,8 +9,6 @@ coverage of the same code paths lives in
 ``tests/fontbox/ttf/gsub/test_gsub_worker_for_smcp.py``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 

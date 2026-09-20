@@ -22,8 +22,6 @@ These are plain value pins. The trailing ``@requires_oracle`` test
 re-derives the decimal/roman/letter renderings from the live jar.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.pd_page_label_range import PDPageLabelRange

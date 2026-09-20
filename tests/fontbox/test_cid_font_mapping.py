@@ -6,8 +6,6 @@ two-slot constructor shape, ``is_cid_font`` semantics, and the
 ``FontMapping`` inheritance contract.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cid_font_mapping import CIDFontMapping
 from pypdfbox.fontbox.font_mapper import DefaultFontMapper
 from pypdfbox.fontbox.font_mapping import FontMapping

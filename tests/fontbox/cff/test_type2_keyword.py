@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`Type2KeyWord`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.type1_keyword import Key
 from pypdfbox.fontbox.cff.type2_keyword import Type2KeyWord
 

@@ -23,8 +23,6 @@ PDF 32000-1 sections covered:
 - §11.4.7.4       — group compositing with the active blend mode.
 """
 
-from __future__ import annotations
-
 from PIL import Image
 
 from pypdfbox.cos import COSBoolean, COSDictionary, COSName, COSStream

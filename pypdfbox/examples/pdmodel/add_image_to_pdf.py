@@ -3,8 +3,6 @@
 Adds an image to an existing PDF document.
 """
 
-from __future__ import annotations
-
 import sys
 
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSName, COSStream
 from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
 from pypdfbox.pdmodel.graphics import PDXObject
@@ -306,7 +304,7 @@ def test_create_x_object_form_threads_resource_cache_from_resources() -> None:
     assert isinstance(obj, PDFormXObject)
     # The form must have captured the *same* cache instance, not None
     # and not a fresh cache.
-    assert obj._cache is cache
+    assert obj._cache is cache  # invariant we want to lock down
 
 
 def test_create_x_object_transparency_group_threads_resource_cache() -> None:

@@ -12,8 +12,6 @@ ladder.
 Each test asserts the observable return value, not merely line execution.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import COSName

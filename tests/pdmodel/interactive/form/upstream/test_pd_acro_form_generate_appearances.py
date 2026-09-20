@@ -17,8 +17,6 @@ form PDF in the broader test suite (``test_acro_forms_rotation.py``,
 of the underlying contract — just not against the upstream fixtures.
 """
 
-from __future__ import annotations
-
 import pytest
 
 

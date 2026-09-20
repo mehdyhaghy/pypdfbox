@@ -22,8 +22,6 @@ matching upstream ``SetTextRenderingMode.process`` which guards
 ``val < 0 || val >= RenderingMode.values().length`` with a plain return.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

@@ -8,8 +8,6 @@ Upstream is an abstract base test class (``TestCOSNumber`` extends
 concrete subclass — ``testGet``, ``testLargeNumber``, ``testInvalidNumber``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSFloat, COSInteger, COSNumber

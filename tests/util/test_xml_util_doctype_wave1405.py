@@ -9,8 +9,6 @@ could push the DOCTYPE past the window and bypass it. The guard now scans the
 whole buffer (``contains_doctype``).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.util.xml_util import XMLUtil, contains_doctype

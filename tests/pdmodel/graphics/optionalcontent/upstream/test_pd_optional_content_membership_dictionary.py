@@ -4,8 +4,6 @@
 Translation rules per the project's "Test Porting Conventions".
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName

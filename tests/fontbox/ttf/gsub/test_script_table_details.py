@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`ScriptTableDetails`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub import ScriptTable, ScriptTableDetails
 from pypdfbox.fontbox.ttf.model import Language
 

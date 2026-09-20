@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdmodel.graphics.color import test_pd_color_space_parity
 
 

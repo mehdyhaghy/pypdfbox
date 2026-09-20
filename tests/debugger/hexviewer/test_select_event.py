@@ -1,7 +1,5 @@
 """Tests for ``SelectEvent``."""
 
-from __future__ import annotations
-
 from pypdfbox.debugger.hexviewer.select_event import SelectEvent
 
 

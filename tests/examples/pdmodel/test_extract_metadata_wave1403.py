@@ -5,8 +5,6 @@ Closes ``56->exit``: when a document carries no XMP metadata **and**
 None`` guard takes its False arc and ``main`` returns without printing.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.examples.pdmodel.extract_metadata import ExtractMetadata

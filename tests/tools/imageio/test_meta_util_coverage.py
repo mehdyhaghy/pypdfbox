@@ -5,8 +5,6 @@ Targets the active ``debug_log_metadata`` branches: the duck-typed
 path, and the static-only constructor guard.
 """
 
-from __future__ import annotations
-
 import logging
 
 import pytest

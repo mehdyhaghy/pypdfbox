@@ -26,8 +26,6 @@ as a standalone helper so callers porting upstream Java code that uses
 direct snake_case equivalent: ``positions.sort(key=cmp_to_key(
 TextPositionComparator()))``.
 """
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

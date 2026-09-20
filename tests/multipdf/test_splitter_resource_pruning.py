@@ -6,8 +6,6 @@ its content actually references. Upstream copies the page's — possibly
 inherited, document-wide — resource dictionary wholesale, which makes a
 one-page split of a shared-resources document as heavy as the source.
 """
-from __future__ import annotations
-
 from pypdfbox import PDDocument, PDPage
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from pypdfbox.multipdf import Splitter

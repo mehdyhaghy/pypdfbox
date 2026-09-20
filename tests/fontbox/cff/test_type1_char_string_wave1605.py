@@ -10,8 +10,6 @@ read the topmost pair, so the leading junk has to be ignored.
 Upstream shipped no JUnit test with that commit; these are hand-written.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.type1_char_string import (
     Type1CharString,
     _RenderContext,

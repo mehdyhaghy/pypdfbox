@@ -7,8 +7,6 @@ Targets the two missed branches:
   :class:`EmptyGraphicsStackException` (PDFBOX-161).
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

@@ -2,8 +2,6 @@
 ``pypdfbox.tools`` (Decompress, Export, Import, ExtractXMP, OverlayPDF,
 PDFBox, Version, Decrypt, Encrypt, WriteDecodedDoc, PrintPDF, PDFToImage,
 ImageToPDF, TextToPDF, ExtractText, ExtractImages)."""
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

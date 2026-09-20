@@ -22,8 +22,6 @@ genuine ``stack.pop()`` underflow. The previous pypdfbox shortcut raised on
 every ``|j| > n`` regardless of real stack depth.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

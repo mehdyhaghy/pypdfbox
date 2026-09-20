@@ -8,8 +8,6 @@ exposing ``get_num_components()`` / ``to_rgb()`` / ``get_min_value`` /
 ``get_max_value`` (we only invoke methods upstream invokes).
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from .pd_color import PDColor

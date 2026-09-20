@@ -10,8 +10,6 @@ Drives the False arcs of the three ``is None`` default-value guards:
   ``next_update``.
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 
 from cryptography.hazmat.primitives import hashes

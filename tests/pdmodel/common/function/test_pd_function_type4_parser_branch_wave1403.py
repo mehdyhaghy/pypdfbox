@@ -17,8 +17,6 @@ raised ``TypeError`` before the tokenizer ever ran. Here we drive the
 genuinely exercised.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.common.function.type4.parser import Parser
 
 

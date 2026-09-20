@@ -10,8 +10,6 @@ This file therefore covers the small contract surface of
 same style as the upstream JUnit tests for sibling encoding classes.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.font.encoding import BuiltInEncoding

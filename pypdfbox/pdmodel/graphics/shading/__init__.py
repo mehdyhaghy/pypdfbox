@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .axial_shading_context import AxialShadingContext
 from .axial_shading_paint import AxialShadingPaint
 from .coons_patch import CoonsPatch

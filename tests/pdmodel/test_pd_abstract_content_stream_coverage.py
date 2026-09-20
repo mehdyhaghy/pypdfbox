@@ -9,8 +9,6 @@ order, mirroring the byte-level parity tests we use for the concrete
 subclass.
 """
 
-from __future__ import annotations
-
 import io
 from typing import Any
 

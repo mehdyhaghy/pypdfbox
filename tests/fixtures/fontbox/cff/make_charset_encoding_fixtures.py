@@ -37,8 +37,6 @@ Run from the repo root::
     .venv/bin/python tests/fixtures/fontbox/cff/make_charset_encoding_fixtures.py
 """
 
-from __future__ import annotations
-
 from io import BytesIO
 from pathlib import Path
 

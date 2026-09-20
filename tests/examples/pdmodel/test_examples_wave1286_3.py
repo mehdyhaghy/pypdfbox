@@ -6,8 +6,6 @@ public entry points end-to-end against in-memory PDFs without relying
 on external fixtures, and that the resulting PDF parses back cleanly.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.examples.pdmodel.add_annotations import AddAnnotations

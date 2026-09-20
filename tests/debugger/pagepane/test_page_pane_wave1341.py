@@ -17,8 +17,6 @@ Targets the residual ImportError/exception fallback branches:
   (lines 789-790).
 """
 
-from __future__ import annotations
-
 import importlib
 import sys
 import tkinter as tk

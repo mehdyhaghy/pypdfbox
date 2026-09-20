@@ -1,7 +1,5 @@
 """Tests for :class:`Node` and :class:`Tree`."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.filter import Node, Tree

@@ -1,8 +1,6 @@
 """Wave 1275 — Type1Font: create_with_pfb / get_font_b_box / get_parser /
 to_string parity."""
 
-from __future__ import annotations
-
 import struct
 
 import pytest

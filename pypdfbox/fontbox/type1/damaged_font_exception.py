@@ -1,7 +1,5 @@
 """Port of ``org.apache.fontbox.type1.DamagedFontException``."""
 
-from __future__ import annotations
-
 
 class DamagedFontException(OSError):
     """Thrown when a font is damaged and cannot be read.

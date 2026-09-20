@@ -1,7 +1,5 @@
 """Wave 1275 — Operator.execute dispatch helper parity."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.contentstream.operator import Operator

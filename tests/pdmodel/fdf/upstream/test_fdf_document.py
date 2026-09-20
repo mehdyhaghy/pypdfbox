@@ -8,8 +8,6 @@ below cite upstream line numbers in
 (PDFBox 3.0.x).
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import COSName

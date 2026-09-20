@@ -9,8 +9,6 @@ still find it, but delegate to ``functools.cmp_to_key`` for the
 comparator-driven case.
 """
 
-from __future__ import annotations
-
 import functools
 from collections.abc import Callable, MutableSequence
 from typing import TypeVar

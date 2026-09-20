@@ -5,8 +5,6 @@ Covers ``is_embedded``, ``get_program``, ``get_average_font_width``,
 ``get_height``, ``has_glyph``, ``get_bounding_box``, ``code_to_cid``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSStream
 from pypdfbox.pdmodel.font.pd_cid_font_type0 import PDCIDFontType0
 from pypdfbox.pdmodel.font.pd_cid_font_type2 import PDCIDFontType2

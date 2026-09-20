@@ -1,6 +1,4 @@
 """Wave 383 coverage for pdfdebugger formatting and JSON helpers."""
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 

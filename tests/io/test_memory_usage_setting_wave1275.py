@@ -1,7 +1,5 @@
 """Wave 1275 — explicit ``to_string()`` parity for MemoryUsageSetting."""
 
-from __future__ import annotations
-
 from pypdfbox.io.memory_usage_setting import MemoryUsageSetting
 
 

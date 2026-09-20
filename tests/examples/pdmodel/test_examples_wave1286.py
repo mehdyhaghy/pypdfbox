@@ -12,8 +12,6 @@ those round-trips live behind ``importorskip``-style guards so the
 suite stays runnable on a stripped-down dev machine.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

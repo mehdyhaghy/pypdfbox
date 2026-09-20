@@ -5,8 +5,6 @@ Covers the three-arg constructor, registry/ordering constants,
 added on top of the lite surface.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName

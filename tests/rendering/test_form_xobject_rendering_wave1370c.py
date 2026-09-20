@@ -16,8 +16,6 @@ covered by :mod:`tests.rendering.test_pdf_renderer_smask` or
   outside the form after the ``Do`` op must not be transformed by the
   form's matrix.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat, COSName, COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.graphics.form.pd_form_x_object import PDFormXObject

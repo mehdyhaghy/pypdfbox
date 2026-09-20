@@ -6,8 +6,6 @@ typed-set, the clear-jobs path, and the singular ``remove_job`` matcher
 on missing entries.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox.type.job_type import JobType as TypedJobType

@@ -17,8 +17,6 @@ Targets the few remaining uncovered branches in
   return-None branches (lines 681 / 693).
 """
 
-from __future__ import annotations
-
 import io
 from datetime import UTC, datetime
 from pathlib import Path

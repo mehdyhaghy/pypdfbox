@@ -23,8 +23,6 @@ just uses the raw index). This test file locks that in by:
   — proving Type 1 subrs use the charstring cipher (seed 4330) and
   NOT the eexec cipher (seed 55665).
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.type1.type1_font_util import Type1FontUtil

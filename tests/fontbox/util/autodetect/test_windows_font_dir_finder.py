@@ -8,8 +8,6 @@ from any host by monkey-patching the environment and
 :meth:`pathlib.Path.exists` / :meth:`pathlib.Path.is_dir`.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

@@ -23,8 +23,6 @@ or fixture-dependent paths per the project's test porting conventions):
   tests below.
 """
 
-from __future__ import annotations
-
 import zlib
 
 import pytest

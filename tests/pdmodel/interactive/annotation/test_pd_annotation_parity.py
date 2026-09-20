@@ -8,8 +8,6 @@ with the base-parity round-out: every flag bit individually, /AS, /P,
 /StructParent, /OC and the /C tuple round-trip.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

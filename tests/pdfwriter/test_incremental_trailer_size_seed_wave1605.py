@@ -14,8 +14,6 @@ when the highest loaded number is *above* the trailer entry (a sign the
 origin's ``/Size`` is wrong). These tests pin both halves.
 """
 
-from __future__ import annotations
-
 import io
 import logging
 import re

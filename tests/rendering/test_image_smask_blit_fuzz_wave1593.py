@@ -28,8 +28,6 @@ These pin the alpha-resample + ca-multiply + blit handshake directly with a
 mocked paste, independent of pixel content.
 """
 
-from __future__ import annotations
-
 import pytest
 from PIL import Image
 

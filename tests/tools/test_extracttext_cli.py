@@ -12,8 +12,6 @@ Hand-written; exercises the rounded-out flag set:
 
 PDFs are built in-test (no fixture round-trip needed).
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

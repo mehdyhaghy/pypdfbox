@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.byte_source import ByteSource

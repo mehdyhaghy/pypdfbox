@@ -20,8 +20,6 @@ Coverage targets:
 * Final ``500`` floor — exercised by the empty-font case.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName

@@ -14,8 +14,6 @@ table, confirm the script / feature inventory and the lookup-list
 breadth match the on-disk structure.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

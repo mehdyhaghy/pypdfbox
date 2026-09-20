@@ -6,8 +6,6 @@ io/src/test/java/org/apache/pdfbox/io/RandomAccessReadBufferTest.java
 Tracks upstream test method names: camelCase -> snake_case, drop "test" prefix.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest
@@ -235,7 +233,7 @@ def test_create_view_uses_per_thread_copy_cache() -> None:
         # Caller-facing views are distinct instances (different windows),
         # but they share the same cached parent duplicate.
         assert v1 is not v2
-        assert len(r._rarb_copies) == 1
+        assert len(r._rarb_copies) == 1  # internal-state check
         assert v1.length() == 4
         assert v2.length() == 4
 

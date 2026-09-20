@@ -5,8 +5,6 @@ Apache PDFBox 3.0.x. Applies ``ccmp``, ``liga``, ``clig`` in the order
 recommended by the Microsoft Latin script-development guide.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING
 

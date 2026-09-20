@@ -25,8 +25,6 @@ Each case is checked against the upstream Apache PDFBox 3.0.7
     ``" "``, default ``paragraphStart`` / ``paragraphEnd`` /
     ``articleStart`` / ``articleEnd`` are all ``""``.
 """
-from __future__ import annotations
-
 import io
 
 import pytest

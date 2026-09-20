@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.fontbox.cff import test_type2_cmap_encoding_wave730
 
 

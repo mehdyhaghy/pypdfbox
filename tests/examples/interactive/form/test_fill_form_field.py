@@ -1,7 +1,5 @@
 """Smoke test for :class:`FillFormField`."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

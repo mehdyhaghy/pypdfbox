@@ -7,8 +7,6 @@
   and the upstream-spelling aliases.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSBoolean, COSInteger, COSName, COSString
 from pypdfbox.pdmodel.common.filespecification.pd_file_specification import (
     PDFileSpecification,

@@ -4,8 +4,6 @@ The upstream class is a private nested helper of :class:`PDCIDFont`. We
 cover the three accessors plus ``range_matches`` boundaries.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.font.vertical_displacement_range import (
     VerticalDisplacementRange,
 )

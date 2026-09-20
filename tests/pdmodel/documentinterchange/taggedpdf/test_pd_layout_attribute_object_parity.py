@@ -8,8 +8,6 @@ border_thickness, column_count, column_gap, padding, inline_align, height,
 width, writing_mode constants).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName

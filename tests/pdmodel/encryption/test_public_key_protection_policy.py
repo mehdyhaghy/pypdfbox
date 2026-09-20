@@ -6,8 +6,6 @@ AES). No actual envelope encryption is exercised here — that lives in
 ``test_public_key_security_handler*``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.encryption import (

@@ -12,5 +12,3 @@ port (deferred — see ``CHANGES.md``).
 
 Hand-written coverage lives in ``tests/pdmodel/test_pd_page_labels.py``.
 """
-
-from __future__ import annotations

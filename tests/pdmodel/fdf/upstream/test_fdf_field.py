@@ -5,8 +5,6 @@ Upstream Java path:
 (PDFBox 3.0.x).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSName, COSStream, COSString
 from pypdfbox.pdmodel.fdf import FDFField
 

@@ -14,8 +14,6 @@ Covers:
   ``TypeError`` instead of leaking an implementation ``AttributeError``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSName

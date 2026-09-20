@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.xmpbox import DublinCoreSchema, XMPBasicSchema, XMPMetadata, XMPSchema
 from pypdfbox.xmpbox import xmp_metadata as xmp_constants
 

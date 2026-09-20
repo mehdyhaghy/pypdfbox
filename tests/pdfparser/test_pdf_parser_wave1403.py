@@ -12,8 +12,6 @@ through ``parse_xref_chain`` and only then patch ``get_trailer`` to return
 ``None``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser.pdf_parser import PDFParser
 

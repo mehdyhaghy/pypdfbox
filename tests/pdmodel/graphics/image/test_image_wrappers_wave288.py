@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import zlib
 
 from pypdfbox.cos import (

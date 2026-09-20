@@ -14,8 +14,6 @@ Library-first note: actual subsetting is delegated to ``fontTools``
 interface stays small — it's a *protocol*, not an implementation.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 
 

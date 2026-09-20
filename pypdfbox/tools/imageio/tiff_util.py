@@ -9,8 +9,6 @@ the equivalent through ``Image.save(..., compression='group4'|'tiff_lzw',
 dpi=(x,y))``. We provide adapter functions that produce the right kwargs
 for both flows.
 """
-from __future__ import annotations
-
 import logging
 from typing import Any
 

@@ -34,8 +34,6 @@ That replacement-friendly model matches upstream — even Java callers
 swap mappers when they want different substitution behaviour.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 

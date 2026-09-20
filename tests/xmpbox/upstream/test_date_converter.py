@@ -15,8 +15,6 @@ the JVM's TimeZone database. Those are documented inline next to the
 xfail/skip marker.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest

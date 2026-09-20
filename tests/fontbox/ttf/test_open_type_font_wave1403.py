@@ -7,8 +7,6 @@ CFF table, ``is_cid`` stays ``False`` and the projection routes to the
 name-keyed :class:`CFFType1Font` path.
 """
 
-from __future__ import annotations
-
 from unittest import mock
 
 from pypdfbox.fontbox.cff.cff_type1_font import CFFType1Font

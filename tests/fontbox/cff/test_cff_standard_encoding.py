@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`CFFStandardEncoding`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.cff_standard_encoding import CFFStandardEncoding
 
 

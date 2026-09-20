@@ -1,7 +1,5 @@
 """Hand-written tests for the Type 1 / Type 2 char-string byte parsers."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff import (

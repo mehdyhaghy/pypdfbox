@@ -5,8 +5,6 @@ core ``create_font`` dispatch — covers ``create_simple_font``,
 Mirrors PDFBox ``PDFontFactory`` (org.apache.pdfbox.pdmodel.font).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream

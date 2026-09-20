@@ -10,8 +10,6 @@ Covers:
 * ``has_cid_to_gid_map_stream`` / ``is_identity_cid_to_gid_map`` —
   predicate helpers over the three valid ``/CIDToGIDMap`` states.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName, COSStream
 from pypdfbox.pdmodel.font.pd_cid_font_type0 import PDCIDFontType0
 from pypdfbox.pdmodel.font.pd_cid_font_type2 import PDCIDFontType2

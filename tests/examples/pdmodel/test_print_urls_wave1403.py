@@ -5,8 +5,6 @@ attribute, the ``if close is not None`` guard in the ``finally`` block takes
 its False arc and ``main`` returns without calling close.
 """
 
-from __future__ import annotations
-
 from pypdfbox.examples.pdmodel.print_urls import PrintURLs
 
 

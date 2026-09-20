@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.contentstream.operator import Operator
 from pypdfbox.contentstream.operator.path import LegacyFillPath
 from pypdfbox.contentstream.operator.path.legacy_fill_path import (

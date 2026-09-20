@@ -8,8 +8,6 @@ Closes two loop-continuation partials in ``SigUtils.get_mdp_permission``:
   ``COSDictionary`` is skipped and the loop advances.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSInteger
 from pypdfbox.cos.cos_array import COSArray
 from pypdfbox.cos.cos_dictionary import COSDictionary

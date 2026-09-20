@@ -28,8 +28,6 @@ value formats fontTools chooses) is exercised end-to-end, not just direct
 object construction.
 """
 
-from __future__ import annotations
-
 import io
 
 from fontTools.fontBuilder import FontBuilder

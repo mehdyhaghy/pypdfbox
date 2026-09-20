@@ -18,8 +18,6 @@ All fixtures here are arithmetic-coded, non-refinement text regions. The Huffman
 path and the per-instance refinement path are not exercised by these fixtures.
 """
 
-from __future__ import annotations
-
 import hashlib
 import struct
 from pathlib import Path

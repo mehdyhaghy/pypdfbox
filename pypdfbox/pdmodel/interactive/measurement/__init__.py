@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .pd_measure_dictionary import PDMeasureDictionary
 from .pd_media_clip import PDMediaClip
 from .pd_media_clip_data import PDMediaClipData

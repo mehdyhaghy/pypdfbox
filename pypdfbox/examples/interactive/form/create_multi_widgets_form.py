@@ -5,8 +5,6 @@ Builds a two-page form where the same text field carries two widgets,
 one per page.
 """
 
-from __future__ import annotations
-
 import contextlib
 import sys
 

@@ -4,8 +4,6 @@ Exercises the static ``merge`` helper and additional ``sort`` edge cases
 beyond the smoke tests in ``test_util_wave1281.py``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.util import IterativeMergeSort

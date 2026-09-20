@@ -6,8 +6,6 @@ narrowing arrives with the rendering cluster). The base is abstract via
 the ``process`` abstract method inherited from ``OperatorProcessor``.
 """
 
-from __future__ import annotations
-
 from typing import ClassVar
 
 import pytest

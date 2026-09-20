@@ -6,8 +6,6 @@ declared ``stream_length`` extends past the parent's real data, the view's
 then returns 0 and the position-advance is skipped.
 """
 
-from __future__ import annotations
-
 from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer
 from pypdfbox.io.random_access_read_view import RandomAccessReadView
 

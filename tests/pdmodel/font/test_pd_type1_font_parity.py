@@ -8,8 +8,6 @@ exposes on top of ``PDSimpleFont`` — the alias accessors
 average-width fallback, and the Standard 14 AFM lookup.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

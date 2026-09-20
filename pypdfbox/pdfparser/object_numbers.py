@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
@@ -64,7 +62,7 @@ class ObjectNumbers(Iterator[int]):
             or self._current_number < self._current_end
         )
 
-    def next(self) -> int:
+    def next(self) -> int:  # upstream method name
         """Alias for :meth:`next_value` matching the upstream Java
         ``Iterator.next()`` method name."""
         return self.next_value()

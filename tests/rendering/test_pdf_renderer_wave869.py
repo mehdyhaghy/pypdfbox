@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from PIL import Image
 
 import tests.rendering.test_pdf_renderer_wave512 as wave512

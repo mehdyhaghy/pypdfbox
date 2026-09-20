@@ -17,8 +17,6 @@ These use minimal hand-built JBIG2 streams: file-header magic + flag byte
 flags, zero referred-to segments, page-association byte, 4-byte data length).
 """
 
-from __future__ import annotations
-
 import struct
 from pathlib import Path
 

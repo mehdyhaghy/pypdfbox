@@ -7,8 +7,6 @@ The fixture file ``RandomAccessReadFile1.txt`` matches upstream byte-for-byte
 (``"0123456789" * 13``, 130 bytes, no trailing newline).
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

@@ -9,8 +9,6 @@ None-guard, the out-of-bounds branches of ``add_value_to_array`` /
 branch, and ``get_raster`` with empty / populated data.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

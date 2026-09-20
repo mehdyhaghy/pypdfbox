@@ -9,8 +9,6 @@ The class collects ``(COSObjectKey, COSBase)`` pairs via
 ``/ObjStm`` stream when :meth:`write_objects_to_stream` is invoked.
 """
 
-from __future__ import annotations
-
 import logging
 from io import BytesIO
 from typing import TYPE_CHECKING, BinaryIO

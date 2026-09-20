@@ -6,8 +6,6 @@ In pypdfbox we don't bind to ``java.awt.PaintContext``; instead a context
 exposes :py:meth:`get_raster` returning a ``PIL.Image.Image`` patch.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:

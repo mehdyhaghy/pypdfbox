@@ -1,7 +1,5 @@
 """Tests for :class:`CSDeviceN`."""
 
-from __future__ import annotations
-
 from tkinter import ttk
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName

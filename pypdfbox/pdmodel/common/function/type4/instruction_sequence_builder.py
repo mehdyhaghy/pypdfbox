@@ -4,8 +4,6 @@ Mirrors upstream
 ``org.apache.pdfbox.pdmodel.common.function.type4.InstructionSequenceBuilder``.
 """
 
-from __future__ import annotations
-
 import re
 
 from .instruction_sequence import InstructionSequence

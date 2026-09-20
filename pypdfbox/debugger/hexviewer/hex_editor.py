@@ -5,8 +5,6 @@ the address / hex / ASCII panes together inside a scrolling area, wires up
 listener fan-out, and hosts the ``Ctrl+G`` jump-to-index dialog.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 from tkinter import simpledialog, ttk
 

@@ -5,8 +5,6 @@ upstream class exposes a ``JComponent``; here we expose a ``ttk.Frame``
 which can be packed into any Tkinter container.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 from tkinter import ttk
 

@@ -1,7 +1,5 @@
 """Tests for the :class:`FontEncodingPaneController` dispatcher."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.debugger.fontencodingpane import FontEncodingPaneController
 from pypdfbox.debugger.fontencodingpane.simple_font import SimpleFont

@@ -14,8 +14,6 @@ Covers parity round-outs for the line annotation:
 - ``is_line_arrow`` / ``is_line_dimension`` predicates over ``/IT``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_line import (
     PDAnnotationLine,

@@ -24,8 +24,6 @@ Upstream invariants asserted here (see RandomAccessRead.java / ScratchFile.java
   declared ``stream_length``.
 """
 
-from __future__ import annotations
-
 import random
 
 import pytest

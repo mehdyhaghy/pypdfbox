@@ -7,8 +7,6 @@ Upstream Java reference:
 Module is named ``version_tool`` to avoid colliding with the existing
 ``pypdfbox/tools/version.py`` argparse subcommand.
 """
-from __future__ import annotations
-
 import sys
 
 import pypdfbox

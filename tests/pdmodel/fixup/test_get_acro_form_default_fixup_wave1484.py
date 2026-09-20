@@ -20,8 +20,6 @@ via the ``AcroFormDefaultFixupProbe`` oracle (see
 pin them and pass WITHOUT the oracle.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 
 class Ligature:
     """A single ligature entry on a CharMetric.

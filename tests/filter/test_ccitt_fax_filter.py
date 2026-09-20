@@ -5,8 +5,6 @@ The full codec is exercised by ``test_ccitt_fax_decode.py``; this
 module verifies wiring and cross-instance interoperability.
 """
 
-from __future__ import annotations
-
 import io
 
 from PIL import Image

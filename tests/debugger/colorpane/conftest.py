@@ -6,8 +6,6 @@ skips the test on ``tk.TclError`` (e.g. ``no display name and no
 $DISPLAY``).
 """
 
-from __future__ import annotations
-
 import contextlib
 import os
 import tkinter as tk

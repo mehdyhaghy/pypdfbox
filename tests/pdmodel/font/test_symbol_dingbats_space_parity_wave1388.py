@@ -38,8 +38,6 @@ zero-contour space glyph (renders as advance-width only, matching the
 original Adobe font and matching upstream Java PDFBox).
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.encoding.symbol_encoding import SymbolEncoding
 from pypdfbox.fontbox.encoding.zapf_dingbats_encoding import ZapfDingbatsEncoding
 from pypdfbox.pdmodel.font.afm_loader import load_standard14

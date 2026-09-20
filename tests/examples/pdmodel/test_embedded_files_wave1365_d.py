@@ -10,8 +10,6 @@ This module deepens to:
   carries ``/EmbeddedFiles``).
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

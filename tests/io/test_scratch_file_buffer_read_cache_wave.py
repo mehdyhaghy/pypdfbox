@@ -8,8 +8,6 @@ and asserts byte-for-byte identity. Multi-page buffers are exercised so the
 page-crossing invalidation paths are covered.
 """
 
-from __future__ import annotations
-
 import random
 
 import pytest

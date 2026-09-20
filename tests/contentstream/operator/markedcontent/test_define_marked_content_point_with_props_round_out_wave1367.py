@@ -8,8 +8,6 @@ MissingOperandException on underflow; returns without notifying the
 engine when the tag is not a name or the property list is unresolvable).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream import Operator, PDFStreamEngine

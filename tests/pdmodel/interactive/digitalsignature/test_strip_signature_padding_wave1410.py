@@ -10,8 +10,6 @@ outer SEQUENCE's DER length instead. These cases pin that behaviour
 deterministically.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.digitalsignature import strip_signature_padding
 
 

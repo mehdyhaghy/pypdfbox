@@ -18,8 +18,6 @@ Targets small remaining gaps on the combo-box subclass surface:
 - ``get_value_as_string`` collapses cleanly when ``/V`` is unset on a fresh
   combo box.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_choice import PDChoice

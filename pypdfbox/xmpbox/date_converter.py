@@ -24,8 +24,6 @@ equivalent of ``Calendar``). Helpers that upstream operate on a mutable
 same field names so the port stays a 1:1 read of the Java code.
 """
 
-from __future__ import annotations
-
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta, timezone, tzinfo

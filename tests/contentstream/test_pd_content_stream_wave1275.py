@@ -1,7 +1,5 @@
 """Wave 1275 parity test for PDContentStream.get_b_box snake_case alias."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.contentstream.pd_content_stream import PDContentStream

@@ -7,8 +7,6 @@ codePointToName/sequenceToName) and exercise the parser to confirm bytewise
 parity with the Adobe glyphlist format used upstream.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

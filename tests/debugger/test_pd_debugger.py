@@ -5,8 +5,6 @@ created on headless systems. We reuse the same ``tk_root`` fixture
 shape used by the other debugger widget tests.
 """
 
-from __future__ import annotations
-
 import contextlib
 import tkinter as tk
 from collections.abc import Iterator

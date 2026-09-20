@@ -12,8 +12,6 @@ window the second check guards against. The original lock and any cache
 pollution are restored afterwards.
 """
 
-from __future__ import annotations
-
 from pypdfbox.contentstream import Operator
 
 

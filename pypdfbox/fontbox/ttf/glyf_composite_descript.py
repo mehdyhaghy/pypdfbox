@@ -7,8 +7,6 @@ flattens that chain so callers can read points and contours
 through the same accessor surface as :class:`GlyfSimpleDescript`.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING, Any
 

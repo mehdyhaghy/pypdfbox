@@ -11,8 +11,6 @@ Each test follows the same shape:
    recovered content-stream bytes.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

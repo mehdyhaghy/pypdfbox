@@ -7,8 +7,6 @@ exercise edge branches and ``__repr__`` / dunder helpers that the
 broader test suite reaches indirectly but not always deterministically.
 """
 
-from __future__ import annotations
-
 import logging
 
 import pytest

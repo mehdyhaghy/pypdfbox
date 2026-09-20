@@ -3,8 +3,6 @@
 Port of ``org.apache.pdfbox.jbig2.decoder.huffman.InternalNode``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.decoder.huffman.node import Node
 from pypdfbox.jbig2.decoder.huffman.out_of_band_node import OutOfBandNode
 from pypdfbox.jbig2.decoder.huffman.value_node import ValueNode

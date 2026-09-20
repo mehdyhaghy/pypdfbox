@@ -16,8 +16,6 @@ matches PDFBox's ``BlendMode.getInstance``:
 * ``Compatible`` (Adobe synonym noted in §11.6.5.2) → ``Normal``
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSName
 from pypdfbox.pdmodel.graphics.blend_mode import BlendMode
 

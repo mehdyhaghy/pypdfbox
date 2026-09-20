@@ -22,8 +22,6 @@ Encoding.add), not a direct JUnit port — there is no upstream
 ``DictionaryEncodingTest`` to translate.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName

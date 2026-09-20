@@ -15,8 +15,6 @@ Java's ``(int)`` truncates toward zero; Python's ``int()`` does the same for the
 ``float`` operands produced here, so the casts map directly.
 """
 
-from __future__ import annotations
-
 _BIG_ENOUGH_INT = 16 * 1024
 _BIG_ENOUGH_FLOOR = float(_BIG_ENOUGH_INT)
 _BIG_ENOUGH_ROUND = _BIG_ENOUGH_INT + 0.5

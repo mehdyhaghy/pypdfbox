@@ -7,8 +7,6 @@
   the content stream with no trailing whitespace or delimiter byte.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSStream
 from pypdfbox.pdmodel.font.pd_type3_char_proc import PDType3CharProc
 from pypdfbox.pdmodel.font.pd_type3_font import PDType3Font

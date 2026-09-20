@@ -1,7 +1,5 @@
 """Smoke test for the :class:`CreateCheckBox` example port."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.examples.interactive.form.create_check_box import CreateCheckBox

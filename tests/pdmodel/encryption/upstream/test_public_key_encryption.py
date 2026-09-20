@@ -20,8 +20,6 @@ The Java-fixture-driven scenarios below are therefore skipped with a
 one-line reason each.
 """
 
-from __future__ import annotations
-
 import pytest
 
 

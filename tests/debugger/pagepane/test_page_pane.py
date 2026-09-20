@@ -4,8 +4,6 @@ The widget needs a Tk root (``tk_root`` fixture from conftest) and is
 exercised against a single synthetic PDF page.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 from collections.abc import Iterator
 
@@ -76,7 +74,7 @@ def test_page_pane_constructs_and_returns_frame(tk_root: tk.Tk) -> None:
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
         assert pane.get_panel() is not None
-        assert pane._initialized is True
+        assert pane._initialized is True  # internal flag
         # Page label widget mentions the 1-based page number.
         assert pane._page_label_widget is not None
         assert "Page 1" in pane._page_label_widget.cget("text")

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdmodel.font import test_pd_cid_font_type2_wave523 as wave523
 
 

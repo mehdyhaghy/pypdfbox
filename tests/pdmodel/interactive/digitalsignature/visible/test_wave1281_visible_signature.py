@@ -1,7 +1,5 @@
 """Wave 1281 — parity ports for the visible-signature subpackage."""
 
-from __future__ import annotations
-
 import io
 
 import pytest

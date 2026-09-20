@@ -17,8 +17,6 @@ silently drops them) but stays well-formed. Pass a TTF path as the
 second argument to ``main()`` for upstream-faithful rendering.
 """
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 

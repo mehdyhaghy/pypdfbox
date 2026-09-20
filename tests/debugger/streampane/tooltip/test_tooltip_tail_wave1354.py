@@ -8,8 +8,6 @@ Covers:
   present (line 87 in ``k_tool_tip.py``).
 """
 
-from __future__ import annotations
-
 from pypdfbox.debugger.streampane.tooltip import ColorToolTip, KToolTip
 
 

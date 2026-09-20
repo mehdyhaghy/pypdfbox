@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from tests.pdmodel.graphics.image import test_lossless_factory

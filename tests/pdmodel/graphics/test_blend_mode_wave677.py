@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 import pypdfbox.pdmodel.graphics.blend_mode as blend_module

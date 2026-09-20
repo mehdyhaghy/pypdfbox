@@ -10,8 +10,6 @@ Closes False-branch arrows in helper functions and the catalog summary:
 * ``_print_summary`` 545->547 — text format, /Pages is absent everywhere
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import COSName, COSStream

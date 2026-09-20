@@ -12,8 +12,6 @@ The dialog registers itself as the active dialog sink of
 messages here automatically.
 """
 
-from __future__ import annotations
-
 import contextlib
 import io
 import tkinter as tk

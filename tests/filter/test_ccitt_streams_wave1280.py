@@ -5,8 +5,6 @@ exercise the stream-shaped front end (construction, buffering, round-trip
 via the encoder/decoder pair).
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

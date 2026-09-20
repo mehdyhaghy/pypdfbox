@@ -11,8 +11,6 @@ upstream method that the earlier port omitted —
 ``testAllowDestinationRangeSurrogates``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.font.to_unicode_writer import ToUnicodeWriter
 
 

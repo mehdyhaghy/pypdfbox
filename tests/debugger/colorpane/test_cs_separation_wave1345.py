@@ -10,8 +10,6 @@ Targets the residual branches:
 * lines 239-240 — same ``OSError`` path inside ``_on_tint_entry``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSName, COSStream

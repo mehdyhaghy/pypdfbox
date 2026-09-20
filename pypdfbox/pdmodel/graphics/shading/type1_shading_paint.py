@@ -3,8 +3,6 @@
 Mirrors PDFBox ``org.apache.pdfbox.pdmodel.graphics.shading.Type1ShadingPaint``.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from .shading_paint import ShadingPaint

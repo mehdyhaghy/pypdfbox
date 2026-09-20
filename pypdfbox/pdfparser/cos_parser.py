@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import contextlib
 from collections.abc import Callable
 from typing import ClassVar
@@ -116,7 +114,7 @@ class COSParser(BaseParser):
         # ``COSParser.fileLen``.
         try:
             self._file_len: int = source.length()
-        except Exception:
+        except Exception:  # length() is best-effort here
             self._file_len = -1
         # Latches set by upstream's xref-recovery path. We don't drive
         # them automatically (the recovery walker lives in ``PDFParser``)
@@ -2024,7 +2022,7 @@ class COSParser(BaseParser):
         in via ``__init__``. The method exists for parity callers and is
         a no-op when no environment override is present (matches
         upstream when the property is unset)."""
-        import os
+        import os  # local import keeps cos_parser import-cheap
         override = os.environ.get(self.SYSPROP_EOFLOOKUPRANGE)
         if override is None:
             return

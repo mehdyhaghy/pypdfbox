@@ -10,8 +10,6 @@ and :meth:`get_color` returns a ``tuple[float, float, float]`` instead
 of an AWT ``Color`` so the data record stays UI-toolkit-agnostic.
 """
 
-from __future__ import annotations
-
 
 class IndexedColorant:
     """One palette entry of a ``/Indexed`` color space.

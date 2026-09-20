@@ -9,8 +9,6 @@ ported in ``test_pd_structure_element.py`` against synthetic structure
 trees.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSName

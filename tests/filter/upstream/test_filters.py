@@ -6,8 +6,6 @@ are ported here; the other filters live in their own cluster's upstream
 test files as they are added.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

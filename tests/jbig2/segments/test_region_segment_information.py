@@ -11,8 +11,6 @@ Crafted 17-byte region-segment-information data part:
     bit0-2 combinationOperator = 001b = 1 -> AND
 """
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.io.image_input_stream import ImageInputStream
 from pypdfbox.jbig2.io.sub_input_stream import SubInputStream
 from pypdfbox.jbig2.segments.region_segment_information import RegionSegmentInformation

@@ -9,8 +9,6 @@ placeholders so the porting log stays one-to-one with upstream. The two tests
 that exercise only the read path (PDFBOX-5976 and PDFBOX-5649) are translated.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import DomXmpParser, XmpParsingException

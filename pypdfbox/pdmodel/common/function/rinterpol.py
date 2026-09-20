@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -25,7 +23,7 @@ class Rinterpol:
     def __init__(
         self,
         function: PDFunctionType0,
-        input: list[float],
+        input: list[float],  # upstream parameter name
         input_prev: list[int],
         input_next: list[int],
     ) -> None:

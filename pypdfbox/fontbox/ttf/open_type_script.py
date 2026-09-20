@@ -15,8 +15,6 @@ upstream returns the literal string ``Inherited``; we apply that
 special-case here.
 """
 
-from __future__ import annotations
-
 import sys
 
 from fontTools.unicodedata import script as _ft_script

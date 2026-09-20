@@ -13,8 +13,6 @@ a single, narrowly-scoped behaviour described in the wave brief:
 - the legacy-fallback "OPTIMIZE_RESOURCES_MODE not yet implemented"
   info log must NOT fire for valid input.
 """
-from __future__ import annotations
-
 import io
 import logging
 from pathlib import Path

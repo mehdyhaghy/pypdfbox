@@ -17,8 +17,6 @@ upstream private methods so callers can reuse the fallback algorithm
 independently of the demo's I/O.
 """
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 from typing import Any

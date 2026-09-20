@@ -1,6 +1,4 @@
 """Wave 394 residual coverage for the Type 1 lexer/parser."""
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.fontbox.type1.type1_font_util import Type1FontUtil

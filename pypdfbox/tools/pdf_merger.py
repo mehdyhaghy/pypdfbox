@@ -8,8 +8,6 @@ The upstream class is a picocli ``Callable<Integer>`` wrapping
 and provide a stdlib-``argparse``-based ``main(args)`` entry point so the
 class is invokable standalone for parity.
 """
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
 

@@ -1,8 +1,6 @@
 """Tests for ``PDCryptFilterDictionary`` plus the ``/CF`` dispatch wired
 through ``PDEncryption`` and ``StandardSecurityHandler``."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString

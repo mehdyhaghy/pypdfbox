@@ -5,8 +5,6 @@ Plain POPO holder — one X.509 certificate paired with one
 get/set accessors only; the encryption envelope is built elsewhere.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.encryption import (
     AccessPermission,
     PublicKeyRecipient,

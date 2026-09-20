@@ -6,8 +6,6 @@ fontTools GPOS wrapper exposes no parsed ``.table`` structure, script /
 feature tag harvesting is skipped and the tag lists end up empty.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.glyph_positioning_table import GlyphPositioningTable
 
 

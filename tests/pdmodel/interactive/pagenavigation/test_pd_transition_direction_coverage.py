@@ -4,8 +4,6 @@ Targets ``values()`` and ``get_cos_base()`` which are unreached by the
 existing transition test suite.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos.cos_integer import COSInteger
 from pypdfbox.cos.cos_name import COSName
 from pypdfbox.pdmodel.interactive.pagenavigation.pd_transition_direction import (

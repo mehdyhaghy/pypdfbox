@@ -8,8 +8,6 @@ The :class:`SignatureOptions` class bundles the visual-signature
 size) used by :class:`PDDocument.add_signature`.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO
 

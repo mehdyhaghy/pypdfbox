@@ -1,7 +1,5 @@
 """Wave 316 coverage for PDDocument resource cache sentinel handling."""
 
-from __future__ import annotations
-
 from pypdfbox import PDDocument
 from pypdfbox.pdmodel.pd_resource_cache import DefaultResourceCache
 

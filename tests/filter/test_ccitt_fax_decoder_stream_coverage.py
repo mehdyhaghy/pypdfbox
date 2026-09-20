@@ -5,8 +5,6 @@ the ``EncodedByteAlign`` option, and the parity stubs that mirror the
 upstream Java private state-machine methods.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

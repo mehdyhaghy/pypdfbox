@@ -1,7 +1,5 @@
 """Hand-written tests for ``pypdfbox.debugger.ui.PDFTreeCellRenderer``."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSBoolean,

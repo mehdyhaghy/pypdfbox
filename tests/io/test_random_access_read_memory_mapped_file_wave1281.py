@@ -1,7 +1,5 @@
 """Wave 1281: RandomAccessReadMemoryMappedFile alias port."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.io import RandomAccessReadMemoryMappedFile

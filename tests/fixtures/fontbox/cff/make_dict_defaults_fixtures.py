@@ -30,8 +30,6 @@ Run from the repo root::
     .venv/bin/python tests/fixtures/fontbox/cff/make_dict_defaults_fixtures.py
 """
 
-from __future__ import annotations
-
 from io import BytesIO
 from pathlib import Path
 

@@ -1,7 +1,5 @@
 """Wave 1273 round-out: ``PDLineDashPattern.to_string()`` explicit method."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray
 from pypdfbox.pdmodel.graphics.pd_line_dash_pattern import PDLineDashPattern
 

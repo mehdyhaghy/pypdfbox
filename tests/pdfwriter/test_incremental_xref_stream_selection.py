@@ -32,8 +32,6 @@ The oracle differential (``@requires_oracle``) compares the appended object
 set + xref encoding against live Apache PDFBox 3.0.7 on the same edits.
 """
 
-from __future__ import annotations
-
 import io
 import re
 from pathlib import Path

@@ -15,8 +15,6 @@ visual signal and the entry is omitted; same for ``/AC`` + ``/BG`` for
 the down variant.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream
 from pypdfbox.pdmodel.interactive.form import PDAcroForm, PDAppearanceGenerator
 from pypdfbox.pdmodel.interactive.form.pd_push_button import PDPushButton

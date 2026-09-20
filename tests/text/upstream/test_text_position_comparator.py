@@ -19,8 +19,6 @@ transitively through the full ``TestTextStripper`` corpus diff. We pin
 the per-axis behaviour directly so a future change to the tolerance or
 overlap check is parity-checked.
 """
-from __future__ import annotations
-
 from functools import cmp_to_key
 
 from pypdfbox.text import TextPosition, TextPositionComparator

@@ -13,8 +13,6 @@ implementers that only expose the contracted ``get_font_bbox`` still
 satisfy ``isinstance(obj, FontBoxFont)``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.font_box_font import FontBoxFont, get_font_b_box
 
 

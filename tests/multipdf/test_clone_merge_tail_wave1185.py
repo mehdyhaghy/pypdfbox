@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray
 from tests.multipdf.test_clone_merge_tail_wave787 import _Wrap
 

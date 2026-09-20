@@ -10,8 +10,6 @@ class-shaped ``SecurityHandlerFactory.INSTANCE`` mirror; this module keeps the
 provider singleton plus the legacy filter-name dispatch helpers intact.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from .public_key_security_handler import PublicKeySecurityHandler

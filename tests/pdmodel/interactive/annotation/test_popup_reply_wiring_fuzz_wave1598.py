@@ -37,8 +37,6 @@ upstream-equivalent projections):
   parent cases project.
 """
 
-from __future__ import annotations
-
 import io
 from functools import lru_cache
 

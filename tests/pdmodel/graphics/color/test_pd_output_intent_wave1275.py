@@ -1,7 +1,5 @@
 """Wave 1275 — PDOutputIntent.configure_output_profile public helper."""
 
-from __future__ import annotations
-
 import io
 
 import pytest

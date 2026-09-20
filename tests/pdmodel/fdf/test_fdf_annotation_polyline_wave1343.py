@@ -8,8 +8,6 @@ the slot holds a non-array object, and the default-return branch of
 ``get_end_point_ending_style``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSInteger, COSName

@@ -1,7 +1,5 @@
 """Tests for :class:`LookupListTable`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub.lookup_table import LookupTable
 from pypdfbox.fontbox.ttf.table.common.lookup_list_table import LookupListTable
 

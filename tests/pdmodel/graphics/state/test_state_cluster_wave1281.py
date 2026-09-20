@@ -1,7 +1,5 @@
 """Tests for the graphics state cluster (Wave 1281)."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.graphics.blend_mode import BlendMode

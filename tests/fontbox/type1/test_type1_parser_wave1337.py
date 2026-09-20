@@ -19,8 +19,6 @@ end-to-end path (which mirrors ``Type1Parser.parseBinary`` and exercises
 definitions, the ``2 index`` skip-loop before ``CharStrings``, and the
 ``hex_to_binary`` decode branch for ASCII-hex eexec input).
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.type1.type1_font_util import Type1FontUtil

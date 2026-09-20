@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 import os
 import struct
@@ -421,7 +419,7 @@ class Overlay:
             from .pdf_clone_utility import PDFCloneUtility
 
             return PDFCloneUtility(document)
-        except Exception:
+        except Exception:  # fallback path
             class _DeepCopyCloner:
                 def __init__(self, dest: PDDocument) -> None:
                     self._dest = dest

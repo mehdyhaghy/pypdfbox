@@ -5,8 +5,6 @@ bytes wide, big-endian, where ``offSize`` is in ``[1, 4]``. Exercises
 the assembled value for each width plus the boundary big-endian cases.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.data_input_byte_array import DataInputByteArray

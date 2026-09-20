@@ -17,8 +17,6 @@ in remaining upstream-mirrored semantics:
 * ``get_content_pane`` returns ``None`` until the dialog is built.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 
 from pypdfbox.debugger.ui import TextDialog

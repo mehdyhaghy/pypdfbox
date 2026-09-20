@@ -7,8 +7,6 @@ Mirrors upstream ``Format0FDSelect.toString()`` (CFFParser.java lines
 1132-1135).
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.fd_select import Format0FDSelect, Format3FDSelect
 
 

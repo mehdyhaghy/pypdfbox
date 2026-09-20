@@ -7,8 +7,6 @@ before-half (i-matra) glyphs, optionally synthesizes ``rkrf`` from
 the standard Devanagari feature pipeline.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING
 

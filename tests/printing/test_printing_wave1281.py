@@ -1,7 +1,5 @@
 """Tests for ``pypdfbox.printing``."""
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.pd_document import PDDocument
 from pypdfbox.pdmodel.pd_page import PDPage
 from pypdfbox.printing.pdf_pageable import Orientation, PDFPageable

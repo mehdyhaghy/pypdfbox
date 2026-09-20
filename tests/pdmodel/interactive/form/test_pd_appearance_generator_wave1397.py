@@ -4,8 +4,6 @@ Each test names the specific partial branch it closes (line number in
 ``pypdfbox/pdmodel/interactive/form/pd_appearance_generator.py``).
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream

@@ -10,8 +10,6 @@ caption/rotation getters/setters).
 Wave 1572, Agent D.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName

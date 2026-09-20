@@ -15,8 +15,6 @@ The hand-written tests below assert the literal oracle values without needing
 the oracle. A trailing ``@requires_oracle`` differential test compares the live
 PDFBox output for both modes against pypdfbox on identical input bytes.
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName

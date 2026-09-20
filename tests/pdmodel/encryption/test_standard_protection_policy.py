@@ -10,8 +10,6 @@ fields to the empty string and relies on GC for cleanup), so they exist
 to keep call sites idiomatic when porting consumer code.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.encryption import (
     AccessPermission,
     StandardProtectionPolicy,

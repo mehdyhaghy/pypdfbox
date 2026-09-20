@@ -3,8 +3,6 @@
 Adds a centered message to every page of a PDF document.
 """
 
-from __future__ import annotations
-
 import math
 import sys
 

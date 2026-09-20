@@ -18,8 +18,6 @@ r_max > 0.5 stays strictly inside (0, 1)); marked with ``# pragma: no
 cover`` in source rather than chased here.
 """
 
-from __future__ import annotations
-
 import math
 
 from pypdfbox.cos import COSStream

@@ -12,8 +12,6 @@ from PDFBox source can write::
 and resolve the symbol without disturbing the existing registry wiring.
 """
 
-from __future__ import annotations
-
 import io
 from typing import Any, BinaryIO, NamedTuple
 

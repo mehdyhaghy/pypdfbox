@@ -7,8 +7,6 @@ characteristics of any particular output device. They are based on the
 Commission Internationale de l'Eclairage standards.
 """
 
-from __future__ import annotations
-
 from abc import abstractmethod
 from typing import Any
 

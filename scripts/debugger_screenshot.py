@@ -19,8 +19,6 @@ Notes:
       so we can prove the right-hand-side panel paints content.
 """
 
-from __future__ import annotations
-
 import argparse
 import sys
 import tkinter as tk
@@ -47,7 +45,7 @@ def _settle(root: tk.Tk, ms: int) -> None:
 
 def _select_nth_tree_child(debugger: PDFDebugger, n: int) -> None:
     """Select the nth top-level item in the debugger's tree."""
-    tree = debugger._tree
+    tree = debugger._tree  # debug helper
     children = tree.get_children()
     if n < 0 or n >= len(children):
         return

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import contextlib
 import os
 from pathlib import Path
@@ -169,7 +167,7 @@ class TTFParser:
 
     def __init__(
         self,
-        is_embedded: bool = False,
+        is_embedded: bool = False,  # mirror upstream signature
         parse_on_demand: bool = True,
     ) -> None:
         self._is_embedded: bool = is_embedded
@@ -342,7 +340,7 @@ class TTFParser:
         # the resulting font for the same fields upstream's loop fills in.
         try:
             raw = data.get_original_data()
-        except Exception as exc:
+        except Exception as exc:  # surface as FontHeaders error
             out.set_error(f"could not read SFNT bytes: {exc}")
             return out
 
@@ -457,7 +455,7 @@ class TTFParser:
         """
         return TrueTypeFont(data)
 
-    def read_table(self, tag: str) -> TTFTable:
+    def read_table(self, tag: str) -> TTFTable:  # tag kept for parity
         """Factory hook for unknown tables encountered in the SFNT
         directory.
 

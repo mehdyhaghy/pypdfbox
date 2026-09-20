@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSFloat
 from tests.pdmodel.font.test_pd_cid_font_wave618 import _num
 

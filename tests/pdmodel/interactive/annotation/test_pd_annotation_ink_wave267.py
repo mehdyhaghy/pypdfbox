@@ -7,8 +7,6 @@ Covers:
 - Interaction with the existing typed accessors.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat, COSName
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_ink import (
     PDAnnotationInk,

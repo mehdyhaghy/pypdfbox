@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.graphics.shading import PDShadingType4, PDShadingType5

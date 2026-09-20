@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .annotation_filter import AnnotationFilter
 from .pd_annotation import PDAnnotation
 from .pd_annotation_caret import PDAnnotationCaret

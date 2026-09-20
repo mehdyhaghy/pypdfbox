@@ -21,8 +21,6 @@ here so a future ``PDFontFactory`` rewrite can switch to this helper
 without behavioural drift.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos.cos_name import COSName
 
 # Upstream ``PDFontFactory.FONT_TYPE1C`` (java L42). Kept as a

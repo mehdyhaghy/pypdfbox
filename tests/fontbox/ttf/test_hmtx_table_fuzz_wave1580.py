@@ -22,8 +22,6 @@ fuzz inputs are checked against the Java semantics rather than against the
 implementation under test.
 """
 
-from __future__ import annotations
-
 import random
 import struct
 from dataclasses import dataclass

@@ -5,8 +5,6 @@ returns the device color space's PDF name (``DeviceGray`` /
 ``DeviceRGB`` / ``DeviceCMYK``).
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.graphics.color.pd_device_cmyk import PDDeviceCMYK
 from pypdfbox.pdmodel.graphics.color.pd_device_gray import PDDeviceGray
 from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB

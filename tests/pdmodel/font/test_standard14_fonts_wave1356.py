@@ -11,8 +11,6 @@ Closes the last residual lines in 0.9.0rc1:
   name misses (the non-PUA, non-SymbolMT branch).
 """
 
-from __future__ import annotations
-
 from types import SimpleNamespace
 from typing import Any
 

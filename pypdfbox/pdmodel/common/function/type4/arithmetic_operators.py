@@ -17,8 +17,6 @@ plug arithmetic operators into the upstream-style registry-driven
 the registry.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.common.function.pd_function_type4 import (
     _op_abs,
     _op_add,

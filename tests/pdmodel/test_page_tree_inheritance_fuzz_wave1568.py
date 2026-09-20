@@ -24,8 +24,6 @@ No upstream divergence was found while writing these (the inheritance code is a
 faithful port); this file is a regression net for the surface.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

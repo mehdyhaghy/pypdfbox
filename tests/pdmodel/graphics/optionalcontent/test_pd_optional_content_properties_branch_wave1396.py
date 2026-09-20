@@ -8,8 +8,6 @@ Closes False-branch arrows where the visibility-walk skips an /OCGs,
 * 601->599 — ``compute_visible_ocgs`` /ON walker skips non-dict entries
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.graphics.optionalcontent import (
     PDOptionalContentGroup,

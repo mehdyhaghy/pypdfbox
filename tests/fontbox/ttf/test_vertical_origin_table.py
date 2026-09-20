@@ -1,7 +1,5 @@
 """Tests for :class:`VerticalOriginTable`."""
 
-from __future__ import annotations
-
 import struct
 
 from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream

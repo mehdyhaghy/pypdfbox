@@ -14,8 +14,6 @@ and pin the matched-rule-dispatches-inner-lookup behaviour for each
 subtable format.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub import (
     ChainedClassRule,
     ChainedClassRuleSet,

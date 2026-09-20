@@ -13,8 +13,6 @@ each string segment while the numeric entries adjust the text matrix
 via :meth:`PDFStreamEngine.apply_text_adjustment`.
 """
 
-from __future__ import annotations
-
 import io
 from typing import IO, Any
 

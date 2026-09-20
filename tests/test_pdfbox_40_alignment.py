@@ -35,8 +35,7 @@ PDIndexed: no-arg ctor + 2 methods removed   pinned: ADOPTED in 2.0.0
 ===========================================  ==========================
 """
 
-from __future__ import annotations
-
+import annotationlib
 import inspect
 import logging
 from pathlib import Path
@@ -251,7 +250,14 @@ def test_overlay_form_bbox_is_the_retranslated_rectangle() -> None:
 def test_write_raw_commands_is_the_4_0_shape() -> None:
     builder = PDVisibleSigBuilder()
     assert hasattr(builder, "write_raw_commands")
-    params = list(inspect.signature(builder.write_raw_commands).parameters)
+    # FORWARDREF: see note in tests/pdfparser/test_xref_parser_wave1389.py --
+    # write_raw_commands is annotated with a TYPE_CHECKING-only PDStream.
+    params = list(
+        inspect.signature(
+            builder.write_raw_commands,
+            annotation_format=annotationlib.Format.FORWARDREF,
+        ).parameters
+    )
     assert params == ["stream", "commands"]
 
 

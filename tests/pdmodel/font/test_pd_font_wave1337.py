@@ -7,8 +7,6 @@ the ``get_string_width`` byte-walk loop, and the ``to_unicode``
 ``chr()`` ValueError + cmap-driven fallback paths.
 """
 
-from __future__ import annotations
-
 from unittest.mock import patch
 
 import pytest

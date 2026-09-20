@@ -7,8 +7,6 @@ across every supported ``/S`` subtype, plus the null-input and
 unknown-subtype branches.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos.cos_dictionary import COSDictionary

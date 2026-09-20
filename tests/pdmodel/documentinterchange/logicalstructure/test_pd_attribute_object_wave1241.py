@@ -2,8 +2,6 @@
 helpers on ``PDAttributeObject`` (``notify_changed`` / ``is_value_changed``
 / ``potentially_notify_changed`` / ``to_string``)."""
 
-from __future__ import annotations
-
 import logging
 
 import pytest

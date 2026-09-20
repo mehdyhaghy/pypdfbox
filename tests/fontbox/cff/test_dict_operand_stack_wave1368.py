@@ -18,8 +18,6 @@ Table 3, Table 4) past the happy paths covered by
   upstream ``CFFParser.java`` line 1316).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.cff_parser import CFFParser

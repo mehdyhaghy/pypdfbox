@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`pypdfbox.debugger.ui.RenderDestinationMenu`."""
 
-from __future__ import annotations
-
 import tkinter as tk
 
 import pytest

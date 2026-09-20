@@ -4,8 +4,6 @@ Mirrors the surface of ``org.apache.pdfbox.pdmodel.PDDocumentInformation``
 to catch regressions in the camelCase -> snake_case alias layer for the
 standard /Info dictionary keys.
 """
-from __future__ import annotations
-
 import datetime as _dt
 
 import pytest

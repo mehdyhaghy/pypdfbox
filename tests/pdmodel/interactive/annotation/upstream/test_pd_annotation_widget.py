@@ -12,8 +12,6 @@ that ``PDAnnotation.create()`` dispatches a ``/Subtype /Widget`` dict to
 class in this wave.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.annotation import (
     PDAnnotation,

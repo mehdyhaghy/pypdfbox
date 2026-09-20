@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import io
 
 import tests.pdfparser.test_pdf_stream_parser_wave430 as wave430

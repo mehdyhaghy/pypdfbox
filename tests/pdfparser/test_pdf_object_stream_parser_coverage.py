@@ -12,8 +12,6 @@ PDF here because PDFObjectStreamParser consumes a ``COSStream``
 directly through ``create_view``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

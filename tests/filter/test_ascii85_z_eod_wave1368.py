@@ -16,8 +16,6 @@ an ordinary base-85 digit (the shortcut only fires at a group boundary),
 matching the behaviour confirmed against the live PDFBox oracle.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

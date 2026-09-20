@@ -9,8 +9,6 @@ Most tests use lightweight stand-in objects rather than real PDFs to
 keep the file fast and to avoid pulling in the font/rendering dep chain.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from unittest import mock
 

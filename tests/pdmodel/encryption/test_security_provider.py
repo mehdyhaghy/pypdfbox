@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.encryption.public_key_security_handler import (

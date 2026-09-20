@@ -24,8 +24,6 @@ Owner-password reads, user-password reads, wrong-password rejection, and
 ``AccessPermission`` flag propagation are checked for every revision.
 """
 
-from __future__ import annotations
-
 import datetime
 import io
 
@@ -394,7 +392,7 @@ def _build_r5_dictionary_via_handler() -> tuple[
 
     file_key = os.urandom(32)
     handler.set_encryption_key(file_key)
-    handler._encrypt_metadata = True
+    handler._encrypt_metadata = True  # no public setter
 
     # Build the /U /UE /O /OE /Perms quintet exactly as the r6 dictionary
     # builder does — the r5 algorithm produces the same byte shape; the

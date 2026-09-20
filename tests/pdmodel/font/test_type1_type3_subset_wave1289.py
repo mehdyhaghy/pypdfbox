@@ -9,8 +9,6 @@ subset entry point; Type 3 — glyphs are inline in ``/CharProcs`` so
 subsetting has no meaning).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName

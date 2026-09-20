@@ -12,8 +12,6 @@ Also closes 210->215 — ``compute_version_number`` getter not callable
 (neither ``is_prefer_aes`` nor ``is_preferred_aes`` returns callable).
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.encryption.security_handler import SecurityHandler
 
 

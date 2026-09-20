@@ -34,8 +34,6 @@ the per-pixel ordering), matching pdf.js ``RefinementReusedContexts[1]``; for
 template 0 it is ``0x100`` in PDFBox's ``form`` ordering. Both are asserted.
 """
 
-from __future__ import annotations
-
 import random
 
 import pytest

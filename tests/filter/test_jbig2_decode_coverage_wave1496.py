@@ -17,8 +17,6 @@ assert the *contract* (which exception class surfaces), which is the
 observable behaviour callers rely on.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

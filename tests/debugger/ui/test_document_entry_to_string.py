@@ -4,8 +4,6 @@ The parity tool tracks ``toString`` as the snake-cased ``to_string``; we keep
 ``__str__`` delegating to it so Python idioms still work.
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock
 
 from pypdfbox.debugger.ui.document_entry import DocumentEntry

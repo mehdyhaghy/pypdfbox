@@ -11,8 +11,6 @@ Covers the wave-1310 surface:
   the debugger's tree label.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName

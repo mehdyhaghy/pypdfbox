@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -267,7 +265,7 @@ class PDActionEmbeddedGoTo(PDAction):
             for d in opened_docs:
                 try:
                     d.close()
-                except Exception:
+                except Exception:  # best-effort cleanup
                     _LOG.debug("Failed to close embedded PDDocument", exc_info=True)
 
     def _resolve_final_destination(
@@ -495,7 +493,7 @@ def _open_embedded_pdf(
             return None
     try:
         data = embedded.to_byte_array()
-    except Exception:
+    except Exception:  # malformed stream is a soft failure
         _LOG.debug(
             "Embedded file %r — failed to read bytes", name, exc_info=True
         )
@@ -504,7 +502,7 @@ def _open_embedded_pdf(
         return None
     try:
         return pddocument_cls.load(data)
-    except Exception:
+    except Exception:  # non-PDF payload is a soft failure
         _LOG.debug(
             "Embedded file %r — bytes do not parse as a PDF",
             name,

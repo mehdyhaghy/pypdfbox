@@ -16,8 +16,6 @@ We drive the operators through the parser-built ``InstructionSequence``
 parse → execute pipeline.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

@@ -11,8 +11,6 @@ Closes three renderer gaps from the wave-1384 audit:
    Indexed, ICCBased, Separation, DeviceN, abbreviated names.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

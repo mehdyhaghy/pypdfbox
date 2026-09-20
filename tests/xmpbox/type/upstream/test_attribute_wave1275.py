@@ -6,8 +6,6 @@ upstream test class only exercises getters; we add explicit ``toString``
 parity coverage here).
 """
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox import Attribute
 
 

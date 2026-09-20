@@ -7,8 +7,6 @@ CIDKeyed OTF/TTC available — the CI runner may or may not, mirroring
 the strategy in ``test_cff_font_parity.py``.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 from typing import Any

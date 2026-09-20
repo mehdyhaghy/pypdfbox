@@ -17,8 +17,6 @@ parsed correctly all along. Wave 1388:
    slash + time, and the out-of-range guards.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 import pytest

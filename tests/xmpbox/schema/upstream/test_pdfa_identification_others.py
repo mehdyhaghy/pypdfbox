@@ -14,8 +14,6 @@ Three tests:
   ``IllegalArgumentException``).
 """
 
-from __future__ import annotations
-
 from io import BytesIO
 
 import pytest

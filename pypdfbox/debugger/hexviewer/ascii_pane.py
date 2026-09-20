@@ -6,8 +6,6 @@ as ``.``. The selected byte (forwarded from ``HexPane``) is highlighted via
 a ``Text`` tag.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 from tkinter import font as tkfont
 

@@ -5,8 +5,6 @@ non-``COSString`` fallbacks: when the wrapped ``/Opt`` array holds a non-string
 Mirrors ``org.apache.pdfbox.pdmodel.fdf.FDFOptionElement``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSInteger, COSString
 from pypdfbox.pdmodel.fdf.fdf_option_element import FDFOptionElement
 

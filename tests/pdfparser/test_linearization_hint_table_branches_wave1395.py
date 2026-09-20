@@ -12,8 +12,6 @@ These mirror the upstream Java spec-checks (PDF 32000-1 §F.4) for the
 Page Offset Hint Table reader.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdfparser.linearization_hint_table import (

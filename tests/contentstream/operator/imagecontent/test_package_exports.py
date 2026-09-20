@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pypdfbox.contentstream.operator.imagecontent as imagecontent_pkg
 
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.fontbox.afm import AFMParser, CharMetric, Ligature
 
 

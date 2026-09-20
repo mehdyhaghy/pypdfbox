@@ -1,7 +1,5 @@
 """Wave 1275 parity tests for public-named ScratchFile parity helpers."""
 
-from __future__ import annotations
-
 from pypdfbox.io.scratch_file import ScratchFile
 
 

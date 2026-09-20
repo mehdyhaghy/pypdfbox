@@ -20,8 +20,6 @@ surface directly so the abstract base class has its own coverage:
   to ``OSError`` in pypdfbox).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream

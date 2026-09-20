@@ -1,7 +1,5 @@
 """Tests for ``RevokedCertificateException``."""
 
-from __future__ import annotations
-
 import datetime as _dt
 
 import pytest

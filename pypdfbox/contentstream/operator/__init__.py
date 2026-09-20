@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from threading import Lock
 
 from pypdfbox.cos import COSBase, COSDictionary

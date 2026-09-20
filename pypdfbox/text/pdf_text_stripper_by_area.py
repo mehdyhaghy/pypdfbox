@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -229,13 +227,13 @@ class PDFTextStripperByArea(PDFTextStripper):
         # y-up user-frame half-open parity is unaffected.
         try:
             self._page_rotation = int(page.get_rotation()) % 360
-        except Exception:
+        except Exception:  # defensive: bad /Rotate
             self._page_rotation = 0
         try:
             crop = page.get_crop_box()
             self._page_width = float(crop.get_width())
             self._page_height = float(crop.get_height())
-        except Exception:
+        except Exception:  # defensive: missing/odd CropBox
             self._page_width = 0.0
             self._page_height = 0.0
         self._cmap_cache = {}
@@ -640,7 +638,7 @@ def _java_hashmap_capacity(count: int) -> int:
     return capacity
 
 
-def _hashmap_order(keys) -> list[str]:
+def _hashmap_order(keys) -> list[str]:  # keys is a str iterable
     """Return ``keys`` in ``java.util.HashMap`` iteration order.
 
     HashMap iterates buckets ``0 .. capacity-1``; within a bucket, entries are

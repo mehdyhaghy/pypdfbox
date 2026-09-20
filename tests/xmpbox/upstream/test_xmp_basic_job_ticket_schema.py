@@ -10,8 +10,6 @@ upstream files use: confirm the structured-type contract upstream's
 its companion ``JobType`` struct.
 """
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox import (
     JobType,
     XMPBasicJobTicketSchema,

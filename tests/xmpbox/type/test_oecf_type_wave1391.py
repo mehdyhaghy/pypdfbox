@@ -1,7 +1,5 @@
 """Wave 1391 — coverage round-out for :class:`OECFType`."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import XMPMetadata

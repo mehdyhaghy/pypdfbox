@@ -13,8 +13,6 @@ prints the same per-glyph diagnostic line as upstream; the rendering
 overlay step is documented in ``CHANGES.md`` as deferred.
 """
 
-from __future__ import annotations
-
 import contextlib
 import io
 import sys

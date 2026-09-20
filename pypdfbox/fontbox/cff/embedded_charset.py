@@ -10,8 +10,6 @@ it, picking ``CFFCharsetCID`` or ``CFFCharsetType1`` based on the
 class is concrete and forwards each call to the inner charset.
 """
 
-from __future__ import annotations
-
 from .cff_charset import CFFCharset
 from .cff_charset_cid import CFFCharsetCID
 from .cff_charset_type1 import CFFCharsetType1

@@ -1,7 +1,5 @@
 """Wave 1281: COSIncrement traversal port."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSIncrement, COSName
 
 

@@ -4,8 +4,6 @@ Mirrors ``org.apache.fontbox.util.autodetect.FontDirFinder`` (PDFBox 3.0,
 ``fontbox/src/main/java/org/apache/fontbox/util/autodetect/FontDirFinder.java``).
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from pathlib import Path
 

@@ -3,8 +3,6 @@
 Covers ``SoftPaintContext.get_raster`` which previously returned ``None``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.rendering.soft_mask import SoftMask, SoftPaintContext

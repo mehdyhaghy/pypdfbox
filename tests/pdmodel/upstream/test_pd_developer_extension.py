@@ -14,8 +14,6 @@ the catalog ``/Extensions`` mapping behaves like a Java
 test class, the assertions here remain a strict subset.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSInteger, COSName, COSString
 from pypdfbox.pdmodel import PDDeveloperExtension, PDDocument
 

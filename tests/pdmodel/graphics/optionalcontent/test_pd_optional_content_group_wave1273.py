@@ -1,7 +1,5 @@
 """Wave 1273 round-out: ``PDOptionalContentGroup.to_string()`` explicit method."""
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_group import (
     PDOptionalContentGroup,
 )

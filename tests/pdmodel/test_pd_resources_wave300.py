@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel import PDResources
 from pypdfbox.pdmodel.graphics.color import PDDeviceRGB

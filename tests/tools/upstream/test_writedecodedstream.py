@@ -12,4 +12,3 @@ When a Java-side ``WriteDecodedDocTest`` does land upstream, port it
 here following the project's "Test Porting
 Conventions".
 """
-from __future__ import annotations

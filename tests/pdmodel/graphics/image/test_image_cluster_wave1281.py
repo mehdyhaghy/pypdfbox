@@ -1,7 +1,5 @@
 """Tests for the new image classes (Wave 1281)."""
 
-from __future__ import annotations
-
 import io
 
 import pytest

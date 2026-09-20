@@ -1,7 +1,5 @@
 """Hand-written tests for ``pypdfbox.debugger.ui.ErrorDialog``."""
 
-from __future__ import annotations
-
 from collections.abc import Iterator
 from typing import Any
 

@@ -13,8 +13,6 @@ Covers:
   in ``textsearcher/searcher.py``).
 """
 
-from __future__ import annotations
-
 import contextlib
 import tkinter as tk
 from tkinter import ttk

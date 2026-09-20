@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.glyph_data import BoundingBox
 
 from .char_metric import CharMetric

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .default_resource_cache_create_impl import DefaultResourceCacheCreateImpl
 from .resource_cache import ResourceCache
 from .resource_cache_create_function import ResourceCacheCreateFunction

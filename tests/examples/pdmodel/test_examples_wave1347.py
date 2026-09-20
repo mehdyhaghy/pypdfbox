@@ -13,8 +13,6 @@ Targets the residual uncovered branches in:
 * ``create_bookmarks`` — encrypted-doc short-circuit.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch

@@ -1,7 +1,5 @@
 """Tests for ``CertificateVerifier``."""
 
-from __future__ import annotations
-
 import datetime as _dt
 
 import pytest
@@ -294,7 +292,7 @@ def test_is_self_signed_handles_exception_gracefully(monkeypatch):
 
     class _Cert:
         class _Name:
-            def __eq__(self, other):
+            def __eq__(self, other):  # x-ref
                 # Force ``cert.subject == cert.issuer`` to be True so we
                 # exercise the inner ``_verify_signed_by`` call.
                 return True

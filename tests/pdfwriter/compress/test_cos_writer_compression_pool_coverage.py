@@ -13,8 +13,6 @@ Drives:
  - ``create_object_streams`` batching across the configured stream size
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos.cos_array import COSArray

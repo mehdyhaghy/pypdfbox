@@ -1,7 +1,5 @@
 """Hand-written tests for ``SCNToolTip``."""
 
-from __future__ import annotations
-
 from pypdfbox.debugger.streampane.tooltip import SCNToolTip
 from pypdfbox.pdmodel.graphics.color.pd_pattern import PDPattern
 

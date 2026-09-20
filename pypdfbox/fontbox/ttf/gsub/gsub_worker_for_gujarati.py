@@ -7,8 +7,6 @@ same i-matra repositioning, same rkrf-from-vatu synthesis) — only the
 script-specific Unicode code points differ.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING
 

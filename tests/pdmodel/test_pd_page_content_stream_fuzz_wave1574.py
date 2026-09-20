@@ -20,8 +20,6 @@ compare them to what upstream ``org.apache.pdfbox.pdmodel.PDPageContentStream``
 - ``close()`` flush + idempotency.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSName

@@ -4,8 +4,6 @@ Upstream baseline: PDFBox 3.0.x. Fixtures ``null_PDComplexFileSpecification.pdf`
 and ``testPDF_multiFormatEmbFiles.pdf`` bundled under
 ``tests/fixtures/pdmodel/common/``.
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox import PDDocument

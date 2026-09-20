@@ -25,8 +25,6 @@ a ``COSStream`` directly via ``create_view()``; no wrapping PDF is needed.
 header pairs may be space-separated.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos.cos_array import COSArray

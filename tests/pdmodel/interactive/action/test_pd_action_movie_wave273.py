@@ -4,8 +4,6 @@ Covers the new gap surfaces added in Wave 273 — ``has_operation``,
 ``clear_*`` helpers, and the ``is_empty`` / ``is_valid`` sanity predicates.
 PDF 32000-1 §12.6.4.10 Table 209 — Movie action."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.action.pd_action_movie import PDActionMovie
 

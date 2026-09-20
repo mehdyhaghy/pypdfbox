@@ -17,8 +17,6 @@ public methods because Python has no equivalent visibility level and
 the helpers are useful for callers building their own font scorers.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 

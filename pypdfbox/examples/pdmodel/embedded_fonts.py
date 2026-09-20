@@ -16,8 +16,6 @@ a valid PDF. The class additionally exposes ``demo_with_font(ttf_path)``
 so a caller bringing their own TTF gets faithful upstream behaviour.
 """
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 

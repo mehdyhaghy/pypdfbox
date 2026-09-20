@@ -4,8 +4,6 @@ Mirror of ``org.apache.xmpbox.XmpConstants`` — a non-instantiable holder of th
 XMP wire-format constants.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import XmpConstants

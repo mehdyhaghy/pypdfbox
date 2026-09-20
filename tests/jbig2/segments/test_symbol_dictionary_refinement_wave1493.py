@@ -21,8 +21,6 @@ coded payload is ``1d0671d1`` on both decoders), so these pins are anchored to
 oracle-verified bytes rather than to a hand-computed expectation.
 """
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.bitmap import Bitmap
 from pypdfbox.jbig2.decoder.arithmetic.arithmetic_decoder import ArithmeticDecoder
 from pypdfbox.jbig2.decoder.arithmetic.arithmetic_integer_decoder import (

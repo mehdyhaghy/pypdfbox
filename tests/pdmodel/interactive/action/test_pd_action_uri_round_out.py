@@ -3,8 +3,6 @@
 PDF dictionary entry name verbatim.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSBoolean, COSName, COSString
 from pypdfbox.pdmodel.interactive.action import PDActionURI
 

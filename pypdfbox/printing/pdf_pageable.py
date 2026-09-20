@@ -9,8 +9,6 @@ the API surface so callers can interrogate page count, page sizes and a
 per-page :class:`PDFPrintable`.
 """
 
-from __future__ import annotations
-
 from enum import Enum
 from typing import TYPE_CHECKING
 

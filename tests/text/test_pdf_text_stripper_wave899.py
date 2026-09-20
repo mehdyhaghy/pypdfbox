@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 import tests.text.test_pdf_text_stripper_wave550 as wave550

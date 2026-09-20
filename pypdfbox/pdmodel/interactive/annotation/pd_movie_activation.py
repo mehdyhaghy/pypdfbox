@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSBase, COSDictionary, COSName
 
 _START: COSName = COSName.get_pdf_name("Start")

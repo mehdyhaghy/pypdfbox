@@ -19,8 +19,6 @@ This test pins down the end-to-end embedding path so the regression
 cannot re-surface.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.cos.cos_name import COSName

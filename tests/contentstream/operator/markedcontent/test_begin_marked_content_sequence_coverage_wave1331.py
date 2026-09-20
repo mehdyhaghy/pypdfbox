@@ -7,8 +7,6 @@ Targets the missed defensive branches:
 * last-COSName-wins behaviour when multiple names appear.
 """
 
-from __future__ import annotations
-
 from pypdfbox.contentstream import Operator, PDFStreamEngine
 from pypdfbox.contentstream.operator.markedcontent.begin_marked_content_sequence import (
     BeginMarkedContentSequence,
@@ -39,7 +37,7 @@ def test_process_without_context_returns_silently() -> None:
     we probe the underlying attribute instead.
     """
     processor = BeginMarkedContentSequence()
-    assert processor._context is None
+    assert processor._context is None  # intentional probe
     processor.process(
         Operator.get_operator("BMC"), [COSName.get_pdf_name("P")]
     )

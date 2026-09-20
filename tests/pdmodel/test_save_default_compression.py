@@ -6,8 +6,6 @@ Upstream PDFBox 3.0 parity: ``save()`` without an explicit
 stream. ``CompressParameters.NO_COMPRESSION`` restores the traditional
 uncompressed xref-table layout.
 """
-from __future__ import annotations
-
 import io
 
 import pytest

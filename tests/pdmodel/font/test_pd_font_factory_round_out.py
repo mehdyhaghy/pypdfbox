@@ -22,8 +22,6 @@ this changes the existing dispatch behaviour exercised in the other
 factory test files.
 """
 
-from __future__ import annotations
-
 import logging
 
 import pytest

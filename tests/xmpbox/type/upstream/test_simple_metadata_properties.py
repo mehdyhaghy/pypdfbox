@@ -9,8 +9,6 @@ is not yet wired from the metadata object so the test instantiates TypeMapping
 directly.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 import pytest

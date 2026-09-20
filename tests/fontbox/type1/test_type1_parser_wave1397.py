@@ -7,8 +7,6 @@ while exercising the EOF / malformed-input branches the real-world
 parser corpus would otherwise need fuzzing to hit.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.type1.type1_font_util import Type1FontUtil
 from pypdfbox.fontbox.type1.type1_parser import (
     TOKEN_CHARSTRING,

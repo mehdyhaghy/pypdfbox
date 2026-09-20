@@ -6,8 +6,6 @@ constructors, the COSString/COSStream dispatch on ``/JS``, and the
 sub-type stamp.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName, COSStream, COSString
 from pypdfbox.pdmodel.interactive.action.pd_action_java_script import PDActionJavaScript
 

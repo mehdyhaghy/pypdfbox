@@ -13,8 +13,6 @@ Targets the residual branches:
     covered for the "creator exists" arm; this test pins down the
     fallback path).
 """
-from __future__ import annotations
-
 import pytest
 
 import pypdfbox.xmpbox.type.type_mapping as type_mapping_module

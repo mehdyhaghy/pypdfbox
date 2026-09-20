@@ -39,8 +39,6 @@ on ``tests/fixtures/pdmodel/interactive/form/AcroFormsRotation.pdf``:
    ``is_standard_14`` untouched.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import numpy as np

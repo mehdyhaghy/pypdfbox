@@ -24,8 +24,6 @@ Every case is pinned against upstream PDFBox 3.0.7 Java behaviour:
   entry is reached first.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream.operator import MissingOperandException, Operator

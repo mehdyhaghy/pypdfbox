@@ -4,8 +4,6 @@ Exercises the promoted upstream-parity methods :meth:`create_hex_view`,
 :meth:`create_text_view`, and :meth:`get_text_string`.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 from tkinter import ttk
 

@@ -7,8 +7,6 @@
   false, so we go straight to the per-colorant blend at 658.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from pypdfbox.pdmodel.graphics.color.pd_device_cmyk import PDDeviceCMYK
 from pypdfbox.pdmodel.graphics.color.pd_device_n import PDDeviceN

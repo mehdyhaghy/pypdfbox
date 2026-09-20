@@ -49,8 +49,6 @@ process-wide state. Callers pick the locale explicitly; if they get it wrong,
 the parse returns ``None`` rather than silently guessing.
 """
 
-from __future__ import annotations
-
 import unicodedata
 from datetime import UTC, datetime
 

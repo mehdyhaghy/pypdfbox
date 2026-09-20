@@ -17,8 +17,6 @@ The Private DICT operand encoding helpers below mirror the CFF spec
 (Adobe Technical Note #5176, §4 Table 3) integer encoding.
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

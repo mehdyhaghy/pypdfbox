@@ -9,8 +9,6 @@ local ``_IntNumberTreeNode`` subclass that does the same, since the pypdfbox
 ``PDNumberTreeNode`` is generic over the value type.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSBase, COSDictionary, COSInteger
 from pypdfbox.pdmodel.common.pd_number_tree_node import PDNumberTreeNode
 

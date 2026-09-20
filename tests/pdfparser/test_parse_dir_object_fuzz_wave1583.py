@@ -19,8 +19,6 @@ These are hand-written pypdfbox tests (not a 1:1 JUnit port), so no
 PROVENANCE row is required.
 """
 
-from __future__ import annotations
-
 from collections.abc import Iterator
 
 import pytest

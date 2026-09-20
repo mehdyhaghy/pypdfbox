@@ -12,8 +12,6 @@ slice and falls through to the ``return 0`` tail:
   component (gd missing or index outside its range)
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.glyf_composite_comp import GlyfCompositeComp
 from pypdfbox.fontbox.ttf.glyf_composite_descript import GlyfCompositeDescript
 

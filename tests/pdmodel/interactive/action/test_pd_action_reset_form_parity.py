@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString
 from pypdfbox.pdmodel.interactive.action.pd_action_reset_form import (
     PDActionResetForm,

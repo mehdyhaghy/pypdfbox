@@ -8,8 +8,6 @@ The DPI list mirrors upstream exactly:
 ``0`` (off), ``100``, ``200``, ``300``, ``600``, ``1200``, ``-1`` (printer dpi).
 """
 
-from __future__ import annotations
-
 from typing import ClassVar
 
 from .menu_base import MenuBase

@@ -13,8 +13,6 @@ The module ships no CLI; it is a library helper imported by callers
 wiring LTV bundles. Tests therefore exercise the API directly.
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 
 from cryptography.x509 import ocsp

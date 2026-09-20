@@ -9,8 +9,6 @@ directions against pypdfbox's own parser/serializer (the oracle pin against
 Apache xmpbox lives in ``tests/xmpbox/oracle/test_xmp_resource_ref_oracle``).
 """
 
-from __future__ import annotations
-
 from io import BytesIO
 
 import pytest

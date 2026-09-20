@@ -4,8 +4,6 @@ Creates a sample document with a landscape orientation and some text
 surrounded by a box.
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.examples.pdmodel._font_helpers import (

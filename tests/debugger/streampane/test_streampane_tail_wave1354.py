@@ -9,8 +9,6 @@ Covers:
   dispatch (line 388 in ``stream_pane.py``).
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 
 from PIL import Image

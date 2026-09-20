@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf import wgl4_names
 
 

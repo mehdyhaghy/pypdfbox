@@ -18,8 +18,6 @@ exercise:
 These assertions are deterministic and do not contradict the byte-exact
 suites (eu-001, poems-beads, with_outline, vertical, rotations, by-area).
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSInteger, COSName, COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.graphics.form.pd_form_x_object import PDFormXObject

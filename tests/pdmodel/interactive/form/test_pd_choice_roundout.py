@@ -5,8 +5,6 @@ Hand-written tests covering remaining gaps on the choice base class:
 the value/options inheritance walk, /TI getter default, and assorted flag
 predicates.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString

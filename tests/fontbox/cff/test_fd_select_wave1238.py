@@ -7,8 +7,6 @@ representation. Java's ``Arrays.toString(int[])`` formats integer arrays
 as ``[1, 2, 3]`` (comma + space), which we mirror here.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.fd_select import Format0FDSelect, Format3FDSelect
 
 

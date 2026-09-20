@@ -7,8 +7,6 @@ and normalizes corners, so the annotation returns a real (zeroed)
 rectangle rather than ``None``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.fdf import FDFAnnotationFreeText
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle

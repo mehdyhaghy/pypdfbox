@@ -6,8 +6,6 @@ Cover the predicate / clear / validation surface added in wave 267:
 default ``/Type /Action`` and ``/S /Hide`` boilerplate written on
 construction."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSBoolean, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.interactive.action.pd_action import PDAction
 from pypdfbox.pdmodel.interactive.action.pd_action_hide import PDActionHide

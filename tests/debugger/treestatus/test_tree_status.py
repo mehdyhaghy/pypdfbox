@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`pypdfbox.debugger.treestatus.TreeStatus`."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName

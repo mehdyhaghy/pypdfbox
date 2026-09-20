@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream, COSString
 from pypdfbox.pdmodel.interactive.annotation import PDAnnotationWidget
 from pypdfbox.pdmodel.interactive.form import PDAcroForm

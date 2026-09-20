@@ -9,8 +9,6 @@ Some upstream tests reference fixture AFMs that are not bundled here
 We synthesise equivalent inputs in-process so the tests still cover the
 parser branches they were written for.
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

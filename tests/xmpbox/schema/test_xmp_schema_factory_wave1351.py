@@ -10,8 +10,6 @@ We instantiate :class:`AdobePDFSchema` (init signature
 with an explicit prefix so the factory routes through ``args =
 [metadata, prefix]`` rather than the bare ``[metadata]`` fallback.
 """
-from __future__ import annotations
-
 from pypdfbox.xmpbox.adobe_pdf_schema import AdobePDFSchema
 from pypdfbox.xmpbox.schema.xmp_schema_factory import XMPSchemaFactory
 from pypdfbox.xmpbox.type.type_mapping import PropertiesDescription

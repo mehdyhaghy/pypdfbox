@@ -76,8 +76,6 @@ Interactive walker commands (``-i`` / ``--interactive``):
 Exit codes: 0 success, 4 I/O / not-a-file / bad password / bad object id.
 Bad ``-page`` / ``-object`` arguments come back as exit 2 via argparse.
 """
-from __future__ import annotations
-
 import argparse
 import json
 from collections.abc import Sequence
@@ -385,7 +383,7 @@ def _stream_preview(node: COSStream) -> tuple[bytes, str]:
             sample = decoded.read(_MAX_STREAM_PREVIEW)
         if sample:
             return sample, "decoded"
-    except Exception:
+    except Exception:  # filter errors are diverse
         pass
     # Fall back to raw, undecoded bytes.
     try:
@@ -700,7 +698,7 @@ def _dump_stream(
     try:
         decoded_bytes = resolved.to_byte_array()
         decoded_err: str | None = None
-    except Exception as exc:
+    except Exception as exc:  # filters surface diverse errors
         decoded_bytes = b""
         decoded_err = str(exc)
 
@@ -970,7 +968,7 @@ def _print_page_tokens(
     data = page.get_contents()
     try:
         tokens = _tokenize_stream_bytes(data)
-    except Exception as exc:
+    except Exception as exc:  # parser errors surface to CLI
         print(f"pdfdebugger: tokenize page {one_based_index}: {exc}", flush=True)
         return 4
     if output_format == _FORMAT_JSON:
@@ -1231,7 +1229,7 @@ def _walker_stream_preview(
         else:
             with target.create_input_stream() as src:
                 data = src.read(limit)
-    except Exception as exc:
+    except Exception as exc:  # surface filter errors verbatim
         return f"<error: {exc}>"
     return _hex_dump(data)
 
@@ -1454,7 +1452,7 @@ def run(args: argparse.Namespace) -> int:
     try:
         ctx = PDDocument.load(src, password=password) if password is not None \
             else PDDocument.load(src)
-    except Exception as exc:
+    except Exception as exc:  # broad on purpose at the CLI seam
         print(f"pdfdebugger: cannot open {src}: {exc}", flush=True)
         return 4
 

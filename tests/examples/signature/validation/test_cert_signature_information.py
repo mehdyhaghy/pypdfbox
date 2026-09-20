@@ -1,7 +1,5 @@
 """Tests for ``CertSignatureInformation``."""
 
-from __future__ import annotations
-
 from pypdfbox.examples.signature.validation.cert_signature_information import (
     CertSignatureInformation,
 )

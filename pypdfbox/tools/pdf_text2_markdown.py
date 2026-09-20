@@ -4,8 +4,6 @@ Upstream Java reference:
     pdfbox/tools/src/main/java/org/apache/pdfbox/tools/PDFText2Markdown.java
     (lines 35-318)
 """
-from __future__ import annotations
-
 import contextlib
 from typing import Any
 

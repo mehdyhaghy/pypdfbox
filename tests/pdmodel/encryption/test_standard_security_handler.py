@@ -6,8 +6,6 @@ the dictionary-build path (``_build_r6_dictionary``) followed by the standard
 ``prepare_for_decryption`` + decrypt round-trip.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.encryption.access_permission import AccessPermission

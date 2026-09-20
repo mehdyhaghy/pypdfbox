@@ -4,8 +4,6 @@ Targets the residual partial-branch arrows surfaced by the wave 1399
 audit. Each test hits a False-arm that the existing suite never reached.
 """
 
-from __future__ import annotations
-
 import io
 from typing import Any
 
@@ -522,7 +520,7 @@ def test_pdocg_set_render_state_overwrites_existing_sub() -> None:
     # Set a second sub so when we delete one, /Usage stays.
     ocg.set_render_state("ON", "View")
     # Now drop /Print — usage still has /View so it's not removed.
-    ocg.set_render_state("OFF", "Print")
+    ocg.set_render_state("OFF", "Print")  # intentional state mutation
     # Now set /Print to None (we don't have a direct API but the typed
     # accessor exposes it through _set_usage_state_entry).
     ocg._set_usage_state_entry(
@@ -843,7 +841,7 @@ def test_pdf_xref_stream_index_entry_contiguous_numbers() -> None:
     from pypdfbox.pdfparser.pdf_xref_stream import PDFXRefStream
 
     stream = PDFXRefStream.__new__(PDFXRefStream)
-    stream._object_numbers = {1, 2, 3, 4}
+    stream._object_numbers = {1, 2, 3, 4}  # contiguous run + 0
     linked = stream._get_index_entry()
     # Single contiguous range (0..4) -> [0, 5]
     assert linked == [0, 5]
@@ -855,7 +853,7 @@ def test_pdf_xref_stream_index_entry_with_gap() -> None:
 
     stream = PDFXRefStream.__new__(PDFXRefStream)
     # {0, 1} then a gap then {5} — two ranges.
-    stream._object_numbers = {1, 5}
+    stream._object_numbers = {1, 5}  # {0, 1} contiguous, gap, {5}
     linked = stream._get_index_entry()
     # [0, 2, 5, 1]
     assert linked == [0, 2, 5, 1]
@@ -1138,7 +1136,7 @@ def test_pd_cid_font_type0_coerce_bbox_returns_none_for_malformed() -> None:
     from pypdfbox.pdmodel.font.pd_cid_font_type0 import PDCIDFontType0
 
     assert PDCIDFontType0._coerce_bbox(None) is None
-    assert PDCIDFontType0._coerce_bbox([1, 2, 3]) is None
+    assert PDCIDFontType0._coerce_bbox([1, 2, 3]) is None  # too short
 
 
 # -----------------------------------------------------------------------------

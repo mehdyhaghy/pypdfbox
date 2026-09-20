@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSName
 from pypdfbox.pdmodel.common.filespecification import PDEmbeddedFile
 

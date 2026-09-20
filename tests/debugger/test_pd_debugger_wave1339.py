@@ -23,8 +23,6 @@ Targets the few remaining uncovered branches in
 Honours ``PYPDFBOX_SKIP_TK=1`` like the rest of the debugger suite.
 """
 
-from __future__ import annotations
-
 import contextlib
 import os
 import sys

@@ -1,7 +1,5 @@
 """Hand-written tests for the :class:`Operators` registry."""
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.common.function.type4 import (
     ExecutionContext,
     InstructionSequenceBuilder,

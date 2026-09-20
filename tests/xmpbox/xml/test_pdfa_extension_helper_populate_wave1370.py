@@ -7,8 +7,6 @@ mirror-of-private upstream helper, and ``require_non_null``'s
 callable-message branch.
 """
 
-from __future__ import annotations
-
 from xml.dom.minidom import parseString
 
 import pytest

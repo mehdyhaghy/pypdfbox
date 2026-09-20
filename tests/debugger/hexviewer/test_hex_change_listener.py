@@ -1,7 +1,5 @@
 """Tests for the ``HexChangeListener`` protocol."""
 
-from __future__ import annotations
-
 from pypdfbox.debugger.hexviewer.hex_change_listener import HexChangeListener
 from pypdfbox.debugger.hexviewer.hex_changed_event import HexChangedEvent
 

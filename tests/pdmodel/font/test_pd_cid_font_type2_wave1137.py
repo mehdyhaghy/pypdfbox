@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdmodel.font.test_pd_cid_font_type2 import _StubTTF
 
 

@@ -7,8 +7,6 @@ Upstream Java reference:
 Loads a PDF and saves it back uncompressed (no object streams), useful
 for hand-debugging files in a text editor.
 """
-from __future__ import annotations
-
 import argparse
 import contextlib
 from pathlib import Path

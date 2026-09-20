@@ -7,8 +7,6 @@ Conventions". JUnit 5 idioms collapsed to pytest. Java
 ``PDField.set_partial_name`` for the divergence note).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName
@@ -287,7 +285,7 @@ def test_equals(env) -> None:
     field2.set_partial_name("differentField")
     assert field1 != field2
 
-    assert field1 == field1
+    assert field1 == field1  # upstream asserts identity equality
 
     assert field1 != None  # noqa: E711 — explicit None comparison
     assert field1 != "not a field"

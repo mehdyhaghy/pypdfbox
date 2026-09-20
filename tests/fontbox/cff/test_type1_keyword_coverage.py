@@ -11,8 +11,6 @@ The names here trace 1-to-1 to upstream
 coverage regression bisect maps straight back to the upstream operation.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.type1_keyword import Key, Type1KeyWord
 
 # ---------- Key ------------------------------------------------------------

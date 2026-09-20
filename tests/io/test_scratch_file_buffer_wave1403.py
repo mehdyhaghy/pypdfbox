@@ -8,8 +8,6 @@ directly to drive the empty-list fall-through (defensive parity with
 upstream's ``if (pageIndexes != null && !pageIndexes.isEmpty())`` guard).
 """
 
-from __future__ import annotations
-
 from pypdfbox.io.scratch_file import ScratchFile
 
 

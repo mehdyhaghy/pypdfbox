@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
@@ -596,7 +594,7 @@ class PDDocumentCatalog:
         try:
             if self._document.get_version() < 1.5:
                 self._document.set_version(1.5)
-        except Exception:
+        except Exception:  # defensive: catalogs without a doc
             pass
 
     def get_names(self) -> Any:
@@ -677,7 +675,7 @@ class PDDocumentCatalog:
         if names_dict is not None:
             try:
                 dests_tree = names_dict.get_dests()
-            except Exception:
+            except Exception:  # defensive on malformed names
                 dests_tree = None
             if dests_tree is not None:
                 # PDDestinationNameTreeNode (the proper name-tree shape) has

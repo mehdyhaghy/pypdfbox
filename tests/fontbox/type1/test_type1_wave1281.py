@@ -1,7 +1,5 @@
 """Tests for new ``pypdfbox.fontbox.type1`` ports."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.type1.token import Kind, Token

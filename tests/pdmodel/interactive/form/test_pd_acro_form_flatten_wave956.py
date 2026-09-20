@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.form import PDTextField
 from tests.pdmodel.interactive.form.test_pd_acro_form_flatten import (

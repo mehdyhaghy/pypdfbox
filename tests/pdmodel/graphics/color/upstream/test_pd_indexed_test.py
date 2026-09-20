@@ -9,8 +9,6 @@ We cover the factory contract directly here — round-trip through
 ``PDDocument.save`` is exercised by the broader writer parity suite.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSName, COSString

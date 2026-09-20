@@ -9,8 +9,6 @@ upstream 3.0.9 wraps the call and rethrows as ``IOException``
 applies.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

@@ -14,8 +14,6 @@ the non-separable RGB-triple compose path (``BlendFunction``); the
   * Mode-name lookup is case-sensitive (matches Java ``COSName.equals``).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString

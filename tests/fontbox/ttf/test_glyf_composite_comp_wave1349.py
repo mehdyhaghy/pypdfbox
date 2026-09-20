@@ -6,8 +6,6 @@ Targets the point-anchored decode branch (lines 84-85 — when
 ``has_instructions()`` predicate (line 215).
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.glyf_composite_comp import GlyfCompositeComp
 from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 

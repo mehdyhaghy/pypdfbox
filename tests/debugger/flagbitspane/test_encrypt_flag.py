@@ -1,7 +1,5 @@
 """Tests for :class:`EncryptFlag`."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSInteger, COSName
 from pypdfbox.debugger.flagbitspane.encrypt_flag import EncryptFlag
 from pypdfbox.pdmodel.encryption.access_permission import AccessPermission

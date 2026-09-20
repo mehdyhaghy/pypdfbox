@@ -6,8 +6,6 @@ exists/is-dir filtering that keeps only real directories.
 Mirrors ``org.apache.fontbox.util.autodetect.NativeFontDirFinder``.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.fontbox.util.autodetect.native_font_dir_finder import (

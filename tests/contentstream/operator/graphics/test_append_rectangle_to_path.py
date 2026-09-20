@@ -8,8 +8,6 @@ Mirrors upstream operand validation:
   the rendering cluster).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream import Operator, PDFStreamEngine

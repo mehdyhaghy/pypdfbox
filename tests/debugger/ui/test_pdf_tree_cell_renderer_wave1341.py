@@ -18,8 +18,6 @@ Targets the still-uncovered branches in the wave-1332 snapshot:
 * :func:`_lookup_icon` ArrayEntry recursion (line 318).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSInteger, COSName, COSObject
 from pypdfbox.debugger.ui import OverlayIcon, PDFTreeCellRenderer
 from pypdfbox.debugger.ui.array_entry import ArrayEntry

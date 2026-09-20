@@ -6,8 +6,6 @@ typed-property accessors that build :class:`ArrayProperty` /
 :class:`LangAlt` instances on demand.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 import pytest

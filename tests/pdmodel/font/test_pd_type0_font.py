@@ -15,8 +15,6 @@ These complement ``test_pd_type0_font_parity.py`` (raw dictionary
 behaviour) and ``test_pd_type0_font_subset.py`` (subset workflow).
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

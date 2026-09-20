@@ -6,8 +6,6 @@ Targets the two ``raise RuntimeError`` branches in
 (lines 117-118), both mirroring upstream's ``IllegalStateException``.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 
 import pytest

@@ -11,8 +11,6 @@ object stream) and ``objectStreamObjects`` (everything else), and exposes
 batches once writing begins.
 """
 
-from __future__ import annotations
-
 import contextlib
 from typing import TYPE_CHECKING
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdfparser.upstream import test_base_parser as base_parser_tests
 
 

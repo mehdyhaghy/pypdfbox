@@ -7,8 +7,6 @@ Closes residual partial branches in
   resolves to ``None`` (typed COSNull) — branch (110 → 104).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSDictionary,
     COSDocument,

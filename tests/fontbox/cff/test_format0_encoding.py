@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`Format0Encoding`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.cff_built_in_encoding import Supplement
 from pypdfbox.fontbox.cff.format0_encoding import Format0Encoding
 
@@ -12,7 +10,7 @@ def test_n_codes_is_stored() -> None:
 
 
 def test_n_codes_coerces_to_int() -> None:
-    enc = Format0Encoding(True)
+    enc = Format0Encoding(True)  # verifying coercion only
     assert enc.n_codes == 1
     assert isinstance(enc.n_codes, int) and not isinstance(enc.n_codes, bool)
 

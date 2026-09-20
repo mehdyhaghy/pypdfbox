@@ -14,8 +14,6 @@ These helpers are intentionally module-level functions so the
 ``OperatorProcessor`` subclasses stay thin and the resolution semantics
 can be reused — and tested — without instantiating a stream engine.
 """
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import COSBase, COSDictionary, COSName
@@ -106,19 +104,19 @@ def resolve_property_dict(
         return None
     try:
         resources = getter()
-    except Exception:
+    except Exception:  # defensive
         return None
     if resources is None:
         return None
     try:
         pl = resources.get_property_list(prop)
-    except Exception:
+    except Exception:  # defensive: malformed dict
         return None
     if pl is None:
         return None
     try:
         cos_object = pl.get_cos_object()
-    except Exception:
+    except Exception:  # defensive
         return None
     if isinstance(cos_object, COSDictionary):
         return cos_object

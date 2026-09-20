@@ -7,8 +7,6 @@ invariants that upstream relies on inside those suites — the assertions
 that would fail if the class diverged from documented behavior.
 """
 
-from __future__ import annotations
-
 import unicodedata
 
 from pypdfbox.text.text_position import TextPosition

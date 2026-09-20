@@ -6,8 +6,6 @@ the lite registry-routing scaffold for ``Tm``. The engine-coupled
 engine) lives in ``set_matrix.py`` and is tested separately.
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.contentstream import Operator

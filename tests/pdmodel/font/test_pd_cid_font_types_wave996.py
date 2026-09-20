@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from tests.pdmodel.font.test_pd_cid_font_types_wave436 import _FakeCFF, _FakeTTF

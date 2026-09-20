@@ -9,8 +9,6 @@ delegates the actual T.6 encoding to Pillow's libtiff backend through
 The Java upstream is G4-only (Group 4 / T.6), and so is this wrapper.
 """
 
-from __future__ import annotations
-
 import contextlib
 import io
 from typing import BinaryIO

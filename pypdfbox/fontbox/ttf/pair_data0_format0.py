@@ -12,8 +12,6 @@ rangeShift (uint16)`` then ``numPairs * (left uint16, right uint16,
 value int16)`` entries sorted by ``(left, right)``.
 """
 
-from __future__ import annotations
-
 import bisect
 from typing import TYPE_CHECKING
 

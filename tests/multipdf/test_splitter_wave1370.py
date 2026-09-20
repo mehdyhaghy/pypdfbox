@@ -17,8 +17,6 @@ suite:
   a hard upper bound, NOT a fixed page count).
 - Splitter result chunks are independently saveable/loadable.
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox import PDDocument, PDPage

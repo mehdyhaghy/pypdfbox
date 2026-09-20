@@ -7,8 +7,6 @@ source image, runs it through ``LosslessFactory.create_from_image``,
 and asserts the resulting :class:`PDImageXObject` has the expected
 metadata and a flate-encoded body that round-trips.
 """
-from __future__ import annotations
-
 import io
 import zlib
 

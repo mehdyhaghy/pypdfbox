@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray
 from tests.pdmodel.documentinterchange.logicalstructure.test_page_reference_setters_wave322 import (
     _NotPageWrapper,

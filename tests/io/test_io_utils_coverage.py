@@ -5,8 +5,6 @@ temp-dir/file helpers, the owner-only permissions helper, the unmap stub,
 the close_and_log_exception path, and the stream-cache factory helpers.
 """
 
-from __future__ import annotations
-
 import io
 import logging
 import os

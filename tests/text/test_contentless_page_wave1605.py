@@ -10,8 +10,6 @@ gating the loop on it made the "extract page 900 of 1000" case pay for all
 simply yields no glyphs while the per-page hooks still fire.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.text import PDFTextStripper, PDFTextStripperByArea

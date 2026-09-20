@@ -4,8 +4,6 @@ Upstream Java reference:
     pdfbox/tools/src/main/java/org/apache/pdfbox/tools/ImportXFDF.java
     (lines 42-119)
 """
-from __future__ import annotations
-
 import argparse
 import contextlib
 from pathlib import Path

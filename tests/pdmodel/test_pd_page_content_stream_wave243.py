@@ -17,8 +17,6 @@ Covers:
   ``setNonStrokingColor(java.awt.Color)``).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle

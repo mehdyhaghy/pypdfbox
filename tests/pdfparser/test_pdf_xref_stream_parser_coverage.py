@@ -9,8 +9,6 @@ Targets:
  - the OSError-on-init swallow path
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos.cos_array import COSArray
 from pypdfbox.cos.cos_document import COSDocument
 from pypdfbox.cos.cos_integer import COSInteger

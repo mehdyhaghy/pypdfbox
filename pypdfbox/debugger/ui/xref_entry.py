@@ -3,8 +3,6 @@
 Ported from ``org.apache.pdfbox.debugger.ui.XrefEntry``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSBase, COSObject, COSObjectKey
 
 

@@ -5,8 +5,6 @@ Covers :py:meth:`ViewMenu.is_show_text_stripper` and
 ``isShowTextStripper()`` / ``isShowTextStripperBeads()``.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 
 from pypdfbox.debugger.ui.view_menu import ViewMenu

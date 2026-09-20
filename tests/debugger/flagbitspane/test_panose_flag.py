@@ -1,7 +1,5 @@
 """Tests for :class:`PanoseFlag`."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSString

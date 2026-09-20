@@ -6,8 +6,6 @@ is reported as supported but adapts to ``None``, so the augmentation loop
 is skipped and only the static before-half glyph ids are returned.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.cmap_lookup import CmapLookup
 from pypdfbox.fontbox.ttf.gsub import GsubData, GsubWorkerForBengali
 

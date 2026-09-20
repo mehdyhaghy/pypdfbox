@@ -14,8 +14,6 @@ operator that has no Type 2 counterpart (e.g. ``HSBW`` (b0=13), present
 in Type1KeyWord only).
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.char_string_command import (
     _COMMAND_UNKNOWN as COMMAND_UNKNOWN_SINGLETON,
 )

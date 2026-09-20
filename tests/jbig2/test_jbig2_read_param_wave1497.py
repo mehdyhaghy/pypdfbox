@@ -7,8 +7,6 @@ constructor's happy path (set_source_subsampling re-entry, source-region and
 render-size setters).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.jbig2.jbig2_read_param import JBIG2ReadParam

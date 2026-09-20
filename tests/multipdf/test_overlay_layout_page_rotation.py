@@ -7,8 +7,6 @@ document). The public ``get_layout_page(page_number, number_of_pages)`` delegate
 keeps its two-argument signature and falls back to the by-index lookup.
 """
 
-from __future__ import annotations
-
 from collections.abc import Generator
 
 import pytest

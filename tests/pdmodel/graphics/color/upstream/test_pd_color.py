@@ -14,8 +14,6 @@ cases mirror the constructor invariants asserted by the upstream class
 parsing) and the ``equals``/``hashCode`` semantics declared on the class.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat, COSName
 from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
 from pypdfbox.pdmodel.graphics.color.pd_device_gray import PDDeviceGray

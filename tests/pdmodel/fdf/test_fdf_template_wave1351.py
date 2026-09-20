@@ -5,8 +5,6 @@ Targets lines 78-79 of ``pypdfbox/pdmodel/fdf/fdf_template.py`` —
 without building a new array.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.fdf import FDFField, FDFTemplate
 
 

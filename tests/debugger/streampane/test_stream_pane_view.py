@@ -1,7 +1,5 @@
 """Tests for :class:`StreamPaneView`."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.debugger.streampane.stream_pane_view import StreamPaneView

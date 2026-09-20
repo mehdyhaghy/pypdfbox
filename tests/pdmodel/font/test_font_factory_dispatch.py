@@ -6,8 +6,6 @@ whose ``/FontDescriptor`` *contains* a ``/FontFile3`` routes to
 ``/Subtype`` falls back to ``PDType1Font``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
 from pypdfbox.pdmodel.font.pd_mm_type1_font import PDMMType1Font

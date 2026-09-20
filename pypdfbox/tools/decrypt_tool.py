@@ -7,8 +7,6 @@ Upstream Java reference:
 Module is named ``decrypt_tool`` to avoid colliding with the existing
 ``pypdfbox/tools/decrypt.py`` argparse subcommand module.
 """
-from __future__ import annotations
-
 import argparse
 import sys
 from pathlib import Path

@@ -10,8 +10,6 @@ pypdfbox previously preserved a legacy "raw ``COSDictionary`` for direct
 entries" surface (cluster #1). This wave aligns it to upstream.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSInteger, COSName, COSObject
 from pypdfbox.pdmodel import PDDocument, PDResources
 from pypdfbox.pdmodel.font import PDFont, PDType1Font

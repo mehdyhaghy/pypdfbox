@@ -9,8 +9,6 @@ that the upstream test pinned down for streams that are an exact multiple of
 the 4 KiB internal buffer size.
 """
 
-from __future__ import annotations
-
 import io
 import os
 import random

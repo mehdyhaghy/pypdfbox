@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.pdmodel.font import PDVectorFont
 from tests.pdmodel.font import test_pd_vector_font as vector_tests
 

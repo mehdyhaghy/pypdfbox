@@ -1,7 +1,5 @@
 """Tests for :class:`pypdfbox.fontbox.ttf.table.common.range_record.RangeRecord`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.table.common.range_record import RangeRecord
 
 

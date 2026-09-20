@@ -4,8 +4,6 @@ Source: ``pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/
 documentnavigation/outline/PDOutlineItemIteratorTest.java``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.interactive.documentnavigation.outline import (

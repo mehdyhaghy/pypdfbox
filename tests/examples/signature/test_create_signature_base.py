@@ -1,7 +1,5 @@
 """Tests for ``CreateSignatureBase``."""
 
-from __future__ import annotations
-
 import datetime as _dt
 from io import BytesIO
 

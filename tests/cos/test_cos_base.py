@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSInteger
 from pypdfbox.cos.cos_object_key import COSObjectKey
 

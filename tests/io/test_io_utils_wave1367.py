@@ -8,8 +8,6 @@ exercise the new accepting-arguments paths plus a few edges of the
 underlying copy / populate_buffer / unmap helpers.
 """
 
-from __future__ import annotations
-
 import io
 import logging
 

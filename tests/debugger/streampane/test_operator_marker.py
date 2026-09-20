@@ -1,7 +1,5 @@
 """Tests for :mod:`pypdfbox.debugger.streampane.operator_marker`."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream.operator_name import OperatorName

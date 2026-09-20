@@ -11,8 +11,6 @@ Each test pins an observable behaviour (return value, painted pixels, or
 graphics-state mutation), not just line execution.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from PIL import Image

@@ -5,8 +5,6 @@ Covers lines 318-320 (``mouse_clicked(None)``) and 355-357
 parity-tool invocation and return immediately.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 from unittest.mock import MagicMock
 

@@ -13,8 +13,6 @@ edges:
   CRL distribution points (no extension at all).
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 
 import pytest

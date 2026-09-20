@@ -9,8 +9,6 @@ the result along with its anchor rectangle so callers can paste it
 into the page raster the same way ``TexturePaint`` would tile it.
 """
 
-from __future__ import annotations
-
 import logging
 import math
 import os

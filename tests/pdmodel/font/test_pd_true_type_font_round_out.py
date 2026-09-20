@@ -8,8 +8,6 @@ Exercises the small remaining gaps relative to upstream:
 * ``get_path_by_name`` (handles the GID pseudo-name fallback)
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

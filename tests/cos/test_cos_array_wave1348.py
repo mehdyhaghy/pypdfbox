@@ -8,8 +8,6 @@ Targets residual branches:
     (line 499 / ``elif`` arm).
   * ``iterator()`` and ``maybe_wrap`` (lines 529, 544-554).
 """
-from __future__ import annotations
-
 from pypdfbox.cos.cos_array import COSArray, _add_to_collection
 from pypdfbox.cos.cos_dictionary import COSDictionary
 from pypdfbox.cos.cos_integer import COSInteger

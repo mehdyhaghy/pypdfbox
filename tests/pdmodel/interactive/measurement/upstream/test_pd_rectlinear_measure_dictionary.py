@@ -12,8 +12,6 @@ pytest-style tests. Should upstream add a real test file in the future,
 this module should be replaced with a direct port.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName

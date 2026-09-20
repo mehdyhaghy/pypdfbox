@@ -21,8 +21,6 @@ same input (``CMap.readCode`` / ``CMap.toCID``, ``PDCIDFontType2.codeToGID``,
 ``PDCIDFont.readWidths`` / ``readVerticalDisplacements``).
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

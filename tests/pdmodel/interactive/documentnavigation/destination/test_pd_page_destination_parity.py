@@ -3,8 +3,6 @@
 Mirrors the contract in
 ``org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageDestination``.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

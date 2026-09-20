@@ -14,8 +14,6 @@ Liberation TTF, save + reload the page, and assert the extracted string and the
 per-glyph TextPosition geometry. Hand-written.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

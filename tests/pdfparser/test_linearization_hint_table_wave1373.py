@@ -22,8 +22,6 @@ Tests cover:
   * defensive parsing — truncated bodies / unrealistic page counts
 """
 
-from __future__ import annotations
-
 import struct
 import zlib
 

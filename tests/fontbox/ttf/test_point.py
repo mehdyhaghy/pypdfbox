@@ -1,7 +1,5 @@
 """Tests for :class:`pypdfbox.fontbox.ttf.point.Point`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.point import Point
 
 

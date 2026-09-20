@@ -3,8 +3,6 @@
 Upstream baseline: PDFBox 3.0.x. Parametrised constructor-shape check
 across every TextType-derived simple property class.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import XMPMetadata

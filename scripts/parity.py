@@ -19,8 +19,6 @@ Or with PDFBOX_SRC env var:
 The Java path should be the PDFBox repo root (so `<root>/pdfbox/src/main/java/...`
 resolves). pypdfbox source is auto-detected as the parent of this script's directory.
 """
-from __future__ import annotations
-
 import argparse
 import ast
 import json

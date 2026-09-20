@@ -1,7 +1,5 @@
 """Hand-written tests for ``pypdfbox.debugger.ui.OSXAdapter``."""
 
-from __future__ import annotations
-
 import sys
 import tkinter as tk
 from typing import Any

@@ -8,8 +8,6 @@ direct tests pin down semantics for downstream callers (extractors /
 structure builders) that consume the helpers without going through the
 operator pipeline.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream import PDFStreamEngine

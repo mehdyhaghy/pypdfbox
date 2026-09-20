@@ -9,8 +9,6 @@ Covers lines 1395, 1399-1400, 1417-1418, 1423, 1428-1429, 1432 in
 ``get_cfa_pattern_property`` / ``set_cfa_pattern_property``).
 """
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox import ExifSchema, XMPMetadata
 from pypdfbox.xmpbox.type.cfa_pattern_type import CFAPatternType
 from pypdfbox.xmpbox.type.oecf_type import OECFType

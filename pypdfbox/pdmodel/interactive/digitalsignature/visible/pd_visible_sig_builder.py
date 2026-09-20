@@ -13,8 +13,6 @@ PDSignatureField, …), the builder records ``None`` on the shared
 the API-surface mirror remains usable.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING, Any
 

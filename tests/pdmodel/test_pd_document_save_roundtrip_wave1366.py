@@ -13,8 +13,6 @@ dictionary shapes that have historically broken token / xref serialisation
 (deeply nested arrays, stream length 0, name with PDF special chars).
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

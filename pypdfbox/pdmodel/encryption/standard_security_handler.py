@@ -22,8 +22,6 @@ needed to read and write encrypted documents, but does not yet model
 validation. Those are tracked in ``CHANGES.md``.
 """
 
-from __future__ import annotations
-
 import hashlib
 import hmac
 import logging

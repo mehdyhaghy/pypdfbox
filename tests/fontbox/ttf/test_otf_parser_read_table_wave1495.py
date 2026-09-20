@@ -7,8 +7,6 @@ Mirrors ``org.apache.fontbox.ttf.OTFParser`` (read_table switch L66-L82,
 newFont L60-L63, allowCFF L85-L88).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.ttf.cff_table import CFFTable

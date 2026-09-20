@@ -16,8 +16,6 @@ Skipped:
   collapses to ``float`` on the way out.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSStream

@@ -10,8 +10,6 @@ Closes three partials in ``ExtractTTFFonts``:
   ``PDCIDFontType2`` leaves ``descriptor`` None and skips the write.
 """
 
-from __future__ import annotations
-
 import contextlib
 from pathlib import Path
 from unittest import mock

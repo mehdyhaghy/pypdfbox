@@ -14,8 +14,6 @@ confirm the saved file requires a password to open. Behavioural
 coverage of the per-flag permission plumbing lives in the hand-written
 ``tests/tools/test_encrypt.py``.
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

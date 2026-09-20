@@ -16,8 +16,6 @@ into three buckets:
 Pushes the file to >=95%.
 """
 
-from __future__ import annotations
-
 import builtins
 import logging
 import pathlib

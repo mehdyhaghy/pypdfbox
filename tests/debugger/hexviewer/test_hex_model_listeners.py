@@ -7,8 +7,6 @@ upstream name, so we promote ``fire_model_changed`` to public dispatch and
 ``is_ascii_printable`` to a public static helper.
 """
 
-from __future__ import annotations
-
 from pypdfbox.debugger.hexviewer.hex_model import HexModel
 from pypdfbox.debugger.hexviewer.hex_model_changed_event import (
     HexModelChangedEvent,

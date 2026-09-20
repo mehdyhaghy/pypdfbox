@@ -10,8 +10,6 @@ mirror the Java surface but are stubs (they would otherwise need a
 Lucene ``Document`` to mutate).
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 import os
 from pathlib import Path

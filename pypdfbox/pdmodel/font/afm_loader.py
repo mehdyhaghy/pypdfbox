@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from importlib import resources
 from importlib.resources.abc import Traversable
 from typing import Any

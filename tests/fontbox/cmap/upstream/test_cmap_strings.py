@@ -8,8 +8,6 @@ project's JUnit translation table (``assertSame`` -> ``is``,
 ``assertNotSame`` -> ``is not``, ``assertNull`` -> ``is None``).
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cmap.cmap_strings import CMapStrings
 
 

@@ -1,7 +1,5 @@
 """Hand-written tests for ``FlateDecode``."""
 
-from __future__ import annotations
-
 import io
 import zlib
 

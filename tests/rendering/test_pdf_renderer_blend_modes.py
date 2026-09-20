@@ -8,8 +8,6 @@ helper directly so we don't have to construct full content streams to
 verify each of the twelve §11.3.5.1 modes.
 """
 
-from __future__ import annotations
-
 from PIL import Image
 
 from pypdfbox.pdmodel.graphics.blend_mode import BlendMode

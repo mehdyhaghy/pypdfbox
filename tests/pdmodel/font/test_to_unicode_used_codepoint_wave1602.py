@@ -16,8 +16,6 @@ synthetically: the Liberation Sans cmap is patched in-memory so U+0100
 maps to the same glyph as U+0041 ("A").
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 

@@ -28,8 +28,6 @@ Files touched (one or two arrows each):
 * pypdfbox/loader.py
 """
 
-from __future__ import annotations
-
 import contextlib
 from io import BytesIO
 
@@ -295,7 +293,7 @@ def test_pd_cid_font_type0_coerce_bbox_none_returns_none() -> None:
     result = PDCIDFontType0._coerce_bbox("not-a-list")
     assert result is None
 
-    result = PDCIDFontType0._coerce_bbox([1, 2, 3])
+    result = PDCIDFontType0._coerce_bbox([1, 2, 3])  # wrong length
     assert result is None
 
 

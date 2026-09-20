@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import datetime as _dt
 import hashlib
 from typing import TYPE_CHECKING
@@ -1091,7 +1089,7 @@ class PDSignature:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", UserWarning)
                 certs = pkcs7.load_der_pkcs7_certificates(trimmed)
-        except Exception as exc:
+        except Exception as exc:  # surface any parse failure
             result.errors.append(f"failed to parse PKCS#7 /Contents: {exc}")
             return result
 

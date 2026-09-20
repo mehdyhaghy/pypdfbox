@@ -13,8 +13,6 @@ PostScript stack literals in the upstream cases (``1 2 3 3 copy``) push
 bottom-up; we replicate the same order via ``stack.extend([...])``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.common.function.type4.stack_operators import (
     Copy,
     Dup,

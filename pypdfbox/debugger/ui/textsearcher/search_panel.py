@@ -10,8 +10,6 @@ The *Regex* check-box is a project-level extension over upstream (see
 ``CHANGES.md``).
 """
 
-from __future__ import annotations
-
 import contextlib
 import tkinter as tk
 from collections.abc import Callable

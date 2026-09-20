@@ -41,8 +41,6 @@ Behavioural deviations from upstream are recorded in CHANGES.md:
   without external dependencies.
 """
 
-from __future__ import annotations
-
 import contextlib
 import logging
 import sys
@@ -665,7 +663,7 @@ class PDFDebugger:
             page_labels = catalog.get_page_labels()
         except OSError as ex:
             return str(ex)
-        except Exception:
+        except Exception:  # mirrors upstream's broad catch
             return None
         if page_labels is None or page_index < 0:
             return None
@@ -1285,7 +1283,7 @@ class PDFDebugger:
             return
         try:
             n_pages = self._document.get_number_of_pages()
-        except Exception as ex:
+        except Exception as ex:  # surface to user
             messagebox.showerror(
                 "Print",
                 f"Could not determine page count: {ex}",
@@ -1301,7 +1299,7 @@ class PDFDebugger:
             return
         try:
             self._send_document_to_printer(n_pages)
-        except Exception as ex:
+        except Exception as ex:  # surface to user
             messagebox.showerror(
                 "Print",
                 f"Printing failed: {ex}",
@@ -1342,7 +1340,7 @@ class PDFDebugger:
         for cmd in ("lp", "lpr"):
             if shutil.which(cmd):
                 try:
-                    subprocess.Popen(
+                    subprocess.Popen(  # cmd is from a fixed allow-list
                         [cmd, str(tmp_path)]
                     )
                     return
@@ -1515,7 +1513,7 @@ class PDFDebugger:
                 self._read_pdf_file(self._current_file_path, "")
             with contextlib.suppress(AttributeError, tk.TclError):
                 self._toplevel.deiconify()  # type: ignore[union-attr]
-        except Exception as ex:
+        except Exception as ex:  # mirrors upstream broad catch
             _LOG.error("PDFDebugger.call failed: %s", ex)
             with contextlib.suppress(Exception):
                 ErrorDialog(ex).set_visible(True)
@@ -1606,7 +1604,7 @@ class PDFDebugger:
         except OSError as ex:
             ErrorDialog(ex).set_visible(True)
 
-    def open(self) -> PDDocument | None:
+    def open(self) -> PDDocument | None:  # mirrors upstream name
         """Open a document via the currently selected source path.
 
         Mirrors the anonymous overrides of
@@ -1681,7 +1679,7 @@ class PDFDebugger:
         try:
             from urllib.request import urlopen
 
-            with urlopen(url) as response:
+            with urlopen(url) as response:  # user-supplied URL
                 body = response.read().decode("utf-8", errors="replace")
         except OSError as ex:
             ErrorDialog(ex).set_visible(True)
@@ -1769,7 +1767,7 @@ class PDFDebugger:
         self._current_file_path = url_string
         # ``urlopen`` is the stdlib equivalent of upstream's
         # ``RandomAccessReadBuffer.createBufferFromStream(url.openStream())``.
-        with urlopen(url_string) as response:
+        with urlopen(url_string) as response:  # user-supplied URL
             data = response.read()
         self._document = (
             PDDocument.load(data, password) if password else PDDocument.load(data)
@@ -1815,7 +1813,7 @@ class PDFDebugger:
         for path in reversed(files):
             name = Path(path).name
 
-            def _opener(path=path) -> None:
+            def _opener(path=path) -> None:  # local default arg
                 with contextlib.suppress(OSError):
                     self._read_pdf_file(path, "")
 
@@ -1927,7 +1925,7 @@ class PDFDebugger:
             if text.startswith(("http://", "https://", "file:")):
                 from urllib.request import urlopen
 
-                with urlopen(text) as response:
+                with urlopen(text) as response:  # user-supplied URL
                     data = response.read()
                 return (
                     PDDocument.load(data, opener.password)
@@ -2400,7 +2398,7 @@ class DocumentOpener:
         self.password: str | bytes = password
         self._master = master
 
-    def open(self) -> PDDocument:
+    def open(self) -> PDDocument:  # mirrors upstream method name
         """Load the underlying input and return a :class:`PDDocument`.
 
         Subclasses must override; the base implementation raises

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .pd_resource_cache import PDResourceCache
 
 

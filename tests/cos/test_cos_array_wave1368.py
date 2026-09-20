@@ -18,8 +18,6 @@ Coverage round-out for paths not yet exercised:
 * ``__contains__`` / ``contains`` matching the underlying list ``in`` op.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

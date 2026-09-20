@@ -16,8 +16,6 @@ auth header. This file fills:
   hit a real network.
 """
 
-from __future__ import annotations
-
 import hashlib
 from io import BytesIO
 from urllib.request import Request

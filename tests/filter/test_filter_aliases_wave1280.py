@@ -7,8 +7,6 @@ class names. The behaviour is covered by the underlying ``*Decode`` test
 suites; these tests just confirm the inheritance / registration shape.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

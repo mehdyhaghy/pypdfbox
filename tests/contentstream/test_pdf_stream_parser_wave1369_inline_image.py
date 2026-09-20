@@ -16,8 +16,6 @@ Targets:
   instead of Height) round-trip from the parser into PDInlineImage.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSName

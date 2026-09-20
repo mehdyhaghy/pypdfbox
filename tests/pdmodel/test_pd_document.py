@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import io
 from pathlib import Path
 from typing import BinaryIO
@@ -457,7 +455,7 @@ def test_register_true_type_font_for_closing_appends() -> None:
     doc = PDDocument()
     sentinel = object()
     doc.register_true_type_font_for_closing(sentinel)
-    assert sentinel in doc._fonts_to_close
+    assert sentinel in doc._fonts_to_close  # test introspection
 
 
 # ---------- get_fonts_to_subset ----------
@@ -500,7 +498,7 @@ def test_set_encryption_dictionary_none_clears_trailer_and_cache() -> None:
 
     doc.set_encryption_dictionary(None)
     assert trailer.get_item(COSName.get_pdf_name("Encrypt")) is None
-    assert doc._encryption is None
+    assert doc._encryption is None  # test introspection
 
 
 def test_set_encryption_dictionary_none_is_noop_without_trailer() -> None:
@@ -508,7 +506,7 @@ def test_set_encryption_dictionary_none_is_noop_without_trailer() -> None:
     doc = PDDocument()
     # No /Encrypt has ever been set — clearing should silently succeed.
     doc.set_encryption_dictionary(None)
-    assert doc._encryption is None
+    assert doc._encryption is None  # test introspection
 
 
 # ---------- resource cache ----------

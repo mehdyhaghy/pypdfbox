@@ -16,8 +16,6 @@ exercise the three behaviour modes:
    level when the CTM scales coordinates into a larger pixel range.
 """
 
-from __future__ import annotations
-
 from pypdfbox.rendering.pdf_renderer import (
     _PATCH_MAX_LEVEL,
     _calc_patch_level,

@@ -5,8 +5,6 @@ Mirrors ``org.apache.pdfbox.pdmodel.fixup.processor.AbstractProcessor``
 ``pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fixup/processor/AbstractProcessor.java``).
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from .pd_document_processor import PDDocumentProcessor

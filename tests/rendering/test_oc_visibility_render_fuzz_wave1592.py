@@ -24,8 +24,6 @@ Parity reference: upstream ``org.apache.pdfbox.rendering.PageDrawer``
 ``isContentRendered`` / ``isHiddenOCG``).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos.cos_array import COSArray

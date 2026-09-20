@@ -10,8 +10,6 @@ Closes two partials:
   the per-annotation loop advances.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.examples.pdmodel.extract_embedded_files import ExtractEmbeddedFiles

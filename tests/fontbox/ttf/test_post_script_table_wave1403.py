@@ -11,8 +11,6 @@ the defensive ``None`` fall-through is to monkeypatch the lookup — a
 test-only override that leaves production behaviour untouched.
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

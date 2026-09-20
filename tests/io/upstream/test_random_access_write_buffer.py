@@ -12,8 +12,6 @@ testBufferEOF, testAlreadyClose's seek) are covered by the upstream
 ScratchFileBufferTest port instead.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.io import RandomAccessWriteBuffer

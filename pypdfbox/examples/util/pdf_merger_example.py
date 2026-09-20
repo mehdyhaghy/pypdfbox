@@ -11,8 +11,6 @@ an in-memory buffer of the merged bytes — and exposes the helper methods
 returns ``None`` when ``xmpbox`` is not yet wired up.
 """
 
-from __future__ import annotations
-
 import contextlib
 import io
 import logging

@@ -8,8 +8,6 @@ Targets validation branches in :mod:`pypdfbox.io.memory_usage_setting`:
 * ``use_main_memory`` / ``use_temp_file`` matrix per mode.
 """
 
-from __future__ import annotations
-
 import os
 
 import pytest

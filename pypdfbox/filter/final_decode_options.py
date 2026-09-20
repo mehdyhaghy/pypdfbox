@@ -6,8 +6,6 @@ Mirrors Java's private static inner class
 is silently ignored to match upstream behaviour.
 """
 
-from __future__ import annotations
-
 from .decode_options import DecodeOptions, _Rectangle
 
 

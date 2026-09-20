@@ -9,8 +9,6 @@ walks every code with a glyph and renders ``(code, CID, GID, unicode,
 glyph)``.
 """
 
-from __future__ import annotations
-
 import logging
 import tkinter as tk
 from typing import TYPE_CHECKING, Any

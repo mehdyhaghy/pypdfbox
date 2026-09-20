@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from pypdfbox.jbig2.io.sub_input_stream import SubInputStream

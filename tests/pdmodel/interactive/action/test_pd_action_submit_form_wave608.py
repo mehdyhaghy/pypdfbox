@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.interactive.action.pd_action_submit_form import (

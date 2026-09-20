@@ -6,8 +6,6 @@ These cover the three methods ported in wave 1307 to round out parity with
 ``org.apache.pdfbox.debugger.ui.RecentFiles`` from Apache PDFBox 3.0.
 """
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
 

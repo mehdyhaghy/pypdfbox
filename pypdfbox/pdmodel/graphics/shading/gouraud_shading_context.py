@@ -3,8 +3,6 @@
 Mirrors PDFBox ``org.apache.pdfbox.pdmodel.graphics.shading.GouraudShadingContext``.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from .shaded_triangle import ShadedTriangle

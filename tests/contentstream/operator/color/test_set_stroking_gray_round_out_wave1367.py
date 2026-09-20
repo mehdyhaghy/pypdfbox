@@ -12,8 +12,6 @@ file targets the engine-coupled behaviours that exercise the shared
 * extra trailing operands are tolerated (only first 1 is consumed).
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

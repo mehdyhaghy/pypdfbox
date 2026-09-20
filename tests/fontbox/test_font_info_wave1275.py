@@ -1,7 +1,5 @@
 """Wave 1275 — explicit ``to_string()`` parity for FontInfo."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.fontbox.font_box_font import FontBoxFont

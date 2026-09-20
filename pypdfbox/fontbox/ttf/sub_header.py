@@ -14,8 +14,6 @@ sub-headers without reaching into private state. This matches the
 pypdfbox naming convention of one top-level class per file.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 

@@ -21,8 +21,6 @@ Verifies known pixel values against the PDFBox
 ``SampledImageReader`` / colour-space ``toRGBImage`` semantics.
 """
 
-from __future__ import annotations
-
 import pytest
 from PIL import Image  # noqa: F401  (import guard: skip cleanly if Pillow absent)
 

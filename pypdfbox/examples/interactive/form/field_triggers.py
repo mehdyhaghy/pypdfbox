@@ -11,8 +11,6 @@ exposed in the lite port the corresponding step is skipped — the sample
 still surfaces the trigger-naming layout for reference.
 """
 
-from __future__ import annotations
-
 import contextlib
 import sys
 

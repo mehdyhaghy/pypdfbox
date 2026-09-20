@@ -9,8 +9,6 @@ Covers:
   predicate (parity with ``PDAnnotationStamp``).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_highlight import (
     PDAnnotationHighlight,

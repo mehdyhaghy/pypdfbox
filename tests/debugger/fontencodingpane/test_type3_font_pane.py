@@ -6,8 +6,6 @@ These cover the upstream-named entry points (as opposed to the
 :mod:`test_type3_font` already exercises through the constructor).
 """
 
-from __future__ import annotations
-
 import os
 
 import pytest

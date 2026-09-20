@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 import tests.pdfparser.test_pdf_stream_parser_parity as parity

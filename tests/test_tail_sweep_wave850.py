@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination import (

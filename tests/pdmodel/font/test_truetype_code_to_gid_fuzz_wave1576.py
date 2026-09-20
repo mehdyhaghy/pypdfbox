@@ -35,8 +35,6 @@ to the raw-code ``else`` branch — diverging from PDFBox, whose
 pins the fix.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

@@ -3,8 +3,6 @@
 Mirrors ``org.apache.pdfbox.util.filetypedetector.FileTypeDetector``.
 """
 
-from __future__ import annotations
-
 import io
 from typing import BinaryIO
 

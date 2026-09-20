@@ -17,8 +17,6 @@ This is distinct from :class:`pypdfbox.xmpbox.xmp_paged_text_schema.XMPageTextSc
 the same namespace; this class is the verbatim upstream-named mirror.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from pypdfbox.xmpbox.xmp_schema import XMPSchema

@@ -16,8 +16,6 @@ build files can still reach the task surface — the file-set entries are
 expanded inside :meth:`execute` when present.
 """
 
-from __future__ import annotations
-
 import logging
 from pathlib import Path
 from typing import Any

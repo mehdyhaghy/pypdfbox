@@ -6,8 +6,6 @@ Upstream (``DecryptionMaterial.java``) is an empty abstract base shared by
 re-parenting did not change subclass behavior.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.encryption.decryption_material import DecryptionMaterial
 from pypdfbox.pdmodel.encryption.public_key_decryption_material import (
     PublicKeyDecryptionMaterial,

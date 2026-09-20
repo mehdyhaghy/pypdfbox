@@ -15,8 +15,6 @@ concrete subclass that supplies the ``shadingType`` constant. We drive:
   every patch
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

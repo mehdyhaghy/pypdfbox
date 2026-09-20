@@ -5,8 +5,6 @@ Mirrors ``org.apache.pdfbox.pdmodel.fixup.processor.AcroFormGenerateAppearancesP
 ``pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fixup/processor/AcroFormGenerateAppearancesProcessor.java``).
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING
 

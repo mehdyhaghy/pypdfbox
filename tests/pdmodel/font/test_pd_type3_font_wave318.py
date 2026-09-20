@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.font.pd_type3_font import PDType3Font

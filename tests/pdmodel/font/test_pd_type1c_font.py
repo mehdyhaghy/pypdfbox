@@ -20,8 +20,6 @@ declared on the :class:`PDType1CFont` body before wave 1247:
 * ``read_encoding_from_font`` — embedded vs Standard 14 vs fallback.
 * ``encode_codepoint`` — single-codepoint encoder with raises.
 """
-from __future__ import annotations
-
 import io
 
 import pytest

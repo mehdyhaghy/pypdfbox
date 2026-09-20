@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat, COSName
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_polygon import (
     PDAnnotationPolygon,

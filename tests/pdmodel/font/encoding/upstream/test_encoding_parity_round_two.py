@@ -11,8 +11,6 @@ against upstream PDFBox 3.0:
   constructor raises (upstream throws ``IllegalArgumentException``).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSName

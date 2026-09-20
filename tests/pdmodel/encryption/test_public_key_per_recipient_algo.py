@@ -17,8 +17,6 @@ upstream and violated the "do not invent abstractions" rule; wave 1502 reverted
 the write path to one-envelope-per-recipient and these tests track that.)
 """
 
-from __future__ import annotations
-
 import datetime
 
 import pytest
@@ -118,7 +116,7 @@ def two_recipients_same_perms() -> tuple[
         perms_b.set_can_print(False)
         r1, c1, k1 = _make_recipient_with(perms_a)
         r2, c2, k2 = _make_recipient_with(perms_b)
-    except Exception:
+    except Exception:  # cert gen too heavy on some boxes
         pytest.skip("cert generation too heavy in this environment")
     # Sanity-check that the masks really are identical going in.
     assert (

@@ -3,8 +3,6 @@
 Mirrors ``org.apache.pdfbox.pdmodel.graphics.state.PDTextState``.
 """
 
-from __future__ import annotations
-
 import copy
 from typing import TYPE_CHECKING
 

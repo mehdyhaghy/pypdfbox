@@ -6,8 +6,6 @@ False branch in :meth:`FDArray.get_font_name`: when a Font DICT has no
 rawDict-lookup is skipped and the empty-string fallback is returned.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.fd_array import FDArray
 
 

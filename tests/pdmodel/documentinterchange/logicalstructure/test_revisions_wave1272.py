@@ -1,8 +1,6 @@
 """Wave 1272: parity coverage for ``Revisions.get_object`` and
 ``Revisions.to_string`` upstream-named accessors."""
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.documentinterchange.logicalstructure.revisions import (
     Revisions,
 )

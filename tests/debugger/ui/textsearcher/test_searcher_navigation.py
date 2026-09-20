@@ -8,8 +8,6 @@ session-scoped ``tk_root`` fixture from ``conftest.py`` for the rest
 (which honors ``PYPDFBOX_SKIP_TK=1``).
 """
 
-from __future__ import annotations
-
 import os
 import tkinter as tk
 

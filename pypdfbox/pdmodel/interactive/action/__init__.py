@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .open_mode import OpenMode
 from .pd_action import PDAction
 from .pd_action_embedded_go_to import PDActionEmbeddedGoTo

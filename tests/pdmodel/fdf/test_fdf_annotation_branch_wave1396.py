@@ -8,8 +8,6 @@ Closes False-branch arrows:
 * 454->456 — attribute whose ``nodeValue`` is ``None``
 """
 
-from __future__ import annotations
-
 from xml.dom.minidom import parseString
 
 from pypdfbox.pdmodel.fdf.fdf_annotation import FDFAnnotation

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSBoolean, COSDictionary
 from pypdfbox.pdmodel.fdf import FDFField, FDFTemplate
 from pypdfbox.pdmodel.fdf.fdf_field import FDFNamedPageReference

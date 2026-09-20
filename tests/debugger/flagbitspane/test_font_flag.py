@@ -1,7 +1,5 @@
 """Tests for :class:`FontFlag`."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSInteger, COSName
 from pypdfbox.debugger.flagbitspane.font_flag import FontFlag
 

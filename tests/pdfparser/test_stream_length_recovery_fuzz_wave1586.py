@@ -17,8 +17,6 @@ through :class:`Loader` and assert the recovered body + ``/Length`` entry
 match upstream PDFBox 3.0.7 behaviour.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSInteger, COSName, COSObject, COSObjectKey, COSStream

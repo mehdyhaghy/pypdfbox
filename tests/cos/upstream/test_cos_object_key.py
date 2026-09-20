@@ -3,8 +3,6 @@ Ported from Apache PDFBox 3.0:
   pdfbox/src/test/java/org/apache/pdfbox/cos/COSObjectKeyTest.java
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

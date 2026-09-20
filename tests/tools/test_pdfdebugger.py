@@ -1,7 +1,5 @@
 """Tests for ``pypdfbox pdfdebugger`` (lite CLI replacement for upstream's
 Swing-based ``PDFDebugger``)."""
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

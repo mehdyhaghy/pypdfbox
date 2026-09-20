@@ -6,8 +6,6 @@ these tests exercise the page-spanning read/write path, partial-page
 writes, and free-page reuse on close/clear.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.io import (

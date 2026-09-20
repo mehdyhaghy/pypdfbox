@@ -1,8 +1,6 @@
 """Ported from upstream PDFBox 3.0:
 ``pdfbox/src/test/java/org/apache/pdfbox/pdmodel/PageLayoutTest.java``."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.page_layout import PageLayout

@@ -12,8 +12,6 @@ class and — where headless-safe — exercises the lightweight logic.
 The matrix below mirrors the deferred-items audit verbatim.
 """
 
-from __future__ import annotations
-
 import os
 import sys
 
@@ -588,7 +586,7 @@ def test_reader_bottom_panel_mouse_clicked_safe_with_no_dialog(tk_root) -> None:
     from pypdfbox.debugger.ui.reader_bottom_panel import ReaderBottomPanel
 
     # Clear any singleton state from sibling tests.
-    LogDialog._instance = None
+    LogDialog._instance = None  # explicit test-only reset
     panel = ReaderBottomPanel(tk_root)
     panel.init()
     # Without a LogDialog the click handler should bail safely.

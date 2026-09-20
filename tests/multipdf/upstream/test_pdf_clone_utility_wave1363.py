@@ -10,8 +10,6 @@ PDFBOX-2052 round-trip that saves both source and merged documents to
 disk and reloads them to confirm the writer produces legitimate PDFs.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.multipdf import PDFMergerUtility

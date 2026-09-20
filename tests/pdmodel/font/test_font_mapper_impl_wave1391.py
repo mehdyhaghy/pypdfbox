@@ -1,7 +1,5 @@
 """Wave 1391 — coverage round-out for :mod:`pypdfbox.pdmodel.font.font_mapper_impl`."""
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 

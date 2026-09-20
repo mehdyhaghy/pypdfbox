@@ -1,6 +1,4 @@
 """Wave 1024 coverage for pdfdebugger wave361 test helpers."""
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

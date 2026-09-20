@@ -7,8 +7,6 @@ Targets the remaining uncovered lines:
   present + ``None`` fallback) — lines 108-111.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.examples.interactive.form.create_check_box import CreateCheckBox

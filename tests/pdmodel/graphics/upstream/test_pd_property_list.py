@@ -26,8 +26,6 @@ markedcontent/PDPropertyList.java``)::
     }
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_group import (
     PDOptionalContentGroup,

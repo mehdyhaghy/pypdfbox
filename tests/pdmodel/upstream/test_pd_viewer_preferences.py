@@ -9,5 +9,3 @@ Apache PDFBox 3.0 ships **no** dedicated JUnit class for
 Hand-written coverage lives in
 ``tests/pdmodel/test_pd_viewer_preferences.py``.
 """
-
-from __future__ import annotations

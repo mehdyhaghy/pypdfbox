@@ -6,8 +6,6 @@ inside that rectangle. The optional ``/Matrix`` transforms the domain
 into pattern user space.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

@@ -11,8 +11,6 @@ Targets:
 - ``to_raw_image`` returns ``None`` (no native Pillow analogue)
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

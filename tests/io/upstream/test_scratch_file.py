@@ -10,8 +10,6 @@ public surface (``get_new_page``, ``read_page``, ``write_page``,
 upstream tests poking at private fields are skipped with comments.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.io import (

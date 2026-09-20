@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import os
 from typing import TYPE_CHECKING, BinaryIO
 
@@ -98,11 +96,11 @@ class OTFParser(TTFParser):
         """
         if tag in _OTF_OTL_TAGS:
             table = OTLTable()
-            table._tag = tag
+            table._tag = tag  # mirrors upstream constructor
             return table
         if tag == _OTF_CFF_TAG:
             cff = CFFTable()
-            cff._tag = tag
+            cff._tag = tag  # mirrors upstream constructor
             return cff
         return super().read_table(tag)
 

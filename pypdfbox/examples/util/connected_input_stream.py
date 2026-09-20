@@ -11,8 +11,6 @@ class shape — a wrapper around a file-like object plus a "connection"
 handle — so consumers familiar with the Java sample see the same API.
 """
 
-from __future__ import annotations
-
 from typing import Any, BinaryIO
 
 

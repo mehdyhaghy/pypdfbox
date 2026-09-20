@@ -13,8 +13,6 @@ does not yet port that holder as a top-level class, but the
 :class:`TextMetrics` data-holder fills the same conceptual slot for
 a single ``TextPosition``. These tests pin both layers.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.text import (

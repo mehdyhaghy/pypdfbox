@@ -13,8 +13,6 @@ Covers the small surface added to close gaps with upstream PDFBox
 - ``TYPE`` class constant exposed and exercised through ``get_type``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSInteger, COSName, COSString
 from pypdfbox.pdmodel.interactive.measurement import PDViewportDictionary
 from pypdfbox.pdmodel.interactive.measurement.pd_measure_dictionary import (

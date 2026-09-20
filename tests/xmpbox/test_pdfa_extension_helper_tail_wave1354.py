@@ -7,8 +7,6 @@ parity. A plain object whose ``attributes`` returns ``None`` exercises
 the branch (line 64 in ``pdfa_extension_helper.py``).
 """
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox.xml.pdfa_extension_helper import PdfaExtensionHelper
 
 

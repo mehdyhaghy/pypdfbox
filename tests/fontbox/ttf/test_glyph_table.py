@@ -5,8 +5,6 @@ PDFBox-shaped accessors (``get_glyph`` / ``get_glyphs`` / ``set_glyphs``)
 to confirm parity with upstream behaviour.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

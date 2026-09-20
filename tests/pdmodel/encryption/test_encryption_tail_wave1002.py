@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdmodel.encryption import test_encryption_tail_wave791 as wave791
 
 

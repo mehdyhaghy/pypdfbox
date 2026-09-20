@@ -8,8 +8,6 @@ All five upstream cases run end-to-end against the bundled
 :class:`pypdfbox.fontbox.ttf.GlyphSubstitutionTable`.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import TYPE_CHECKING
 

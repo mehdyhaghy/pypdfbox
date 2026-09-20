@@ -26,8 +26,6 @@ this module handles only the PDF-side bundling. A small companion in
 chain and synthesises ``(certs, crls, ocsps)`` tuples ready to plug in.
 """
 
-from __future__ import annotations
-
 import hashlib
 import logging
 from collections.abc import Iterable

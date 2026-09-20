@@ -1,7 +1,5 @@
 """Port of ``CertificateVerificationResult`` (upstream lines 1-65)."""
 
-from __future__ import annotations
-
 from typing import Any
 
 

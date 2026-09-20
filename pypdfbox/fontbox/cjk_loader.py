@@ -33,8 +33,6 @@ Upstream release pinned: ``Sans2.004`` (2022-01-27,
 https://github.com/notofonts/noto-cjk/releases/tag/Sans2.004).
 """
 
-from __future__ import annotations
-
 import contextlib
 import hashlib
 import logging
@@ -225,7 +223,7 @@ def ensure_language(
 def _fetch(url: str, *, opener) -> bytes:
     """Download *url* and return its body. Honours redirects via urllib."""
     req = Request(url, headers={"User-Agent": "pypdfbox-cjk-loader"})
-    with opener(req, timeout=60) as resp:
+    with opener(req, timeout=60) as resp:  # URL is the pinned manifest
         return resp.read()
 
 

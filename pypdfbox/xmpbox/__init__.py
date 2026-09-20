@@ -10,8 +10,6 @@ containers, ``TypeMapping``, and selected typed schema accessors while keeping
 parser storage backwards-compatible.
 """
 
-from __future__ import annotations
-
 from .adobe_pdf_schema import AdobePDFSchema
 from .date_converter import DateConverter
 from .dom_xmp_parser import DomXmpParser, XmpParsingException

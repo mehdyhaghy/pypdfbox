@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import io
 
 from pypdfbox.fontbox.cff.cff_font import CFFFont, read_charset

@@ -7,8 +7,6 @@ that can't be reproduced in Python) are pragma'd in source rather than
 exercised through tests.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

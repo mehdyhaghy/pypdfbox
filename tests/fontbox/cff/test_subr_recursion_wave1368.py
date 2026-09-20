@@ -15,8 +15,6 @@ infinite recursion raises ``StackOverflowError`` in Java and
   resolving a subroutine.
 """
 
-from __future__ import annotations
-
 import sys
 
 import pytest

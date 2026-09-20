@@ -13,8 +13,6 @@ the upstream-named API surface:
 * ``getPath(name)``                          — name-keyed outline
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import (

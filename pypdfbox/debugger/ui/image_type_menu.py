@@ -9,8 +9,6 @@ The selection is exposed via ``get_image_type()``/``set_image_type_selection``
 in lock-step with the upstream API.
 """
 
-from __future__ import annotations
-
 from typing import ClassVar
 
 from pypdfbox.rendering.image_type import ImageType

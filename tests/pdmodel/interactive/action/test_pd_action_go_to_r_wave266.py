@@ -5,8 +5,6 @@ predicates that round out the upstream-parity surface (mirroring the
 matching cluster on :class:`PDActionEmbeddedGoTo`).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification import (
     PDSimpleFileSpecification,

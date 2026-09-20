@@ -4,8 +4,6 @@ Mirrors ``org.apache.xmpbox.type.ComplexPropertyContainer`` (PDFBox 3.0,
 ``xmpbox/src/main/java/org/apache/xmpbox/type/ComplexPropertyContainer.java``).
 """
 
-from __future__ import annotations
-
 import contextlib
 
 from pypdfbox.xmpbox.type.abstract_field import AbstractField

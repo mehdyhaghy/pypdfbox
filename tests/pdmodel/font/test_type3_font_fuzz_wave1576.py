@@ -19,8 +19,6 @@ Targets the Type 3 font dictionary surface against upstream PDFBox 3.0.7
 - ``d0`` / ``d1`` glyph-metric operators inside a char proc set the width.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

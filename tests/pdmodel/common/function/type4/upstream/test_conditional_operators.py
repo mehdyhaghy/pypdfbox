@@ -13,8 +13,6 @@ registry from :mod:`pypdfbox.pdmodel.common.function.type4.operators` so the
 nested execution exercises the same dispatch path upstream uses.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.common.function.type4.conditional_operators import (

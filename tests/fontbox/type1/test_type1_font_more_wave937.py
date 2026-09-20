@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from . import test_type1_font_more as more_tests
 
 

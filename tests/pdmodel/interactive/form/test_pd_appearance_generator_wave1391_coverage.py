@@ -1,7 +1,5 @@
 """Wave 1391 — close residual missing-line coverage in pd_appearance_generator."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

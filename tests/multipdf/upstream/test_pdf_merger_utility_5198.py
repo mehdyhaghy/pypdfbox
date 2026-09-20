@@ -16,8 +16,6 @@ Synthetic equivalents already live in
 fixture-driven companion ports that exercise the exact upstream input.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName

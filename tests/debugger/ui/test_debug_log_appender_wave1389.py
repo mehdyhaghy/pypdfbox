@@ -6,8 +6,6 @@ in upstream; :class:`logging.Handler` here per the project-wide
 no-log4j deviation documented in ``CHANGES.md``).
 """
 
-from __future__ import annotations
-
 import logging
 
 import pytest

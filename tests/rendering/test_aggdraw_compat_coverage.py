@@ -23,8 +23,6 @@ the renderer-facing tests don't reach today:
 - ``Draw._direct`` property
 """
 
-from __future__ import annotations
-
 # Pre-import numpy before coverage instrumentation triggers
 # ``pypdfbox`` -> ``imagecodecs`` -> ``numpy`` (under Python 3.14 the
 # second numpy import path raises "cannot load module more than once

@@ -26,8 +26,6 @@ This file exists as the parity placeholder so future re-syncs see the
 upstream test mapped.
 """
 
-from __future__ import annotations
-
 import pytest
 
 pytestmark = pytest.mark.skip(

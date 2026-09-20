@@ -6,8 +6,6 @@ the project's test porting conventions — but the ``toString`` form is asserted
 explicitly to keep the diagnostic surface pinned.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat, COSInteger
 from pypdfbox.pdmodel.graphics.pd_line_dash_pattern import PDLineDashPattern
 

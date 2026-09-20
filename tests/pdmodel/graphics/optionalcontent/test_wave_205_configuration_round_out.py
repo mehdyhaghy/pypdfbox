@@ -9,8 +9,6 @@ PDFBox 3.0 inlines the corresponding /D accessors inside
 so the gaps targeted here are pypdfbox enrichment rather than upstream
 parity.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName

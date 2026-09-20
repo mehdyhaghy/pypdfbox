@@ -12,8 +12,6 @@ through :meth:`get_named_destination` while preserving the original COS
 shape until an explicit setter call replaces it with a ``COSString``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName, COSString
 from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (
     PDNamedDestination,

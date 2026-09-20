@@ -4,8 +4,6 @@ The Symbol encoding maps the Greek alphabet and math operators; the ASCII
 range carries Greek-style glyph names rather than Latin.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.font.encoding import Encoding, SymbolEncoding
 

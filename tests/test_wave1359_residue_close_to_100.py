@@ -17,8 +17,6 @@ Targets:
   ``defusedxml`` raises ``ImportError`` at parse time.
 """
 
-from __future__ import annotations
-
 import builtins
 import sys
 from typing import Any
@@ -142,7 +140,7 @@ def test_copy_needed_resources_skips_color_space_already_in_stream() -> None:
     )
 
     da = _make_da("/Helv 0 Tf 0 g", dr)
-    da._color_space_names.append(cs_name)
+    da._color_space_names.append(cs_name)  # drives the loop
     da.copy_needed_resources_to(_appearance_stream_with_resources(sr))
 
     # Stream's value preserved (typed PDDeviceRGB wrapper); default

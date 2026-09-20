@@ -7,8 +7,6 @@ engine-coupled equivalent ``ShowTextLineAndSpace`` lives in
 ``show_text_line_and_space.py``.
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.contentstream import Operator

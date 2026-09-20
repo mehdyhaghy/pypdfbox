@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]

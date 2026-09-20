@@ -27,8 +27,6 @@ inline. The synthetic build helpers mirror those in the sibling
 hand-written and ported layers share the same vocabulary.
 """
 
-from __future__ import annotations
-
 import pathlib
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream

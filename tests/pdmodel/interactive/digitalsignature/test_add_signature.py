@@ -5,8 +5,6 @@ Covers :meth:`PDDocument.add_signature`,
 :class:`Pkcs7Signature` driver.
 """
 
-from __future__ import annotations
-
 import datetime
 import io
 from pathlib import Path

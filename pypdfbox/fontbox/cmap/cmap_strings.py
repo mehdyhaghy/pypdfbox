@@ -8,8 +8,6 @@ class-load time. We do the same lazily on first import so callers can
 ``CMapStrings.get_mapping(b"\\x00\\x41")`` and receive ``"A"``.
 """
 
-from __future__ import annotations
-
 
 def _build_tables() -> tuple[list[str], list[str], list[int], list[bytes], list[bytes]]:
     two_byte_mappings: list[str] = []

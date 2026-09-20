@@ -1,7 +1,5 @@
 """Smoke test for :class:`PDFMergerExample`."""
 
-from __future__ import annotations
-
 import io
 from collections.abc import Callable
 from pathlib import Path

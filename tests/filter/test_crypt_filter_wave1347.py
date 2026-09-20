@@ -13,8 +13,6 @@ Pre-wave the module sat at 89.7 % (4 missing); this set takes it to
 100 %.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import COSName

@@ -11,8 +11,6 @@ The well-known kerning pair ``(A, V) -> -152`` makes a good lookup-type-2
 oracle without inventing fixtures.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast

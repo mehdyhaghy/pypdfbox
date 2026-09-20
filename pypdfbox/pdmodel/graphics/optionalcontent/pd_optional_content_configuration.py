@@ -15,8 +15,6 @@ path service alternative configurations from ``/Configs`` and gives
 :class:`PDOptionalContentProperties` a clean place to delegate /D
 operations.
 """
-from __future__ import annotations
-
 from collections.abc import Iterable
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName

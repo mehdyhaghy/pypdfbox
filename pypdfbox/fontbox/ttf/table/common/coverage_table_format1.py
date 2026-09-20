@@ -7,8 +7,6 @@ doesn't need a separate file for a 20-line abstract class, and the task
 checklist enumerates only the format implementations.
 """
 
-from __future__ import annotations
-
 import bisect
 from abc import ABC, abstractmethod
 from collections.abc import Sequence

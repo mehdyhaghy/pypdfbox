@@ -6,8 +6,6 @@ Targets the residual missing branches in
 ``to_string`` formatting paths.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos.cos_object_key import COSObjectKey
 from pypdfbox.cos.cos_string import COSString
 from pypdfbox.pdfparser.xref.abstract_x_reference import AbstractXReference

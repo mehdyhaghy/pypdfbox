@@ -16,8 +16,6 @@ visits: nested ``/K`` arrays, structure elements with ``/Pg``, the ``/A``-
 takes-precedence-over-``/C`` rule (PDF 32000-1 §14.7.3), and attribute /
 class-name revision read-back.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
 from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
     PDAttributeObject,

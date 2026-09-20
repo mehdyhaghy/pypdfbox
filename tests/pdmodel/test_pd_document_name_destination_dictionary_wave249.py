@@ -6,8 +6,6 @@ Avoids re-asserting Wave 211 surface (``KEY_*``, ``has_*``, ``__iter__`` /
 ``items``, ``is_empty``, ``get_names``, ``__contains__``, ``__len__``).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName

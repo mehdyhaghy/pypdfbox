@@ -1,7 +1,5 @@
 """Tests for ``CMSProcessableInputStream``."""
 
-from __future__ import annotations
-
 from io import BytesIO
 
 from pypdfbox.examples.signature.cms_processable_input_stream import (

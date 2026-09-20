@@ -1,7 +1,5 @@
 """Wave 1275 parity test for PDAppearanceCharacteristicsDictionary.get_color."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
 from pypdfbox.pdmodel.interactive.annotation.pd_appearance_characteristics_dictionary import (

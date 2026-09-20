@@ -25,8 +25,6 @@ A live differential run against the PDFBox 3.0.7 jar (``PredictorDecodeProbe``
 zero divergence; these tests freeze that parity.
 """
 
-from __future__ import annotations
-
 import random
 
 import pytest

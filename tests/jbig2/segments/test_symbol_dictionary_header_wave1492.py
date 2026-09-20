@@ -17,8 +17,6 @@ Flag-word bit layout consumed by ``_read_region_flags`` (MSB first, 16 bits):
     3-2 huffDecodeHeight              1 refAgg              0 huffman
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

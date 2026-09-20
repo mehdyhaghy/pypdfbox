@@ -8,8 +8,6 @@ substitution itself is delegated to nested lookups (referenced via
 surface that callers (a full shaping engine) drive.
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.fontbox.ttf.gsub import (

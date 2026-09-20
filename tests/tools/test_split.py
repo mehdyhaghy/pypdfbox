@@ -1,6 +1,4 @@
 """Tests for ``pypdfbox split``."""
-from __future__ import annotations
-
 from collections.abc import Callable
 from pathlib import Path
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
@@ -296,7 +294,7 @@ def test_value_type_constructor_arg_round_trips() -> None:
     typed = PDStringNameTreeNode()
     # Subclasses pin T, but the base lets callers stash the marker class
     # for parity with PDFBox's ``PDNameTreeNode(Class<? extends T>)`` ctor.
-    typed._value_type = str
+    typed._value_type = str  # direct marker assignment is fine
     assert typed.get_value_type() is str
 
 

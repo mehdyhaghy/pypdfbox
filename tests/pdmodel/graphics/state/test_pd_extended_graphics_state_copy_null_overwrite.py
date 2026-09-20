@@ -17,8 +17,6 @@ The differential test at the bottom (``@requires_oracle``) re-runs the same
 probe; the value pins above stand on their own without a JDK / jar.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

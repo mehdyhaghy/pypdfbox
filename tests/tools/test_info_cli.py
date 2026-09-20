@@ -5,8 +5,6 @@ and the documented metadata fields (Title / Author / Subject / Keywords /
 Creator / Producer / CreationDate / ModificationDate / Trapped) plus
 page count, encryption status, and version.
 """
-from __future__ import annotations
-
 import datetime as _dt
 import json
 from pathlib import Path

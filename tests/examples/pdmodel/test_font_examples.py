@@ -9,8 +9,6 @@ the real one-arg :meth:`PDType1Font.__init__(self, font_dict=None)`
 signature — a latent example bug flagged for wave 1341.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.examples.pdmodel.hello_world_ttf import HelloWorldTTF

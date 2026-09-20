@@ -11,8 +11,6 @@ These tests exercise the surrounding reachable behaviour: the earlier
 ``continue`` (46->44) for non-dict entries and the normal append path.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.common.function.pd_function_type3 import PDFunctionType3
 

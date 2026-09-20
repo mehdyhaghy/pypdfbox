@@ -4,8 +4,6 @@ See :mod:`tests.debugger.streampane.conftest` for the rationale of the
 ``tk_root`` fixture.
 """
 
-from __future__ import annotations
-
 import contextlib
 import os
 import tkinter as tk

@@ -5,8 +5,6 @@ empty-tree edge cases — translated to pytest using PDStringNameTreeNode as
 the upstream test's COSObjectable concrete subclass stand-in.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString

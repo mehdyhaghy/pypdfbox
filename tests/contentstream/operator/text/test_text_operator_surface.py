@@ -5,8 +5,6 @@ exposed via :mod:`pypdfbox.contentstream.operator.text`. This file
 verifies the surface and the operator-name → class binding for each.
 """
 
-from __future__ import annotations
-
 from pypdfbox.contentstream.operator import OperatorProcessor
 from pypdfbox.contentstream.operator.text import (
     BeginText,

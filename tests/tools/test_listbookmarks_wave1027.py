@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.tools.test_listbookmarks_wave445 import _OtherDestination
 
 

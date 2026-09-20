@@ -4,8 +4,6 @@ Mirrors ``org.apache.pdfbox.pdfwriter.compress.COSObjectPool`` (PDFBox 3.0,
 ``pdfbox/src/main/java/org/apache/pdfbox/pdfwriter/compress/COSObjectPool.java``).
 """
 
-from __future__ import annotations
-
 import contextlib
 
 from pypdfbox.cos.cos_base import COSBase

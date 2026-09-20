@@ -6,8 +6,6 @@ two methods publicly; the previous ``_render`` private alias is preserved
 for back-compat.
 """
 
-from __future__ import annotations
-
 from pypdfbox.debugger.hexviewer.ascii_pane import ASCIIPane
 from pypdfbox.debugger.hexviewer.hex_model import HexModel
 

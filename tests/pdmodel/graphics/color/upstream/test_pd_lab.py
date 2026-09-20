@@ -10,8 +10,6 @@ adapt the assertions to ``get_a_range()`` / ``get_b_range()`` /
 ``get_white_point()`` / ``get_black_point()``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary
 from pypdfbox.pdmodel.graphics.color.pd_lab import PDLab
 

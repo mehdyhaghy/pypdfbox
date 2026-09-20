@@ -8,8 +8,6 @@ Method line references point into
 ``pdfbox/src/main/java/org/apache/pdfbox/pdfparser/XrefTrailerResolver.java``
 on the 3.0.x baseline.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSObjectKey

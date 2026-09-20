@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
 from pypdfbox.pdmodel.graphics.color.pd_color_space import PDColorSpace
 from pypdfbox.pdmodel.graphics.color.pd_device_cmyk import PDDeviceCMYK

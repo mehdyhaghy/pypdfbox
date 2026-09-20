@@ -12,8 +12,6 @@ branches inside ``_try_parse_typed_array`` and the typed-array
 ``rdf:Description`` wrapper path inside ``_build_structured_from_li``.
 """
 
-from __future__ import annotations
-
 from xml.etree import ElementTree as ET
 
 import pytest

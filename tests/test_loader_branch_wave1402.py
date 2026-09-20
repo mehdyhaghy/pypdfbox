@@ -9,8 +9,6 @@ Closes False-branch arrows in ``pypdfbox/loader.py``:
 * 254->257 — owned is False (caller-provided RandomAccessRead).
 """
 
-from __future__ import annotations
-
 import contextlib
 from typing import Any
 

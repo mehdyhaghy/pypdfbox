@@ -6,8 +6,6 @@ which accepts ``bytes``, so this class is a thin compatibility wrapper
 that lets example code mirror the upstream shape.
 """
 
-from __future__ import annotations
-
 from typing import IO
 
 

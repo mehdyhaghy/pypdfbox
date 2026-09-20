@@ -40,8 +40,6 @@ Java is ground truth: a real divergence is a production fix in
 divergence is pinned in ``_PINNED`` with a matching CHANGES.md row.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.cos import (

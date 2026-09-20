@@ -3,8 +3,6 @@
 Mirrors ``org.apache.pdfbox.pdmodel.graphics.color.PDGamma``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSBase, COSFloat, COSNumber
 
 

@@ -23,8 +23,6 @@ add real-world RTL/LTR/mixed-paragraph end-to-end checks and exercise
 the bracket-mirror table through ``PDFTextStripper.handle_direction``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.text.bidi import (
     BidiResolver,
     _bidi_class,

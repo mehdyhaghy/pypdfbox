@@ -8,8 +8,6 @@ shape (each setter is a no-set bare method-name, e.g. ``signerName``
 instead of ``setSignerName``).
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, BinaryIO
 
 if TYPE_CHECKING:

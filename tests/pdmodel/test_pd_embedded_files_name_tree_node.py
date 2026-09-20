@@ -3,8 +3,6 @@ typed convertCOSToPD/createChildNode contract and the inherited generic
 name-tree behaviour as exercised through the embedded-files subclass.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString

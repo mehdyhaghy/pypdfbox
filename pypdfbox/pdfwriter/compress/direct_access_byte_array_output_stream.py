@@ -10,8 +10,6 @@ The point of this subclass is to avoid copying the buffer when sending it
 to the next layer — ``get_raw_data`` returns the live underlying bytes.
 """
 
-from __future__ import annotations
-
 from io import BytesIO
 
 

@@ -9,8 +9,6 @@ The ``PDFParser`` is stubbed because driving a real parse from in-memory
 bytes is out of scope for a unit test of this options bag.
 """
 
-from __future__ import annotations
-
 import io
 from unittest.mock import MagicMock, patch
 

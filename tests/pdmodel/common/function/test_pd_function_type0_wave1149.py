@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .test_pd_function_type0_wave407 import _stream_function
 
 

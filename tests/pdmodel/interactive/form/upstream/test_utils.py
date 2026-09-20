@@ -12,8 +12,6 @@ The file also smoke-tests the helper itself so it counts as a real
 pytest module rather than a pure utility.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSArray, COSFloat, COSName, COSString

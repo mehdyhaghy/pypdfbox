@@ -1,7 +1,5 @@
 """Hand-written tests for ``CodespaceRange``."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cmap import CodespaceRange

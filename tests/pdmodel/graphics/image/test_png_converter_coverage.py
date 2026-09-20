@@ -9,8 +9,6 @@ adapter were untested. These tests build a tiny RGB PNG with Pillow,
 feed it through ``parse_png_chunks`` / ``convert_png_image``, then
 exercise every static helper independently with synthetic byte buffers.
 """
-from __future__ import annotations
-
 import io
 import zlib
 

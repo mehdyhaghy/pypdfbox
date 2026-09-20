@@ -16,8 +16,6 @@ file leaves uncovered:
 * Closing the parent ScratchFile invalidates the buffer.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.io.memory_usage_setting import MemoryUsageSetting

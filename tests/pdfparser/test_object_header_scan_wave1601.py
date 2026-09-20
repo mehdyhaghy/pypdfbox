@@ -7,8 +7,6 @@ single bulk read; `_check_xref_offsets_lenient` calls it for every table entry
 on every lenient load, so any divergence would change xref-recovery decisions.
 These tests pin the accept/reject/EOF/comment/sign semantics.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSObjectKey

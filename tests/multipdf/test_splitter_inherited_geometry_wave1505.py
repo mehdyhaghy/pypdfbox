@@ -21,8 +21,6 @@ The live-oracle byte-parity pin lives in
 tests run without Java so they gate every push.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName

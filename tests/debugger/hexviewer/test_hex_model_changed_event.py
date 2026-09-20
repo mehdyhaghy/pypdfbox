@@ -1,7 +1,5 @@
 """Tests for ``HexModelChangedEvent``."""
 
-from __future__ import annotations
-
 from pypdfbox.debugger.hexviewer.hex_model_changed_event import (
     HexModelChangedEvent,
 )

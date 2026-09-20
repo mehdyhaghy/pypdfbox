@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox import PDDocument, PDPage
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSNull
 from pypdfbox.multipdf import Splitter

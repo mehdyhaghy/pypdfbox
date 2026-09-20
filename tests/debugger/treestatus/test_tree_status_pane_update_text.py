@@ -1,7 +1,5 @@
 """Hand-written tests for ``TreeStatusPane.update_text`` (upstream parity)."""
 
-from __future__ import annotations
-
 import os
 import tkinter as tk
 from tkinter import ttk
@@ -64,7 +62,7 @@ def test_private_alias_still_works(_tk_root: tk.Tk) -> None:
     tree = ttk.Treeview(_tk_root)
     pane = TreeStatusPane(tree)
     pane.init()
-    pane._update_text("via alias")
+    pane._update_text("via alias")  # back-compat alias
     assert pane._status_var.get() == "via alias"
 
 

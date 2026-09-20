@@ -16,8 +16,6 @@ components is read from PIL's ``mode`` (``L`` -> 1, ``RGB`` -> 3,
 ``CMYK`` -> 4, ``YCbCr`` -> 3) which mirrors what the upstream reader
 extracts from the SOF ``numFrameComponents`` attribute.
 """
-from __future__ import annotations
-
 import io
 from typing import TYPE_CHECKING, BinaryIO
 

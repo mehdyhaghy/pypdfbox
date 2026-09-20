@@ -8,8 +8,6 @@ reflection with an explicit setter-getter map so the round-trip parity is
 preserved while staying fully Pythonic.
 """
 
-from __future__ import annotations
-
 import re
 from datetime import UTC, datetime
 

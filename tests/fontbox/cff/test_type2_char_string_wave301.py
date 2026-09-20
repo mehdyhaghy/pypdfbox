@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 from fontTools.misc.psCharStrings import T2CharString  # type: ignore[import-untyped]

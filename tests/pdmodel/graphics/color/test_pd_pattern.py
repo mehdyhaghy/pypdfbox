@@ -7,8 +7,6 @@ unique to pypdfbox). The line-for-line port of the upstream surface
 lives in ``upstream/test_pd_pattern.py``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSName

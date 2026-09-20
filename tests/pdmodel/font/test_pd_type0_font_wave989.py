@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdmodel.font.test_pd_type0_font_wave487 import _Descendant
 
 

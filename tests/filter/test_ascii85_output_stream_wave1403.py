@@ -8,8 +8,6 @@ single-byte framing, the always-present trailing newline after ``~>``, the
 hard line break every 72 output columns, and the empty-input suppression.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.filter.ascii85_output_stream import ASCII85OutputStream

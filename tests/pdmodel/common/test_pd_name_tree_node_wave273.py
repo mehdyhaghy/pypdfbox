@@ -3,8 +3,6 @@
 Targets the ``has_*`` shape predicates that complement the existing
 ``is_leaf_node`` / ``is_intermediate_node`` semantics."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.common.pd_string_name_tree_node import PDStringNameTreeNode
 

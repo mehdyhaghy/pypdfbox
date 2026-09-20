@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Iterable, Sequence
 from contextlib import suppress
 from typing import TYPE_CHECKING, BinaryIO
@@ -186,7 +184,7 @@ class PDStream:
         raises ``OSError``: callers of ``PDStream`` are typed handles
         that often legitimately wrap a fresh-and-empty COSStream.)"""
         if not self._stream.has_data():
-            import io as _io
+            import io as _io  # local to avoid leaking name
 
             return _io.BytesIO(b"")
         return self._stream.create_input_stream(stop_filters)

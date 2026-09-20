@@ -2,8 +2,6 @@
 dictionary that holds the ``/Base`` entry used to resolve relative URIs
 in URI actions (PDF 32000-1 §12.6.4.7)."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.interactive.action import PDURIDictionary
 

@@ -22,8 +22,6 @@ The reference (`_reference_decode`) is independent of the production code so
 a divergence in either surfaces as a test failure.
 """
 
-from __future__ import annotations
-
 import random
 import struct
 import zlib

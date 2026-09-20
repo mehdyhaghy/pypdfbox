@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from tests.fontbox.cff import test_cff_tail_wave785 as cff_tail

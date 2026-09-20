@@ -28,8 +28,6 @@ These tests cover:
   the inner subtable had been at the top level.
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.fontbox.ttf.gsub import (

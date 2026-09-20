@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`SearchEngine`."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.debugger.ui.textsearcher.search_engine import (

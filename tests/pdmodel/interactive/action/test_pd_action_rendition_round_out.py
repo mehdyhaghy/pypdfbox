@@ -3,8 +3,6 @@
 Covers the Wave 244 additions: ``/OP`` operation constants and predicates,
 ``/JS`` COSStream support, and ``has_*`` presence helpers."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName, COSStream, COSString
 from pypdfbox.pdmodel.interactive.action.pd_action_rendition import (
     PDActionRendition,

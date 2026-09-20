@@ -10,8 +10,6 @@ Closes the residual gaps in 0.9.0rc1 after wave 1390 / 1391:
   ``read_code(string, offset)`` happy-path (lines 1117-1132).
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.contentstream.pdf_stream_engine import PDFStreamEngine

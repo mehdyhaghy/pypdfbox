@@ -22,8 +22,6 @@ fakes than via a real font:
   with no matches yields no substitution.
 """
 
-from __future__ import annotations
-
 from types import SimpleNamespace
 
 import pytest

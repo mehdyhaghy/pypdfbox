@@ -26,8 +26,6 @@ Plus the PDFBOX-4833 dictionary-wrapping unwrap path and the PDFBOX-5315
 self-referencing-dictionary recursion guard.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

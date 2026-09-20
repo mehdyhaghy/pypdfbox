@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary
 from pypdfbox.pdmodel.interactive.pagenavigation import PDThreadBead
 

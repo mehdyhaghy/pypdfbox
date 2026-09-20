@@ -10,8 +10,6 @@ the PDColor. These tests parametrise across all six so every branch in the
 Wave 1322.
 """
 
-from __future__ import annotations
-
 import builtins
 import sys
 from typing import Any

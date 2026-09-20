@@ -1,7 +1,5 @@
 """Wave 1275 — explicit ``to_string()`` parity for BoundingBox."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.glyph_data import BoundingBox
 
 

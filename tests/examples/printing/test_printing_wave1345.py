@@ -17,8 +17,6 @@ fix (wrap the loader result in :class:`PDDocument`). To cover lines
 return a fake document that quacks like :class:`PDDocument`.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

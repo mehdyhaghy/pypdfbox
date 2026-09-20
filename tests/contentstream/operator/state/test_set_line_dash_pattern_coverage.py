@@ -2,8 +2,6 @@
 ``d`` operator processor that lives at
 ``pypdfbox.contentstream.operator.state.set_line_dash_pattern``).
 """
-from __future__ import annotations
-
 import logging
 
 import pytest

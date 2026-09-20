@@ -19,8 +19,6 @@ These tests pin down the strict resolver (``get_decode_params_for_filter``)
 and the lenient per-filter resolver each filter uses internally.
 """
 
-from __future__ import annotations
-
 import io
 import logging
 

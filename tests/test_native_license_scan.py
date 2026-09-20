@@ -9,8 +9,6 @@ that carries permissive metadata.
 Stdlib + fast. Skips gracefully if the script or a venv layout is absent.
 """
 
-from __future__ import annotations
-
 import importlib.util
 import sys
 from pathlib import Path

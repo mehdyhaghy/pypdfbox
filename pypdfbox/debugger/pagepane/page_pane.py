@@ -22,8 +22,6 @@ Tk port choices:
   those modules land.
 """
 
-from __future__ import annotations
-
 import contextlib
 import logging
 import tkinter as tk
@@ -885,7 +883,7 @@ class RenderWorker:
         # step with PagePane's inline path. The intermediate steps
         # mirror upstream's RenderWorker.doInBackground line-for-line:
         #   renderImage → DebugTextOverlay overlay → ImageUtil rotation.
-        image = pp._render_image()
+        image = pp._render_image()  # same-module helper
         pp._draw_debug_overlays(image)
         rotation = _resolve_rotation()
         if rotation:

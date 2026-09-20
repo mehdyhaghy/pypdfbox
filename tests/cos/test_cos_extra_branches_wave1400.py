@@ -13,8 +13,6 @@ batch:
 * ``cos_stream`` encoding-output double-close idempotence (68 → 90).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

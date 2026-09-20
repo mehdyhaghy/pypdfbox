@@ -3,8 +3,6 @@
 :class:`PDOptionalContentProperties`. None of these are part of upstream
 PDFBox 3.0; they are pypdfbox enrichments and validated here against the
 PDF 32000-1 §8.11.4.3 Table 101 semantics."""
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.graphics.optionalcontent import (
     PDOptionalContentGroup,

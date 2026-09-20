@@ -1,7 +1,5 @@
 """Wave 1275 — PDSoftMask.get_sub_type alias."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.graphics.state.pd_soft_mask import PDSoftMask
 

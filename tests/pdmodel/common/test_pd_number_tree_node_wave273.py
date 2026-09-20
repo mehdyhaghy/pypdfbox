@@ -3,8 +3,6 @@
 Targets the predicates and ``clear`` helpers that were missing in
 parity with :class:`PDNameTreeNode`."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSBase, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.common.pd_number_tree_node import PDNumberTreeNode
 

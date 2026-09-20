@@ -8,8 +8,6 @@ Covers the gaps relative to upstream ``PDTableAttributeObject``:
 * ``is_<field>_specified()`` per-key predicate helpers.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSString
 from pypdfbox.pdmodel.documentinterchange.taggedpdf import (
     PDTableAttributeObject,

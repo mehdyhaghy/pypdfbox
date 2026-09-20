@@ -6,8 +6,6 @@ join). The class is a lite registry-routing stub — these tests pin down
 the tolerance + dispatch shape.
 """
 
-from __future__ import annotations
-
 import logging
 
 import pytest

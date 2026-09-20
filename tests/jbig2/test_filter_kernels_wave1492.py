@@ -23,8 +23,6 @@ This module reaches them two ways:
   polynomial coefficients stay pinned even without the jar.
 """
 
-from __future__ import annotations
-
 import math
 from pathlib import Path
 

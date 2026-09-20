@@ -14,8 +14,6 @@ internal bookkeeping is new, so these assert the shadow state stays in sync
 across every mutation path.
 """
 
-from __future__ import annotations
-
 from pypdfbox.io import MemoryUsageSetting, ScratchFile
 from pypdfbox.io.scratch_file import NO_FREE_PAGE
 

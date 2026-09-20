@@ -3,8 +3,6 @@
 Port of ``org.apache.pdfbox.jbig2.decoder.huffman.OutOfBandNode``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.decoder.huffman.node import Node
 from pypdfbox.jbig2.io.image_input_stream import ImageInputStream
 

@@ -14,8 +14,6 @@ Covers the four small upstream gaps closed in this wave:
   (PDFBOX-1900, returns 250) and program-advance fallback.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.fontbox.type1.type1_font import Type1Font
 from pypdfbox.pdmodel.font.encoding.standard_encoding import StandardEncoding
@@ -35,7 +33,7 @@ def _stub_type1_program(extra: dict | None = None) -> Type1Font:
             self.width = width
             self._commands = commands
 
-        def draw(self, pen) -> None:
+        def draw(self, pen) -> None:  # pen protocol
             for cmd in self._commands:
                 if cmd[0] == "moveTo":
                     pen.moveTo(cmd[1])

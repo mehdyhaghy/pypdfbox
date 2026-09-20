@@ -4,8 +4,6 @@ Mirrors PDFBox
 ``org.apache.pdfbox.pdmodel.graphics.shading.TriangleBasedShadingContext``.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from .line import Line

@@ -4,8 +4,6 @@ alias. The full codec is exercised by ``test_run_length_decode.py``;
 this module verifies wiring and cross-instance interoperability.
 """
 
-from __future__ import annotations
-
 from io import BytesIO
 
 from pypdfbox.cos import COSName

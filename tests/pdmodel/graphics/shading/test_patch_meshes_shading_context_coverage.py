@@ -6,8 +6,6 @@ Exercises ``__init__`` (with and without background / device bounds),
 states, and ``dispose``.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.pdmodel.graphics.shading.patch import Patch

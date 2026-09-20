@@ -27,8 +27,6 @@ Key upstream-parity facts pinned here (PDF 32000-1 §7.7.3.3 / Table 28):
   throws ``ClassCastException``).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

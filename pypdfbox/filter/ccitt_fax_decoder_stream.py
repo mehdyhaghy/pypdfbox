@@ -11,8 +11,6 @@ and avoids re-implementing the same 600-line decoder upstream pulled from
 TwelveMonkeys.
 """
 
-from __future__ import annotations
-
 import contextlib
 import io
 from typing import BinaryIO

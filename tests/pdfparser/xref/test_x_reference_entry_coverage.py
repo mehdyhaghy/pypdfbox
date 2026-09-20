@@ -6,8 +6,6 @@ branches, and the four rich-comparison dunders (``__lt__``, ``__le__``,
 non-``XReferenceEntry`` operands.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos.cos_object_key import COSObjectKey

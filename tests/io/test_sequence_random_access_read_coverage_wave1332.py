@@ -12,8 +12,6 @@ Targets the remaining uncovered branches in
   the last source when the requested offset is past ``total_length``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.io import RandomAccessReadBuffer, SequenceRandomAccessRead

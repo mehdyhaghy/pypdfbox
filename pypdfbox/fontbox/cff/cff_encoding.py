@@ -12,8 +12,6 @@ resolves the SID through the CFF Standard Strings table shipped with
 fontTools (``fontTools.cffLib.cffStandardStrings``).
 """
 
-from __future__ import annotations
-
 from fontTools.cffLib import cffStandardStrings  # type: ignore[import-untyped]
 
 from pypdfbox.fontbox.encoding.encoding import Encoding

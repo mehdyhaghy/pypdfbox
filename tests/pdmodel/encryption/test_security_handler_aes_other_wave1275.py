@@ -1,7 +1,5 @@
 """Wave 1275 parity test for SecurityHandler.encrypt_data_ae_sother."""
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.encryption.standard_security_handler import (
     StandardSecurityHandler,
 )

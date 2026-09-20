@@ -1,7 +1,5 @@
 """Smoke test for :class:`CreateMultiWidgetsForm`."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.examples.interactive.form.create_multi_widgets_form import (

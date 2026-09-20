@@ -11,8 +11,6 @@ accessors on ``PDFRenderer`` that consume the enum stay parity-checked.
 Source: ``pdfbox/src/main/java/org/apache/pdfbox/rendering/RenderDestination.java``
 (PDFBox 3.0.x).
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.rendering import PDFRenderer, RenderDestination

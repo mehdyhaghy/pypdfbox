@@ -26,8 +26,6 @@ case would assert pypdfbox-incompatible behaviour — see
 ``tests/fontbox/ttf/gsub/upstream/test_default_gsub_worker.py``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 pytestmark = pytest.mark.skip(

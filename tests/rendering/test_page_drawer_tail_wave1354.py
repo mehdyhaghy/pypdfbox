@@ -8,8 +8,6 @@ Covers:
   ``M`` (line 742) and when a non-first segment is not ``L`` (line 745).
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from PIL import Image

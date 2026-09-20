@@ -9,8 +9,6 @@ Targets the remaining uncovered branches in
 * :meth:`mark` is a no-op (does not raise).
 """
 
-from __future__ import annotations
-
 import io
 import zlib
 

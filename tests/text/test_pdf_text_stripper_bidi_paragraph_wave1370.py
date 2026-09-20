@@ -21,8 +21,6 @@ ICU-style paragraph-level reordering (where mixed-direction sequences
 get re-interleaved per the Unicode Bidi Algorithm) is explicitly
 skipped — it is the documented divergence.
 """
-from __future__ import annotations
-
 from pypdfbox.text import LineItem, PDFTextStripper, TextPosition
 
 

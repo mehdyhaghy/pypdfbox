@@ -16,8 +16,6 @@ Targets the residual partial branches in
   width-delta is below the 1e-4 threshold ⇒ skip the scale step.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.debugger.pagepane.debug_text_overlay import calculate_glyph_bounds

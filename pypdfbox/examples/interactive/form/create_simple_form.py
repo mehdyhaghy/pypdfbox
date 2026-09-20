@@ -5,8 +5,6 @@ Creates an AcroForm with a single text field — properties resemble the
 defaults Adobe Acrobat applies when adding a text box interactively.
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.cos import COSDictionary, COSName

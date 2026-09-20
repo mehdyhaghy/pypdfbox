@@ -1,7 +1,5 @@
 """Event describing a change to ``HexModel`` data."""
 
-from __future__ import annotations
-
 
 class HexModelChangedEvent:
     """Describes a change to the underlying ``HexModel`` byte buffer."""

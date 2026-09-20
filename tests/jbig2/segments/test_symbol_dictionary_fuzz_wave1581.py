@@ -32,8 +32,6 @@ the toggling EXFLAGS run sense) rather than re-hashing decoder output, so a sens
 or ordinal-accumulation regression is caught.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.jbig2.bitmap import Bitmap

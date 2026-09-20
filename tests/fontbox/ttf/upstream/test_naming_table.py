@@ -11,8 +11,6 @@ These tests use synthetic ``name`` table bytes — sufficient to exercise
 the upstream API contract without bundling Liberation Sans.
 """
 
-from __future__ import annotations
-
 import struct
 
 from pypdfbox.fontbox.ttf.name_record import NameRecord

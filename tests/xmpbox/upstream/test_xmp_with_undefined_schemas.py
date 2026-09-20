@@ -7,8 +7,6 @@ Parametrised round-trip parsing of XMP packets carrying schemas not
 known to xmpbox — the parser must still expose the unknown namespace,
 property, and value in non-strict mode.
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

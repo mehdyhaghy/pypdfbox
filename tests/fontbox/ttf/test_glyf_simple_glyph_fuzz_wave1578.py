@@ -23,8 +23,6 @@ Covered surface:
 * the empty glyph (0 contours) and the PDFBOX-2939 0xFFFF sentinel.
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

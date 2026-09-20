@@ -14,8 +14,6 @@ attribute 'get_dictionary_object'`` at runtime. The sister module
 here drive every branch that *doesn't* depend on the broken default by
 pre-loading a real :class:`PDType0Font` from a bundled TTF fixture.
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

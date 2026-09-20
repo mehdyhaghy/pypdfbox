@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.pdmodel.graphics.color import PDColor, PDDeviceRGB
 from tests.contentstream.operator.color import test_color_processing_gate_wave315 as gate_mod
 

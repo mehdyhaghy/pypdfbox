@@ -8,8 +8,6 @@ result is unchanged: a tree is empty iff a document-order walk yields no pages,
 regardless of what ``/Count`` claims.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.pd_document import PDDocument
 from pypdfbox.pdmodel.pd_page import PDPage

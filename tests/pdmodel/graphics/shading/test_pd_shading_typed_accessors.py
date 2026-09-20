@@ -16,8 +16,6 @@ Covers four small parity gaps against upstream
    ``is_valid_shading_type`` range validator.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream

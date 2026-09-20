@@ -7,8 +7,6 @@ contract: ``BaseState.value_of(None)`` returns :attr:`BaseState.ON`,
 ``RenderState.value_of(None)`` returns ``None``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSName

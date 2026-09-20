@@ -19,8 +19,6 @@ path are not exercised by these standalone dictionaries; the aggregate path is
 stubbed pending the ``TextRegion`` port.
 """
 
-from __future__ import annotations
-
 import hashlib
 import struct
 from pathlib import Path

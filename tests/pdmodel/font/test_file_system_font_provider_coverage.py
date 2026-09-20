@@ -12,8 +12,6 @@ real on-disk font fixtures so we never depend on the host OS's actual
 font directories.
 """
 
-from __future__ import annotations
-
 import io
 import pathlib
 import shutil

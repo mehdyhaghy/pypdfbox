@@ -14,8 +14,6 @@ the same shape: a thin abstract base class plus a default
 implementation that delegates to a CFF font's ``get_type2_char_string``.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 

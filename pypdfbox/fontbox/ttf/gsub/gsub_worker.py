@@ -12,8 +12,6 @@ upstream those live in ``GlyphArraySplitterRegexImpl`` plus copy-pasted
 place here avoids duplicating the same six-line loop five times.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 

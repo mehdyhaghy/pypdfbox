@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 import tests.xmpbox.upstream.test_xmp_basic_schema as basic_schema

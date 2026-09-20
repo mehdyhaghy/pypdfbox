@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString
 from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification import (
     PDSimpleFileSpecification,

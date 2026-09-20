@@ -12,8 +12,6 @@ serializer + parser:
   ``stJob`` namespace and the ``aaa`` prefix.
 """
 
-from __future__ import annotations
-
 from io import BytesIO
 
 from pypdfbox.xmpbox import XMPBasicJobTicketSchema, XMPMetadata

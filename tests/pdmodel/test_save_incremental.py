@@ -16,8 +16,6 @@ PDDocument-facing contract:
   points at the previous save's startxref).
 """
 
-from __future__ import annotations
-
 import io
 import re
 from pathlib import Path

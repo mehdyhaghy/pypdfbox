@@ -11,8 +11,6 @@ string or name):
   branches when the entry is not coercible to a string
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSInteger, COSName, COSString
 from pypdfbox.pdmodel.interactive.form.pd_combo_box import PDComboBox
 from pypdfbox.pdmodel.pd_document import PDDocument

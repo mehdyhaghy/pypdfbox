@@ -24,8 +24,6 @@ Hammers the soft-mask raster path in
 Library-first: pixel decode + resize wrap Pillow / the lossless factory; these
 tests verify the *alpha merge* + *matte math*, not the raster library.
 """
-from __future__ import annotations
-
 import pytest
 from PIL import Image
 

@@ -12,8 +12,6 @@ GIDs, sentinel-only walks, and the boundary cases the upstream tests
 don't isolate.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.cff_parser import CFFParser

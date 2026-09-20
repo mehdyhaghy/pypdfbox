@@ -5,8 +5,6 @@ the ``/Doc`` array fallback when the key half of a (key, value) pair is
 not encoded as a ``COSString`` (upstream falls back to ``getName(i)``).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream, COSString
 from pypdfbox.pdmodel.fdf import FDFJavaScript
 

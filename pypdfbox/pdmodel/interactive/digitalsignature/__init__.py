@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .cos_filter_input_stream import COSFilterInputStream
 from .pd_document_security_store import (
     PDDocumentSecurityStore,

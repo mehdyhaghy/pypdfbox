@@ -19,8 +19,6 @@ package, which can load PKCS#7 SignedData and expose embedded
 certificates via ``load_der_pkcs7_certificates``.
 """
 
-from __future__ import annotations
-
 import contextlib
 import datetime as _datetime
 import logging
@@ -63,7 +61,7 @@ def parse_pkcs7_certificates(blob: bytes) -> list[_CertSummary]:
 
     try:
         certs = pkcs7.load_der_pkcs7_certificates(trimmed)
-    except Exception as exc:
+    except Exception as exc:  # propagate as a single error entry
         err = _CertSummary()
         err.errors.append(f"failed to parse PKCS#7: {exc}")
         return [err]
@@ -181,7 +179,7 @@ class SignaturePane:
 
         try:
             body = self.get_text_string(cos_string)
-        except Exception as exc:
+        except Exception as exc:  # surface but never crash widget
             body = f"<failed to dump signature: {exc}>"
         text.insert("1.0", body)
         text.configure(state="disabled")

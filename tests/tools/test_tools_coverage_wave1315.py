@@ -19,8 +19,6 @@ subclass that ignores its argument and supplies just enough bounding-box
 runner end-to-end without depending on the unported standard-14
 factory path.
 """
-from __future__ import annotations
-
 import contextlib
 from collections.abc import Iterator
 from pathlib import Path

@@ -1,6 +1,4 @@
 """Tests for ``pypdfbox.examples.printing.opaque_pdf_renderer``."""
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.examples.printing.opaque_pdf_renderer import OpaquePDFRenderer

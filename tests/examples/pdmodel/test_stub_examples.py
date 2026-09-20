@@ -5,8 +5,6 @@ correct name, and confirms ``main()`` raises ``NotImplementedError`` when
 invoked with arguments that drive past the usage gate.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.examples.pdmodel import (

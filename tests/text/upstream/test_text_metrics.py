@@ -13,8 +13,6 @@ mutable) holds — i.e. the same surface that PDFBox-style downstream
 callers would expect.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.text import TextMetrics, TextPosition

@@ -26,8 +26,6 @@ Entry points:
   have the XMP packet but no ``PDDocument``.
 * :data:`KNOWN_FLAVOURS` — the 14 valid (part, conformance) combinations.
 """
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 

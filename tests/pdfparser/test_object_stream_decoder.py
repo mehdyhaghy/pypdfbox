@@ -9,8 +9,6 @@ entries. End-to-end this exercises the cluster-#4 wiring:
       single-object COSParser slice
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSInteger, COSName, COSObjectKey, COSString
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import PDFParser

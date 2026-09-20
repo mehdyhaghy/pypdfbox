@@ -25,8 +25,6 @@ All comparisons are to PDFBox 3.0.x behaviour. ``PDDocument`` instances
 are closed before any temp-file unlink (Windows file-lock safety) — these
 tests use in-memory ``BytesIO`` destinations where possible.
 """
-from __future__ import annotations
-
 import io
 
 import pytest

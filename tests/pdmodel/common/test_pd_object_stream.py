@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSStream
 from pypdfbox.pdmodel.common import PDObjectStream
 from pypdfbox.pdmodel.pd_document import PDDocument

@@ -36,8 +36,6 @@ Decorated ``@requires_oracle`` so it skips cleanly without Java + the jar.
 Hand-written (not ported from upstream JUnit).
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle

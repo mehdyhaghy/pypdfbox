@@ -9,8 +9,6 @@ decode path now mirrors upstream ``FilterFactory.getFilter`` (which throws
 ``IOException("Invalid filter: ...")``) by re-raising as ``OSError``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSName, COSStream

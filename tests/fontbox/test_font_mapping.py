@@ -7,8 +7,6 @@ container). These tests pin the snake_case API surface, the
 ``OSError``-tolerant ``__repr__`` path, and the typing-protocol shape.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.font_box_font import FontBoxFont
 from pypdfbox.fontbox.font_mapper import DefaultFontMapper
 from pypdfbox.fontbox.font_mapping import FontMapping

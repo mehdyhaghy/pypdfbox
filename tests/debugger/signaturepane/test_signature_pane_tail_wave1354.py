@@ -6,8 +6,6 @@ Covers the ``except Exception`` branch (lines 184-185 in
 propagating up to the widget hierarchy.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 
 from pypdfbox.cos import COSString

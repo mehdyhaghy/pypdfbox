@@ -1,7 +1,5 @@
 """Smoke test for :class:`CreateSimpleFormWithEmbeddedFont`."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.examples.interactive.form.create_simple_form_with_embedded_font import (

@@ -13,8 +13,6 @@ called with ``b0`` already consumed by the caller (matching upstream
 bytes.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

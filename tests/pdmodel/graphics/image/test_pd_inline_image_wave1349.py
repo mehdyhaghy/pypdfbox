@@ -17,8 +17,6 @@ crop / resize / stencil paths without dragging in JPEG / CCITT
 fixtures.
 """
 
-from __future__ import annotations
-
 import pytest
 from PIL import Image
 

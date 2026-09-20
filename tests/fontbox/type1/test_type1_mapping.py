@@ -1,7 +1,5 @@
 """Tests for ``Type1Mapping`` — value-object behaviour."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.type1.type1_mapping import Type1Mapping
 
 

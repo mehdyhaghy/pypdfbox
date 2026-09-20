@@ -12,8 +12,6 @@ file as unreadable:
 * Trailer dict prefixed with extra space and trailing whitespace.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSObjectKey, COSString
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import PDFParser

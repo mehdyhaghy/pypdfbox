@@ -16,8 +16,6 @@ Covers paths the Wave-1285 suite didn't reach:
 - ``MultipleInputStream`` read, readinto, read-all, close
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

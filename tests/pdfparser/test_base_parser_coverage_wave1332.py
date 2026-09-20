@@ -26,8 +26,6 @@ Targets the remaining uncovered branches in
   unterminated-after-recovery error.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

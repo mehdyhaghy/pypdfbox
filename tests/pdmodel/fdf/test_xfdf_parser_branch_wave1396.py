@@ -12,8 +12,6 @@ Closes False-branch arrows in
   attributes, malformed entries, and unknown sub-elements.
 """
 
-from __future__ import annotations
-
 from xml.dom.minidom import parseString
 
 from pypdfbox.pdmodel.fdf.fdf_dictionary import FDFDictionary

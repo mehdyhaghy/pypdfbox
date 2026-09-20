@@ -12,8 +12,6 @@ Closes False-branch arrows where the typed accessor walks an
 * ``CFAPatternType.get_values`` 89->86 — IntegerType child with None value
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import XMPMetadata
@@ -47,7 +45,7 @@ def test_oecf_get_names_skips_textproperty_with_corrupt_string_value(
     # (only reachable via direct attribute injection — set_value enforces str).
     good = TextType(metadata, None, "rdf", "li", "alpha")
     bad = TextType(metadata, None, "rdf", "li", "placeholder")
-    bad._text_value = 42
+    bad._text_value = 42  # intentional corruption to hit the guard
     seq.add_property(good)
     seq.add_property(bad)
     oecf.add_property(seq)
@@ -65,7 +63,7 @@ def test_oecf_get_values_skips_real_child_with_none_value(
     )
     good = RealType(metadata, None, "rdf", "li", 1.5)
     none_val = RealType(metadata, None, "rdf", "li", 2.5)
-    none_val._real_value = None
+    none_val._real_value = None  # bypass set_value to hit guard
     seq.add_property(good)
     seq.add_property(none_val)
     oecf.add_property(seq)
@@ -124,7 +122,7 @@ def test_cfa_pattern_get_values_skips_integer_with_none_value(
     )
     good = IntegerType(metadata, None, "rdf", "li", 2)
     none_val = IntegerType(metadata, None, "rdf", "li", 3)
-    none_val._integer_value = None
+    none_val._integer_value = None  # bypass set_value to hit guard
     seq.add_property(good)
     seq.add_property(none_val)
     cfa.add_property(seq)

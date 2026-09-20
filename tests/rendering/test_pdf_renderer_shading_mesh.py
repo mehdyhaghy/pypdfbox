@@ -6,8 +6,6 @@ patch) require fairly involved geometry rasterisation that's tracked in
 falls back to a uniform fill at the function's value at ``f(0)`` — this
 ensures pages don't crash when a mesh shading appears."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSFloat,

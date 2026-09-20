@@ -1,7 +1,5 @@
 """Hand-written tests for ``ClipEvenOddRule`` (``W*``) — wave 1365."""
 
-from __future__ import annotations
-
 from pypdfbox.contentstream import Operator, PDFStreamEngine
 from pypdfbox.contentstream.operator.graphics.clip_even_odd_rule import (
     ClipEvenOddRule,

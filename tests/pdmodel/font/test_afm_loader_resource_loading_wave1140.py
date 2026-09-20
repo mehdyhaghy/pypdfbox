@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdmodel.font.test_afm_loader_resource_loading import _MemoryAfmResource
 
 

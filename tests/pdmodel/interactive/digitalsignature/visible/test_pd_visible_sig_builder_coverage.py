@@ -16,8 +16,6 @@ template; ``set_signature_image`` is a parity stub so we only assert it
 records ``image`` without raising.
 """
 
-from __future__ import annotations
-
 import sys
 import types
 from collections.abc import Iterator

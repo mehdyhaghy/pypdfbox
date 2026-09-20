@@ -4,8 +4,6 @@
 Loads a template form, fills two named text fields, and saves the result.
 """
 
-from __future__ import annotations
-
 import contextlib
 import sys
 

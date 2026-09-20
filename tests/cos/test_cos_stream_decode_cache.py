@@ -8,8 +8,6 @@ on EVERY input change, so it can never serve stale bytes. Each assertion
 checks the semantically correct (uncached) value, so a stale cache can only
 fail a test.
 """
-from __future__ import annotations
-
 import base64
 import zlib
 

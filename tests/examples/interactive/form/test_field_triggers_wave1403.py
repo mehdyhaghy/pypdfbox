@@ -10,8 +10,6 @@ is only reachable by substituting an object missing one of them — which the
 test does via monkeypatch.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.examples.interactive.form.create_simple_form import CreateSimpleForm

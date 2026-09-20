@@ -32,8 +32,6 @@ checking against upstream-documented behaviour:
 * the quadratic -> cubic conversion in ``_AggdrawPathPen``.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 

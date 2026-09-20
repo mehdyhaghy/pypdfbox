@@ -1,7 +1,5 @@
 """Wave 1275 round-out: ``COSObject.to_string()`` explicit method."""
 
-from __future__ import annotations
-
 from pypdfbox.cos.cos_object import COSObject
 
 

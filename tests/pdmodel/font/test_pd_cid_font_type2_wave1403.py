@@ -16,8 +16,6 @@ conditionals in ``encode`` (source lines 706-732):
   present but ``get_codes_from_unicode`` returns ``None`` for the char.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

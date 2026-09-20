@@ -6,8 +6,6 @@ Targets the remaining branches around TypeError input validation, the
 ``_retrieve_dimensions`` back-compat alias.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

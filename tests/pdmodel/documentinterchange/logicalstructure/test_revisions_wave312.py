@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSInteger, COSName
 from pypdfbox.pdmodel.documentinterchange.logicalstructure.revisions import Revisions
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_rubber_stamp import (
     PDAnnotationRubberStamp,
 )

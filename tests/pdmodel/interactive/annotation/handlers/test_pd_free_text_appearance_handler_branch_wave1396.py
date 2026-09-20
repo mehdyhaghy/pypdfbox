@@ -10,8 +10,6 @@ short-circuits in
 * 445->452 — default resources has no callable ``get_font``
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.pdmodel.interactive.annotation.handlers.pd_free_text_appearance_handler import (

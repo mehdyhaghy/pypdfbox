@@ -20,8 +20,6 @@ against the contract of upstream ``org.apache.pdfbox.pdfwriter.COSWriter``
 * empty string / array / dict edge cases.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

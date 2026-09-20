@@ -10,8 +10,6 @@ without matching, exercising the defensive fall-through to ``_current_position
 = position``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer
 from pypdfbox.io.sequence_random_access_read import SequenceRandomAccessRead
 

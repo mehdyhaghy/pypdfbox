@@ -10,8 +10,6 @@ list from the widget annotations. This processor mirrors that
 behaviour.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING, Any
 

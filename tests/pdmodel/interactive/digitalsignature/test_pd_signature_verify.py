@@ -22,8 +22,6 @@ intent was "build a signed PDF in-process with a self-signed cert",
 which the signature builder does directly.
 """
 
-from __future__ import annotations
-
 import datetime
 import io
 

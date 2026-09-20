@@ -11,8 +11,6 @@ through ``tk.Text.tag_configure`` + ``tk.Text.insert``. See
 ``CHANGES.md`` for the deviation note.
 """
 
-from __future__ import annotations
-
 from .color_tool_tip import ColorToolTip
 from .font_tool_tip import FontToolTip
 from .g_tool_tip import GToolTip

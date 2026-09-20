@@ -21,8 +21,6 @@ These tests pin:
   find_pattern_code, create_code_table).
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import COSDictionary

@@ -9,8 +9,6 @@ pypdfbox does not port because it depends on a text-shaping backend. The
 backend-free equivalents.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel import (

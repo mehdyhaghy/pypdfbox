@@ -14,8 +14,6 @@ here as a single module so a direct port from PDFBox source can write::
 and resolve the symbols without re-deriving them.
 """
 
-from __future__ import annotations
-
 from typing import Final
 
 __all__ = ["TIFFExtension"]

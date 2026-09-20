@@ -10,8 +10,6 @@ matrices, then verifies:
 * :class:`FilteredTextStripper(target_angle=...)` only emits the run
   whose text matrix matches the requested angle.
 """
-from __future__ import annotations
-
 import math
 from pathlib import Path
 from unittest.mock import patch

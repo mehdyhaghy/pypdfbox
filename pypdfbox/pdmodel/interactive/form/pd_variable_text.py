@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 from xml.dom import minidom
 from xml.dom.minidom import Document

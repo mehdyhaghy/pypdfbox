@@ -6,8 +6,6 @@ plus a minimal format-0 ``cmap``) so we can exercise both the pure
 fontbox parser and the PDTrueTypeFont wiring without a real on-disk font.
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

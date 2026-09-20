@@ -3,8 +3,6 @@
 Java path: ``pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fixup/PDDocumentFixup.java``
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 
 

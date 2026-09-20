@@ -5,8 +5,6 @@ constantly write ``"D".equals(nf.getFractionalDisplay())``, so we expose
 typed predicates plus iterable tuples of the valid constants.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.interactive.measurement import PDNumberFormatDictionary

@@ -1,7 +1,5 @@
 """End-to-end check for ``PDPage.get_annotations`` / ``set_annotations``."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName

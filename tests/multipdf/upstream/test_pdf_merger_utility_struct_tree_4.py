@@ -18,8 +18,6 @@ tree, etc.) — porting them is large and orthogonal to the regression
 this test guards, so they're left for a later wave.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSObject

@@ -7,8 +7,6 @@ Translated from
 network-fetched fixture PDFs) are skipped with one-line comments.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSName

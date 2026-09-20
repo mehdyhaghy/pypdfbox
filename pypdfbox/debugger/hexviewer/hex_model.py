@@ -6,8 +6,6 @@ Tkinter widgets register themselves on construction so any mutation triggers
 a redraw without their having to share state.
 """
 
-from __future__ import annotations
-
 from pypdfbox.debugger.hexviewer.hex_changed_event import HexChangedEvent
 from pypdfbox.debugger.hexviewer.hex_model_change_listener import (
     HexModelChangeListener,

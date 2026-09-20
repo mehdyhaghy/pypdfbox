@@ -46,8 +46,6 @@ Closed partials:
   after stamping the local name.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import XMPMetadata

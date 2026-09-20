@@ -9,8 +9,6 @@ helpers (rotation matrix, padding, glyph height, bounding-box fallback,
 font-size auto-fit, formatted-value newline collapse).
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

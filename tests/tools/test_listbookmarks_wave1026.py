@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import tests.tools.test_listbookmarks_wave666 as wave666
 
 

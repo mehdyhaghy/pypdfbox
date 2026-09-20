@@ -5,8 +5,6 @@ three views — page-oriented, internal-structure, and cross-reference table.
 Selection is exposed via ``get_tree_view_selection`` / ``set_tree_view_selection``.
 """
 
-from __future__ import annotations
-
 from typing import ClassVar
 
 from .menu_base import MenuBase

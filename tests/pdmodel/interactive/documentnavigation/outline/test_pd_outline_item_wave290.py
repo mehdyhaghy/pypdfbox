@@ -1,6 +1,4 @@
 """Wave 290 coverage for outline item optional-entry helpers."""
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

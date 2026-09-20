@@ -5,8 +5,6 @@ Targets the ``process_page`` translate-matrix bookkeeping and the
 clamp, ascent/descent average, Type3 font-matrix transform).
 """
 
-from __future__ import annotations
-
 from unittest.mock import patch
 
 import pytest

@@ -10,8 +10,6 @@ The hard-coded expectations let these run without the oracle; an opt-in
 ``@requires_oracle`` differential at the end re-derives them live.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName

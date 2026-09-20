@@ -10,8 +10,6 @@ having them under test future-proofs porting of code that calls into the
 package-private surface.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime, timedelta
 
 import pytest

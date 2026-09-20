@@ -7,8 +7,6 @@ methods that return elapsed milliseconds; Pillow saves PNGs in place of
 ``ImageIO.write``.
 """
 
-from __future__ import annotations
-
 import logging
 import time
 from pathlib import Path

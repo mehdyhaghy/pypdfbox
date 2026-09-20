@@ -8,8 +8,6 @@ The existing ``test_fs_font_info`` file exercises the metadata accessors;
 this module adds the load-path coverage so the module clears 75%.
 """
 
-from __future__ import annotations
-
 import pathlib
 from pathlib import Path
 from typing import Any

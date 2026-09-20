@@ -7,8 +7,6 @@ Subcommand wiring lives in this module; each subcommand registers itself
 through a ``build_parser(subparsers)`` callable, keeping the dispatcher
 free of business logic.
 """
-from __future__ import annotations
-
 import argparse
 import sys
 from collections.abc import Sequence

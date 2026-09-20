@@ -12,8 +12,6 @@ operator to the keyword arguments callers should pass to
 Colors mirror upstream RGB values verbatim (converted to ``#rrggbb``).
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.contentstream.operator_name import OperatorName

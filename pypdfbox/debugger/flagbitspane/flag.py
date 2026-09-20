@@ -16,8 +16,6 @@ The view (``FlagBitsPaneView``) reads :meth:`get_column_names` so subclasses
 that produce a different column layout can override the header row.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from typing import Any
 

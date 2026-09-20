@@ -10,8 +10,6 @@ class that exposes the same surface the Swing widget consumed —
 ``get_columns()`` / ``get_rows()`` accessors used by the view code.
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 
 from pypdfbox.debugger.colorpane.device_n_colorant import DeviceNColorant

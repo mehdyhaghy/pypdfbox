@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.contentstream import Operator
 from pypdfbox.cos import COSInteger
 from tests.contentstream.test_operator_processor import _Recorder

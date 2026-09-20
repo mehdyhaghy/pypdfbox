@@ -21,8 +21,6 @@ passthrough, CMYK re-encode, G4 bitonal) or are pure helper plumbing, so
 they are driven with real factory images plus small stubs that mirror the
 exact ``PDImage`` surface ``write2file`` touches.
 """
-from __future__ import annotations
-
 import io
 from pathlib import Path
 from typing import Any

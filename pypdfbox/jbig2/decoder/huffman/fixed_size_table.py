@@ -3,8 +3,6 @@
 Port of ``org.apache.pdfbox.jbig2.decoder.huffman.FixedSizeTable``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.decoder.huffman.huffman_table import Code, HuffmanTable
 
 

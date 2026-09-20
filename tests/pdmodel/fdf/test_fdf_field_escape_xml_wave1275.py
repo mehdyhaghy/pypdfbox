@@ -1,7 +1,5 @@
 """Wave 1275 parity test: FDFField.escape_xml public static helper."""
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.fdf.fdf_field import FDFField
 
 

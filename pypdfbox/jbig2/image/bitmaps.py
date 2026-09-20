@@ -24,8 +24,6 @@ by masking the stored value to 8 bits before writing it back via
 :func:`_to_signed_short` so the shift matches Java's ``>>``.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from pypdfbox.jbig2.bitmap import Bitmap

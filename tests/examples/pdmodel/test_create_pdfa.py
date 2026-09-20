@@ -13,8 +13,6 @@ monkeypatches the serializer with a stub so the rest of ``main()``
 covered. The bug is flagged in the wave 1335 agent report.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 

@@ -5,8 +5,6 @@ filter-chain-encoding path (single and multi filter), plus the
 ``write(int)``/``flush``/``close`` accessor surface.
 """
 
-from __future__ import annotations
-
 import io
 from typing import BinaryIO
 

@@ -1,7 +1,5 @@
 """Wave 1281: NonSeekableRandomAccessReadInputStream port."""
 
-from __future__ import annotations
-
 import io
 
 import pytest

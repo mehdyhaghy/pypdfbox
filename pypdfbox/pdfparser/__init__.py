@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .base_parser import BaseParser
 from .brute_force_parser import BruteForceParser
 from .cos_parser import COSParser

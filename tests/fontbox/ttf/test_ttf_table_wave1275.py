@@ -1,7 +1,5 @@
 """Wave 1275 — small parity misses on the TTF table cluster."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.ttf_table import TTFTable
 
 

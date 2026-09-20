@@ -14,8 +14,6 @@ Covers the four upstream-parity fixes landed in wave 1371:
    ``_SCHEMA_REGISTRY``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox.dom_xmp_parser import DomXmpParser, XmpParsingException

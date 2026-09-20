@@ -6,8 +6,6 @@ the output document holds twice as many pages, each showing one half of
 the original.
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.pdmodel.pd_document import PDDocument

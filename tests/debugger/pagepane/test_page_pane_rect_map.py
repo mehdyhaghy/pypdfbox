@@ -9,8 +9,6 @@ exercise each helper in isolation and verify that calling
 ``init_rect_map`` twice does not double-map entries.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 
 import pytest

@@ -7,8 +7,6 @@ string), and the IllegalArgumentException raised when a page destination
 points at a non-page element.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName

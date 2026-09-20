@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSBase,
@@ -224,7 +222,7 @@ class PDFunctionType3(PDFunction):
             )
         return (float(lo.float_value()), float(hi.float_value()))
 
-    def eval(self, input: list[float]) -> list[float]:
+    def eval(self, input: list[float]) -> list[float]:  # upstream parameter name
         """Stitching evaluation per PDF 32000-1 §7.10.4.
 
         Faithful port of upstream ``PDFunctionType3.eval(float[])``:

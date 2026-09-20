@@ -8,8 +8,6 @@ of intermediate points are computed by linear interpolation along the
 dominant axis.
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 
 

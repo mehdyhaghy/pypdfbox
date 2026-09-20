@@ -4,8 +4,6 @@ No upstream JUnit test exists for ``Type1Encoding``. We cover the three
 constructor paths plus the inherited :class:`Encoding` accessors.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.font.encoding.type1_encoding import Type1Encoding
 
 

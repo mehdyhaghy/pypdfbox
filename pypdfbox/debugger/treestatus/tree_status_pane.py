@@ -4,8 +4,6 @@ Holds the status entry widget which displays the path to the currently
 selected tree node, and lets the user type a path to jump to.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk

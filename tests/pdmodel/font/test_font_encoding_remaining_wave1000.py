@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdmodel.font.test_font_encoding_remaining_wave753 import _RecordingMapper
 
 

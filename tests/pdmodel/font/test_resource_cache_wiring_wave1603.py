@@ -22,8 +22,6 @@ This file locks the revert in. It asserts:
   carries no descendant-eviction machinery.
 """
 
-from __future__ import annotations
-
 import inspect
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSObject

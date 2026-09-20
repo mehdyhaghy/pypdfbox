@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdmodel.graphics.color.test_pd_color_wave468 import (
     _BadUnderlyingCountColorSpace,
     _UnderlyingRaisesColorSpace,

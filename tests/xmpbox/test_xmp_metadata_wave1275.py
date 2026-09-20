@@ -1,7 +1,5 @@
 """Wave 1275 parity tests: XPacket aliases + lazy TypeMapping."""
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox.type.type_mapping import TypeMapping
 from pypdfbox.xmpbox.xmp_metadata import XMPMetadata
 

@@ -6,8 +6,6 @@ Covers the ``main`` ``len(argv) != 2`` branch (line 125 — falls into
 (line 130).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.examples.pdmodel.using_text_matrix import UsingTextMatrix

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.fontbox.type1.test_type1_font_private import _FakeT1
 
 

@@ -5,8 +5,6 @@ Advisory ``ArrayProperty`` storage path, rating integer typed/string
 interop, and thumbnail Alt cardinality enforcement.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest

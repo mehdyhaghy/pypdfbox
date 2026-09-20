@@ -6,8 +6,6 @@ by ``BooleanVar``s. ``is_sorted()``/``is_ignore_spaces()`` read the current
 state of those checkboxes, matching the upstream contract.
 """
 
-from __future__ import annotations
-
 from typing import ClassVar
 
 from .menu_base import MenuBase

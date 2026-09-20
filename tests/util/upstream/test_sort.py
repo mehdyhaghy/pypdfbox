@@ -11,8 +11,6 @@ randomized parity loop. The Python port lives in
 here pin the public contract anyway.
 """
 
-from __future__ import annotations
-
 import random
 
 from pypdfbox.util import IterativeMergeSort

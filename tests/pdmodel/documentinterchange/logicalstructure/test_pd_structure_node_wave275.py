@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSObject
 from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_marked_content_reference import (
     PDMarkedContentReference,

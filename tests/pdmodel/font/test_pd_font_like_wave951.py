@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.pdmodel.font import PDFontLike
 from tests.pdmodel.font.test_pd_font_like_wave924 import _WrongSigFontLike
 

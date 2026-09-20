@@ -1,7 +1,5 @@
 """Tests for ``SHA1DigestCalculator``."""
 
-from __future__ import annotations
-
 import hashlib
 
 from pypdfbox.examples.signature.cert.sha1_digest_calculator import (

@@ -18,8 +18,6 @@ with a logged warning. The ``Duplex`` enum,
 ``create_print_request_attribute_set``, and helper listing methods are
 still ported so the surface matches upstream for parity counting.
 """
-from __future__ import annotations
-
 import argparse
 import enum
 import logging

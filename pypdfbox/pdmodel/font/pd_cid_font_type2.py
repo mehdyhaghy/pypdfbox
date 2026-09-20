@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -108,7 +106,7 @@ class PDCIDFontType2(PDCIDFont):
             try:
                 if otf.is_post_script():
                     return int(cid)
-            except Exception:
+            except Exception:  # defensive: malformed CFF table
                 pass
         ttf = self.get_true_type_font()
         if ttf is None:
@@ -118,7 +116,7 @@ class PDCIDFontType2(PDCIDFont):
             return int(cid)
         try:
             num_glyphs = ttf.get_number_of_glyphs()
-        except Exception:
+        except Exception:  # defensive: malformed maxp table
             return int(cid)
         return int(cid) if cid < num_glyphs else 0
 
@@ -327,7 +325,7 @@ class PDCIDFontType2(PDCIDFont):
         if not callable(getter):
             return None
         try:
-            return getter(False)
+            return getter(False)  # mirror Java boolean
         except Exception:
             return None
 

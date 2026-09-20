@@ -9,8 +9,6 @@ Closes False-branch arrows in ``show_glyph`` / ``process_color``:
   PDTilingPattern (skip the tiling-pattern dispatch)
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.tools import extract_images

@@ -6,8 +6,6 @@ the entire 256-byte range plus a couple of UTF-16BE / short-to-chars
 corner cases.
 """
 
-from __future__ import annotations
-
 from pypdfbox.util import Hex
 
 

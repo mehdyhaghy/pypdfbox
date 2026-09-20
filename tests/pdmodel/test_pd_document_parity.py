@@ -3,8 +3,6 @@
 exposes from ``org.apache.pdfbox.pdmodel.PDDocument`` so direct ports
 from Java land without naming churn."""
 
-from __future__ import annotations
-
 from pypdfbox import PDDocument, PDPage
 from pypdfbox.pdmodel import PDPageTree
 

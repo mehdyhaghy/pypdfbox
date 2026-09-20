@@ -13,8 +13,6 @@ pipeline is exercised elsewhere; here we only care that the runner's
 loop body, file-naming, error returns, and helper static methods
 execute.
 """
-from __future__ import annotations
-
 import contextlib
 from collections.abc import Iterator
 from pathlib import Path

@@ -14,8 +14,6 @@ the group records visible side effects on a parallel ``PIL.Image`` and
 can be composited back onto the parent canvas when the group ends.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from PIL import Image, ImageChops, ImageDraw

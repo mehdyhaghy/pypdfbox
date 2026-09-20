@@ -4,8 +4,6 @@ Prints URLs in a PDF along with the text of the surrounding annotation
 rectangle.
 """
 
-from __future__ import annotations
-
 import sys
 from typing import Any
 
@@ -84,7 +82,7 @@ class PrintURLs:
             return None
         try:
             action = get_action()
-        except Exception:
+        except Exception:  # mirrors broad Java catch
             return None
         from pypdfbox.pdmodel.interactive.action.pd_action_uri import PDActionURI
 

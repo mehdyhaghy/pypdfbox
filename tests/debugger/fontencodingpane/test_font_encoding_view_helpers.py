@@ -4,8 +4,6 @@ Exercises the promoted upstream-parity methods :meth:`create_view`,
 :meth:`get_header_panel`, and :meth:`get_table`.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 from tkinter import ttk
 

@@ -38,8 +38,6 @@ once; the values are frozen here). A companion @requires_oracle differential
 lives in ``oracle/test_function_type23_edge_oracle.py``.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

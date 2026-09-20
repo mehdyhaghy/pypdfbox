@@ -8,8 +8,6 @@ emit a fresh trailer whose ``/Prev`` points at the *immediately previous*
 catalog.
 """
 
-from __future__ import annotations
-
 import io
 import re
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import io
 
 from pypdfbox.io.random_access_read import RandomAccessRead

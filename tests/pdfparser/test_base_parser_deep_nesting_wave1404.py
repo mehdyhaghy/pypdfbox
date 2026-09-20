@@ -15,8 +15,6 @@ input. (Upstream PDFBox is likewise recursive here; it tolerates more only
 because the JVM stack is deeper than Python's recursion limit.)
 """
 
-from __future__ import annotations
-
 import sys
 
 import pytest

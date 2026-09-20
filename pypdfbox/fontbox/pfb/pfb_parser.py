@@ -11,8 +11,6 @@ the encrypted binary, and the remainder as the final ``cleartomark``
 segment.
 """
 
-from __future__ import annotations
-
 import io
 import logging
 from pathlib import Path

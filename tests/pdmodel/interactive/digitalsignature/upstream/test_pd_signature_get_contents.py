@@ -17,8 +17,6 @@ Skipped upstream pieces:
   buffer the document themselves; the API surface stays one-shot to keep
   ``/ByteRange`` slice math obvious).
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import (

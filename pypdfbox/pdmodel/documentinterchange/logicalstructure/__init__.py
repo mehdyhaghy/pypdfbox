@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .pd_attribute_object import PDAttributeObject
 from .pd_default_attribute_object import PDDefaultAttributeObject
 from .pd_mark_info import PDMarkInfo

@@ -18,8 +18,6 @@ Closes residual gaps after waves 1323 / 1332:
       AcroForm's /Fields array (1559-1562).
 """
 
-from __future__ import annotations
-
 from pypdfbox import PDDocument
 from pypdfbox.cos import (
     COSArray,

@@ -1,7 +1,5 @@
 """Tests for the :class:`GsubWorker` abstract base."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.ttf.gsub.gsub_worker import GsubWorker

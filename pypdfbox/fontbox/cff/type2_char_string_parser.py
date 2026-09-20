@@ -13,8 +13,6 @@ upstream byte-level decoding step plus subroutine unrolling and
 hint-mask byte skipping.
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -52,7 +50,7 @@ class Type2CharStringParser:
         bytes_: bytes | bytearray | memoryview,
         global_subr_index: Sequence[bytes | bytearray] | None,
         local_subr_index: Sequence[bytes | bytearray] | None,
-        glyph_name: str,
+        glyph_name: str,  # upstream takes it for log context
     ) -> list[Any]:
         """Mirrors upstream ``parse(byte[], byte[][], byte[][], String)``
         (Type2CharStringParser.java:63)."""

@@ -23,8 +23,6 @@ Skipped/adapted notes:
   freshly-constructed wrapper.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray

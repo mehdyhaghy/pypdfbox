@@ -12,8 +12,6 @@ Upstream widened the existing PDFBOX-6037 pathological-width guard
 the accepted range plus the neighbouring widths that must stay legal.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos.cos_array import COSArray

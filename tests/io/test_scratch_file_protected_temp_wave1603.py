@@ -7,8 +7,6 @@ backing temp file through ``IOUtils.createProtectedTempFile(dir, "PDFBox",
 pin the ported wiring in ``pypdfbox/io/scratch_file.py``.
 """
 
-from __future__ import annotations
-
 import os
 import stat
 import sys

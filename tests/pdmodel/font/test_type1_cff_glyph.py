@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import io
 
 import pytest
@@ -82,7 +80,7 @@ def _build_minimal_type1_program() -> Type1Font:
             self.width = width
             self._commands = commands
 
-        def draw(self, pen) -> None:
+        def draw(self, pen) -> None:  # pen protocol
             for cmd in self._commands:
                 if cmd[0] == "moveTo":
                     pen.moveTo(cmd[1])

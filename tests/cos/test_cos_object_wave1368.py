@@ -19,8 +19,6 @@ Round-out tests for paths not yet covered:
 * Constructor validation rejects negative numbers.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

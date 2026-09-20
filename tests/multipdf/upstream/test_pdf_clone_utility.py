@@ -10,8 +10,6 @@ plus the merger round-trip suite, so it is intentionally skipped to
 avoid scratch-file churn during the test run.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import COSDictionary, COSName, COSObject

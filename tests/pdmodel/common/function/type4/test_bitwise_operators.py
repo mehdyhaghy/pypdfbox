@@ -8,8 +8,6 @@ the parser-driven dispatcher already exists in
 (execute manipulates the stack as upstream does, inheritance shape matches).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.common.function.type4.bitwise_operators import (

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import tests.multipdf.test_pdf_merger_utility_round_out as round_out
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 

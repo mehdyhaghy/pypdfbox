@@ -3,8 +3,6 @@ Ported from Apache PDFBox 3.0:
   pdfbox/src/test/java/org/apache/pdfbox/cos/TestCOSArray.java
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSBoolean, COSFloat, COSInteger, COSName, COSString

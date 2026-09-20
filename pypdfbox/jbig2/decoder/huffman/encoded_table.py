@@ -8,8 +8,6 @@ wave); this class only relies on its accessor surface — ``get_sub_input_stream
 ``get_ht_low``, ``get_ht_high``, ``get_ht_ps``, ``get_ht_rs``, ``get_ht_oob``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.decoder.huffman.huffman_table import Code, HuffmanTable
 
 

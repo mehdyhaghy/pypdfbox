@@ -11,8 +11,6 @@ Targets the missing fallback branches:
 - ``_compute_gid_to_cid`` KeyError on maxp.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

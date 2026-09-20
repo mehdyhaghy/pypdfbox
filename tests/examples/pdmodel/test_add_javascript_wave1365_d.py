@@ -9,8 +9,6 @@ zero-arg usage gate. This module deepens to:
 * the wrong-arg-count branch (``len(argv) != 2``) for one and three args.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

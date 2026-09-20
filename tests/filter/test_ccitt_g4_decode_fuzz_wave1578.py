@@ -26,8 +26,6 @@ wheels — we never assert on bytes past the declared ``row_bytes * rows``
 footprint (the project's libtiff EOD carve-out).
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

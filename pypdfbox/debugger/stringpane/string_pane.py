@@ -8,8 +8,6 @@ unprintable ISO control characters (other than ``\\n``, ``\\r``,
 ``\\t``), the renderer falls back to a hexified ``<...>`` form.
 """
 
-from __future__ import annotations
-
 import contextlib
 import tkinter as tk
 from tkinter import ttk

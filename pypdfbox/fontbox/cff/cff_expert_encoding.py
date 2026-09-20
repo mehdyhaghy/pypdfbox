@@ -6,8 +6,6 @@ table (built from the same Java (code, sid) pairs and the fontTools
 CFF Standard Strings list) so we don't transcribe 256 entries twice.
 """
 
-from __future__ import annotations
-
 from ._expert_encoding import EXPERT_ENCODING_TABLE
 from .cff_encoding import CFFEncoding
 

@@ -12,8 +12,6 @@ the success path of ``start_rendering`` itself, so we just assert
 ``action_performed`` actually invokes it.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 from unittest.mock import MagicMock
 

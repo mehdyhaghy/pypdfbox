@@ -13,8 +13,6 @@ are thin parity shims:
   delegates to the module-level helper.
 """
 
-from __future__ import annotations
-
 import inspect
 import logging
 

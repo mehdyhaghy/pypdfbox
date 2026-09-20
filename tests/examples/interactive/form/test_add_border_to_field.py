@@ -1,7 +1,5 @@
 """Smoke test for the :class:`AddBorderToField` example port."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

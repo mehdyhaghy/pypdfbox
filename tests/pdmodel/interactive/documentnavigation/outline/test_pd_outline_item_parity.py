@@ -6,8 +6,6 @@ tests pin the surface as observed *through a* ``PDOutlineItem`` so future
 refactors that move methods between the two classes can't silently break
 the upstream-shaped public API.
 """
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.documentnavigation.outline import (
     PDDocumentOutline,
     PDOutlineItem,

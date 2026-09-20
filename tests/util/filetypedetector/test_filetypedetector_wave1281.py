@@ -1,7 +1,5 @@
 """Hand-written tests for the ``pypdfbox.util.filetypedetector`` cluster."""
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.util.filetypedetector import ByteTrie, FileType, FileTypeDetector

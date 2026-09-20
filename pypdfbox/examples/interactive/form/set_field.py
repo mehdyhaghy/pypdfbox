@@ -4,8 +4,6 @@ Sets a single named form field to a supplied value, handling the field
 type (text, combo, list, radio, checkbox).
 """
 
-from __future__ import annotations
-
 import contextlib
 import sys
 

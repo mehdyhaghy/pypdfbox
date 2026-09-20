@@ -4,8 +4,6 @@ After Wave 13's ``PDDocument.import_page`` landed, the merge tool now
 deep-copies pages and rewires intra-source link destinations to point at
 the imported page set. These tests exercise that contract end-to-end.
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName

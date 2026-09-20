@@ -5,8 +5,6 @@ file; only the staticmethod wrappers on the ``WGL4Names`` class (lines
 92/97/102) were untouched.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.wgl4_names import (
     NUMBER_OF_MAC_GLYPHS,
     WGL4Names,

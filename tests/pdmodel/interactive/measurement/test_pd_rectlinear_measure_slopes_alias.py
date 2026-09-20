@@ -8,8 +8,6 @@ spelled aliases for callers writing fresh code. This module verifies both
 spellings round-trip through the same underlying ``/S`` slot.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.measurement import (
     PDNumberFormatDictionary,

@@ -11,8 +11,6 @@ ColorBurn ``s == 0`` / backdrop 1).
 ``[0, 1]`` (source first, matching upstream's ``blendChannel(src, dst)``).
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

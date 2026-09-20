@@ -1,7 +1,5 @@
 """Tests for ``Stream.is_xml_metadata_stream`` (wave 1312)."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName, COSStream
 from pypdfbox.debugger.streampane.stream import Stream
 

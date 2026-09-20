@@ -1,7 +1,5 @@
 """Port of ``CreateSignedTimeStamp`` (upstream 1-181)."""
 
-from __future__ import annotations
-
 import logging
 from pathlib import Path
 from typing import IO
@@ -83,6 +81,6 @@ class CreateSignedTimeStamp(SignatureInterface):
         try:
             validation = ValidationTimeStamp(self._tsa_url)
             return validation.get_time_stamp_token(content)
-        except Exception:
+        except Exception:  # mirror upstream lenient logging
             LOG.error("Hashing-Algorithm not found for TimeStamping", exc_info=True)
             return b""

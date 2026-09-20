@@ -10,8 +10,6 @@ Targets the small enrichment surface added on top of upstream PDFBox 3.0
 - ``has_*()`` presence predicates for every optional entry
 - ``__repr__`` for debug output
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.graphics.color import PDOutputIntent
 

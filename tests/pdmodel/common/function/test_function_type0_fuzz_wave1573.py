@@ -20,8 +20,6 @@ production code, so a divergence in the production interpolation/decoding is
 caught rather than mirrored.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSFloat, COSStream

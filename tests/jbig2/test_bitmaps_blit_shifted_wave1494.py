@@ -18,8 +18,6 @@ upstream's identical structure.)
 expected rasters are pinned exactly.
 """
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.bitmap import Bitmap
 from pypdfbox.jbig2.image.bitmaps import Bitmaps
 from pypdfbox.jbig2.util.combination_operator import CombinationOperator

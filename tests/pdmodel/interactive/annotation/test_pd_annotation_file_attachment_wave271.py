@@ -13,8 +13,6 @@ Round-out cold gaps:
   squiggly/strikeout pattern (Wave 269/270)
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from pypdfbox.cos import COSName

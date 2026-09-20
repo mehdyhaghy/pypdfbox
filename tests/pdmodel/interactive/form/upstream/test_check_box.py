@@ -11,8 +11,6 @@ Skipped upstream cases:
   ``tests/pdmodel/interactive/form/test_button_empty_opt_wave1602.py``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel import PDDocument
 from pypdfbox.pdmodel.common import PDRectangle

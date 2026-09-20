@@ -14,8 +14,6 @@ the operator must still be dispatched successfully, validated for
 operand shape, and exposed via the typed accessor. These tests pin
 that contract.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream.operator import (

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .appearance_generator_helper import AppearanceGeneratorHelper
 from .appearance_style import AppearanceStyle
 from .builder import Builder

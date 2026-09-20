@@ -22,8 +22,6 @@ touches (``get_color_space``, ``get_background``, ``get_domain``,
 ``eval_function``).
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

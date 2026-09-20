@@ -14,8 +14,6 @@ score, this.score)``. Python's :mod:`heapq` is a min-heap; to match
 upstream ordering we expose :meth:`__lt__` that flips the sign.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

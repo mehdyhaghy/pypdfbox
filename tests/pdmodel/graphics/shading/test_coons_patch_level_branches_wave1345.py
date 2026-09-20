@@ -18,8 +18,6 @@ Patch points layout (order matches upstream PDF Type-6 mesh):
 * row 3 = [p9, p8, p7, p6]     (used by level[1] — the "d" edges)
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.graphics.shading.coons_patch import CoonsPatch
 
 

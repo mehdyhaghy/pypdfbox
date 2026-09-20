@@ -16,8 +16,6 @@ Closes the remaining uncovered branches:
   colour-space name.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName, COSObject, COSStream
 from pypdfbox.pdmodel import PDResources
 

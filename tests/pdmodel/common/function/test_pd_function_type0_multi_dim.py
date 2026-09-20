@@ -19,8 +19,6 @@ count. This file rounds out:
 * Out-of-domain inputs clip first, then encode/lookup proceeds.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

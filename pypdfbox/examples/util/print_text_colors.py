@@ -5,8 +5,6 @@ Custom :class:`PDFTextStripper` that emits stroking / non-stroking
 colors and rendering mode for each text position.
 """
 
-from __future__ import annotations
-
 import contextlib
 import io
 import sys

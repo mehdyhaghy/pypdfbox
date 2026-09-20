@@ -11,8 +11,6 @@ tokenizer in a content-stream context (operands feeding operators), so
 they live under ``tests/contentstream/`` rather than ``tests/pdfparser/``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSFloat, COSInteger, COSName, COSNull, COSString

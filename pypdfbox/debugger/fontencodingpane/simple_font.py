@@ -6,8 +6,6 @@ Renders the 256 single-byte codepoints of a Type1 / TrueType /
 MMType1 font as ``(code, glyph name, unicode, glyph)`` rows.
 """
 
-from __future__ import annotations
-
 import logging
 import tkinter as tk
 from typing import TYPE_CHECKING, Any

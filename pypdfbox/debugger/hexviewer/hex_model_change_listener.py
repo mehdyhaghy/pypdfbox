@@ -1,7 +1,5 @@
 """Listener protocol for ``HexModelChangedEvent``."""
 
-from __future__ import annotations
-
 from typing import Protocol, runtime_checkable
 
 from pypdfbox.debugger.hexviewer.hex_model_changed_event import (

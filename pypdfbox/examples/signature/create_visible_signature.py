@@ -1,7 +1,5 @@
 """Port of ``CreateVisibleSignature`` (upstream 1-480)."""
 
-from __future__ import annotations
-
 import datetime as _dt
 from collections.abc import Callable
 from io import BytesIO

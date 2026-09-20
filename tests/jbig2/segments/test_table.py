@@ -9,8 +9,6 @@ value (B.2.3). The buffer layout of the segment data is:
 * 4 bytes HTHIGH (signed).
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

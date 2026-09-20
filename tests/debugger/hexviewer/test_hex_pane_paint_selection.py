@@ -5,8 +5,6 @@ Targets the upstream-aligned public methods promoted in this wave:
 ``paint_in_edit``, and ``put_in_selected``.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 
 from pypdfbox.debugger.hexviewer.hex_model import HexModel

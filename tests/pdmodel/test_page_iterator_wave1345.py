@@ -10,8 +10,6 @@ Targets:
   - the ``__next__`` /Type-mismatch raise path (line 97).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSNull

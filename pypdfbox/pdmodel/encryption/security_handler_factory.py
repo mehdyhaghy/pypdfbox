@@ -10,8 +10,6 @@ plus ``register_handler`` / ``new_security_handler_for_*`` methods so callers
 that follow the Java API get the same shape.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

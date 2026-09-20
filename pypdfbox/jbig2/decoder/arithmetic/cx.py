@@ -23,8 +23,6 @@ When arithmetic coding contexts are retained and reused across segments
 probability state between decoders.
 """
 
-from __future__ import annotations
-
 
 class CX:
     """Arithmetic decoder context (index + per-state probability/MPS arrays)."""

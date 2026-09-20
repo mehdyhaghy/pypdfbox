@@ -24,8 +24,6 @@ intentionally out of scope for this change):
   We synthesise minimal PNG/JPEG/GIF/BMP fixtures via Pillow to cover
   the dispatch logic without binary fixtures.
 """
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

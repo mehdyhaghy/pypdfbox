@@ -12,8 +12,6 @@ line referenced inline so the intent stays diff-able against future
 re-syncs.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.text import PDFTextStripper, TextPosition, WordWithTextPositions

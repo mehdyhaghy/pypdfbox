@@ -14,8 +14,6 @@ Pre-wave the module sat at 61%. Uncovered surface was:
   * ``read_fully_int`` length-overload wrapper.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

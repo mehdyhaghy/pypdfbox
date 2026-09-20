@@ -12,8 +12,6 @@ hermetic — exercising the true bytes-to-glyph chain belongs in the
 fontbox/ttf cluster.
 """
 
-from __future__ import annotations
-
 from types import SimpleNamespace
 from typing import Any
 

@@ -10,8 +10,6 @@ sample codes are adjacent in the bit stream with no padding at byte
 boundaries; bits are MSB-first per PDF spec p.171.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSFloat, COSStream

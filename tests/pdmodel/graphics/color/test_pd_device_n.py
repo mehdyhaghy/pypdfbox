@@ -10,8 +10,6 @@ surface — keeping a small, hand-readable spec grounded in PDF 32000-1
 §8.6.6.5 close to the round-out work.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName

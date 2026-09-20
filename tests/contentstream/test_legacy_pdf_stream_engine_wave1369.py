@@ -13,8 +13,6 @@ surface* (subclass-of-PDFStreamEngine semantics) is what's being pinned
 heuristics already have a dedicated test file under ``tests/text/``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.contentstream import PDFStreamEngine
 from pypdfbox.pdmodel.pd_page import PDPage
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle

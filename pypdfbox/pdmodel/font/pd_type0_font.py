@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import io
 import os
 from collections.abc import Iterable
@@ -936,7 +934,7 @@ class PDType0Font(PDFont):
         if callable(get_unicode):
             try:
                 return get_unicode()
-            except Exception:
+            except Exception:  # defensive: malformed cmap
                 return None
         # Fall back to fontTools' best cmap. Reverse map glyph-name -> cp.
         inner = getattr(ttf, "_tt", None)
@@ -1317,7 +1315,7 @@ class PDType0Font(PDFont):
             return False
         try:
             return bool(descendant.is_embedded())
-        except Exception:
+        except Exception:  # defensive: missing /FontFile2 etc.
             return False
 
     def _encode_embedded_codepoint(self, cp: int, cmap: CMap | None) -> bytes:
@@ -1351,7 +1349,7 @@ class PDType0Font(PDFont):
             if callable(getter):
                 try:
                     cid = int(getter(cp) or 0)
-                except Exception:
+                except Exception:  # odd cmaps / surrogate inputs
                     cid = -1
         if cid in (-1, 0):
             # Parent /ToUnicode reverse lookup — upstream's ``cmap == null``
@@ -1360,7 +1358,7 @@ class PDType0Font(PDFont):
             if to_unicode is not None:
                 try:
                     codes = to_unicode.get_codes_from_unicode(chr(cp))
-                except Exception:
+                except Exception:  # lenient parsers / odd CMaps
                     codes = None
                 if codes is not None:
                     return bytes(codes)
@@ -1448,7 +1446,7 @@ class PDType0Font(PDFont):
         # Try the CMap's own reverse mapping first.
         try:
             codes = cmap.get_codes_from_unicode(chr(cp))
-        except Exception:
+        except Exception:  # defensive: lenient parsers / odd CMaps
             codes = None
         if codes is not None:
             return bytes(codes)
@@ -2010,7 +2008,7 @@ def _build_to_unicode_stream_for_gids(ttf: Any) -> COSStream | None:
         return None
     try:
         cmap = cmap_getter()
-    except Exception:
+    except Exception:  # defensive against malformed cmaps
         cmap = None
     if cmap is None:
         return None
@@ -2020,7 +2018,7 @@ def _build_to_unicode_stream_for_gids(ttf: Any) -> COSStream | None:
     for gid in range(1, num_glyphs):
         try:
             codes = cmap.get_char_codes(gid)
-        except Exception:
+        except Exception:  # defensive against odd cmaps
             codes = None
         if codes:
             writer.add(gid, chr(codes[0]))
@@ -2057,7 +2055,7 @@ def _ps_name_from_ttf(ttf: Any, fallback: str) -> str:
         return fallback
     try:
         text = record.toUnicode()
-    except Exception:
+    except Exception:  # record.toUnicode may raise on bad encodings
         return fallback
     text = text.strip()
     return text if text else fallback

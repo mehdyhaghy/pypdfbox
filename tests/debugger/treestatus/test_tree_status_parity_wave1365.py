@@ -17,8 +17,6 @@ boundary cases:
   rather than raising — upstream's else-fallthrough.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

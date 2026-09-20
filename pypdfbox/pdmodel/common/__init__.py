@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from ..pd_rectangle import PDRectangle
 from .cos_array_list import COSArrayList
 from .cos_dictionary_map import COSDictionaryMap

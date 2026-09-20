@@ -7,8 +7,6 @@ helpers; this file ports the per-mode channel-function assertions
 remained out of the original port.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSInteger, COSName

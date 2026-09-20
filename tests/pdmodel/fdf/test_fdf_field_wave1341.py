@@ -14,8 +14,6 @@ Targets the residual uncovered branches:
 * :class:`FDFIconFit` ``PDRange(array)`` branch.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import (

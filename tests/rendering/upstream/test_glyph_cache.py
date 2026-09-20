@@ -17,8 +17,6 @@ Upstream has no dedicated JUnit; PageDrawer tests touch the cache
 transitively. We pin the contract directly so a future refactor of
 ``get_path_for_character_code`` is parity-checked.
 """
-from __future__ import annotations
-
 import logging
 from typing import Any
 

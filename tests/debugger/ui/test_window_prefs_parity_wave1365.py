@@ -16,8 +16,6 @@ fills in the remaining upstream-mirrored semantics:
 * A second slug under the same file does not affect the first slug's bounds.
 """
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
 

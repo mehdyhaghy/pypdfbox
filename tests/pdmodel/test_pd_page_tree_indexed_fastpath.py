@@ -15,8 +15,6 @@ trees, nested trees with honest ``/Count``, single-page ``/Pages`` children,
 and ``null``-kid repair — the shapes any parser or the pypdfbox API produces.
 """
 
-from __future__ import annotations
-
 import random
 
 import pytest

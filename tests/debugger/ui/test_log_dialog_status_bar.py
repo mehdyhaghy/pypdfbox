@@ -5,8 +5,6 @@ publicly so tests can assert that the bottom-panel label refreshes after
 counter manipulation.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 

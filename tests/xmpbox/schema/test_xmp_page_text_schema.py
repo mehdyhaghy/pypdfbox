@@ -4,8 +4,6 @@ Verbatim upstream-named mirror of ``org.apache.xmpbox.schema.XMPPageTextSchema``
 (the double-P class), distinct from the typo'd ``XMPageTextSchema``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox import XMPMetadata
 from pypdfbox.xmpbox.schema import XMPPageTextSchema
 

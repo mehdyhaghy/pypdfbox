@@ -7,8 +7,6 @@ exist to guarantee the upstream method names are reachable on the class
 and behave as thin pass-throughs.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

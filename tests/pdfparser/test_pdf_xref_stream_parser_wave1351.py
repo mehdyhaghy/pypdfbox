@@ -10,8 +10,6 @@ the ``/Index`` array contains non-integer values. We exercise that
 path here.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos.cos_array import COSArray

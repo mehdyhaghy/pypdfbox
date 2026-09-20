@@ -7,8 +7,6 @@ Hand-written tests covering remaining gaps on the variable-text base:
 ``PDVariableText.getStringOrStream``), and the None-clearing branches of
 ``set_default_style_string`` / ``set_rich_text_value``.
 """
-from __future__ import annotations
-
 from typing import Any, cast
 
 import pytest

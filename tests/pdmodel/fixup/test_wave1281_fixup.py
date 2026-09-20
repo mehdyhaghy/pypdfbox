@@ -1,7 +1,5 @@
 """Wave 1281 — parity ports for ``pdmodel.fixup`` and processors."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.fixup.abstract_fixup import AbstractFixup

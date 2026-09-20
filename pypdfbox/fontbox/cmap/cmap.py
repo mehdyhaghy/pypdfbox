@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 from typing import BinaryIO, overload
 
@@ -50,7 +48,7 @@ def _codespace_full_match(
     """``rng.is_full_match`` against a slice of ``data`` without copying."""
     if rng.get_code_length() != code_len:
         return False
-    start = rng._start
+    start = rng._start  # intentional internal access for hot path
     end = rng._end
     for i in range(code_len):
         b = data[offset + i] & 0xFF

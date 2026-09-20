@@ -27,8 +27,6 @@ Behaviours exercised (cf. PDF 32000-1 §8.4.3.6 + ``BasicStroke`` dash rules):
 * the ``_make_stroke_paint_from_pen`` odd-length duplication helper directly.
 """
 
-from __future__ import annotations
-
 import os
 import tempfile
 

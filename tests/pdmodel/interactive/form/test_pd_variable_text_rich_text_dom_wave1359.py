@@ -22,8 +22,6 @@ This file covers:
   via :class:`PDDocument` (mirrors the upstream Java
   ``PDTextFieldTest.testGetRichTextValue`` shape).
 """
-from __future__ import annotations
-
 import io
 from xml.dom.minidom import Document, parseString
 

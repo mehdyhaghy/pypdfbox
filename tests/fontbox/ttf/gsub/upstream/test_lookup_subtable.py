@@ -18,8 +18,6 @@ Upstream Java references (under
 - ``LookupTypeLigatureSubstitutionSubstFormat1.java``
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.ttf.gsub import (

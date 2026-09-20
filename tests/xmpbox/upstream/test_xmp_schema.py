@@ -33,8 +33,6 @@ Coverage notes:
     covers the storage round-trip.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 import pytest

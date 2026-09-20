@@ -21,8 +21,6 @@ Handles:
 or CFF table rewriting ourselves.
 """
 
-from __future__ import annotations
-
 import io
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Any

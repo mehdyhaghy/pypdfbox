@@ -6,8 +6,6 @@ full ISO 32000-1 §8.4.3.3 operand domain (0=butt, 1=round, 2=square) and
 the malformed-stream tolerance contract.
 """
 
-from __future__ import annotations
-
 import logging
 
 import pytest

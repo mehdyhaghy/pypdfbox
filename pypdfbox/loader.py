@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import os
 from typing import TYPE_CHECKING, Any, BinaryIO, TypeGuard
 
@@ -124,7 +122,7 @@ class Loader:
             raise
         if owned:
             # Hand ownership to the document so doc.close() releases it.
-            document._source = access
+            document._source = access  # sibling-package handoff
         if scratch_file is not None:
             # Transfer scratch-file ownership to the COSDocument so
             # ``doc.close()`` releases the temp file / paged buffer the
@@ -133,7 +131,7 @@ class Loader:
             # to honour the "caller-supplied scratch file outlives the
             # document" upstream contract; the Loader, having allocated
             # the file itself, flips that flag back so close() cleans up.
-            document._owns_scratch = True
+            document._owns_scratch = True  # sibling-package handoff
 
         # Auto-decrypt path: only kick in when the document is actually
         # encrypted AND the caller passed a password (empty string counts —

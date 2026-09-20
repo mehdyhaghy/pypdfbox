@@ -8,8 +8,6 @@ rules for tessellation; this base class supplies the helpers that turn a
 coordinate/colour grid into a list of ``ShadedTriangle`` instances.
 """
 
-from __future__ import annotations
-
 import math
 from collections.abc import Sequence
 

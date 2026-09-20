@@ -13,8 +13,6 @@ Pre-wave the module sat at 62%. The uncovered surface was:
   * the ``_IdentityAffineTransform`` defaults.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 from typing import Any

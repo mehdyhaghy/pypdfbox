@@ -5,8 +5,6 @@ headless CI runners. The ``tk_root`` fixture skips when the root can't
 be created (``tk.TclError``).
 """
 
-from __future__ import annotations
-
 import contextlib
 import os
 import tkinter as tk

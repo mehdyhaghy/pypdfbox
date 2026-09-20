@@ -9,8 +9,6 @@ zoom + rotation pair — upstream wires these to global ``ZoomMenu`` /
 constructor kwargs (the menu wiring is the host frame's concern).
 """
 
-from __future__ import annotations
-
 import contextlib
 import tkinter as tk
 from tkinter import ttk

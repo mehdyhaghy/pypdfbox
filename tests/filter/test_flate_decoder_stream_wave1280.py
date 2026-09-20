@@ -1,7 +1,5 @@
 """Tests for :class:`FlateFilterDecoderStream`."""
 
-from __future__ import annotations
-
 import io
 import zlib
 

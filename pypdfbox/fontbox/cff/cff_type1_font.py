@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 from .cff_font import CFFFont
@@ -79,7 +77,7 @@ class CFFType1Font(CFFFont):
             return
         self._private_overlay[name] = value
 
-    def get_private_dict(self) -> dict[str, Any]:
+    def get_private_dict(self) -> dict[str, Any]:  # overrides base
         """PDFBox: ``CFFType1Font.getPrivateDict()`` — Private DICT
         entries with any :meth:`add_to_private_dict` overlay layered on
         top of the fontTools-parsed Top.Private rawDict."""
@@ -333,7 +331,7 @@ class CFFType1Font(CFFFont):
 
     # ---------- glyph access (parity helpers) ----------
 
-    def has_glyph(self, name: str) -> bool:
+    def has_glyph(self, name: str) -> bool:  # overrides base
         """PDFBox: ``CFFType1Font.hasGlyph(String)`` — true when the
         charset contains ``name``. Inherited base class checks the
         CharStrings index by name; both views agree for name-keyed CFF.
@@ -342,13 +340,13 @@ class CFFType1Font(CFFFont):
             return False
         return name in self.get_charset() or super().has_glyph(name)
 
-    def get_path(self, name: str) -> list[tuple[Any, ...]]:
+    def get_path(self, name: str) -> list[tuple[Any, ...]]:  # overrides base
         """PDFBox: ``CFFType1Font.getPath(String)`` — name-keyed glyph
         path. Mirrors the inherited GID-keyed
         :meth:`CFFFont.get_path` but takes a PostScript name."""
         return super().get_path(name)
 
-    def get_width(self, name: str) -> float:
+    def get_width(self, name: str) -> float:  # overrides base
         """PDFBox: ``CFFType1Font.getWidth(String)`` — name-keyed
         advance width."""
         return super().get_width(name)
@@ -368,7 +366,7 @@ class CFFType1Font(CFFFont):
         gid = self.name_to_gid(name)
         return self.get_type2_char_string(gid)
 
-    def is_cid_font(self) -> bool:
+    def is_cid_font(self) -> bool:  # overrides base
         """A :class:`CFFType1Font` is name-keyed, never CIDKeyed."""
         return False
 

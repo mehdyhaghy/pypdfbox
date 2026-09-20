@@ -9,8 +9,6 @@ the ``init_table`` flow when ``raw`` is falsy is left untested as the
 fontTools loader never returns empty bytes).
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

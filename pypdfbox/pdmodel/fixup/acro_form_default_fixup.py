@@ -8,8 +8,6 @@ and the form has no fields, rebuilds them from orphan widget annotations
 and regenerates appearance streams (PDFBOX-4985).
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from .abstract_fixup import AbstractFixup

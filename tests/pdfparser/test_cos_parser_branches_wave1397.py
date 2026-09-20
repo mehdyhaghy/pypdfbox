@@ -9,8 +9,6 @@ edge cases. These tests target each remaining branch with crafted
 fixtures +, where the path crosses Java-only ports, lightweight subclass
 stubs."""
 
-from __future__ import annotations
-
 import contextlib
 
 import pytest

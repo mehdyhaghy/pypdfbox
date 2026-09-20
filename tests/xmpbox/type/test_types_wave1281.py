@@ -1,7 +1,5 @@
 """Tests for the ``xmpbox.type.Types`` enum + container classes."""
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox.type import (
     AbstractComplexProperty,
     ComplexPropertyContainer,

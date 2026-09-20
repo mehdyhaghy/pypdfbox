@@ -1,7 +1,5 @@
 """Wave 1275 round-out: ``PDMarkedContentReference.to_string()`` explicit method."""
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_marked_content_reference import (
     PDMarkedContentReference,
 )

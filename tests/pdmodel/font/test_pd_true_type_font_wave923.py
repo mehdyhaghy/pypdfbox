@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from tests.pdmodel.font.test_pd_true_type_font_wave408 import _InnerStub, _TTFStub

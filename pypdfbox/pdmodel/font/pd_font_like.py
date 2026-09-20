@@ -28,8 +28,6 @@ Java ``IOException`` raised by upstream accessors maps to :class:`OSError`
 per the project's Java→Python exception mapping.
 """
 
-from __future__ import annotations
-
 from typing import Any, Protocol, runtime_checkable
 
 

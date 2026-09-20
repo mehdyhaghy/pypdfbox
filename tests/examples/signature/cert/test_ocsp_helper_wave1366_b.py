@@ -10,8 +10,6 @@ in :meth:`build_ocsp_request`, ``get_basic_ocsp_resp`` mirroring
 ``get_nonce`` accessors.
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 import importlib
 

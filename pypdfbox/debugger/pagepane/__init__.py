@@ -8,8 +8,6 @@ the debugger UI overlay text-extraction debug info on top. The Swing
 :class:`PIL.ImageDraw.ImageDraw` so we don't need a vector canvas.
 """
 
-from __future__ import annotations
-
 from .debug_text_overlay import DebugTextOverlay
 from .page_pane import PagePane
 

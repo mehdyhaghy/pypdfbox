@@ -6,8 +6,6 @@ Up to wave 1288 both surfaces rejected non-standard policies with
 ``PublicKeySecurityHandler.prepare_document`` so a full encrypt path works.
 """
 
-from __future__ import annotations
-
 import datetime
 import io
 

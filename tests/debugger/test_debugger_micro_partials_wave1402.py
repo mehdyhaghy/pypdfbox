@@ -7,8 +7,6 @@ in the cov report. Each target file is grouped under its own
 ``# --- <file> ---`` header for navigation.
 """
 
-from __future__ import annotations
-
 import contextlib
 import os
 import tkinter as tk
@@ -344,7 +342,7 @@ def test_searcher_update_navigation_current_above_range(tk_root: tk.Tk) -> None:
 
     searcher = Searcher.__new__(Searcher)
     searcher._current_match = 10
-    searcher._total_match = 3
+    searcher._total_match = 3  # current 10 > total-1 = 2
     searcher._previous_enabled = True
     searcher._next_enabled = True
     searcher._search_panel = None
@@ -362,7 +360,7 @@ def test_searcher_update_navigation_current_negative(tk_root: tk.Tk) -> None:
 
     searcher = Searcher.__new__(Searcher)
     searcher._current_match = 10
-    searcher._total_match = 3
+    searcher._total_match = 3  # current > total - 1
     searcher._previous_enabled = False
     searcher._next_enabled = True
     searcher._search_panel = None

@@ -1,6 +1,4 @@
 """Tests for ``pypdfbox.examples.printing.printing``."""
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.examples.printing.printing import Printing

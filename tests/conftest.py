@@ -20,8 +20,6 @@ The actual ``tk_root`` fixtures live under ``tests/debugger/*/conftest.py``;
 this module only provides the global skip hook and marker registration.
 """
 
-from __future__ import annotations
-
 import os
 import pathlib
 

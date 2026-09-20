@@ -10,8 +10,6 @@ collapses those four operator handlers into per-operator classes; this base
 preserves the upstream class identity for parity tooling and future ports.
 """
 
-from __future__ import annotations
-
 from abc import abstractmethod
 from typing import Any
 

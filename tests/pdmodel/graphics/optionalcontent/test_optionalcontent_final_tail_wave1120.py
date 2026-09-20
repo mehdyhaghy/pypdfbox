@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from tests.pdmodel.graphics.optionalcontent.test_optionalcontent_final_tail_wave831 import (
     _NoneBaseStateDictionary,

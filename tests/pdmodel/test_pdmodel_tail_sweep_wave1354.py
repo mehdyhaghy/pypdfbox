@@ -9,8 +9,6 @@ shim / setter type-error / static-wrapper / dispatch fall-through that
 the existing test suite was leaving uncovered.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

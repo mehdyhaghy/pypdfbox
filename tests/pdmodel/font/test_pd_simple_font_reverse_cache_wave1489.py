@@ -12,8 +12,6 @@ encoding would return the stale reverse map. The cache is now a
   entries (default identity equality => distinct keys).
 """
 
-from __future__ import annotations
-
 import gc
 import weakref
 

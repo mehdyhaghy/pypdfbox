@@ -3,8 +3,6 @@
 Upstream baseline: PDFBox 3.0.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox import PDDocument, PDPage

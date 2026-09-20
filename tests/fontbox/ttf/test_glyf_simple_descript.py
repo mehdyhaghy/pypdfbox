@@ -1,7 +1,5 @@
 """Tests for :class:`pypdfbox.fontbox.ttf.glyf_simple_descript.GlyfSimpleDescript`."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

@@ -10,8 +10,6 @@ private. We test the visible-effects behaviour:
 * Charset-match logic for CJK ROS codes.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

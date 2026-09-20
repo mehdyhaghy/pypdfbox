@@ -15,8 +15,6 @@ behaviours in
 * ``getMatrix`` (line 151) — delegates to font's ``/FontMatrix``
 * ``getWidth`` / ``parseWidth`` (lines 158-194) — d0/d1 first-operand
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream

@@ -4,8 +4,6 @@ Cover the typed ``/T`` accessors (string lists, annotation, annotations
 list) and the ``/H`` predicate aliases that wave 188 layered on top of
 the lite Hide-action surface."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSBoolean, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.interactive.action.pd_action_hide import PDActionHide
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_link import (

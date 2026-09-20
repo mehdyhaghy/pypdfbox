@@ -6,8 +6,6 @@ and ``construct_appearances`` dispatch, mirroring the established
 :class:`PDAnnotationHighlight` pattern.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_strikeout import (

@@ -22,8 +22,6 @@ All synthetic PDFs are built inline as ``bytes``. Behaviour is compared to
 upstream PDFBox 3.0.7 ``COSParser`` / ``BruteForceParser`` semantics.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

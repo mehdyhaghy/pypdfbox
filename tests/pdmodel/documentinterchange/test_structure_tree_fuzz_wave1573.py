@@ -24,8 +24,6 @@ No production change in this wave — every assertion already holds; the cases
 guard the surface against regression.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

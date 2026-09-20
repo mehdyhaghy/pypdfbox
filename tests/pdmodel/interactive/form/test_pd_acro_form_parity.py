@@ -5,8 +5,6 @@ Covers the surface added on top of the wave-19 lite form: ``/DA``, ``/Q``,
 deferred ``refresh_appearances`` / ``import_fdf`` placeholders.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName

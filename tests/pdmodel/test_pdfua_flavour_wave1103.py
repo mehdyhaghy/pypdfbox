@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdmodel.test_pdfua_flavour import _xmp_packet
 
 

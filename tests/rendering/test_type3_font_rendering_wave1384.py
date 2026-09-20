@@ -17,8 +17,6 @@ The synthetic Type 3 fonts here are constructed inline (no fixture
 files) so the assertions don't depend on any external glyph outline
 program — the charproc bytes are the spec.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

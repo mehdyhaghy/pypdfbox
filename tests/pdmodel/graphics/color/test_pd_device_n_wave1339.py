@@ -9,8 +9,6 @@ Targets:
 - ``to_rgb_image`` thin wrapper.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from pypdfbox.pdmodel.graphics.color.pd_device_n import (
     PDDeviceN,

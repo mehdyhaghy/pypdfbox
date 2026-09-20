@@ -1,7 +1,5 @@
 """Wave 1275 — explicit ``to_string()`` parity for AbstractSimpleProperty."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import TextType, XMPMetadata

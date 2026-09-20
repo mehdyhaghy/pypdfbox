@@ -4,8 +4,6 @@ Exercises the certificate / private-key / password slots — including the
 lazy PEM/DER decode paths — without touching the security handler.
 """
 
-from __future__ import annotations
-
 import datetime
 
 import pytest

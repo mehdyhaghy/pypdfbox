@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 from typing import Any
 
@@ -1161,7 +1159,7 @@ class Type1Font:
         messages and stack traces."""
         try:
             charstrings = self.get_char_strings_subroutines_charset()
-        except Exception:
+        except Exception:  # defensive, never raise from __str__
             charstrings = {}
         return (
             f"{self.__class__.__module__}.{self.__class__.__qualname__}"

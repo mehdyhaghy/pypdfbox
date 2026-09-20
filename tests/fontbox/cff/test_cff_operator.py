@@ -7,8 +7,6 @@ the new :func:`get_operator_entry` accessor that returns the full
 :class:`CFFOperator` record.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.cff_operator import (
     CFFOperator,
     get_operator,

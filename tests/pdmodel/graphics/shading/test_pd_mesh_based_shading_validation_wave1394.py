@@ -10,8 +10,6 @@ Covers:
   174, 176).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.graphics.shading.pd_mesh_based_shading_type import (

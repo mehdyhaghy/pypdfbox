@@ -18,8 +18,6 @@ content streams. The third upstream test (``testTinyHorizontalFieldWith0FontSize
 must be avoided when an empty value is committed to a tiny field with a
 0-pt variable font size.
 """
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

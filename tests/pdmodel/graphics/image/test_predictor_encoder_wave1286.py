@@ -6,8 +6,6 @@ right ``/Filter`` / ``/DecodeParms`` block, instead of always returning
 ``None`` for the upstream-parity stub.
 """
 
-from __future__ import annotations
-
 import io
 import zlib
 

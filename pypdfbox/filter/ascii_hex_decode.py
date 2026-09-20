@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import binascii
 from typing import BinaryIO, Final
 

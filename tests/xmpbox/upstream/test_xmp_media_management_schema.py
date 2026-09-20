@@ -9,8 +9,6 @@ properties (``Versions``, ``History``, ``Ingredients``) carry an array of
 sample strings.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import (

@@ -18,8 +18,6 @@ The record carries:
 * ``vertical_displacement`` — the W2 advance height (signed float).
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 

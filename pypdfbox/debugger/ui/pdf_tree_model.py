@@ -6,8 +6,6 @@ Ported from ``org.apache.pdfbox.debugger.ui.PDFTreeModel``. The Swing
 no-op listener registry has no analogue here.
 """
 
-from __future__ import annotations
-
 import contextlib
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any

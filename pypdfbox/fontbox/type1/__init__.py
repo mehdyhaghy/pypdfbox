@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .damaged_font_exception import DamagedFontException
 from .token import Kind, Token
 from .type1_char_string_reader import Type1CharStringReader

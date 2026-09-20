@@ -14,8 +14,6 @@ documents the realised behaviour (the named str lands in the class-name
 fallback).
 """
 
-from __future__ import annotations
-
 from pypdfbox.examples.pdmodel.print_bookmarks import PrintBookmarks
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.interactive.action.pd_action_go_to import PDActionGoTo

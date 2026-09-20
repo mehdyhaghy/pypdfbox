@@ -20,8 +20,6 @@ non-trivial rotate, multiply chain, sheared scaling factor, and transformed
 point.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

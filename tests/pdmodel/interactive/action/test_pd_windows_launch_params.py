@@ -1,8 +1,6 @@
 """Tests for ``PDWindowsLaunchParams`` — PDF 32000-1 §12.6.4.5 Table 197
 (Windows-specific launch parameters)."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.interactive.action.pd_action_launch import PDActionLaunch
 from pypdfbox.pdmodel.interactive.action.pd_windows_launch_params import (

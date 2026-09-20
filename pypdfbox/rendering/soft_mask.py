@@ -11,8 +11,6 @@ Pillow's per-pixel access (``Image.composite`` / ``ImageChops`` aren't
 directly applicable because the inner paint can be any opaque object).
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING, Any
 

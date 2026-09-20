@@ -15,8 +15,6 @@ readers can choke and the bytes are non-conformant.
 oracle-free so it gates in CI even without the live PDFBox jar / qpdf.
 """
 
-from __future__ import annotations
-
 import io
 import re
 

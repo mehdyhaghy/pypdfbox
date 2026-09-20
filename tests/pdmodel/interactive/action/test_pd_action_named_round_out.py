@@ -5,8 +5,6 @@ Covers the predicate helpers (``is_next_page`` / ``is_prev_page`` /
 the ``STANDARD_NAMED_ACTIONS`` constant added on top of the upstream
 ``getN`` / ``setN`` surface."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName

@@ -27,8 +27,6 @@ Cross-platform: every ``PDDocument`` is closed before its bytes are reused;
 no temp files are unlinked, so there is no open-handle/Windows hazard.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

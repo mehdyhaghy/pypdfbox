@@ -8,8 +8,6 @@ resulting visibility set into :class:`PDOptionalContentMembershipDictionary`
 so we exercise the real read-side parity path
 (:meth:`compute_visible_ocgs`)."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.graphics.optionalcontent import (
     PDOptionalContentGroup,

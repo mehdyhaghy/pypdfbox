@@ -15,8 +15,6 @@ get the same typed-leaf shape used by the rest of the name-tree wrappers
 Documented in ``CHANGES.md``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSBase, COSDictionary, COSStream
 from pypdfbox.pdmodel.common.pd_name_tree_node import PDNameTreeNode
 from pypdfbox.pdmodel.interactive.annotation.pd_appearance_stream import (

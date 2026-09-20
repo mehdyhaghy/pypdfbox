@@ -12,8 +12,6 @@ use a thin subclass that supplies the singular alias so the branch is
 reachable. The mismatch is reported in the wave 1341 agent-D notes.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

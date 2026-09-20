@@ -16,8 +16,6 @@ Covers the overlay engine's geometric behaviour:
 - :meth:`Overlay.close` closes only file-loaded overlay docs, not
   caller-supplied PDDocument instances.
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.cos import COSArray, COSName, COSStream

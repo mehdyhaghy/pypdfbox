@@ -11,8 +11,6 @@ pin the member set, the int mapping, and the Pillow-mode bridge so a
 re-sync that adds a new image type (or renames a constant) trips a test
 failure.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.rendering import ImageType

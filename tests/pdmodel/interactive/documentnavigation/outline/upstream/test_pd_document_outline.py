@@ -5,8 +5,6 @@ Upstream path:
 
 Upstream baseline: PDFBox 3.0.x.
 """
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.documentnavigation.outline import (
     PDDocumentOutline,
     PDOutlineItem,

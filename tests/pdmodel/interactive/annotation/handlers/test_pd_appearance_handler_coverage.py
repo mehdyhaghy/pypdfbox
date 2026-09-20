@@ -8,8 +8,6 @@ enforcement directly, leaving lines 31-33 uncovered. These tests close
 those gaps with a concrete subclass that records every call.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.interactive.annotation.handlers.pd_appearance_handler import (

@@ -6,8 +6,6 @@ multiple-substitution dispatcher branch, and the override-debug branch
 in :meth:`put_new_substitution_entry`.
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.fontbox.ttf.gsub import (

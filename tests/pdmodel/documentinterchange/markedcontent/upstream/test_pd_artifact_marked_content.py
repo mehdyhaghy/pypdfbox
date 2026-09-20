@@ -9,8 +9,6 @@ If upstream ever adds a dedicated ``PDArtifactMarkedContentTest.java``, port
 those tests here.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.documentinterchange.markedcontent import (
     PDArtifactMarkedContent,

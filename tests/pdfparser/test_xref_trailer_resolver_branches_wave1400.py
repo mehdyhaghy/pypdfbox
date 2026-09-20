@@ -11,8 +11,6 @@ Closes residual partial branches in
   taken when an older /Prev section is registered without a trailer.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSObjectKey
 from pypdfbox.pdfparser import XrefEntry, XrefTrailerResolver, XrefType
 
@@ -66,7 +64,7 @@ def test_set_startxref_normal_prev_chain_loop_continues() -> None:
 
     r.set_startxref(3000)
     # All three sections' entries must be present in the resolved view.
-    rt = r._resolved_xref_table
+    rt = r._resolved_xref_table  # testing resolved state
     assert rt is not None
     assert COSObjectKey(1, 0) in rt
     assert COSObjectKey(2, 0) in rt
@@ -92,13 +90,13 @@ def test_set_startxref_chain_with_trailerless_older_section() -> None:
     # Deliberately omit set_trailer.
 
     r.set_startxref(2000)
-    rt = r._resolved_xref_table
+    rt = r._resolved_xref_table  # testing resolved state
     assert rt is not None
     # Both sections contributed entries even though the older one had
     # no trailer to merge.
     assert COSObjectKey(1, 0) in rt
     assert COSObjectKey(2, 0) in rt
-    resolved = r._resolved_trailer
+    resolved = r._resolved_trailer  # testing resolved state
     # Only the newer section's trailer made it through the merge.
     assert resolved is not None
     assert resolved.get_int("Size") == 5

@@ -12,8 +12,6 @@ upstream-named alias wrappers at the tail of the class.
 All inputs are constructed in-memory so the suite has no fixture
 dependency.
 """
-from __future__ import annotations
-
 import hashlib
 import io
 import logging
@@ -426,7 +424,7 @@ def test_optimize_mode_dynamic_xfa_raises_oserror(tmp_path: Path) -> None:
             pass
 
     monkey = _FakeSourceDoc()
-    util._sources = [monkey]
+    util._sources = [monkey]  # direct list bypass
     util.set_destination_file_name(str(tmp_path / "out.pdf"))
 
     # Patch _open_source to return our fake without touching disk.

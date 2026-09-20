@@ -18,8 +18,6 @@ Wave 1584. Companion to ``test_per_object_crypt_filter.py`` (routing table)
 and ``test_aes_crypt_filter_fuzz_wave1573.py`` (AES round-trip).
 """
 
-from __future__ import annotations
-
 from unittest.mock import patch
 
 import pytest

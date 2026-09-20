@@ -16,8 +16,6 @@ Pins three helper surfaces the existing suite left unexercised:
   raises.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from fontTools.misc import psCharStrings

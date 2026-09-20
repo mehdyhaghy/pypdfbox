@@ -7,8 +7,6 @@ Pure data holder — getters and setters for the 27 intermediate objects
 produced by the builder pipeline.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 

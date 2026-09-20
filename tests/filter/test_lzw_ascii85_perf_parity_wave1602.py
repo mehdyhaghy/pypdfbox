@@ -8,8 +8,6 @@ EarlyChange width transitions, the lenient premature-EOF / corrupt-code exit,
 the b'z' group-boundary shortcut, the exact ignored-whitespace set, the b'~'
 end-of-data rule, and trailing partial-group padding.
 """
-from __future__ import annotations
-
 import random
 from io import BytesIO
 

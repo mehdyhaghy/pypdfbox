@@ -18,8 +18,6 @@ Java; we surface that as ``ValueError`` (the closest Python analogue, used
 elsewhere in the port for upstream ``IllegalArgumentException``).
 """
 
-from __future__ import annotations
-
 from .execution_context import ExecutionContext
 from .operator import Operator
 

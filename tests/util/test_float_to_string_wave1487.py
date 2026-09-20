@@ -15,8 +15,6 @@ decimal). All expected values below were pinned from the live
 ``FloatToStringProbe`` oracle (Apache PDFBox 3.0.7 / OpenJDK 21).
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

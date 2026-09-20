@@ -14,8 +14,6 @@ surface here covering the public method contract documented in upstream
   and Apple (version=1) parent kern tables.
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

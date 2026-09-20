@@ -1,7 +1,5 @@
 """Hand-written tests for ``MenuBase.remove_action_listeners``."""
 
-from __future__ import annotations
-
 import tkinter as tk
 
 import pytest
@@ -60,7 +58,7 @@ def test_remove_action_listeners_alias_still_works(tk_root: tk.Tk) -> None:
     base.set_menu(menu)
     fired: list[str] = []
     base.add_menu("Foo", lambda: fired.append("foo"))
-    base._remove_action_listeners(0)
+    base._remove_action_listeners(0)  # back-compat alias
     menu.invoke(0)
     assert fired == []
 

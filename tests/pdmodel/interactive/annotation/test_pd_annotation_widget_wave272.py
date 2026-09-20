@@ -6,8 +6,6 @@ already established on :class:`PDAnnotation` itself (``has_rectangle`` etc.)
 and exist only to spare callers an extra null-check at the use site.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.action import PDActionURI
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_widget import (

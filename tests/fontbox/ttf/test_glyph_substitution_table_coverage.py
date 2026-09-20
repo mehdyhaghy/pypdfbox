@@ -14,8 +14,6 @@ memory hits ``read_script_list``, ``read_script_table``,
 ``read_coverage_table`` (both formats + the unknown-format error).
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

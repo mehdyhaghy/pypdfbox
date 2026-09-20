@@ -9,8 +9,6 @@ A full embedding round-trip needs a fixture; that path is exercised by
 :class:`PDTrueTypeFont` integration tests rather than here.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.font.pd_true_type_font_embedder import PDTrueTypeFontEmbedder

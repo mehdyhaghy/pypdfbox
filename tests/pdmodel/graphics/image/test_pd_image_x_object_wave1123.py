@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdmodel.graphics.image.test_pd_image_x_object_wave426 import (
     _DeviceNColorSpace,
 )

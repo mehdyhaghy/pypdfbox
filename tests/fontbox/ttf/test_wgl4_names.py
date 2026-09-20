@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.wgl4_names import (
     NUMBER_OF_MAC_GLYPHS,
     get_all_names,

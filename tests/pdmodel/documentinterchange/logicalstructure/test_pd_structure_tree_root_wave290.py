@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_tree_root import (
     PDStructureTreeRoot,

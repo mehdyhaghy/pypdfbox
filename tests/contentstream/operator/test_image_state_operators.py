@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.contentstream.operator import Operator
 from pypdfbox.contentstream.operator.graphics.concatenate_matrix import (
     ConcatenateMatrix,
@@ -107,7 +105,7 @@ def test_default_registry_has_at_least_sixty_operators() -> None:
     """After this cluster the default registry should expose at least
     60 handlers."""
     registry = OperatorRegistry()
-    handler_map = registry._handlers
+    handler_map = registry._handlers  # test-only introspection
     assert len(handler_map) >= 60, (
         f"default registry only exposes {len(handler_map)} handlers"
     )

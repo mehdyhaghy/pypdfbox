@@ -8,8 +8,6 @@ Library-first: we don't reimplement ASN.1 — we lean on
 certificate object, then back-fill the ``CertSignatureInformation`` bag.
 """
 
-from __future__ import annotations
-
 import hashlib
 import logging
 from typing import TYPE_CHECKING
@@ -40,7 +38,7 @@ class CertInformationHelper:
         try:
             digest = hashlib.sha1(content, usedforsecurity=False).digest()
             return digest.hex().upper()
-        except Exception:
+        except Exception:  # mirror upstream lenient catch
             LOG.error("No SHA-1 Algorithm found", exc_info=True)
             return None
 

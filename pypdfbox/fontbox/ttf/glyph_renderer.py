@@ -15,8 +15,6 @@ subclasses and the existing :class:`GlyphDescription` adapter in
 :mod:`pypdfbox.fontbox.ttf.glyph_data` qualify.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING, Any
 

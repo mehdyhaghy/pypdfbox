@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSInteger, COSName, COSStream
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_sound import (
     PDAnnotationSound,

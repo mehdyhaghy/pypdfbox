@@ -8,8 +8,6 @@ constructor invariants, Standard 14 resolution, alias resolution and
 descriptor-flag-driven fallback.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.font_box_font import FontBoxFont

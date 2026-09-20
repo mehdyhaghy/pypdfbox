@@ -11,8 +11,6 @@ Targets small remaining gaps on PDStructureTreeRoot and PDObjectReference:
 - PDObjectReference public subtype constants (SUBTYPE_ANNOT /
   SUBTYPE_XOBJECT_FORM / SUBTYPE_XOBJECT_IMAGE).
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
     PDObjectReference,

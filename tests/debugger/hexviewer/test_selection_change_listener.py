@@ -1,7 +1,5 @@
 """Tests for ``SelectionChangeListener``."""
 
-from __future__ import annotations
-
 from pypdfbox.debugger.hexviewer.select_event import SelectEvent
 from pypdfbox.debugger.hexviewer.selection_change_listener import (
     SelectionChangeListener,

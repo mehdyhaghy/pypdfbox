@@ -11,8 +11,6 @@ named-color-space resolution against ``PDResources/ColorSpace`` — are
 ported here as they correspond directly to the Java factory's switch.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from pypdfbox.cos.cos_object import COSObject
 from pypdfbox.pdmodel.graphics.color.pd_cal_gray import PDCalGray

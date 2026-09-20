@@ -1,7 +1,5 @@
 """Wave 1281: PDFObjectStreamParser port."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDocument, COSInteger, COSName, COSStream

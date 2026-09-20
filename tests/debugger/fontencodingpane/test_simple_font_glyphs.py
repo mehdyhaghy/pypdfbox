@@ -4,8 +4,6 @@ Mirrors upstream ``SimpleFont.getGlyphs(PDSimpleFont)`` (package-private)
 which builds the ``Object[256][4]`` row table that backs the encoding view.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.debugger.fontencodingpane.simple_font import SimpleFont
 from pypdfbox.pdmodel.font import PDType1Font

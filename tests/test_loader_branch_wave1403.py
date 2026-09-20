@@ -12,8 +12,6 @@ Closes the still-open arcs left after wave 1402:
   faked ``PDDocument.decrypt`` raises.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

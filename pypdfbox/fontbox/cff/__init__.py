@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .byte_source import ByteSource
 from .cff_built_in_encoding import CFFBuiltInEncoding, Supplement
 from .cff_byte_source import CFFBytesource

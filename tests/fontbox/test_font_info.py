@@ -9,8 +9,6 @@ helpers are exercised via ``FontMapperImpl``. We pin them here directly
 because they're stable contracts the mapper depends on.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

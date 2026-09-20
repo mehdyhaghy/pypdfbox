@@ -6,8 +6,6 @@ The upstream version builds requests with Bouncy Castle; here we lean on
 (``ocsp.OCSPRequestBuilder`` / ``ocsp.load_der_ocsp_response``).
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 import logging
 from collections.abc import Iterable
@@ -149,7 +147,7 @@ class OcspHelper:
         builder = builder.add_certificate(
             self._cert_to_check,
             self._issuer_certificate,
-            hashes.SHA1(),
+            hashes.SHA1(),  # matches upstream SHA-1 CertID
         )
         # Best effort nonce; cryptography exposes add_extension on builder.
         import os

@@ -53,8 +53,6 @@ Ported are the metadata-shape checks (width, height, BPC, color space
 name) that exercise behaviour expressible without the rendering
 pipeline.
 """
-from __future__ import annotations
-
 from PIL import Image, ImageDraw
 
 from pypdfbox.cos import COSArray, COSName

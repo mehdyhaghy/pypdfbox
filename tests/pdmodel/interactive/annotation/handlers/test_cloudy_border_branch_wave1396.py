@@ -12,8 +12,6 @@ Closes False-branch arrows in
 * 1031->exit — ``finish`` skips when ``line_width <= 0``
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSStream
 from pypdfbox.pdmodel.interactive.annotation.handlers.cloudy_border import (
     CloudyBorder,
@@ -105,7 +103,7 @@ def test_curve_to_with_none_output_short_circuits() -> None:
     # the None-output short-circuit.
     cb.curve_to(1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
     # bbox stays at the seeded rect; assert min was lowered to 1.0.
-    assert cb._bbox_min_x == 0.0
+    assert cb._bbox_min_x == 0.0  # seeded
 
 
 def test_finish_with_zero_line_width_skips_bbox_pad() -> None:
@@ -115,7 +113,7 @@ def test_finish_with_zero_line_width_skips_bbox_pad() -> None:
     """
     rect = PDRectangle(0.0, 0.0, 100.0, 100.0)
     cb = CloudyBorder(_stream(), 1.0, 0.0, rect)  # line_width=0
-    cb._output_started = True
+    cb._output_started = True  # keep the close-path branch
     initial_max_x = cb._bbox_max_x
     cb.finish()
     # No padding applied — bbox is unchanged on the upper-right side.

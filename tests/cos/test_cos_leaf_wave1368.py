@@ -15,8 +15,6 @@ the prior waves leave uncovered:
   ``==``, ``compare_to`` rejected for unsupported argument.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

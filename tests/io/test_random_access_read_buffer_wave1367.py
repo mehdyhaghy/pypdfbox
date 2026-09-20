@@ -13,8 +13,6 @@ existing test files (waves 292/329) leave untouched:
   ``read`` attribute.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

@@ -8,8 +8,6 @@ package-private. We cover the publicly-observable behaviour:
 * The debug-string aggregator joins per-font ``__str__`` lines.
 """
 
-from __future__ import annotations
-
 import pathlib
 
 from pypdfbox.fontbox.font_format import FontFormat

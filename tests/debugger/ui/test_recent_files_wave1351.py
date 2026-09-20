@@ -4,8 +4,6 @@ Targets the ``except OSError`` branch on the second ``write_text`` call
 inside :meth:`RecentFiles.write_history_to_pref` (lines 145-146).
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

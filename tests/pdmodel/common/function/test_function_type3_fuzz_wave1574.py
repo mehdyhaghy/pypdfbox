@@ -28,8 +28,6 @@ upstream PDFunctionType2). Outputs are verified against the spec formula,
 recomputed in-test, so the assertions are independent of the implementation.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

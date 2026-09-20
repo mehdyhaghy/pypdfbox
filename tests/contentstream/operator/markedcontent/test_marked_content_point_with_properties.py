@@ -6,8 +6,6 @@ fewer than two operands. The lenient sibling
 elsewhere — this file is targeted at the upstream-faithful class.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream import Operator, PDFStreamEngine

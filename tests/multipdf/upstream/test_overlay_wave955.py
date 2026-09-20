@@ -8,8 +8,6 @@ test code (parametrised, real fixture path imports, the no-input
 guard the placeholder always covered).
 """
 
-from __future__ import annotations
-
 import inspect
 
 from tests.multipdf.upstream import test_overlay as overlay_mod

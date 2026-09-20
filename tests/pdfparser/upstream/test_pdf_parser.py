@@ -12,8 +12,6 @@ explicitly skipped here; the small set whose fixtures live under
 ported in full.
 """
 
-from __future__ import annotations
-
 import pathlib
 
 import pytest

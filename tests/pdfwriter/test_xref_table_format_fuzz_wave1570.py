@@ -23,8 +23,6 @@ between fields, ``f``/``n`` type char, and ``writeCRLF`` (``\\r\\n``) ending
 every row so each is exactly 20 bytes.
 """
 
-from __future__ import annotations
-
 import io
 import re
 

@@ -11,8 +11,6 @@ Method line numbers reference ``pdfbox/src/main/java/org/apache/pdfbox/
 filter/DCTFilter.java`` on the 3.0.x branch.
 """
 
-from __future__ import annotations
-
 import io
 import struct
 

@@ -1,6 +1,4 @@
 """Wave 309 hardening tests for ``pypdfbox writedecodedstream``."""
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

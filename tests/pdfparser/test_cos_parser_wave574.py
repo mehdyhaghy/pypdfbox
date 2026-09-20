@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSFloat, COSInteger, COSName, COSObject, COSObjectKey

@@ -12,8 +12,6 @@ the auto-detect (predictor 15) behaviour on monotonic / periodic
 sequences where a specific filter has a clear win.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import COSDictionary

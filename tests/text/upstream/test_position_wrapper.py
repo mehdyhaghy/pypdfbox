@@ -7,8 +7,6 @@ observable behavior the stripper relies on (default flags off,
 ``setX()`` only flips on, wrapped position is returned by reference).
 """
 
-from __future__ import annotations
-
 from pypdfbox.text.position_wrapper import PositionWrapper
 from pypdfbox.text.text_position import TextPosition
 

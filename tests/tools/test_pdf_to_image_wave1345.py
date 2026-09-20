@@ -11,8 +11,6 @@ Targets the remaining uncovered lines:
 * the ``__name__ == '__main__'`` invocation as a module (line 158).
 """
 
-from __future__ import annotations
-
 import contextlib
 import runpy
 from collections.abc import Iterator

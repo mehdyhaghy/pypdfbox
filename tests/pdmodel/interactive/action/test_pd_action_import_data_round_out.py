@@ -2,8 +2,6 @@
 in Wave 243: ``get_url`` / ``set_url`` / ``get_file_path`` / ``has_file`` /
 ``is_valid`` over the PDF 32000-1 §12.7.5.4 ``/F`` entry."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (
     PDComplexFileSpecification,

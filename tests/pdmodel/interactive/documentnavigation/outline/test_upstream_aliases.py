@@ -7,8 +7,6 @@ out the outlines cluster:
   ``get_text_flags`` / ``set_text_flags`` (Java ``getTextStyle`` /
   ``setTextStyle(int)``), reading and writing the ``/F`` flag bits.
 """
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.documentnavigation.outline import (
     PDDocumentOutline,
     PDOutlineItem,

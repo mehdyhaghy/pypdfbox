@@ -16,8 +16,6 @@ Drives the previously-uncovered branches in
   ``put`` + ``set_need_to_be_updated`` lines execute.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

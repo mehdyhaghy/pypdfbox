@@ -1,8 +1,6 @@
 """Ported from pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/
 annotation/PDSquareAnnotationTest.java (PDFBox 3.0.x)."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.interactive.annotation import PDAnnotationSquare
 

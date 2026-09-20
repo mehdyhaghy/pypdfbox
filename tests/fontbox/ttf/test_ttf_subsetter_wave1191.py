@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from tests.fontbox.ttf import test_ttf_subsetter as subsetter_tests

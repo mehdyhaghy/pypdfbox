@@ -5,8 +5,6 @@ Closes ``39->41``: a trailing CLI argument that is neither ``-tsa`` nor
 parser simply advances ``idx``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.examples.signature.create_signature import CreateSignature
 
 

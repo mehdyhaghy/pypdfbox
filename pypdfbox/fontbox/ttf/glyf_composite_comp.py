@@ -12,8 +12,6 @@ constructor at line 88) or via :meth:`from_fonttools` for the
 library-first path where fontTools has already decoded the component.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:

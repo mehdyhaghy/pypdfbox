@@ -1,7 +1,5 @@
 """Wave 1275 — HeaderTable.read_headers fast-path parity."""
 
-from __future__ import annotations
-
 import struct
 
 from pypdfbox.fontbox.ttf.header_table import HeaderTable

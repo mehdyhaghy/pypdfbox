@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.fontbox.type1 import test_type1_font_extras as extras
 
 

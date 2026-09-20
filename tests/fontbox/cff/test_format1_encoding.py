@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`Format1Encoding` and :class:`Range3`."""
 
-from __future__ import annotations
-
 import dataclasses
 
 from pypdfbox.fontbox.cff.cff_built_in_encoding import Supplement

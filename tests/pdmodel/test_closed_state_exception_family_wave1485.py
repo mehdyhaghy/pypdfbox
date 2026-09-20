@@ -22,8 +22,6 @@ The standalone assertions pass without the oracle; the ``@requires_oracle``
 test confirms the live PDFBox message byte-for-byte.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

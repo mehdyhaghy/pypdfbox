@@ -4,8 +4,6 @@ Mirrors ``org.apache.xmpbox.xml.DomHelper`` (PDFBox 3.0,
 ``xmpbox/src/main/java/org/apache/xmpbox/xml/DomHelper.java``).
 """
 
-from __future__ import annotations
-
 from xml.dom.minidom import Element, Node
 
 from pypdfbox.xmpbox.xmp_metadata import (

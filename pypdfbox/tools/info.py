@@ -22,8 +22,6 @@ Flags:
   the human-readable form; ``json`` emits a single JSON object suitable
   for piping into ``jq``.
 """
-from __future__ import annotations
-
 import argparse
 import json
 from pathlib import Path
@@ -76,7 +74,7 @@ def _collect_info(doc: PDDocument, src: Path) -> dict[str, object]:
     header_version = cos_doc.get_version()
     try:
         catalog_version = doc.get_document_catalog().get_version()
-    except Exception:
+    except Exception:  # defensive, malformed catalogs
         catalog_version = None
 
     info = doc.get_document_information()
@@ -119,7 +117,7 @@ def _read_xmp(doc: PDDocument) -> str | None:
     ``None`` if the document carries no XMP."""
     try:
         meta = doc.get_document_catalog().get_metadata()
-    except Exception:
+    except Exception:  # defensive
         return None
     if meta is None:
         return None
@@ -128,7 +126,7 @@ def _read_xmp(doc: PDDocument) -> str | None:
         if text is None:
             return None
         return text if isinstance(text, str) else str(text)
-    except Exception:
+    except Exception:  # fall back to raw bytes
         try:
             with meta.create_input_stream() as stream:
                 raw = stream.read()

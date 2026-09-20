@@ -15,8 +15,6 @@ No upstream JUnit counterpart — pypdfbox-specific suite around
 ``Loader.load_pdf(File, String)`` overload semantics.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

@@ -21,8 +21,6 @@ Parsing tests are gated on a real OTF being available on the host;
 when no fixture is available the tests are skipped cleanly.
 """
 
-from __future__ import annotations
-
 import io
 import struct
 from pathlib import Path

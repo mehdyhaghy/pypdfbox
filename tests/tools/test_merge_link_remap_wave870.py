@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import tests.tools.test_merge_link_remap as remap_helpers
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 

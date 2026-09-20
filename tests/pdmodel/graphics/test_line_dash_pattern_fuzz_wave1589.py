@@ -20,8 +20,6 @@ normalises a negative phase by adding twice the dash-length sum until positive
 preserved — it does NOT clamp), and ``getPhase`` returns an ``int``.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

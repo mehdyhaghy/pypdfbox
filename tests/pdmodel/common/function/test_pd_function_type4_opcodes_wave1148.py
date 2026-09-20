@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from tests.pdmodel.common.function.test_pd_function_type4_opcodes import _make

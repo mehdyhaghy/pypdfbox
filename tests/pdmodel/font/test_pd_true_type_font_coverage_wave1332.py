@@ -19,8 +19,6 @@ Targets the residual no-coverage tail in 0.9.0rc1:
 * ``_build_simple_widths`` exception paths
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 from typing import Any
@@ -91,7 +89,7 @@ def test_get_base_font_returns_none_when_cos_object_is_none(
 
 def test_is_embedded_returns_false_when_ttf_marked_failed() -> None:
     font = PDTrueTypeFont()
-    font._ttf = False
+    font._ttf = False  # simulate prior parse failure
     # Line 172-173 — cached False short-circuit.
     assert font.is_embedded() is False
 

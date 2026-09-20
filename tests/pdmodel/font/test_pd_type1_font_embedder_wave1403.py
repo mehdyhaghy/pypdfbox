@@ -9,8 +9,6 @@
   ``/FontName``), so no ``/BaseFont`` is set.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName

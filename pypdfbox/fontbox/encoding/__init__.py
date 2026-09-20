@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .built_in_encoding import BuiltInEncoding
 from .encoding import Encoding
 from .glyph_list import GlyphList

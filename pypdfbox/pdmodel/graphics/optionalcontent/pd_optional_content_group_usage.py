@@ -14,8 +14,6 @@ provides a Pythonic typed wrapper layered on top of the existing
 recorded as such in ``PROVENANCE.md``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

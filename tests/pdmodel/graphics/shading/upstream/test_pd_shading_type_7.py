@@ -10,8 +10,6 @@ documented fallback contracts and the spec-required ``/BitsPerCoordinate``,
 patches carry 16 control points (vs 12 for Coons) per PDF 32000-1 §8.7.4.5.8.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSStream

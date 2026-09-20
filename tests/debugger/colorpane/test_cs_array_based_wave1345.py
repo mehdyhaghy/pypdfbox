@@ -12,8 +12,6 @@ Targets the two residual branches surfaced by ``--cov-report=term-missing``:
   produces a real :class:`PDICCBased` and the labels get packed.
 """
 
-from __future__ import annotations
-
 from tkinter import ttk
 
 import pytest

@@ -10,8 +10,6 @@ Skipped upstream cases:
   differ, 3.0.8) is covered in-memory by
   ``tests/pdmodel/interactive/form/test_combo_display_value_wave1602.py``.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSName, COSString

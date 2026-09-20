@@ -20,8 +20,6 @@ documented behaviours in
   subsetting unsupported by default.
 * ``toUnicode(int)`` / ``toUnicode(int, GlyphList)`` (lines 272–335).
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName

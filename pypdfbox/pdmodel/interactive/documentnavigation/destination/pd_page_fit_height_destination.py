@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSNull
 
 from .pd_page_destination import PDPageDestination

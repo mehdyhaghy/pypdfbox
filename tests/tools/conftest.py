@@ -1,6 +1,4 @@
 """Shared fixtures for the tools CLI test suite."""
-from __future__ import annotations
-
 from collections.abc import Iterator
 from pathlib import Path
 

@@ -16,8 +16,6 @@ Both kept pragmas have updated comments in the source that explain why
 the False side is impossible.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

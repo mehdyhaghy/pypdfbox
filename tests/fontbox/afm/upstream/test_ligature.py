@@ -2,8 +2,6 @@
 ``fontbox/src/test/java/org/apache/fontbox/afm/LigatureTest.java``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.afm import Ligature
 
 

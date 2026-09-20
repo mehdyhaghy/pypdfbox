@@ -5,8 +5,6 @@ call reached when ``FontEncodingPaneController.get_pane()`` returns a
 non-``None`` widget.
 """
 
-from __future__ import annotations
-
 import contextlib
 import os
 import tkinter as tk

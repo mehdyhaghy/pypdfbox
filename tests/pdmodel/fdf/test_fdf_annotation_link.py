@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary
 from pypdfbox.pdmodel.fdf import FDFAnnotation, FDFAnnotationLink
 from pypdfbox.pdmodel.interactive.action.pd_action_uri import PDActionURI

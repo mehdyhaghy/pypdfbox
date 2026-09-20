@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdmodel.common.function.test_pd_function_type_0 import _build
 
 

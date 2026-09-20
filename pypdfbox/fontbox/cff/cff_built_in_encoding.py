@@ -11,8 +11,6 @@ It carries a list of post-table "supplement" entries that map extra
 character codes to SIDs after the main table is parsed.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from .cff_encoding import CFFEncoding

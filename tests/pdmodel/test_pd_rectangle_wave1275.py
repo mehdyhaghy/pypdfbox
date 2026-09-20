@@ -1,7 +1,5 @@
 """Wave 1275 — explicit ``to_string()`` parity and ``transform()`` for PDRectangle."""
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.common.pd_matrix import PDMatrix
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 

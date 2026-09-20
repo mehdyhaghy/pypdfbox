@@ -7,8 +7,6 @@
   fall through to the embedded CFF program lookup.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
 from pypdfbox.pdmodel.font.pd_type1c_font import PDType1CFont
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle

@@ -10,8 +10,6 @@ fixture (a real TTF — synthesising one in-memory would require
 re-implementing every table writer fontTools already ships).
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from pathlib import Path
 

@@ -18,8 +18,6 @@ and many error cases; this file fills in remaining upstream semantics:
   rehydrates the history (the full persist round-trip).
 """
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
 

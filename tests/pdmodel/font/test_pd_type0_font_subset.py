@@ -7,8 +7,6 @@ subset tag to both the parent ``/BaseFont`` and the descendant's
 ``/BaseFont`` / descriptor ``/FontName``.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

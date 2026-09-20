@@ -7,8 +7,6 @@
   method returns the ``0.0`` final fallback rather than an AFM width.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
 

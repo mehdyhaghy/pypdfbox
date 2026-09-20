@@ -7,8 +7,6 @@ Upstream Java reference:
 We use the existing pypdfbox renderer and the ``ImageIOUtil`` codec
 helper. Pillow + ``ImageIOUtil`` cover JPEG / PNG / TIFF output.
 """
-from __future__ import annotations
-
 import argparse
 import contextlib
 import sys

@@ -6,8 +6,6 @@ The Swing-only sibling subpackage ``tooltip`` is owned by a separate
 wave-1293 agent.
 """
 
-from __future__ import annotations
-
 from pypdfbox.debugger.streampane.operator_marker import OperatorMarker
 from pypdfbox.debugger.streampane.stream import Stream
 from pypdfbox.debugger.streampane.stream_image_view import StreamImageView

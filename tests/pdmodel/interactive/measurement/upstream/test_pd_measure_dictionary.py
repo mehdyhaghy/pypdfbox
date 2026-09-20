@@ -11,8 +11,6 @@ contract — defaults and round-tripping through the wrapped ``COSDictionary``
 future, this module should be replaced with a direct port.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.measurement import (
     PDMeasureDictionary,

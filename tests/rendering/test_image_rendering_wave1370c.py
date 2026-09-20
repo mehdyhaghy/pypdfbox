@@ -7,8 +7,6 @@ EOD differs across wheels; do **not** assert on post-EOD tail bytes.
 Use structural / mean-intensity / channel-count checks instead of
 pixel-exact equality.
 """
-from __future__ import annotations
-
 import io
 
 from PIL import Image

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 
 class CompositePart:
     """A single ``PCC`` part of an AFM ``CC`` composite glyph.

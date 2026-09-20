@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 
 class TrackKern:
     """An AFM track-kern entry (``TrackKern degree minPt minKern maxPt maxKern``).

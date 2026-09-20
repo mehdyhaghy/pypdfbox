@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`MapBackedGsubData`."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.ttf.model import Language, MapBackedGsubData, ScriptFeature

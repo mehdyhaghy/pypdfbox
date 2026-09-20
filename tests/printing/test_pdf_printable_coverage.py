@@ -5,8 +5,6 @@ the rotated-box helpers — branches the original wave-1281 test file
 does not touch.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.pdmodel.pd_document import PDDocument

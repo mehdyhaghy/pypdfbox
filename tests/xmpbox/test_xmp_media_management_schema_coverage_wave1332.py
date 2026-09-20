@@ -7,8 +7,6 @@ ArrayProperty branches, and the ``SaveID`` integer/string/bool/invalid
 paths so the module reaches >=95%.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import (
@@ -44,7 +42,7 @@ def _text(schema: XMPMediaManagementSchema, value: str) -> TextType:
 
 def test_get_simple_typed_returns_none_when_value_unsupported() -> None:
     schema = _mm()
-    schema._properties["DocumentID"] = 42
+    schema._properties["DocumentID"] = 42  # exercise "neither str nor typed"
     assert schema.get_document_id_property() is None
 
 
@@ -194,7 +192,7 @@ def test_history_typed_append_and_get_skips_non_typed() -> None:
     schema.add_history(event)
     schema.add_history(event)
     # Pre-existing non-list entry forces the "wrap to list" branch on get_history.
-    schema._properties["History"] = event
+    schema._properties["History"] = event  # exercise non-list branch
     assert schema.get_history() == [event]
 
 
@@ -225,7 +223,7 @@ def test_versions_typed_append_and_wrap_non_list() -> None:
     version = VersionType(schema._metadata)
     schema.add_version(version)
     assert schema.get_versions() == [version]
-    schema._properties["Versions"] = version
+    schema._properties["Versions"] = version  # non-list branch
     assert schema.get_versions() == [version]
 
 
@@ -254,7 +252,7 @@ def test_get_versions_property_returns_none_for_non_array_value() -> None:
 def test_manifest_wraps_non_list_value_for_get() -> None:
     schema = _mm()
     ref = _resource_ref(schema)
-    schema._properties["Manifest"] = ref
+    schema._properties["Manifest"] = ref  # exercise wrap branch
     assert schema.get_manifest() == [ref]
 
 
@@ -355,7 +353,7 @@ def test_ingredients_typed_append_and_wrap_non_list() -> None:
     ref = _resource_ref(schema)
     schema.add_ingredient(ref)
     assert schema.get_ingredients() == [ref]
-    schema._properties["Ingredients"] = ref
+    schema._properties["Ingredients"] = ref  # exercise wrap branch
     assert schema.get_ingredients() == [ref]
 
 

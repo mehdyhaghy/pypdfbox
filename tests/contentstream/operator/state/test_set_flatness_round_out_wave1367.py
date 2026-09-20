@@ -5,8 +5,6 @@ tolerance in device pixels — number in the range 0..100, where 0 means
 "device's default". The class is a lite registry-routing stub.
 """
 
-from __future__ import annotations
-
 import logging
 
 import pytest

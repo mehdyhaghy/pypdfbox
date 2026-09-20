@@ -5,8 +5,6 @@ Closes ``70->72``: when the freshly-constructed entry lacks a
 False arc and the entry is stored without being marked for update.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos.cos_dictionary import COSDictionary
 from pypdfbox.cos.cos_name import COSName
 from pypdfbox.examples.signature.validation.add_validation_information import (

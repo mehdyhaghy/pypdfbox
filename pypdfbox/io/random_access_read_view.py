@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .random_access_read import RandomAccessRead
 
 

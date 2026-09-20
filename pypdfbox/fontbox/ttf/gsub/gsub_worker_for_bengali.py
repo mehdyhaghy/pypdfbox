@@ -8,8 +8,6 @@ then runs two repositioning passes (``before-half`` swap and
 ordering of i-kar, e-kar, o-kar and ou-kar matras.
 """
 
-from __future__ import annotations
-
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING

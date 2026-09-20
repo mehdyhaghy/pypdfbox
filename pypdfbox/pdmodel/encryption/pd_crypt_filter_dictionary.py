@@ -8,8 +8,6 @@ filters by name through its /CF entry, and selects a default for streams via
 /StmF and for strings via /StrF (PDF 32000-1 §7.6.5).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSBoolean, COSDictionary, COSName, COSNumber
 
 _TYPE: COSName = COSName.get_pdf_name("Type")

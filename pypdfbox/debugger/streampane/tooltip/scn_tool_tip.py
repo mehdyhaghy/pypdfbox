@@ -4,8 +4,6 @@ Ported from
 ``org.apache.pdfbox.debugger.streampane.tooltip.SCNToolTip``.
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.cos import COSName

@@ -20,8 +20,6 @@ public entry point to actually generate ``/AP /N`` streams for:
 synthesize visible signature appearances (PDFBOX-3524).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_check_box import PDCheckBox

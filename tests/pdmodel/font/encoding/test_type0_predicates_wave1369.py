@@ -4,8 +4,6 @@ Wave 1369 round-out for the predicate pair PDFBox uses to gate the
 ToUnicode UCS2 fallback (PDFBOX-6022 / §9.10.2).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

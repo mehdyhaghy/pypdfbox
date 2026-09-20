@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cmap import BFCharRange, CMap, CMapManager, CMapParser

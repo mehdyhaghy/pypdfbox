@@ -8,8 +8,6 @@ the parser-driven dispatcher already exists in
 (execute pops two operands, pushes one boolean, inheritance shape matches).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.common.function.type4.execution_context import (

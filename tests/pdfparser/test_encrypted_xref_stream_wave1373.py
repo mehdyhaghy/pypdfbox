@@ -17,8 +17,6 @@ This file pins that behaviour with new build-it-from-scratch fixtures
 and round-trip assertions that complement the existing
 ``test_encrypted_xref_stream.py`` coverage."""
 
-from __future__ import annotations
-
 import io
 
 import pytest

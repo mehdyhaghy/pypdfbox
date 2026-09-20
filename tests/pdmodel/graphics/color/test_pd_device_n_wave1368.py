@@ -12,8 +12,6 @@ Targets the per-color-space tinting / lookup / conversion functions on
 - ``init_color_conversion_cache`` shape (process / spot / collision)
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

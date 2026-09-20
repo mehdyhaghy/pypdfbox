@@ -1,7 +1,5 @@
 """Wave 1275 — explicit ``to_string()`` parity for NameRecord."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.name_record import NameRecord
 
 

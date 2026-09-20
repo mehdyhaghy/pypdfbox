@@ -11,8 +11,6 @@ install. The non-rendering core never imports this module, so parsing,
 writing, and text extraction keep working without the GL libraries.
 """
 
-from __future__ import annotations
-
 _SYSTEM_LIBS = ("libEGL", "libGLES", "libGLdispatch", "libGLX", "libGL", "libfontconfig")
 
 try:

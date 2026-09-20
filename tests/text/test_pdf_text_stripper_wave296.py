@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Callable
 
 from pypdfbox.text.pdf_text_stripper import PDFTextStripper

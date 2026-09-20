@@ -18,8 +18,6 @@ against the live oracle in ``oracle/test_std14_metrics_oracle.py`` and
 companion that runs without Java.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.fontbox.encoding.glyph_list import GlyphList
 from pypdfbox.pdmodel.font.encoding.symbol_encoding import SymbolEncoding

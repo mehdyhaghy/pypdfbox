@@ -1,6 +1,4 @@
 """Wave 384 coverage for pdfdebugger walker and mode edge branches."""
-from __future__ import annotations
-
 import builtins
 import json
 from typing import Any

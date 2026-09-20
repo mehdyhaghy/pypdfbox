@@ -6,8 +6,6 @@ Targets the read-only accessors (``is_empty``, ``contains_value``,
 ``_to_cos`` value-coercion helper.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

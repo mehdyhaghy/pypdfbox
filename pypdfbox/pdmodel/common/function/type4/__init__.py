@@ -20,8 +20,6 @@ porting code/tests against ``org.apache.pdfbox.pdmodel.common.function.type4``
 finds the expected names.
 """
 
-from __future__ import annotations
-
 from .execution_context import ExecutionContext
 from .instruction_sequence import InstructionSequence
 from .instruction_sequence_builder import InstructionSequenceBuilder

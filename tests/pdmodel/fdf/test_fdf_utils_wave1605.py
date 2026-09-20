@@ -7,8 +7,6 @@ XML 1.0 forbids outright are replaced with U+FFFD instead of being emitted raw
 or as an (equally illegal) numeric character reference.
 """
 
-from __future__ import annotations
-
 import io
 import logging
 

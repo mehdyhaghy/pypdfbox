@@ -19,8 +19,6 @@ What we *do* exercise here against the real upstream fixture:
 - ``get_regions().size()`` reflects add/remove cycles
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSBoolean, COSDictionary, COSName
 from pypdfbox.pdmodel.graphics.optionalcontent import PDOptionalContentGroup
 from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_membership_dictionary import (

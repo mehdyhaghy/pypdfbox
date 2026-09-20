@@ -9,8 +9,6 @@ The upstream ``testAccept`` assertion is translated to a recording visitor;
 ``testWritePDF`` exercises the direct PDFBox-shaped writer method.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

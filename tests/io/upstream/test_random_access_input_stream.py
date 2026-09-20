@@ -8,8 +8,6 @@ position-based ``skip`` / ``read`` / ``read_into`` / ``available`` and
 behavior at and past EOF.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.io.random_access_input_stream import RandomAccessInputStream

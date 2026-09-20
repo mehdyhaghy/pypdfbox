@@ -36,8 +36,6 @@ plumbing). Hand-written counterparts live in
 ``tests/pdmodel/font/test_pd_font_base_parity.py``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName

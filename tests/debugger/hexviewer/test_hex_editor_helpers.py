@@ -5,8 +5,6 @@ and ``get_scroll_pane`` accessors. Honours ``PYPDFBOX_SKIP_TK=1`` via the
 hexviewer ``tk_root`` fixture (skips when no Tk display is available).
 """
 
-from __future__ import annotations
-
 import contextlib
 import tkinter as tk
 from tkinter import ttk

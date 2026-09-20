@@ -9,8 +9,6 @@ the join and the inheritance fall-through that ``push_resources`` does
 when a child stream has no ``/Resources`` of its own.
 """
 
-from __future__ import annotations
-
 import io
 from typing import IO, Any
 

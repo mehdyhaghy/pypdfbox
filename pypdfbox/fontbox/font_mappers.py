@@ -15,8 +15,6 @@ Hot-swap is supported — passing ``None`` to :meth:`FontMappers.set`
 slate without leaking state between modules.
 """
 
-from __future__ import annotations
-
 import threading
 
 from .font_mapper import DefaultFontMapper, FontMapper

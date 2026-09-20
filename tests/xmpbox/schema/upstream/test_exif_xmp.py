@@ -14,8 +14,6 @@ Two tests:
   exercise kept here for round-trip coverage.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.xmpbox import (

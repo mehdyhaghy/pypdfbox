@@ -22,8 +22,6 @@ PDF spec.
 re-parse the TTF.
 """
 
-from __future__ import annotations
-
 import io
 import logging
 from enum import Enum, auto

@@ -19,8 +19,7 @@ deliberate no-ops, matching the upstream behaviour of skipping registration
 when the Apple EAWT classes are absent.
 """
 
-from __future__ import annotations
-
+import annotationlib
 import inspect
 import logging
 import sys
@@ -85,7 +84,10 @@ def is_correct_method(
     if types is None:
         return True
     try:
-        sig = inspect.signature(method)
+        # FORWARDREF: PEP 649 evaluates annotations on signature access, and a
+        # handler may be annotated with TYPE_CHECKING-only names. We inspect
+        # parameter kinds, never the annotations themselves.
+        sig = inspect.signature(method, annotation_format=annotationlib.Format.FORWARDREF)
     except (TypeError, ValueError):
         return False
     params = [

@@ -5,8 +5,6 @@ Exercises the recursion guard, form / transparency-group dispatch and the
 subclass.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

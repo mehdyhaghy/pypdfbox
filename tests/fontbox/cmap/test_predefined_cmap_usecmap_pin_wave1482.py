@@ -37,8 +37,6 @@ Every literal below was produced by ``oracle/probes/PredefCMapProbe.java``
 against ``pdfbox-app-3.0.7.jar``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cmap.cmap import CMap

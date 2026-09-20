@@ -10,8 +10,6 @@ behaviour around the ``stream_index`` xref hint when the same object number
 appears more than once in a single object stream.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos.cos_boolean import COSBoolean
 from pypdfbox.cos.cos_document import COSDocument
 from pypdfbox.cos.cos_integer import COSInteger

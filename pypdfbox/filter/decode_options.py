@@ -6,8 +6,6 @@ when decoding an image stream. Filters set ``filter_subsampled`` once they
 honor the options so the caller can skip software downscaling.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 

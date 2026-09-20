@@ -10,8 +10,6 @@ negative-record-size guards — are portable and ported here. ``IOException``
 maps to ``OSError`` per the project's test-porting conventions.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.pfb.pfb_parser import PfbParser

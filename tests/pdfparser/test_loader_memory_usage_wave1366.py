@@ -11,8 +11,6 @@ No upstream JUnit counterpart — pypdfbox-specific parity suite around the
 upstream exposes (PDFBox 3.0.x ``Loader.java`` lines 215-251).
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 
@@ -37,7 +35,7 @@ def _page_count_via_pddoc(cos) -> int:
     """Wrap a ``COSDocument`` in a non-owning ``PDDocument`` to read the
     page count without closing the COSDocument out from under the caller."""
     pd = PDDocument(cos)
-    pd._owns_document = False
+    pd._owns_document = False  # keep cos alive for caller
     return pd.get_number_of_pages()
 
 

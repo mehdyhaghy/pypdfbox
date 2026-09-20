@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from .pd_export_format_attribute_object import PDExportFormatAttributeObject

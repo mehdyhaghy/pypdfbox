@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import math
 import re
 import struct
@@ -72,7 +70,7 @@ class PDFunctionType4(PDFunction):
 
     # ---------- evaluation ----------
 
-    def eval(self, input: list[float]) -> list[float]:
+    def eval(self, input: list[float]) -> list[float]:  # upstream parameter name
         """Evaluate the PostScript-calculator program on ``input`` per
         PDF 32000-1 §7.10.5.
 

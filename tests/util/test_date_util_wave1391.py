@@ -4,8 +4,6 @@ Targets the residual missing branches in the SimpleDateFormat-style
 locale-aware parser ported in wave 1387.
 """
 
-from __future__ import annotations
-
 from datetime import datetime
 
 from pypdfbox.util.date_util import parse_with_locale

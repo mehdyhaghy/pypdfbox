@@ -13,8 +13,6 @@ JUnit for the inner class — it's tested transitively through
 re-arrange of the ``WORD_SEPARATOR`` sentinel (or a switch to a Python
 ``None``-only convention) gets caught.
 """
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

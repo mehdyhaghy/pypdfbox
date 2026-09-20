@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .append_rectangle import AppendRectangle
 from .clip_even_odd import ClipEvenOdd
 from .clip_non_zero_winding import ClipNonZeroWinding

@@ -7,8 +7,6 @@ Targets lines 33 and 38 of
    are skipped silently
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.fdf import FDFAnnotationPolygon
 

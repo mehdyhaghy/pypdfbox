@@ -21,8 +21,6 @@ This file picks up the remaining surface:
   ``checkEncodeDecode`` contract on that blob.
 """
 
-from __future__ import annotations
-
 import io
 import random
 from pathlib import Path

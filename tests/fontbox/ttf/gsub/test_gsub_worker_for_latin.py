@@ -1,7 +1,5 @@
 """Tests for :class:`GsubWorkerForLatin`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub import GsubData, GsubWorkerForLatin
 
 

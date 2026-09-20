@@ -1,7 +1,5 @@
 """Wave 1275 — PDStream.internal_get_decode_params public helper."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSNull, COSStream
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 

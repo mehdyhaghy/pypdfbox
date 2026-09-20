@@ -9,8 +9,6 @@ raises ``StopIteration`` and the loop exits gracefully (the trailing
 half-pair is dropped, mirroring upstream behaviour).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSInteger
 from pypdfbox.pdfparser import ObjectNumbers
 

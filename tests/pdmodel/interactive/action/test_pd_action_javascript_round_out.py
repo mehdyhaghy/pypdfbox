@@ -2,8 +2,6 @@
 ``/JS`` accessor for both ``COSString`` and ``COSStream`` source forms.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName, COSStream, COSString
 from pypdfbox.pdmodel.interactive.action import PDActionJavaScript
 

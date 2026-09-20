@@ -18,8 +18,6 @@ Upstream implements ``ChangeListener`` (slider) + ``ActionListener``
 private methods with matching semantics.
 """
 
-from __future__ import annotations
-
 import contextlib
 import tkinter as tk
 from tkinter import font as tkfont

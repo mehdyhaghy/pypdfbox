@@ -12,8 +12,6 @@ Item 2 — ``PDCIDFontType2Embedder.get_cid_font`` constructed
 2-arg constructor, raising :class:`TypeError`.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 
@@ -139,7 +137,7 @@ def test_create_cid_font_vertical_does_not_raise_attribute_error() -> None:
     # the vertical builder fires.
     del embedder._cid_font
     embedder._ttf = _SyntheticVerticalTTF()
-    rebuilt = embedder._create_cid_font()
+    rebuilt = embedder._create_cid_font()  # under-test
     # /W2 must have been written into the rebuilt CIDFont dict via
     # ``self._cid_font.set_item`` (line 463) — confirms the vertical
     # branch executed past the self-reference site without raising.

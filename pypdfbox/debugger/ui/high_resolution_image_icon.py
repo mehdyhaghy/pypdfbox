@@ -12,8 +12,6 @@ instances. We therefore expose:
   base size and returns a ``ImageTk.PhotoImage`` suitable for Tk widgets.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 

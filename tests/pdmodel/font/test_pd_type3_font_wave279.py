@@ -1,7 +1,5 @@
 """Wave 279 coverage for Type 3 font convenience accessors."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

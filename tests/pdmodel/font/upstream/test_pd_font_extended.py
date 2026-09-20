@@ -14,8 +14,6 @@ network-downloaded ``stringwidth.pdf``, etc.) are skipped with a
 one-line reason each.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

@@ -8,8 +8,6 @@ instances. Here we exercise the same contract on a concrete COS type
 specific suites.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSInteger
 from pypdfbox.cos.cos_object_key import COSObjectKey
 

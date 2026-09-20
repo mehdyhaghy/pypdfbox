@@ -17,8 +17,6 @@ which is still a work-in-progress slice in pypdfbox.
 ``target/pdfs/`` (Maven-downloaded), not in the source tree.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.cos import COSName

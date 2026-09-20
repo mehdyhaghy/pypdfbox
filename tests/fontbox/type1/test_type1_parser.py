@@ -6,8 +6,6 @@ should pick out the well-known top-level keys and the FontInfo dict
 contents without choking on intervening operators.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.type1.type1_font_util import Type1FontUtil
 from pypdfbox.fontbox.type1.type1_parser import (
     TOKEN_END_ARRAY,

@@ -4,8 +4,6 @@ Translated from
 ``pdfbox/fontbox/src/test/java/org/apache/fontbox/cff/CharStringCommandTest.java``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff import (
     CharStringCommand,
     Key,

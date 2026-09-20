@@ -1,7 +1,5 @@
 """Tests for the rendering cluster ported in Wave 1281."""
 
-from __future__ import annotations
-
 from pypdfbox.rendering import (
     GlyphCache,
     GroupGraphics,

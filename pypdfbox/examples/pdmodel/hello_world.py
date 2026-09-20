@@ -3,8 +3,6 @@
 Creates a "Hello World" PDF using the built-in Helvetica font.
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.examples.pdmodel._font_helpers import make_standard14_type1_font

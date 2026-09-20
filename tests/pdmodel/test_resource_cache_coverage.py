@@ -7,8 +7,6 @@ the unsupported-type fallback (which raises :class:`TypeError`) are the
 only lines unique to this module — the rest is inherited from
 ``pd_resource_cache``. These tests exercise each branch.
 """
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

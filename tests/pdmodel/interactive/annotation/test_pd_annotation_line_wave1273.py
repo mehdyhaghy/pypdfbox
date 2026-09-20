@@ -7,8 +7,6 @@ and ``construct_appearances`` dispatch, mirroring the established
 (Wave 1267) patterns.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from pypdfbox.cos import COSDictionary, COSName

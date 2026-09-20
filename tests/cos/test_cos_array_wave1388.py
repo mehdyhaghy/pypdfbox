@@ -1,7 +1,5 @@
 """Wave 1388 — verify `COSArray.of(float...)` parity with upstream."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat
 
 

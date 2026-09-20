@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 
 class PDTransitionStyle:
     """Transition style names. Mirrors PDFBox ``PDTransitionStyle`` enum.

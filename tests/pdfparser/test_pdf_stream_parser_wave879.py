@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import tests.pdfparser.test_pdf_stream_parser_wave526 as wave526
 from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer
 from pypdfbox.pdmodel import PDRectangle

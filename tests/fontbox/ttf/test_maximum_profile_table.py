@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import struct
 
 from pypdfbox.fontbox.ttf.maximum_profile_table import MaximumProfileTable

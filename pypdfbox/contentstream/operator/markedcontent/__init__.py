@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from ._props import (
     ARTIFACT_TAG,
     MCID_DEFAULT,

@@ -13,8 +13,6 @@ as class attributes today, so the names are built via
 byte-identical.
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 import io
 import sys

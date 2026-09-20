@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSString
 from pypdfbox.io import RandomAccessWriteBuffer
 from pypdfbox.pdfwriter import ContentStreamWriter

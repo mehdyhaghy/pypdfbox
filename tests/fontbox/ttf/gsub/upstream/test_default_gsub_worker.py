@@ -14,8 +14,6 @@ the pypdfbox contract: the returned list *is* mutable, but mutating it
 does not affect the worker's internal state.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub.default_gsub_worker import DefaultGsubWorker
 
 

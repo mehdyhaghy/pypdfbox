@@ -8,8 +8,6 @@ Targets the previously-uncovered branches:
     public mirror of upstream's ``updateSelectedOptionsIndex`` that takes
     explicit value+options lists.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSName, COSString
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_choice import PDChoice

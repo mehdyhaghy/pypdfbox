@@ -11,8 +11,6 @@ as class attributes rather than redefining them. The class form is provided so
 upstream-style ``XmpConstants.RDF_NAMESPACE`` references port one-to-one.
 """
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox import xmp_metadata as _md
 
 

@@ -13,8 +13,6 @@ Targets the 5 partial arrows surviving after wave 1396:
 * 1750->1752 — ``_validate_perms_r5_r6`` with a positive (high bit
   clear) permissions integer that matches /P.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSString
 from pypdfbox.pdmodel.encryption.pd_crypt_filter_dictionary import (
     PDCryptFilterDictionary,

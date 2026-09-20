@@ -10,8 +10,6 @@ Covers:
   the slot after it carries a before-half glyph).
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub.gsub_data import GsubData
 from pypdfbox.fontbox.ttf.gsub.gsub_worker_for_tamil import GsubWorkerForTamil
 

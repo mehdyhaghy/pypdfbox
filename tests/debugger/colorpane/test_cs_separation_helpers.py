@@ -6,8 +6,6 @@ Covers the public surface promoted from the previously-private
 be exercised directly (and via their back-compat aliases).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from pypdfbox.debugger.colorpane.cs_separation import CSSeparation
 

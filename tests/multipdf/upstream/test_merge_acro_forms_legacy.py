@@ -14,8 +14,6 @@ on the upstream PDFBox repo (license: Apache 2.0). We copy them into
 ``tests/fixtures/multipdf/`` and exercise the full upstream comparison.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

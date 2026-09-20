@@ -12,8 +12,6 @@ state machine, ``validate_stream_length`` size checks, the lenient
 ``check_xref_offsets``, and ``find_object_key`` generation-correction.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

@@ -4,8 +4,6 @@ lines 33-78).
 Demonstrates region-based text extraction with :class:`PDFTextStripperByArea`.
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.pdmodel.pd_document import PDDocument

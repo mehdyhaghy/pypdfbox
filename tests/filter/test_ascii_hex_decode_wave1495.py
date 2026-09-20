@@ -13,8 +13,6 @@ unexercised:
   marker are not 1:1 with output bytes).
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.filter import ASCIIHexDecode

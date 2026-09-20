@@ -14,8 +14,6 @@ Closes the partial arcs:
   ``glyph_count`` is already non-zero.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub import (
     ClassRule,
     LigatureSetTable,

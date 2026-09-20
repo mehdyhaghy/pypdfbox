@@ -2,8 +2,6 @@
 ``is_on_new_line`` / ``set_on_new_line`` spellings (matching upstream's
 ``isOnNewLine`` / ``setOnNewLine`` word boundaries)."""
 
-from __future__ import annotations
-
 from io import BytesIO
 
 from pypdfbox.pdfwriter.cos_standard_output_stream import COSStandardOutputStream

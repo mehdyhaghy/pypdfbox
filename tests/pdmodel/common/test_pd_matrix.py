@@ -8,8 +8,6 @@ non-aliasing), point transforms, COS round-trip, error handling
 hashing, and copy semantics.
 """
 
-from __future__ import annotations
-
 import copy
 import math
 

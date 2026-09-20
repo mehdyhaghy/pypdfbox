@@ -29,8 +29,6 @@ Upstream parity reference (PageDrawer):
     void endText() { if (textClippingArea != null) { graphics.clip(area); area = null; } }
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest
@@ -109,7 +107,7 @@ def test_clip_glyph_accumulates_without_touching_gs_clip(mode: int) -> None:
     before = r._gs.clip_mask
     r._accumulate_text_clip_path(_agg_rect(5, 5, 20, 20), (1, 0, 0, 1, 0, 0))
     assert len(r._text_clip_paths) == 1
-    assert r._gs.clip_mask is before
+    assert r._gs.clip_mask is before  # untouched until ET
 
 
 def test_multiple_clip_glyphs_accumulate_in_order() -> None:
@@ -192,7 +190,7 @@ def test_commit_does_not_widen_existing_clip() -> None:
     # a glyph outside the existing clip cannot re-open clipped pixels.
     existing = _solid_mask((40, 40), (0, 0, 15, 40))
     r = _commit_renderer((40, 40), clip_mask=existing)
-    r._text_clip_paths = [_rect_path(20, 5, 35, 35)]
+    r._text_clip_paths = [_rect_path(20, 5, 35, 35)]  # disjoint
     r._commit_text_clip()
     m = r._gs.clip_mask
     assert m.getpixel((25, 20)) == 0  # glyph region, but outside old clip
@@ -237,8 +235,8 @@ def test_visible_clip_mode_both_paints_and_accumulates(mode: int) -> None:
     # is painted AND its outline lands in _text_clip_paths.
     r, rec = _paint_wired(mode)
     r._paint_glyph_path(_agg_rect(0, 0, 10, 10), (1, 0, 0, 1, 0, 0), (1, 2, 3))
-    assert len(r._text_clip_paths) == 1
-    assert len(rec.direct) == 1
+    assert len(r._text_clip_paths) == 1  # accumulated
+    assert len(rec.direct) == 1  # and painted
     assert rec.direct[0]["do_fill"] is (mode in (4, 6))
     assert rec.direct[0]["do_stroke"] is (mode in (5, 6))
 
@@ -246,7 +244,7 @@ def test_visible_clip_mode_both_paints_and_accumulates(mode: int) -> None:
 def test_clip_only_mode7_accumulates_but_paints_nothing() -> None:
     r, rec = _paint_wired(7)
     r._paint_glyph_path(_agg_rect(0, 0, 10, 10), (1, 0, 0, 1, 0, 0), (0, 0, 0))
-    assert len(r._text_clip_paths) == 1
+    assert len(r._text_clip_paths) == 1  # added to clip
     assert rec.direct == []  # but never painted
     assert rec.through == []
 
@@ -255,7 +253,7 @@ def test_clip_only_mode7_accumulates_but_paints_nothing() -> None:
 def test_non_clip_modes_never_accumulate(mode: int) -> None:
     r, rec = _paint_wired(mode)
     r._paint_glyph_path(_agg_rect(0, 0, 10, 10), (1, 0, 0, 1, 0, 0), (0, 0, 0))
-    assert r._text_clip_paths == []
+    assert r._text_clip_paths == []  # no clip contribution
 
 
 @pytest.mark.parametrize("mode", [4, 5, 6])
@@ -265,7 +263,7 @@ def test_visible_clip_mode_routes_through_clip_when_gs_clip_active(mode: int) ->
     r._paint_glyph_path(_agg_rect(0, 0, 10, 10), (1, 0, 0, 1, 0, 0), (1, 2, 3))
     assert rec.direct == []
     assert len(rec.through) == 1
-    assert len(r._text_clip_paths) == 1
+    assert len(r._text_clip_paths) == 1  # still accumulates
 
 
 # ======================================================================
@@ -279,17 +277,17 @@ def test_mode_switch_mid_text_object_only_clip_glyphs_accumulate() -> None:
     r, rec = _paint_wired(0)
     r._paint_glyph_path(_agg_rect(0, 0, 5, 5), (1, 0, 0, 1, 0, 0), (0, 0, 0))
     assert r._text_clip_paths == []
-    r._gs.text_rendering_mode = 7
+    r._gs.text_rendering_mode = 7  # switch mid-object
     r._paint_glyph_path(_agg_rect(5, 0, 10, 5), (1, 0, 0, 1, 0, 0), (0, 0, 0))
     r._paint_glyph_path(_agg_rect(10, 0, 15, 5), (1, 0, 0, 1, 0, 0), (0, 0, 0))
-    assert len(r._text_clip_paths) == 2
+    assert len(r._text_clip_paths) == 2  # only clip glyphs
 
 
 def test_mode_switch_clip_then_fill_keeps_only_clip_glyphs() -> None:
     r, rec = _paint_wired(4)
     r._paint_glyph_path(_agg_rect(0, 0, 5, 5), (1, 0, 0, 1, 0, 0), (1, 1, 1))
-    assert len(r._text_clip_paths) == 1
-    r._gs.text_rendering_mode = 0
+    assert len(r._text_clip_paths) == 1  # fill glyph not added
+    r._gs.text_rendering_mode = 0  # back to plain fill
     r._paint_glyph_path(_agg_rect(5, 0, 10, 5), (1, 0, 0, 1, 0, 0), (1, 1, 1))
     assert len(r._text_clip_paths) == 1
 
@@ -317,13 +315,13 @@ def test_et_commits_exactly_once_and_resets_buffer() -> None:
     _stub_knockout(r)
     r._op_end_text(None, [])
     assert calls == [True]  # committed exactly once
-    assert r._text_clip_paths == []
+    assert r._text_clip_paths == []  # buffer reset
 
 
 def test_empty_text_object_commits_nothing() -> None:
     # No clip-mode glyph shown → no buffer → ET leaves the GS clip alone.
     r = _commit_renderer((40, 40))
-    before = r._gs.clip_mask
+    before = r._gs.clip_mask  # None
     calls: list[bool] = []
     r._commit_text_clip = lambda: calls.append(True)
     _stub_knockout(r)
@@ -344,10 +342,10 @@ def test_clip_does_not_leak_into_next_text_object() -> None:
     # New text object.
     r._maybe_begin_text_knockout = lambda: None
     r._op_begin_text(None, [])
-    assert r._text_clip_paths == []
+    assert r._text_clip_paths == []  # fresh buffer
     # No clip glyph this round; ET must not change the clip.
     r._op_end_text(None, [])
-    assert r._gs.clip_mask is first_clip
+    assert r._gs.clip_mask is first_clip  # unchanged
 
 
 def test_second_text_object_clip_narrows_first() -> None:
@@ -376,7 +374,7 @@ def test_begin_text_resets_inflight_clip_buffer() -> None:
     # previous object's glyphs do not bleed into the new one.
     r = _commit_renderer((40, 40))
     r._maybe_begin_text_knockout = lambda: None
-    r._text_clip_paths = [_rect_path(0, 0, 10, 10)]
+    r._text_clip_paths = [_rect_path(0, 0, 10, 10)]  # stale
     r._op_begin_text(None, [])
     assert r._text_clip_paths == []
 
@@ -389,7 +387,7 @@ def test_begin_text_resets_inflight_clip_buffer() -> None:
 def test_commit_with_empty_buffer_is_noop() -> None:
     r = _commit_renderer((40, 40))
     r._text_clip_paths = []
-    r._commit_text_clip()
+    r._commit_text_clip()  # must not raise
     assert r._gs.clip_mask is None
 
 
@@ -398,7 +396,7 @@ def test_commit_without_image_is_noop() -> None:
     r = _bare_renderer(gs)
     r._image = None
     r._text_clip_paths = [_rect_path(0, 0, 10, 10)]
-    r._commit_text_clip()
+    r._commit_text_clip()  # guarded on _image is None
     assert r._gs.clip_mask is None
 
 
@@ -408,7 +406,7 @@ def test_degenerate_zero_area_glyph_does_not_crash() -> None:
     # (Divergence from upstream graphics.clip(emptyArea) is a documented
     # deferred follow-up; here we only assert no crash.)
     r = _commit_renderer((40, 40))
-    r._text_clip_paths = [_rect_path(10, 10, 10, 30)]
+    r._text_clip_paths = [_rect_path(10, 10, 10, 30)]  # zero width
     r._commit_text_clip()
     # No exception. clip_mask may stay None (degenerate early-return).
     assert r._gs.clip_mask is None
@@ -428,4 +426,4 @@ def test_full_glyph_clip_leaves_inside_opaque_outside_clipped() -> None:
     m = r._gs.clip_mask
     assert m.getpixel((25, 25)) == 255
     assert m.getpixel((3, 3)) == 0
-    assert r._text_clip_paths == []
+    assert r._text_clip_paths == []  # reset after ET

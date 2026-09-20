@@ -12,8 +12,6 @@ Closes residual partial branches in ``pypdfbox/pdfparser/pdf_parser.py``:
 * ``_consume_eol_after_stream_keyword`` at EOF (1519 → -1506).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (
@@ -51,7 +49,7 @@ def test_initial_parse_without_cos_parser_skips_set_initial_parse_done() -> None
     trailer = COSDictionary()
     trailer.set_item(COSName.ROOT, root)
     p._resolver.set_trailer(trailer)
-    p._cos_parser = None
+    p._cos_parser = None  # simulate pre-parse state
 
     # Must not raise — even with cos_parser None.
     p.initial_parse()

@@ -11,8 +11,6 @@ typed ``getColor()`` arity dispatch in upstream's private
 ``getColor(COSName)`` helper.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
 from pypdfbox.pdmodel.graphics.color.pd_device_cmyk import PDDeviceCMYK

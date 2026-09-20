@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 import tests.rendering.test_pdf_renderer_page_index_wave357 as page_index_tests

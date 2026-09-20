@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.fontbox.font_mapper import FontMapper
 from pypdfbox.fontbox.font_mappers import FontMappers
 

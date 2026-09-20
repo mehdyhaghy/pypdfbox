@@ -5,8 +5,6 @@ exercise the contract — instantiation refused, subclasses must
 implement ``execute``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.common.function.type4 import (

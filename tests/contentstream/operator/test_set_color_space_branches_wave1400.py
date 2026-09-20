@@ -11,8 +11,6 @@ Closes residual partial branches in:
   the symmetric three branches (78 → 54, 88 → 54, 93 → 91).
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.contentstream.operator import Operator

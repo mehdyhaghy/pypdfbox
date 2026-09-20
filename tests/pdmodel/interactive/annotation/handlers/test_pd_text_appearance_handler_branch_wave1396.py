@@ -8,8 +8,6 @@ Closes False-branch arrows:
 * 215->201 — ``add_path`` unknown op falls through silently
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName, COSStream
 from pypdfbox.pdmodel.interactive.annotation.handlers.pd_text_appearance_handler import (
     PDTextAppearanceHandler,

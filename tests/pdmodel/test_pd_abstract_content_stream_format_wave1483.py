@@ -28,8 +28,6 @@ form. The hand-written assertions pin those bytes so the suite passes without
 Java.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

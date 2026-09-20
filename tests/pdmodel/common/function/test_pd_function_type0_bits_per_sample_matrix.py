@@ -16,8 +16,6 @@ sibling eval-test helpers — successive sample codes are adjacent in the
 bit stream with no padding at byte boundaries.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

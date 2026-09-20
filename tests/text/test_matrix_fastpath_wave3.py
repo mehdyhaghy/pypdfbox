@@ -16,8 +16,6 @@ raw byte pattern, so ``-0.0``/``+0.0``/``NaN`` are distinguished) and that the
 cache is invalidated by exactly the operators that change its inputs.
 """
 
-from __future__ import annotations
-
 import math
 import struct
 

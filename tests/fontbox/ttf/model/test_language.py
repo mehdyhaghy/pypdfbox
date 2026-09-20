@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`pypdfbox.fontbox.ttf.model.Language`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.model import Language
 
 

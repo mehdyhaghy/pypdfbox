@@ -14,8 +14,6 @@ defensive guard is exercised here via a stub whose ``lower()`` *does*
 collapse, just to keep coverage 100% honest.
 """
 
-from __future__ import annotations
-
 from pypdfbox.debugger.ui.textsearcher.search_engine import (
     Highlight,
     SearchEngine,

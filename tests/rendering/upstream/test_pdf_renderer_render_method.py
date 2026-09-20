@@ -13,8 +13,6 @@ doesn't throw. The remaining overloads are documented as
 coverage. We pin the snake_case overloads and their DPI / scale
 defaults so a refactor of the entry-point dispatch is parity-checked.
 """
-from __future__ import annotations
-
 import pytest
 from PIL import Image
 

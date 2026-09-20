@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import sys
 
 from tests.fontbox import test_font_box_font_helpers_wave894

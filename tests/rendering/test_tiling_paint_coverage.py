@@ -7,8 +7,6 @@ Drives the constructor, ``get_anchor_rect``, ``get_image`` (with both the
 adapter.
 """
 
-from __future__ import annotations
-
 import logging
 from importlib import reload
 from typing import Any

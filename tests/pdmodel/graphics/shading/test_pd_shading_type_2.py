@@ -7,8 +7,6 @@ Covers the per-PDF-spec metadata accessors required by PDF 32000-1
 verifies the documented defaults when the entry is absent.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSBoolean, COSDictionary, COSFloat

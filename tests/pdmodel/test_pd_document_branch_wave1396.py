@@ -11,8 +11,6 @@ optional COSDocument fields are missing:
   field entries
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.pd_document import PDDocument
 
 

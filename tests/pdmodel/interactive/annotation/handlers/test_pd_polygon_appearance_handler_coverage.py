@@ -17,8 +17,6 @@ Closes the remaining gaps:
 * No-op rollover / down hooks.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName
 from pypdfbox.pdmodel.interactive.annotation.handlers.pd_polygon_appearance_handler import (
     PDPolygonAppearanceHandler,

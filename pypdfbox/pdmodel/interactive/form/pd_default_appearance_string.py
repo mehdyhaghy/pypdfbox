@@ -11,8 +11,6 @@ Upstream is package-private; pypdfbox surfaces it for parity with
 :meth:`PDVariableText.get_default_appearance_string`.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from pypdfbox.contentstream.operator_name import OperatorName

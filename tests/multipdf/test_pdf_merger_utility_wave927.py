@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from . import test_pdf_merger_utility_wave656 as wave656
 
 

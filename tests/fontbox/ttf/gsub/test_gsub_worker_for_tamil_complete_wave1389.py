@@ -23,8 +23,6 @@ points line up directly with the synthesised glyph IDs — that keeps the
 expected outputs trivially readable inline.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.ttf.gsub.gsub_data import GsubData

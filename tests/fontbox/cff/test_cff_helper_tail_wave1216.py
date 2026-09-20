@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import builtins
 
 from tests.fontbox.cff import test_cff_helper_tail_wave856 as wave856_mod

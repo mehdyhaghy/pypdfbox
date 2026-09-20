@@ -35,8 +35,6 @@ port, whose bytes are oracle-verified in
 ``tests/jbig2/segments/oracle/test_generic_region_oracle.py``).
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest
@@ -295,7 +293,7 @@ def test_template0_roundtrip_all_ones_and_all_zeros():
 # ---------------------------------------------------------------------------
 def test_mmr_selection_skips_at_pixels_and_routes_to_g4():
     # MMR=1 -> no AT pixels parsed; the decode path is the CCITT-G4 decompressor.
-    from PIL import Image
+    from PIL import Image  # only the MMR case needs Pillow
 
     width, height = 16, 8
     img = Image.new("1", (width, height), 1)

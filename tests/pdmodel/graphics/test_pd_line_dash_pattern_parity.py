@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSInteger
 from pypdfbox.pdmodel.graphics.pd_line_dash_pattern import PDLineDashPattern
 

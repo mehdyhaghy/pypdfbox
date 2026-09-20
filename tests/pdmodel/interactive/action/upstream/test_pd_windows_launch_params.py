@@ -12,8 +12,6 @@ instead of ``COSName.O`` — a documented PDFBox bug. pypdfbox writes to
 A `CHANGES.md` entry for the divergence already exists.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.action.pd_windows_launch_params import (
     PDWindowsLaunchParams,

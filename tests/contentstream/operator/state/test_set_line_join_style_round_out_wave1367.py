@@ -5,8 +5,6 @@ ISO 32000-1 §8.4.3.4 operand domain (0=miter, 1=round, 2=bevel) and the
 malformed-stream tolerance contract.
 """
 
-from __future__ import annotations
-
 import logging
 
 import pytest

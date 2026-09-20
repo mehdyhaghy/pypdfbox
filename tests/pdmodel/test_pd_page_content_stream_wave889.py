@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 import tests.pdmodel.test_pd_page_content_stream_wave250 as wave250

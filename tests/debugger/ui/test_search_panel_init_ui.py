@@ -1,7 +1,5 @@
 """Hand-written tests for ``SearchPanel.init_ui`` (upstream parity)."""
 
-from __future__ import annotations
-
 import os
 import tkinter as tk
 from tkinter import ttk
@@ -89,5 +87,5 @@ def test_init_ui_wires_search_var_to_document_listener(_tk_root: tk.Tk) -> None:
     )
     # Mutating the search var must reach the document listener — confirms
     # ``init_ui`` installed the ``trace_add("write", ...)`` callback.
-    panel._search_var.set("hello")
+    panel._search_var.set("hello")  # smoke probe
     assert len(fired) == 1

@@ -6,8 +6,6 @@ pdmodel surface — singleton identity, encoding name, COS form,
 representative glyphs, and the ``Encoding.get_instance`` factory.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.font.encoding import Encoding, StandardEncoding
 

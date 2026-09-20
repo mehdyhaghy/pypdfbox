@@ -15,8 +15,6 @@ per-cell background colors directly, so we ship two facilities:
   next to a row (e.g. a separate detail pane).
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 
 

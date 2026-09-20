@@ -9,8 +9,6 @@ upstream defines as static singletons but are not yet pre-registered in
 import so this test can drive the embedder end-to-end.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 from typing import Any

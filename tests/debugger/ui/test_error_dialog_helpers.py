@@ -12,8 +12,6 @@ The existing dialog tests live in ``test_error_dialog.py``; this file is
 deliberately scoped to the new surface so it can be run in isolation.
 """
 
-from __future__ import annotations
-
 import os
 import tkinter as tk
 from collections.abc import Iterator

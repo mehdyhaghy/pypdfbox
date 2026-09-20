@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .cff_table import CFFTable
 from .cmap_lookup import CmapLookup
 from .cmap_subtable import CmapSubtable

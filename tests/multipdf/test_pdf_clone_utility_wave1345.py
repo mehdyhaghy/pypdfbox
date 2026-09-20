@@ -8,8 +8,6 @@ Targets:
     public mirrors (lines 257, 260, 263, 266, 274, 278).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

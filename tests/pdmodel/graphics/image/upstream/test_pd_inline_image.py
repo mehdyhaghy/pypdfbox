@@ -21,8 +21,6 @@ Ported here are the malformed-``/D`` defensive accessor
 ``testInlineImage`` and stencil-image / image-dimension parity
 assertions exercisable today.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

@@ -16,8 +16,6 @@ Pre-wave the module sat at 89.7 % (4 missing); this set takes it to
 100 %.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName, COSObject, COSObjectKey, COSStream
 from pypdfbox.pdfparser.xref import NormalXReference, XReferenceType
 

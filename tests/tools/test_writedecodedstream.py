@@ -6,8 +6,6 @@ and writes the result back. The test fixture builds a tiny PDF whose
 content stream is FlateDecode-encoded, runs the tool, then re-parses
 the output and asserts every stream is now plain.
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

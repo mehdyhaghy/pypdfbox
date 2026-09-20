@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .compress import CompressParameters
 from .content_stream_writer import ContentStreamWriter
 from .cos_standard_output_stream import COSStandardOutputStream

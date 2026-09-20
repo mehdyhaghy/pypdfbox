@@ -21,8 +21,6 @@ Compared against Apache PDFBox 3.0.7 ``TilingPaint.getAnchorRect`` /
 ``getImage`` / ``ceiling`` semantics. No single upstream JUnit source.
 """
 
-from __future__ import annotations
-
 import math
 from decimal import ROUND_CEILING, Decimal
 from typing import Any

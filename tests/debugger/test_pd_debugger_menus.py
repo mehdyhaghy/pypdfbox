@@ -9,8 +9,6 @@ labels, which translates cleanly to ``tk.Menu.index("end")`` here.
 ``test_pd_debugger.py``.
 """
 
-from __future__ import annotations
-
 import contextlib
 import os
 import tkinter as tk

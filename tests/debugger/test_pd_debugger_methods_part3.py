@@ -9,8 +9,6 @@ Covers window / mac / action handlers, plus the public spellings of
 ``PYPDFBOX_SKIP_TK=1`` for headless CI shards.
 """
 
-from __future__ import annotations
-
 import contextlib
 import os
 import tkinter as tk

@@ -4,8 +4,6 @@ Covers protocol structure, runtime ``isinstance`` behaviour, and
 sanity checks against pypdfbox vector font classes.
 """
 
-from __future__ import annotations
-
 from typing import get_type_hints
 
 import pytest

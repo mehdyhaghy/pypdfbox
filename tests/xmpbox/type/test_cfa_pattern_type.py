@@ -14,8 +14,6 @@ These tests cover the read/write contract for the typed accessors so the
 class is callable without a parsed XMP packet.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import XMPMetadata

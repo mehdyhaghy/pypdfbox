@@ -20,8 +20,6 @@ These mirror upstream ``org.apache.fontbox.ttf.CmapSubtable`` (PDFBox 3.0.7)
 ``getCharCode`` / ``getCharCodes`` (ported as ``get_char_code`` /
 ``get_char_codes``).
 """
-from __future__ import annotations
-
 import struct
 
 import pytest

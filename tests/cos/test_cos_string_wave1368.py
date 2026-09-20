@@ -18,8 +18,6 @@ Round-out tests for paths not yet covered:
 * ``set_value`` replaces the raw bytes.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSString

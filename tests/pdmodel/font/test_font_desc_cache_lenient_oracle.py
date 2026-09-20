@@ -26,8 +26,6 @@ Plus the (already-at-parity) type-leniency surface: ``/FontFamily`` /
 Oracle: ``oracle/probes/FontDescCacheLenientProbe.java``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString

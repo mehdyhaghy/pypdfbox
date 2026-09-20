@@ -8,8 +8,6 @@ aliases like ``do_not_spell_check``/``do_not_scroll``, the two-arg
 radio-button selection accessors, signature ``set_default_value``, and
 the multi-select gate on ``set_selected_options_indices``.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream

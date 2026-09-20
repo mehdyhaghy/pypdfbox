@@ -1,7 +1,5 @@
 """Tests for the :class:`SimpleFont` encoding pane."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.debugger.fontencodingpane.simple_font import SimpleFont
 from pypdfbox.pdmodel.font import PDType1Font

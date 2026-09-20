@@ -13,8 +13,6 @@ Covers four small gaps:
   (single-dict ↔ array promotion + duplicate suppression).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName

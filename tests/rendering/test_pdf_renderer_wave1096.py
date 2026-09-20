@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 import tests.rendering.test_pdf_renderer_image_type as image_type_tests

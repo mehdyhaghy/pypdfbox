@@ -10,8 +10,6 @@ Mirrors PDF spec §11.6.5.2-3 plumbing through :class:`PDFRenderer`:
   values before they become alpha.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

@@ -6,8 +6,6 @@ established convention used by :class:`PDActionTransition`,
 :class:`PDActionEmbeddedGoTo`, and friends.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.interactive.action.pd_action_sound import PDActionSound
 from pypdfbox.pdmodel.interactive.sound.pd_sound_stream import PDSoundStream

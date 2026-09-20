@@ -19,8 +19,6 @@ Behaviour is checked against upstream Apache PDFBox
   format high byte (L180-220); ``length < 6`` aborts (L189-193).
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

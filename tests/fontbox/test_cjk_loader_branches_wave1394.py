@@ -5,8 +5,6 @@ Covers lines 179-185 (``target.parent.mkdir`` OSError path) and 242-243
 left dangling and gets unlinked).
 """
 
-from __future__ import annotations
-
 import hashlib
 import io
 import zipfile

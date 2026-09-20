@@ -12,8 +12,6 @@ the sample still produces a saveable document — flagged in
 ``CHANGES.md``.
 """
 
-from __future__ import annotations
-
 import contextlib
 import sys
 

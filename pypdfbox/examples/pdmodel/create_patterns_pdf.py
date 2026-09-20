@@ -9,8 +9,6 @@ the same operator sequence directly into the tile's backing
 operator level to what upstream would produce.
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.cos import COSStream

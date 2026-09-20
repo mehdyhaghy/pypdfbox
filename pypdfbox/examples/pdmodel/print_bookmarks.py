@@ -3,8 +3,6 @@
 Prints a document's outline (bookmarks) to stdout.
 """
 
-from __future__ import annotations
-
 import sys
 from typing import Any
 

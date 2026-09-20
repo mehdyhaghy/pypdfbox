@@ -5,8 +5,6 @@ sanity checks against pypdfbox font classes that implement (most of)
 the protocol surface.
 """
 
-from __future__ import annotations
-
 from typing import get_type_hints
 
 import pytest

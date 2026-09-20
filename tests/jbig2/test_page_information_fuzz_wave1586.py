@@ -29,8 +29,6 @@ Byte streams are computed directly from the §7.4 bit layout; nothing here is
 parsed by another module under test.
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

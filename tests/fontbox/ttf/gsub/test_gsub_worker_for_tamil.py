@@ -7,8 +7,6 @@ re-licensing) and upstream's own test is itself a placeholder
 because no Tamil shaper was implemented when the test was written).
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub.gsub_data import GsubData
 from pypdfbox.fontbox.ttf.gsub.gsub_worker_for_tamil import GsubWorkerForTamil
 

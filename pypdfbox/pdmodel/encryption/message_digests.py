@@ -6,8 +6,6 @@ Library-first: delegates to ``cryptography.hazmat.primitives.hashes`` for the
 underlying primitives instead of reimplementing MD5/SHA-1/SHA-256.
 """
 
-from __future__ import annotations
-
 from cryptography.hazmat.primitives import hashes
 
 

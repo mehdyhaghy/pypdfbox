@@ -9,8 +9,6 @@ the live differential checks. Here we pin pypdfbox's decoded output as frozen
 golden bytes so the paths stay exercised even when the Java oracle is absent.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.jbig2.io.image_input_stream import ImageInputStream

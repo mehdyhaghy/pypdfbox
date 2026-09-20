@@ -8,8 +8,6 @@ parent's annotation subtype is not markup, and the /P-as-fallback parser
 tolerance.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_popup import (
     PDAnnotationPopup,

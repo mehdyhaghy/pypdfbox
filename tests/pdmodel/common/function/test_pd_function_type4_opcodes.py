@@ -11,8 +11,6 @@ the inputs untouched. Outputs go through ``clip_output`` only when
 ``/Range`` is supplied — we omit ``/Range`` so the raw stack is returned.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

@@ -18,8 +18,6 @@ decoder's own width schedule, so hand-built streams are independent of
 the encoder under test.
 """
 
-from __future__ import annotations
-
 import os
 import random
 from io import BytesIO

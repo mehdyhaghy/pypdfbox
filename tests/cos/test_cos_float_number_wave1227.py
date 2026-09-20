@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from types import CodeType, FunctionType
 
 from tests.cos import test_cos_float_number_wave699 as wave699

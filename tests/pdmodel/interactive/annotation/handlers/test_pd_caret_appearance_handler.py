@@ -2,8 +2,6 @@
 filled symmetric Bezier ``tooth``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.annotation.handlers.pd_caret_appearance_handler import (
     PDCaretAppearanceHandler,
 )

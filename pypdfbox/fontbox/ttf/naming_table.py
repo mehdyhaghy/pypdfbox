@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from .name_record import NameRecord
@@ -59,7 +57,7 @@ class NamingTable(TTFTable):
         self,
         ttf: TrueTypeFont,
         data: TTFDataStream,
-        only_headers: bool,
+        only_headers: bool,  # upstream private overload
     ) -> None:
         data.read_unsigned_short()  # format selector
         number_of_name_records = data.read_unsigned_short()

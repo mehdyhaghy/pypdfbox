@@ -21,8 +21,6 @@ defines as contract:
 - ``to_string`` mirrors ``__str__``
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from pypdfbox.pdmodel.graphics.color.pd_device_cmyk import PDDeviceCMYK
 from pypdfbox.pdmodel.graphics.color.pd_device_n import (

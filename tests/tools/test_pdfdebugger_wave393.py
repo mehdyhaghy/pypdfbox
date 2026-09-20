@@ -1,6 +1,4 @@
 """Wave 393 residual coverage for pdfdebugger cold branches."""
-from __future__ import annotations
-
 import argparse
 import builtins
 import json

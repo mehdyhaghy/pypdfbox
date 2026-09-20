@@ -25,8 +25,6 @@ Flow inventory (kept in lock-step with ``scripts/qpdf_check.py``):
 Failures here surface real bugs in ``pypdfbox.pdfwriter`` — anything
 ``qpdf`` flags is a writer-side correctness issue, not a test bug.
 """
-from __future__ import annotations
-
 import io
 import shutil
 import subprocess

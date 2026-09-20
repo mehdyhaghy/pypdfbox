@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.pdmodel.font.pd_cid_system_info import PDCIDSystemInfo
 
 

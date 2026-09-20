@@ -18,8 +18,6 @@ Upstream reference: Apache PDFBox 3.0.x
 and ``PDFStreamEngine.transformWidth``.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

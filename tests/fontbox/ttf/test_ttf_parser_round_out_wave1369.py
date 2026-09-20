@@ -11,8 +11,6 @@ Targets the lesser-tested branches of TTFParser:
   subclass (returns no error on a real OTTO stream).
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

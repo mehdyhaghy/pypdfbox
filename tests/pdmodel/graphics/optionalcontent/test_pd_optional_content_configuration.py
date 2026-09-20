@@ -1,8 +1,6 @@
 """Tests for :class:`PDOptionalContentConfiguration` (pypdfbox-original
 typed wrapper for the /D and /Configs entries — see
 ``pd_optional_content_configuration.py`` module docstring)."""
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName

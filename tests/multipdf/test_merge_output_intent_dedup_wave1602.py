@@ -8,8 +8,6 @@ order compares the source identifier against each destination identifier so
 a destination intent lacking the identifier is tolerated.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.multipdf import PDFMergerUtility
 from pypdfbox.pdmodel.graphics.color import PDOutputIntent

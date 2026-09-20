@@ -5,8 +5,6 @@ styles, interior-color extraction) and the early-return guards that the
 wave-1280 smoke tests skipped.
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock
 
 import pytest

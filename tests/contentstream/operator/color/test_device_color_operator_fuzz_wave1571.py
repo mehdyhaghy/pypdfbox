@@ -32,8 +32,6 @@ bare operands against that current space, and ``scn`` additionally accepts a
 trailing pattern name.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream.operator import Operator

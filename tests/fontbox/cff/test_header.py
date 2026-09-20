@@ -5,8 +5,6 @@ Mirrors upstream ``CFFParser.Header`` (``CFFParser.java`` lines
 CFF wire layout, and ``to_string`` produces a Java-style debug rendering.
 """
 
-from __future__ import annotations
-
 import dataclasses
 
 import pytest

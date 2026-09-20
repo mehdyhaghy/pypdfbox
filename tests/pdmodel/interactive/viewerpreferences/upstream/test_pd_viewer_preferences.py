@@ -9,8 +9,6 @@ defaults, the name-valued accessors with their documented defaults
 enum values from PDF 32000-1 §12.2 Table 150.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.pd_viewer_preferences import PDViewerPreferences
 

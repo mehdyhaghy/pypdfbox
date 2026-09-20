@@ -11,8 +11,6 @@ Covers three optimisations that must preserve behaviour exactly:
    O(ranges x entries) filter it replaced (exercised indirectly by the
    round-trip below and the wider suite).
 """
-from __future__ import annotations
-
 import io
 import os
 import tempfile

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdmodel.interactive.digitalsignature import (
     test_signature_tail_wave815 as wave815,
 )

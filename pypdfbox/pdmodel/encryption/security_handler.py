@@ -7,8 +7,6 @@ implement password validation (``prepare_for_decryption``) and write-side
 preparation (``prepare_document``).
 """
 
-from __future__ import annotations
-
 import contextlib
 import hashlib
 import io as _io
@@ -539,7 +537,7 @@ class SecurityHandler(ABC):
                     stream_type = get_cos_name(COSName.TYPE)
                 elif callable(get_item):
                     stream_type = get_item("Type")
-            except Exception:
+            except Exception:  # defensive, parity with upstream's broad catch
                 stream_type = None
             if stream_type is not None:
                 name = getattr(stream_type, "get_name", lambda: None)()
@@ -587,7 +585,7 @@ class SecurityHandler(ABC):
                     # base handler delegates to ``_decrypt`` for V<4 parity.
                     plain = self.decrypt_stream(bytes(raw), obj_num, gen_num)
                     set_raw(plain)
-            except Exception:
+            except Exception:  # mirror upstream tolerant decrypt
                 return
 
     def _decrypt_dictionary(

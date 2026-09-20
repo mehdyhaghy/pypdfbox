@@ -25,8 +25,6 @@ correctly pure-white (matches upstream PDFBox's
 without exception rather than checking pixel coverage.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

@@ -11,8 +11,6 @@ here against synthesised in-memory documents that don't depend on
 JVM-rendered fixtures.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

@@ -8,8 +8,6 @@ Upstream is a picocli ``Runnable`` that registers all subcommands.
 The Python port registers the same subcommand names so callers can do
 ``PDFBox.main(["merge", ...])`` end-to-end.
 """
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.tools.decompress_objectstreams import DecompressObjectstreams

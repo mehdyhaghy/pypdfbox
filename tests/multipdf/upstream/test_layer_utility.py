@@ -23,8 +23,6 @@ operations:
   page as a form (PDFBOX-5232 — never-ended marked-content section).
 """
 
-from __future__ import annotations
-
 from pypdfbox import PDDocument, PDPage
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from pypdfbox.multipdf import LayerUtility

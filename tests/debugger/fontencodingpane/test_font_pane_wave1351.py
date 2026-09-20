@@ -5,8 +5,6 @@ for ``None`` / ``str`` items inside the outer iterable, and the final
 fallback for items that are neither ``list`` nor ``tuple``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.debugger.fontencodingpane.font_pane import FontPane
 
 

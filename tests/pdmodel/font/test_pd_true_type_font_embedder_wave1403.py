@@ -12,8 +12,6 @@ Closes the untested sides of the per-code width loop (source lines
   width lookup and continues to the next code.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 

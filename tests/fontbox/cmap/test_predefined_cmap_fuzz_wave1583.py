@@ -22,8 +22,6 @@ Cross-checked against upstream ``CMapParser.parsePredefined`` /
 but never WMode, so the V file's own ``/WMode 1 def`` is what sets WMode.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

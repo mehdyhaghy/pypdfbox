@@ -15,8 +15,6 @@ single-page extractor:
     ``get_suppress_duplicate_overlapping_text``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_fit_destination import (

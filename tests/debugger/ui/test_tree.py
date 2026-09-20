@@ -1,7 +1,5 @@
 """Hand-written tests for ``pypdfbox.debugger.ui.Tree``."""
 
-from __future__ import annotations
-
 import tkinter as tk
 from pathlib import Path
 from typing import Any

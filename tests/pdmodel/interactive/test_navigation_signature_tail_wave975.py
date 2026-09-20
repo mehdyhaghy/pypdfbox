@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdmodel.interactive.test_navigation_signature_tail_wave844 import (
     _ShortNonSeekable,
 )

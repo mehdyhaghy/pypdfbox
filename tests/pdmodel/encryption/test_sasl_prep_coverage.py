@@ -5,8 +5,6 @@ predicates, plus the bidi / unassigned / prohibited error paths in
 ``_sasl_prep``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.encryption.sasl_prep import SaslPrep

@@ -1,7 +1,5 @@
 """Hand-written tests for ``pypdfbox.xmpbox.xml``."""
 
-from __future__ import annotations
-
 import io
 from xml.dom.minidom import parseString
 

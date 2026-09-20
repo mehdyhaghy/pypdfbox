@@ -8,8 +8,6 @@ The upstream "unmodifiable list" assertion is translated to "the
 returned list is a copy" — mutating it must not affect the
 ``CharMetric`` instance's own list.
 """
-from __future__ import annotations
-
 from pypdfbox.fontbox.afm import CharMetric, Ligature
 from pypdfbox.fontbox.ttf.glyph_data import BoundingBox
 

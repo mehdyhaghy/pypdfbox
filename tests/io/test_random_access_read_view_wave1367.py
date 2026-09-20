@@ -7,8 +7,6 @@ against the parent, ``close_input=True`` propagation, and the legacy
 ``close_parent=`` kwarg alias.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer

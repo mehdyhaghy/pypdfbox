@@ -6,8 +6,6 @@ must equal the answer a fresh, un-warmed font produces, ``None`` results must
 be cached (not recomputed as misses), and the ``custom_glyph_list`` override
 must never be served from — nor pollute — the default-path cache.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.fontbox.encoding.glyph_list import GlyphList
 from pypdfbox.pdmodel.font import PDType1Font

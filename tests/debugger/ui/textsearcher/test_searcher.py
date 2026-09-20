@@ -4,8 +4,6 @@ The class wires a Tk ``Text`` widget to a :class:`SearchPanel`; we need a
 live Tk root, so the tests skip when no display is available.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 
 import pytest

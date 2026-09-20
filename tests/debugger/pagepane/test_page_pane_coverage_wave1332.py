@@ -16,8 +16,6 @@ All tests honour ``PYPDFBOX_SKIP_TK=1`` via the existing ``tk_root``
 fixture from the package conftest.
 """
 
-from __future__ import annotations
-
 import logging
 import tkinter as tk
 from collections.abc import Iterator

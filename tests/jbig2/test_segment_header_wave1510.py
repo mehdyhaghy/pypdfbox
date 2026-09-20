@@ -15,8 +15,6 @@ Every crafted byte stream is hand-computed from the §7.2 bit layout, matching
 the conventions in ``test_segment_header.py``.
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

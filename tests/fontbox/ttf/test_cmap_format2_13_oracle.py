@@ -12,8 +12,6 @@ compare the resulting ``characterCodeToGlyphId`` map against Apache PDFBox
 ``CmapFormat2Probe`` Java probe over the very same bytes.
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

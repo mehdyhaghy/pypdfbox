@@ -13,8 +13,6 @@ the per-page render via ``processPage`` and the renderer-owned context
 object holds the Graphics2D-equivalent buffers.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -146,7 +144,7 @@ class PageDrawer(PDFGraphicsStreamEngine):
         previous_filter = self._renderer.get_annotations_filter()
         try:
             self._renderer.set_annotations_filter(self._annotation_filter)
-            self._renderer._render_page_into(
+            self._renderer._render_page_into(  # sibling class
                 page=page,
                 image=g,
                 page_size=page_size,
@@ -193,7 +191,7 @@ class PageDrawer(PDFGraphicsStreamEngine):
         # matrices when it sees the BT token; we record the event so
         # subclasses with custom text behaviour can mirror upstream's
         # ``beginText()`` override hook.
-        gs = self._renderer._gs
+        gs = self._renderer._gs  # sibling class
         from pypdfbox.rendering.pdf_renderer import _IDENTITY
 
         gs.text_matrix = _IDENTITY
@@ -214,7 +212,7 @@ class PageDrawer(PDFGraphicsStreamEngine):
         # of the content stream) needs the renderer path to grow too.
         rdr = self._renderer
         # Build a closed rect subpath in user space.
-        rdr._subpaths.append(
+        rdr._subpaths.append(  # sibling class
             [
                 ("M", p0.x, p0.y),
                 ("L", p1.x, p1.y),
@@ -408,7 +406,7 @@ class PageDrawer(PDFGraphicsStreamEngine):
         # whole, not per-element. Snapshot them, reset the live alpha to
         # 1.0 so the group's interior paints render fully opaque, and
         # apply the saved constant alpha once at composite-back.
-        gs = rdr._gs
+        gs = rdr._gs  # sibling class
         group_alpha = gs.fill_alpha
         group_blend_mode = gs.blend_mode
         group_soft_mask = gs.soft_mask

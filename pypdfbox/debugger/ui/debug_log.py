@@ -11,8 +11,6 @@ A pluggable "dialog" hook (``set_dialog_sink``) lets the Tkinter
 forwarded only to ``logging``.
 """
 
-from __future__ import annotations
-
 import logging
 from collections.abc import Callable
 from typing import Any

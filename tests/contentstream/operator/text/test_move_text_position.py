@@ -5,8 +5,6 @@ the lite registry-routing scaffold (engine-coupled positional bookkeeping
 ships with the rendering cluster).
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.contentstream import Operator

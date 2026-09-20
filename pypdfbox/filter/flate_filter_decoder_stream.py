@@ -11,8 +11,6 @@ the JVM side. Matches upstream's PDFBOX-1232 tolerance of streams missing
 before raising ``error``.
 """
 
-from __future__ import annotations
-
 import contextlib
 import io
 import logging

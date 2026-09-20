@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.jbig2.err.integer_max_value_exception import IntegerMaxValueException

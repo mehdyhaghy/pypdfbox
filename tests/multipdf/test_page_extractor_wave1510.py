@@ -10,8 +10,6 @@ no-longer-internally-called helpers — see the class docstring). The defensive
 delegated ``extract`` to ``Splitter``. These tests drive each remaining branch.
 """
 
-from __future__ import annotations
-
 from types import SimpleNamespace
 
 from pypdfbox import PDDocument

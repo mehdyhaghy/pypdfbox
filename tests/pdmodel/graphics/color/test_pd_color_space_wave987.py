@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdmodel.graphics.color.test_pd_color_space_wave708 import (
     _ShortDecodeDeviceRGB,
     _ZeroComponentSpace,

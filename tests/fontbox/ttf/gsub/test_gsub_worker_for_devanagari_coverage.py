@@ -6,8 +6,6 @@ and the ``script_feature is None`` continue branch in
 :meth:`apply_transforms`.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.cmap_lookup import CmapLookup
 from pypdfbox.fontbox.ttf.gsub import GsubData, GsubWorkerForDevanagari
 

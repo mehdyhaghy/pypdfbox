@@ -21,8 +21,6 @@ These tests drive the extractor's inline ``_dispatch_marked`` directly
 (and via full content streams) and cross-check against the shared
 ``_props.extract_tag`` reference used by the registered operators.
 """
-from __future__ import annotations
-
 from pypdfbox.contentstream.operator.markedcontent._props import extract_tag
 from pypdfbox.cos import (
     COSDictionary,

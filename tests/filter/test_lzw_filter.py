@@ -13,8 +13,6 @@ covers only the wiring guarantees specific to the alias module:
   round-trip through ``LZWDecode`` (mixed instance compatibility).
 """
 
-from __future__ import annotations
-
 import random
 from io import BytesIO
 

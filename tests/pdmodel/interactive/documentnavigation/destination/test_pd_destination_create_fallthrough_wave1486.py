@@ -22,8 +22,6 @@ Oracle-pinned against Apache PDFBox 3.0.7 (``ExplicitDestinationProbe``):
   pinned here so a future "match upstream exactly" change is a conscious one.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSInteger, COSName, COSString

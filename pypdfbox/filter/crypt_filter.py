@@ -14,8 +14,6 @@ filter pipeline orthogonal when a stream's ``/Filter`` array literally
 contains ``/Crypt``.
 """
 
-from __future__ import annotations
-
 from typing import BinaryIO
 
 from pypdfbox.cos import COSDictionary, COSName

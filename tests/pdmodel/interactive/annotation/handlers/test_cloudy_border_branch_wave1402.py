@@ -10,8 +10,6 @@ Closes residual False-branch arrows:
   of ``pi/2`` so ``angle_todo`` falls cleanly to ``0`` after the while loop.
 """
 
-from __future__ import annotations
-
 import math
 
 from pypdfbox.cos import COSStream
@@ -113,7 +111,7 @@ def test_cloudy_rect_intensity_zero_with_none_output_skips_add_rect() -> None:
 
     rect = PDRectangle(0.0, 0.0, 100.0, 100.0)
     cb = CloudyBorder(_stream(), 0.0, 1.0, rect)  # intensity = 0
-    cb._output = None
+    cb._output = None  # force output-less path
     # Drive cloudy_rectangle_impl which contains the line 282-290 block.
     cb.cloudy_rectangle_impl(0.0, 0.0, 100.0, 100.0, False)
 

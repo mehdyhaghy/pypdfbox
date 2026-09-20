@@ -21,8 +21,6 @@ Targets the 8 uncovered lines after wave 1348:
   ``width * height`` bytes before palette translation.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

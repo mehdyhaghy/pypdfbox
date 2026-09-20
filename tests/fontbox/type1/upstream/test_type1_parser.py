@@ -17,8 +17,6 @@ When upstream eventually adds a ``Type1ParserTest`` we should re-port
 the cases here and keep filenames upstream-identical for diffability.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.type1.type1_font_util import Type1FontUtil

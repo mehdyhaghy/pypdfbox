@@ -11,8 +11,6 @@ Pre-wave the module sat at 91.2 % (12 missing); this set takes it
 above 98 %.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

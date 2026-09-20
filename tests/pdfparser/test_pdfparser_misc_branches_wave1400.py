@@ -11,8 +11,6 @@ Closes residual partial branches in:
   followed by LF (517 → 519).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDocument, COSInteger, COSName, COSStream
 from pypdfbox.pdfparser.linearization_hint_table import _BitReader
 from pypdfbox.pdfparser.pdf_stream_parser import Operator, PDFStreamParser
@@ -77,7 +75,7 @@ def test_bit_reader_align_to_byte_noop_when_aligned() -> None:
     pos_before = reader._bit_pos
     assert pos_before % 8 == 0
     reader.align_to_byte()
-    assert reader._bit_pos == pos_before
+    assert reader._bit_pos == pos_before  # unchanged
 
 
 def test_bit_reader_align_to_byte_advances_when_misaligned() -> None:

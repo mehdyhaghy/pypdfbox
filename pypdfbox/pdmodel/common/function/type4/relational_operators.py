@@ -15,8 +15,6 @@ behaviourally equivalent — touch the ``_op_*`` helpers and these classes
 together.
 """
 
-from __future__ import annotations
-
 # Import the base ``Operator`` class and ``ExecutionContext`` directly from
 # their submodules rather than from the package root — the package
 # ``__init__.py`` re-exports the same names but also pulls in

@@ -8,8 +8,6 @@ layout, or a window manager that ignores icons must never stop the debugger
 from opening.
 """
 
-from __future__ import annotations
-
 import logging
 import sys
 import tkinter as tk

@@ -21,8 +21,6 @@ appended xref stream's dictionary, that ``/Index`` precedes ``/W``, that
 ``/Filter`` is last, and that ``/Length`` is first.
 """
 
-from __future__ import annotations
-
 import io
 import re
 from pathlib import Path

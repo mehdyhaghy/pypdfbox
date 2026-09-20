@@ -3,8 +3,6 @@
 Mirrors PDFBox ``org.apache.pdfbox.pdmodel.graphics.shading.CoonsPatch``.
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 
 from .cubic_bezier_curve import CubicBezierCurve

@@ -12,8 +12,6 @@ same number-formatting rules as upstream (``setMaximumFractionDigits(4)``
 in the shared base constructor, with trailing zeros trimmed).
 """
 
-from __future__ import annotations
-
 import logging
 from collections import deque
 from collections.abc import Sequence

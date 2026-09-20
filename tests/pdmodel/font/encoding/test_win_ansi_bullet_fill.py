@@ -13,8 +13,6 @@ Covers Wave 254 additions on :class:`WinAnsiEncoding`:
   membership (excludes ``.notdef`` low codes and the bullet fill-ins).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.font.encoding import WinAnsiEncoding

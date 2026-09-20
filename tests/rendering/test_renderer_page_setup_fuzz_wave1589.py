@@ -25,8 +25,6 @@ Ported parity reference: ``oracle/probes/PageRotateRenderProbe.java`` and
 ``PDFRenderer.renderImageWithDPI``).
 """
 
-from __future__ import annotations
-
 import math
 
 import numpy as np

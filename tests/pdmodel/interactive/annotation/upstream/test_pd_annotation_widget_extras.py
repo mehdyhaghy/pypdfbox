@@ -7,8 +7,6 @@ spec's allowed values, the /A action factory dispatch, the /AA
 additional-actions wrapper, and the /BS / /MK typed accessors.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName

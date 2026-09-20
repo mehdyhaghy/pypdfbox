@@ -7,8 +7,6 @@ PDFRenderer image-diffing, which require modules outside this wave's
 scope; those phases are skipped with a single per-test comment and only
 the OCG/property-state assertions are translated here.
 """
-from __future__ import annotations
-
 from pypdfbox.pdmodel.graphics.optionalcontent import (
     PDOptionalContentGroup,
     PDOptionalContentProperties,

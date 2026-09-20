@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 
 class Encoding:
     """A PostScript Encoding vector — maps a character code (0..255) to a

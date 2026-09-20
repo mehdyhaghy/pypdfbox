@@ -18,8 +18,6 @@ behaviour that upstream Apache PDFBox 3.0.7 exhibits:
   Private dict) and never raises out of the binary stage.
 """
 
-from __future__ import annotations
-
 import io
 import struct
 

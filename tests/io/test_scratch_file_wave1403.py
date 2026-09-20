@@ -11,8 +11,6 @@ invariant the allocator prevents. We construct that state directly to drive
 the no-op fall-through.
 """
 
-from __future__ import annotations
-
 from pypdfbox.io.memory_usage_setting import MemoryUsageSetting
 from pypdfbox.io.scratch_file import ScratchFile
 

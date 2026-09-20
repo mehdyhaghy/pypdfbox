@@ -10,8 +10,6 @@ Upstream Java reference:
 - fontbox/src/main/java/org/apache/fontbox/ttf/table/common/LookupTable.java
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub import LookupTable
 
 

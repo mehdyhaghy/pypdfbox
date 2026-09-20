@@ -8,8 +8,6 @@ falling back to ``NotImplementedError``.
 Each test builds a synthetic byte stream conforming to the OpenType ``cmap``
 spec and feeds it through ``CmapSubtable.init_subtable``.
 """
-from __future__ import annotations
-
 import struct
 
 import pytest

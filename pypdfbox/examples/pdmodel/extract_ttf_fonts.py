@@ -3,8 +3,6 @@
 Extracts all TrueType fonts embedded in a PDF document.
 """
 
-from __future__ import annotations
-
 import shutil
 import sys
 from pathlib import Path

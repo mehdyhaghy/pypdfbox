@@ -14,8 +14,6 @@ PDFBox 3.0.7 oracle output (ButtonValProbe)::
     getValue(no V)=[Off]
     getValue(COSName Yes)=[Yes]
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSName, COSString
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_button import PDButton

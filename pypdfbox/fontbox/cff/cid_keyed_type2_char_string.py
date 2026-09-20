@@ -5,8 +5,6 @@ Mirrors upstream ``org.apache.fontbox.cff.CIDKeyedType2CharString``
 carries the CID associated with the glyph in addition to the GID.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from .type2_char_string import Type2CharString

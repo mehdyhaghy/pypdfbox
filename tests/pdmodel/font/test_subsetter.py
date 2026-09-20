@@ -5,8 +5,6 @@ exist. We verify the ABC shape so subclasses can't elide the two
 methods.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.font.subsetter import Subsetter

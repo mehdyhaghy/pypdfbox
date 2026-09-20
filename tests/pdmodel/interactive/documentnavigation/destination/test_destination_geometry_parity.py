@@ -10,8 +10,6 @@ Table 151:
 * FitR: ``[page /FitR left bottom right top]``
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDPageFitHeightDestination,

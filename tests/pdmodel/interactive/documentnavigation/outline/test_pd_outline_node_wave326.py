@@ -1,6 +1,4 @@
 """Wave 326 robustness coverage for outline child removal."""
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.interactive.documentnavigation.outline import (
     PDDocumentOutline,

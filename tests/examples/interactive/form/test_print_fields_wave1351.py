@@ -9,8 +9,6 @@ exception branch is never exercised. Here we call ``process_field``
 directly with a stand-in field whose ``get_value_as_string`` raises.
 """
 
-from __future__ import annotations
-
 from unittest.mock import Mock
 
 import pytest

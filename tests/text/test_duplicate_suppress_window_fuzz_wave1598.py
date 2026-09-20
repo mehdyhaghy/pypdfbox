@@ -27,8 +27,6 @@ The live-oracle section diffs full ``getText`` output against Apache
 PDFBox 3.0.7 over probe-built fixtures (DuplicateSuppressWindowProbe).
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

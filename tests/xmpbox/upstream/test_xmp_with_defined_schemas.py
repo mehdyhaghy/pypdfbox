@@ -6,8 +6,6 @@ Upstream baseline: PDFBox 3.0.x. Fixtures bundled under
 Parametrised round-trip parsing of XMP packets carrying well-defined
 schemas — the parser must produce a non-empty schema list for each.
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

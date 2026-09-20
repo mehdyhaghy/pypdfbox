@@ -9,8 +9,6 @@ upstream — see ``CHANGES.md`` and the module docstring for the
 parity-tool rationale.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.debugger.streampane.tooltip import ToolTipController
 from pypdfbox.pdmodel.graphics.color.pd_color_space import PDColorSpace

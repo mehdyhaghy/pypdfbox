@@ -17,8 +17,6 @@ fixtures into ``tests/fixtures/pdmodel/interactive/form/`` (and adds
 matching ``PROVENANCE.md`` rows) can drop the skips.
 """
 
-from __future__ import annotations
-
 import pytest
 
 # Skipped upstream methods — all depend on the same network-fetched fixtures:

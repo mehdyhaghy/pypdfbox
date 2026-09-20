@@ -15,8 +15,6 @@ month/day name dictionaries (``EEEE MMM dd, yyyy``,
 cases are explicitly skipped with a one-line reason.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 import pytest

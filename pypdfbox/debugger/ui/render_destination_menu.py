@@ -6,8 +6,6 @@ singleton menu that lets the debugger user pick between the
 :class:`pypdfbox.rendering.render_destination.RenderDestination`.
 """
 
-from __future__ import annotations
-
 from typing import ClassVar
 
 from pypdfbox.rendering.render_destination import RenderDestination

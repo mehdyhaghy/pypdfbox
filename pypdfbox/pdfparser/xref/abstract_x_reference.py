@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .x_reference_entry import XReferenceEntry
 from .x_reference_type import XReferenceType
 

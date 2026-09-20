@@ -12,8 +12,6 @@ These tests exercise the upstream-style API additions:
   (Latin-1, matching upstream — only Windows encodings 0/1 are UTF-16).
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

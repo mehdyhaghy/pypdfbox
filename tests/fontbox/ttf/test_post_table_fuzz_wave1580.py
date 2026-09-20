@@ -18,8 +18,6 @@ this wave: upstream allocates ``new String[...]`` whose unset slots stay
 not the empty string.
 """
 
-from __future__ import annotations
-
 import struct
 from dataclasses import dataclass
 

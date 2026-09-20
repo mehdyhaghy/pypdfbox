@@ -30,8 +30,6 @@ missing line per the wave-1395 coverage audit. Files / lines covered:
   ``remove_all`` rejects filtered lists.
 """
 
-from __future__ import annotations
-
 from unittest.mock import patch
 
 import pytest

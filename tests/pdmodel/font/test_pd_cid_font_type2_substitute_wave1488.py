@@ -14,8 +14,6 @@ embedded font program:
   the renderer's responsibility — documented divergence from upstream).
 """
 
-from __future__ import annotations
-
 import struct
 from pathlib import Path
 

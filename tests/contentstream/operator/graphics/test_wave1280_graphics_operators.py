@@ -1,8 +1,6 @@
 """Hand-written tests for Wave 1280 graphics operators ported from
 ``org.apache.pdfbox.contentstream.operator.graphics`` upstream classes."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream.operator import (

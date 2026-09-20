@@ -4,8 +4,6 @@ polymorphic ``set_(non_)stroking_color`` overloads, the
 ``end_path`` (n), the ``clip()`` / ``clip_even_odd()`` aliases and the
 upstream-spelled fill/stroke/leading aliases."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSName

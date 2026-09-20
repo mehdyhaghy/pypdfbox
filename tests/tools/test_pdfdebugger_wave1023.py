@@ -1,6 +1,4 @@
 """Wave 1023 coverage for pdfdebugger wave384 test helpers."""
-from __future__ import annotations
-
 import tests.tools.test_pdfdebugger_wave384 as wave384
 
 

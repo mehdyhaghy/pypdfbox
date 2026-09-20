@@ -22,8 +22,6 @@ Covers the small set of mechanical parity gaps closed in this wave:
   no pattern name on the color, named pattern missing).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream

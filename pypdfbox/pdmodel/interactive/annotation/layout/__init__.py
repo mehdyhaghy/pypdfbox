@@ -15,8 +15,6 @@ layout variant has no PDFBOX-5049/6082 force-split and a distinct
 empty-paragraph constructor — so it lives in :mod:`.plain_text`.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.form.appearance_style import AppearanceStyle
 from pypdfbox.pdmodel.interactive.form.plain_text_formatter import (
     PlainTextFormatter,

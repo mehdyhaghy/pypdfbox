@@ -2,8 +2,6 @@
 ImportData field/file/flag conveniences, defaults, COS round-trips, and
 malformed shape handling."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString

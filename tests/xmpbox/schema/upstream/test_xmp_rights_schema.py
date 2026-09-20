@@ -9,8 +9,6 @@ URL / Boolean / Bag-of-ProperName / LangAlt cardinality columns of
 reflection-driven matrix to direct accessor calls per property.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import XMPMetadata, XMPRightsManagementSchema

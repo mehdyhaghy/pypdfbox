@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.xmpbox import DomXmpParser, DublinCoreSchema
 from pypdfbox.xmpbox.dom_xmp_parser import parse as module_parse
 

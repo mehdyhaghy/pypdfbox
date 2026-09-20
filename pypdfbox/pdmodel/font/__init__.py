@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .cid_system_info import CIDSystemInfo
 from .file_system_font_provider import FileSystemFontProvider
 from .font_cache import FontCache

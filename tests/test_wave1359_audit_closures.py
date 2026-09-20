@@ -5,8 +5,6 @@ addressed by the wave-1359 audit pass. Each test pins the public surface
 of one of the audited methods so any future regression that re-introduces
 the deferred or speculative behaviour fails loudly.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from pypdfbox.fontbox.cff.type2_char_string import Type2CharString
 from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.filter._predictor import predict, unpredict
 
 

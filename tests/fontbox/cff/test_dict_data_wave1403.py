@@ -8,8 +8,6 @@ float), the recognise-0/1 block is skipped entirely and the default is
 returned after the warning.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.dict_data import Entry
 
 

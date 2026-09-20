@@ -9,8 +9,6 @@ Covers the public accessor / helper aliases that mirror PDFBox's
 ``is_user_password`` / ``is_owner_password``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.encryption.access_permission import AccessPermission
 from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption
 from pypdfbox.pdmodel.encryption.standard_protection_policy import (

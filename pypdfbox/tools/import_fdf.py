@@ -4,8 +4,6 @@ Upstream Java reference:
     pdfbox/tools/src/main/java/org/apache/pdfbox/tools/ImportFDF.java
     (lines 41-125)
 """
-from __future__ import annotations
-
 import argparse
 import contextlib
 from pathlib import Path
@@ -20,7 +18,7 @@ class ImportFDF:
         self.outfile: Path | None = None
         self.fdffile: Path | None = None
 
-    def import_fdf(self, pdf_document, fdf_document) -> None:
+    def import_fdf(self, pdf_document, fdf_document) -> None:  # mirror upstream sig
         """Mirror of ``ImportFDF.importFDF(PDDocument, FDFDocument)``."""
         doc_catalog = pdf_document.get_document_catalog()
         acro_form = doc_catalog.get_acro_form()

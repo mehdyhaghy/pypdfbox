@@ -14,8 +14,6 @@ Covers lines 570, 600, 642-644, 671, 1252 in
   namespace is the reserved ``xml:`` namespace (lenient mode).
 """
 
-from __future__ import annotations
-
 import xml.etree.ElementTree as ET
 
 import pytest

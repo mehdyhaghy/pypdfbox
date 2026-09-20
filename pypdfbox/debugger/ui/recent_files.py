@@ -19,8 +19,6 @@ Callers that want isolation (tests, embedded usage) can pass an explicit
 clobbering each other.
 """
 
-from __future__ import annotations
-
 import contextlib
 import json
 import os

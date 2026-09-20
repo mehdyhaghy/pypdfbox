@@ -4,8 +4,6 @@ Mirrors PDFBox's package-private
 ``PDFontFactory.createDescendantFont(COSDictionary, PDType0Font)``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName

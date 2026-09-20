@@ -8,8 +8,6 @@ Covers the helpers we layer on top of upstream parity:
 * :meth:`CMap.code_length_at` first-byte → expected code length
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

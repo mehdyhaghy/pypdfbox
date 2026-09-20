@@ -1,7 +1,5 @@
 """Tests for the :class:`FontPane` abstract base."""
 
-from __future__ import annotations
-
 from pypdfbox.debugger.fontencodingpane.font_pane import FontPane
 
 

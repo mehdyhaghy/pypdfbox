@@ -5,8 +5,6 @@ Mirrors ``org.apache.pdfbox.pdmodel.interactive.annotation.PDExternalDataDiction
 annotation/PDExternalDataDictionary.java``).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos.cos_dictionary import COSDictionary
 from pypdfbox.cos.cos_name import COSName
 from pypdfbox.pdmodel.common.cos_objectable import COSObjectable

@@ -8,8 +8,6 @@ modules, which pypdfbox deliberately does not port (no text-shaping
 dependency). These are hand-written equivalents.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel import GlyphsAndPositions

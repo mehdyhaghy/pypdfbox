@@ -23,8 +23,6 @@ semantics that PDF 32000-1 §7.10.4 calls out explicitly:
   the partition boundaries.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

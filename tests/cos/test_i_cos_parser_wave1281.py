@@ -1,7 +1,5 @@
 """Wave 1281: ICOSParser ABC port."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import ICOSParser

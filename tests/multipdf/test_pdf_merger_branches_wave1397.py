@@ -8,8 +8,6 @@ cloners + minimal COS shapes (the existing wave-645 pattern) to hit each
 remaining arrow without spinning up real ``PDDocument`` round-trips.
 """
 
-from __future__ import annotations
-
 import hashlib
 import logging
 

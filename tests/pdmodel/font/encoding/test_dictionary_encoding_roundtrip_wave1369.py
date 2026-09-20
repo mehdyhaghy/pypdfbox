@@ -5,8 +5,6 @@ built up, dumped to its COSDictionary, then re-parsed back through the
 reader path. Mirrors how a writer would round-trip an embedded encoding.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.font.encoding import (
     DictionaryEncoding,

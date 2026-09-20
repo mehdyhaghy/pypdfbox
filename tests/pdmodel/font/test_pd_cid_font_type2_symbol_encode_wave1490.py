@@ -18,8 +18,6 @@ These hand-written tests pin the model-layer contract directly with synthetic
 fonts so the fix is covered without the oracle jar.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

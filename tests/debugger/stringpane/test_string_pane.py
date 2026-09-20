@@ -1,7 +1,5 @@
 """Tests for :class:`StringPane` and :func:`get_text_string`."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSString
 from pypdfbox.debugger.stringpane.string_pane import StringPane, get_text_string
 

@@ -30,8 +30,6 @@ glyf/cmap/post/name, 2 glyphs to clear the PDFBOX-5794 no-glyphs check) so
 both sides run the full public ``TTFParser.parse`` path.
 """
 
-from __future__ import annotations
-
 import random
 import struct
 

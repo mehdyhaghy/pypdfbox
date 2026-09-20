@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from . import test_pd_cid_font_widths as widths

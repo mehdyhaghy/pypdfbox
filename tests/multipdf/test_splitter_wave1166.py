@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.multipdf import test_splitter_wave675
 
 

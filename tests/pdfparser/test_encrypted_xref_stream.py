@@ -21,8 +21,6 @@ this file isolates the parser surface and the writer's
 spec-compliance shape.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

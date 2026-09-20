@@ -1,7 +1,5 @@
 """Tests for ``XMPSchemaFactory``."""
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox.schema.xmp_schema_factory import XMPSchemaFactory
 from pypdfbox.xmpbox.type.type_mapping import PropertiesDescription, PropertyType
 from pypdfbox.xmpbox.xmp_metadata import XMPMetadata

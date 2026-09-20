@@ -5,8 +5,6 @@ value arrays (B.1-B.15) are reproduced verbatim from ISO/IEC 14492:2001
 (ITU-T Rec. T.88) Annex B.
 """
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.decoder.huffman.huffman_table import Code, HuffmanTable
 
 # Fourth value (999) is used for the LowerRange-line.

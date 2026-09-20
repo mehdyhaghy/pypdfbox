@@ -19,8 +19,6 @@ Targets uncovered paths in ``Matrix``:
 - ``check_float_values`` raises on NaN
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest
@@ -275,7 +273,7 @@ def test_multiply_arrays_static_matches_instance_multiply() -> None:
 
 def test_equality_with_self_short_circuits_true() -> None:
     m = Matrix()
-    assert m == m
+    assert m == m  # exercising __eq__ self-shortcut
 
 
 def test_equality_with_non_matrix_returns_false() -> None:

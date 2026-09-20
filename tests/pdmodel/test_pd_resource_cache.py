@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 import pytest
@@ -153,7 +151,7 @@ def test_register_true_type_font_for_closing_is_a_noop() -> None:
     doc.register_true_type_font_for_closing(sentinel)
     # Internal list captures the registration so future lifecycle work has
     # something to drain (PRD §6 — font subsetting cluster).
-    assert sentinel in doc._fonts_to_close
+    assert sentinel in doc._fonts_to_close  # test invariant
 
 
 # ---------- CID font / font descriptor: removed upstream (cab99713) ----------

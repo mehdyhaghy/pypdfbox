@@ -13,8 +13,6 @@ the observable state mutation / hook invocation, matching the helper
 shape established by ``tests/contentstream/test_wave1281_operators.py``.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

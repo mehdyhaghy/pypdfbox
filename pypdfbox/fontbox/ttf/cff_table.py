@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import contextlib
 from typing import TYPE_CHECKING
 
@@ -96,7 +94,7 @@ class CFFTable(TTFTable):
 
     def read_headers(
         self,
-        ttf: TrueTypeFont,
+        ttf: TrueTypeFont,  # mirror upstream signature
         data: TTFDataStream,
         out_headers: FontHeaders,
     ) -> None:

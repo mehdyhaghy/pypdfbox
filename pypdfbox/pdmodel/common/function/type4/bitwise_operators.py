@@ -19,8 +19,6 @@ Java's ``True`` / ``False`` inner classes are renamed ``TrueFunc`` /
 operator names registered via :class:`Operators` remain ``"true"`` / ``"false"``.
 """
 
-from __future__ import annotations
-
 from abc import abstractmethod
 
 # Import ``Operator`` and ``ExecutionContext`` directly from leaf modules

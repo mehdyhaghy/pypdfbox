@@ -8,8 +8,6 @@ The full embedder needs a real TTF + PDDocument so we cover:
   upstream's PriorityQueue-driven optimisation.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSInteger, COSName
 from pypdfbox.pdmodel.font.pd_cid_font_type2_embedder import (
     _encode_widths,

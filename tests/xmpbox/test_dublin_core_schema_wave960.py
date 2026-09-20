@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import tests.xmpbox.upstream.test_dublin_core_schema as dc_schema
 
 

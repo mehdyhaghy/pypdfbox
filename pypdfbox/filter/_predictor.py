@@ -17,8 +17,6 @@ Predictor values:
   minimum-sum-of-absolute-values filter type, RFC 2083 §9.6)
 """
 
-from __future__ import annotations
-
 try:
     import numpy as _np
 

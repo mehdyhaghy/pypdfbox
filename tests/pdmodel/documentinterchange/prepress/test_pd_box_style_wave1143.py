@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSInteger
 from tests.pdmodel.documentinterchange.prepress.test_pd_box_style_wave276 import _array
 

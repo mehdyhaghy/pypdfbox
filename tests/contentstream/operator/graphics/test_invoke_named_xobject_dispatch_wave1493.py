@@ -19,8 +19,6 @@ The type dispatch keys on ``type(obj).__name__``, so the stubs below are named
 real production class names without importing the heavy image/rendering stack.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream.operator import Operator
@@ -72,15 +70,15 @@ class _RecordingContext:
 
 
 # Class names must match the production discriminator (type(obj).__name__).
-class PDImageXObject:
+class PDImageXObject:  # mirrors the real production class name
     pass
 
 
-class PDTransparencyGroup:
+class PDTransparencyGroup:  # mirrors the real production class name
     pass
 
 
-class PDFormXObject:
+class PDFormXObject:  # mirrors the real production class name
     pass
 
 

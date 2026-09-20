@@ -3,8 +3,6 @@
 Creates a PDF with an embedded text file attachment.
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 import io
 import sys

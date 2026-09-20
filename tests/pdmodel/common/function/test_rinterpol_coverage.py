@@ -5,8 +5,6 @@ These tests target the branch step path (``self._rinterpol`` when
 ``get_samples`` accessors that the wave 1280 baseline left uncovered.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName, COSStream
 from pypdfbox.pdmodel.common.function import PDFunctionType0, Rinterpol
 

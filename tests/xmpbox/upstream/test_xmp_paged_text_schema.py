@@ -9,8 +9,6 @@ upstream files use: confirm the structured-type contract upstream's
 ``@StructuredType`` / ``@PropertyType`` annotations declare for the schema.
 """
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox import (
     XMPageTextSchema,
     XMPMetadata,

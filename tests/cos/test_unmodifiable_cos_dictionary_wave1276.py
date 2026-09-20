@@ -13,8 +13,6 @@ the parent ``COSDictionary``'s preferred Python spelling is
 read-only view.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary

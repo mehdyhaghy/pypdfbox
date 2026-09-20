@@ -15,8 +15,6 @@ properties is intentionally a separate wave so existing parser/serialiser
 behavior is unaffected.
 """
 
-from __future__ import annotations
-
 from .abstract_complex_property import AbstractComplexProperty
 from .abstract_field import AbstractField, Attribute
 from .abstract_simple_property import AbstractSimpleProperty

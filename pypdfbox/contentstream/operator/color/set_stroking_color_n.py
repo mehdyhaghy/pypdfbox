@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSBase, COSNumber
 from pypdfbox.pdmodel.graphics.color import PDColor, PDPattern
 

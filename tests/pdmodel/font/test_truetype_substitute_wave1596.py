@@ -16,8 +16,6 @@ AFM-only mapper cannot satisfy ``get_true_type_font``) so a *non-zero*
 GID / width / glyph-path is produced reproducibly across CI runners.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

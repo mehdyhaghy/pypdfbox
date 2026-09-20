@@ -3,8 +3,6 @@ Ported from Apache PDFBox 3.0:
   pdfbox/src/test/java/org/apache/pdfbox/cos/COSDocumentTest.java
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSDocument, COSName, COSObjectKey
 
 

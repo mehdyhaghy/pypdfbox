@@ -5,8 +5,6 @@ the reference/indirect/null fallbacks, and the prepare-stage validation.
 Stubs the compression pool so tests can run without a full PDDocument.
 """
 
-from __future__ import annotations
-
 from io import BytesIO
 
 import pytest

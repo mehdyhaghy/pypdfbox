@@ -5,8 +5,6 @@ Loads a simple form, attaches a JavaScript open-action that fills the
 ``SampleField`` with the current date, and saves the result.
 """
 
-from __future__ import annotations
-
 import contextlib
 import sys
 

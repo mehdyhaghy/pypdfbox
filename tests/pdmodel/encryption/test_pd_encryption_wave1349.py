@@ -12,8 +12,6 @@ Pre-wave: 97.4% (268 stmts, 7 missing). Missing lines:
 * 569: ``remove_v45filters`` alias delegates to ``remove_v45_filters``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName

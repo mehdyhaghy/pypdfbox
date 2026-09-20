@@ -8,8 +8,6 @@ sanity check that the wire spelling on ``/StmF`` / ``/StrF`` does not
 change when the aliases are used.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.encryption.pd_crypt_filter_dictionary import (
     PDCryptFilterDictionary,

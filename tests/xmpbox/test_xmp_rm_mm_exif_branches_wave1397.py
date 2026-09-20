@@ -15,8 +15,6 @@ backing lists / build LangAlt arrays without the default-language slot:
   ``set_property_name``
 """
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox import XMPMetadata
 from pypdfbox.xmpbox.exif_schema import ExifSchema
 from pypdfbox.xmpbox.type.resource_ref_type import ResourceRefType

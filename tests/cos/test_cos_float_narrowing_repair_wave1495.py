@@ -8,8 +8,6 @@ unrecoverable-literal raise, and the ``_float32_or_inf`` overflow-to-infinity
 path that drives the constructor's verbatim-string-discard decision.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

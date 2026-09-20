@@ -9,8 +9,6 @@ Library-first: certificate parsing, signature verification, and AIA /
 caIssuers extension handling all come from the ``cryptography`` library.
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 import logging
 from collections.abc import Iterable
@@ -79,7 +77,7 @@ class CertificateVerifier:
             return CertificateVerificationResult(result=chain)
         except CertificateVerificationException as cvex:
             return CertificateVerificationResult(exception=cvex)
-        except Exception as ex:
+        except Exception as ex:  # mirror upstream wide catch
             return CertificateVerificationResult(
                 exception=CertificateVerificationException(
                     f"Error verifying the certificate: {cert.subject.rfc4514_string()}"
@@ -171,7 +169,7 @@ class CertificateVerifier:
             if cert.subject != cert.issuer:
                 return False
             return CertificateVerifier._verify_signed_by(cert, cert)
-        except Exception:
+        except Exception:  # mirror upstream lenient catch
             LOG.debug("Couldn't get signature information - returning false", exc_info=True)
             return False
 
@@ -313,4 +311,4 @@ class CertificateVerifier:
 def _sha1():
     from cryptography.hazmat.primitives import hashes
 
-    return hashes.SHA1()
+    return hashes.SHA1()  # SHA1 used only as an issuer fingerprint id

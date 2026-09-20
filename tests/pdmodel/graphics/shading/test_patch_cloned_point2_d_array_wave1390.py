@@ -7,8 +7,6 @@ defensively-copied elements, so callers can mutate one collection
 without disturbing the other.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

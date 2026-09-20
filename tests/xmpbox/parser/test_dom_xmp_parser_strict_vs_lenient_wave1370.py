@@ -7,8 +7,6 @@ wrapped-root assertion). Also pins the default mode to strict so the
 class behaves like upstream's ``DomXmpParser`` constructor default.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox.dom_xmp_parser import DomXmpParser, XmpParsingException

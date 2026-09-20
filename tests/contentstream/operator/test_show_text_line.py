@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.contentstream import Operator, PDFStreamEngine
 from pypdfbox.contentstream.operator.text import ShowText, ShowTextLine
 from pypdfbox.cos import COSBase, COSString

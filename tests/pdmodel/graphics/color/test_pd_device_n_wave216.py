@@ -15,8 +15,6 @@ Covers four small gaps against upstream PDFBox:
   missing.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from pypdfbox.pdmodel.graphics.color.pd_device_n import (
     PDDeviceN,

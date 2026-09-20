@@ -13,8 +13,6 @@ surfaced publicly here so pypdfbox callers parsing or repairing Type 0
 chains by hand have a typed entry point.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream

@@ -8,8 +8,6 @@ Expected decode values are computed by hand from the table line definitions and
 the big-endian bit semantics of ``ImageInputStream``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.jbig2.decoder.huffman.encoded_table import EncodedTable

@@ -6,8 +6,6 @@ callers: `get_security_handler`, `read_object_marker`, and
 `org.apache.pdfbox.pdfparser.COSParser` (Java lines 1543, 1820, 1903).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSString

@@ -1,7 +1,5 @@
 """Hand-written tests for ``ASCIIHexDecode``."""
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import COSDictionary

@@ -5,8 +5,6 @@ Loads a PDF created by :class:`CreateSimpleForm` and adds a red border
 to the ``SampleField`` widget.
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.cos import COSDictionary

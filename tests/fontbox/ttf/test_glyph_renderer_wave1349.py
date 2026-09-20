@@ -7,8 +7,6 @@ synthesises an implicit on-curve midpoint between them and emits a
 ``qCurveTo``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.glyf_descript import GlyfDescript
 from pypdfbox.fontbox.ttf.glyf_simple_descript import GlyfSimpleDescript
 from pypdfbox.fontbox.ttf.glyph_renderer import GlyphRenderer

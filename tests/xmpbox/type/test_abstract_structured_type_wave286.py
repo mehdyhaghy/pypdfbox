@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.xmpbox import TextType, XMPMetadata
 from pypdfbox.xmpbox.type.abstract_structured_type import AbstractStructuredType
 

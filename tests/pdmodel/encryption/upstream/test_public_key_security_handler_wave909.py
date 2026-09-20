@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 import tests.pdmodel.encryption.upstream.test_public_key_security_handler as upstream

@@ -7,8 +7,6 @@ the real text-state setter lives in
 this stub mirrors the upstream Java name for the dispatcher.
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.contentstream import Operator

@@ -16,8 +16,6 @@ Closes residual gaps after wave 1332:
   (lines 178, 156).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos.cos_array import COSArray

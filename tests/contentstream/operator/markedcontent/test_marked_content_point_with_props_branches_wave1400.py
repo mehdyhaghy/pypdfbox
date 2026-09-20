@@ -8,8 +8,6 @@ Closes residual partial branches in
 * Context lacks the ``marked_content_point`` hook entirely (branch 45 → 21).
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.contentstream import Operator, PDFStreamEngine

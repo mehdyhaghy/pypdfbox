@@ -8,8 +8,6 @@ the chained-node linkage (``cert_chain``, ``tsa_certs``,
 set accessor.
 """
 
-from __future__ import annotations
-
 from pypdfbox.examples.signature.validation.cert_signature_information import (
     CertSignatureInformation,
 )

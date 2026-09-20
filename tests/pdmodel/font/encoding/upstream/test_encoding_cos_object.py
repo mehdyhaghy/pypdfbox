@@ -14,8 +14,6 @@ This file pins the contract per concrete subclass so the regression
 can't slip back in.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos.cos_name import COSName

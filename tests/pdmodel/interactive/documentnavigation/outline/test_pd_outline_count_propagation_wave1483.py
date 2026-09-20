@@ -27,8 +27,6 @@ values and pass without the oracle; ``test_matches_pdfbox_oracle`` re-runs the
 same probe and asserts byte-for-byte equality when the live oracle is present.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.documentnavigation.outline.pd_document_outline import (
     PDDocumentOutline,
 )

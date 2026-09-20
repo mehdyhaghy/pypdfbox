@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.filter.test_filter_remaining_wave738 import _decode_ascii85
 
 

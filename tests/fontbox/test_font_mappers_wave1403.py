@@ -12,8 +12,6 @@ directly — done here under a save/restore guard so no singleton state
 leaks into other tests.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.fontbox import font_mappers as fm_module

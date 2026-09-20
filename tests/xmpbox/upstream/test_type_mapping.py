@@ -23,8 +23,6 @@ Specifically these mirror behaviour of:
 Reference upstream file: ``xmpbox/src/main/java/org/apache/xmpbox/type/TypeMapping.java``
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import (

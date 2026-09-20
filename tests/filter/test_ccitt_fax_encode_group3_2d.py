@@ -9,8 +9,6 @@ many 2D-coded lines may follow a 1D-coded reference) and libtiff picks
 its own emit-side interval, so any K>0 round-trips through our decoder
 under the same wrapper bit.
 """
-from __future__ import annotations
-
 import io
 
 from PIL import Image

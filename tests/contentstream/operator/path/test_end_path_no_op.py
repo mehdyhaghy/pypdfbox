@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.contentstream.operator import Operator
 from pypdfbox.contentstream.operator.path import EndPathNoOp
 from pypdfbox.contentstream.operator.path.end_path_no_op import (

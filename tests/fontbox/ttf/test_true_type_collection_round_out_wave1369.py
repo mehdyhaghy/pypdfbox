@@ -16,8 +16,6 @@ the ``invalid numFonts`` rejection. This file fills in:
   upstream-shaped error message ``"Missing TTC header"``.
 """
 
-from __future__ import annotations
-
 import io
 import os
 import struct

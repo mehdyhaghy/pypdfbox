@@ -1,7 +1,5 @@
 """Tests for :class:`pypdfbox.fontbox.ttf.glyf_composite_comp.GlyfCompositeComp`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.glyf_composite_comp import GlyfCompositeComp
 from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 

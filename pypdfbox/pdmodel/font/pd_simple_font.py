@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 import weakref
 from abc import abstractmethod
@@ -474,7 +472,7 @@ class PDSimpleFont(PDFont):
         )
 
     @abstractmethod
-    def get_path(self, name: str) -> Any:
+    def get_path(self, name: str) -> Any:  # (upstream returns GeneralPath)
         """Return the glyph outline for ``name``.
 
         Mirrors upstream ``public abstract GeneralPath getPath(String)``.
@@ -500,7 +498,7 @@ class PDSimpleFont(PDFont):
         )
 
     @abstractmethod
-    def get_font_box_font(self) -> Any:
+    def get_font_box_font(self) -> Any:  # (upstream returns FontBoxFont)
         """Return the embedded or system font used for rendering.
 
         Mirrors upstream ``public abstract FontBoxFont getFontBoxFont()``.

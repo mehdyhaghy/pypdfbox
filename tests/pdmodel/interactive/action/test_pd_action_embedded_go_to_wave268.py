@@ -4,8 +4,6 @@ present on :class:`PDActionRemoteGoTo`: ``has_new_window``,
 ``clear_file`` / ``clear_destination`` / ``clear_target`` /
 ``clear_target_directory`` / ``clear_new_window``, and ``is_empty``."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.action.pd_action_embedded_go_to import (
     PDActionEmbeddedGoTo,

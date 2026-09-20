@@ -10,8 +10,6 @@ The :class:`TextPositionComparator` is exercised separately under
 ``test_text_position_comparator.py``; these tests focus on the raw
 field-level outputs that feed both code paths.
 """
-from __future__ import annotations
-
 from functools import cmp_to_key
 
 from pypdfbox.text import TextPosition, TextPositionComparator

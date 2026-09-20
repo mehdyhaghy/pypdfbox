@@ -5,8 +5,6 @@ Mirrors ``org.apache.fontbox.ttf.table.common.LookupListTable``
 ``pypdfbox.fontbox.ttf.gsub.lookup_table``.
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 
 from ...gsub.lookup_table import LookupTable

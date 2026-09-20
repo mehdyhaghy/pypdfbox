@@ -25,8 +25,6 @@ differential at the bottom):
 ``getCount()`` itself stays O(1) raw — it reports the stored (lying) value.
 """
 
-from __future__ import annotations
-
 import json
 
 import pytest

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 from pypdfbox.fontbox.ttf.ttf_table import TTFTable
 

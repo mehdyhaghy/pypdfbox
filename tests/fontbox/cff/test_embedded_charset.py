@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`EmbeddedCharset`."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff import CFFCharset, EmbeddedCharset

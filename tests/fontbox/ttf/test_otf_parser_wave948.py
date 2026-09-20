@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from . import test_otf_parser as otf_tests

@@ -6,8 +6,6 @@ neither branch, so the ``elif ... CA_ISSUERS`` check takes its False arc and
 the loop advances to the next description.
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 
 from cryptography import x509

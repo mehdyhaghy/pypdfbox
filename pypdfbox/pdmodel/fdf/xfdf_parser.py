@@ -15,8 +15,6 @@ The annotation factory dispatches by XFDF tag name (``text``, ``caret``,
 ``FDFDictionary.FDFDictionary(Element)`` (Java lines 137-217).
 """
 
-from __future__ import annotations
-
 import contextlib
 import logging
 from xml.dom.minidom import Element, Node

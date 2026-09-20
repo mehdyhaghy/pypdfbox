@@ -13,8 +13,6 @@ Targets the still-uncovered branches in the wave-1332 snapshot:
   classification-failed fallthrough.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory, _FontType
 

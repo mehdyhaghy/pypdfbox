@@ -17,8 +17,6 @@ Targets the residual uncovered branches:
   (lines 1322, 1328-1345).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

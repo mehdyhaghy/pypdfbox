@@ -7,8 +7,6 @@ code resolve. New code should call :func:`pypdfbox.loader.Loader.load_pdf`
 or use :class:`PDDocument` wrappers directly.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdfparser import PDFParser

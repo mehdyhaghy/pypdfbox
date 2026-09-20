@@ -3,8 +3,6 @@
 Updated in Wave 1284 to exercise the now-implemented paint adapters.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.graphics.shading.axial_shading_paint import AxialShadingPaint
 from pypdfbox.pdmodel.graphics.shading.pd_shading_type1 import PDShadingType1
 from pypdfbox.pdmodel.graphics.shading.pd_shading_type2 import PDShadingType2

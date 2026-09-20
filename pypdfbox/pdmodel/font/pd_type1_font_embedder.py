@@ -21,8 +21,6 @@ a parsed Type 1 font, one for an AFM ``FontMetrics`` (used only by the
 Standard 14 path). We surface both as static methods.
 """
 
-from __future__ import annotations
-
 import io
 from typing import TYPE_CHECKING, Any
 

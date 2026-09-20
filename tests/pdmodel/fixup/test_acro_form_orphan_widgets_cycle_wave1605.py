@@ -7,8 +7,6 @@ at itself) spun the ``while (parent.containsKey(PARENT))`` loop forever. The
 field is abandoned instead and a warning is logged.
 """
 
-from __future__ import annotations
-
 import logging
 
 import pytest

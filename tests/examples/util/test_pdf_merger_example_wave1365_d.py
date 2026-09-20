@@ -8,8 +8,6 @@ covers the helper methods (``create_pdf_merger_utility``,
 through :meth:`merge`.
 """
 
-from __future__ import annotations
-
 import builtins
 import io
 import sys

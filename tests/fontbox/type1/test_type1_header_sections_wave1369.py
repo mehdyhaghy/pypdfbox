@@ -13,8 +13,6 @@ hit the dispatch entries in ``Type1Parser._parse_ascii`` /
 ``_parse_binary`` and the upstream-parity ``parse_ascii`` / ``parse_binary``
 helpers directly so a future refactor can't drop a branch silently.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.type1.type1_font_util import Type1FontUtil

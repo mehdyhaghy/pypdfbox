@@ -8,8 +8,6 @@ verify that each pixel composites through to the expected sRGB
 triple.
 """
 
-from __future__ import annotations
-
 from PIL import Image
 
 from pypdfbox.cos import (

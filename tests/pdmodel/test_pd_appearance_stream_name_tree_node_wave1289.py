@@ -5,8 +5,6 @@ Covers :class:`PDAppearanceStreamNameTreeNode` and the
 the previous raw-COSDictionary placeholder.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream, COSString

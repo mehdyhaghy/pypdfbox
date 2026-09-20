@@ -10,8 +10,6 @@ Targets the defensive early-return branches in ``process``:
 * ``set_horizontal_scaling`` setter missing → silent return
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

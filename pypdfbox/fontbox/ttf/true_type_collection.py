@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import contextlib
 import os
 from collections.abc import Callable
@@ -74,7 +72,7 @@ class TrueTypeCollection:
     :class:`TTFDataStream`.
     """
 
-    def __init__(
+    def __init__(  # dispatch tree mirrors upstream's three constructors
         self,
         source: TTFDataStream
         | RandomAccessRead

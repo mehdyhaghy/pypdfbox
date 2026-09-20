@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSInteger, COSName, COSStream
@@ -117,7 +115,7 @@ def test_uses_supplied_scratch_file() -> None:
 def test_internal_scratch_file_closed_with_stream() -> None:
     s = COSStream()
     s.set_raw_data(b"x")
-    internal_scratch = s._scratch
+    internal_scratch = s._scratch  # testing lifecycle
     s.close()
     assert internal_scratch.is_closed()
 
@@ -305,7 +303,7 @@ def test_get_stream_cache_returns_internal_scratch() -> None:
     stream — mirrors upstream ``getStreamCache()`` (lines 116–124)."""
     s = COSStream()
     cache = s.get_stream_cache()
-    assert cache is s._scratch
+    assert cache is s._scratch  # testing the contract
 
 
 def test_get_stream_cache_returns_supplied_scratch() -> None:

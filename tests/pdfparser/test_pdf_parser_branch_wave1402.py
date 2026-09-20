@@ -8,8 +8,6 @@ Closes False-branch arrows in ``pypdfbox/pdfparser/pdf_parser.py``:
   ``populate_document``.
 """
 
-from __future__ import annotations
-
 import contextlib
 import io
 

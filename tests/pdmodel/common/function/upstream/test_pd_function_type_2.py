@@ -12,8 +12,6 @@ broader function-base parity tests in
 ``tests/pdmodel/common/function/test_pd_function.py``.
 """
 
-from __future__ import annotations
-
 
 def test_no_upstream_pd_function_type2_test_to_port() -> None:
     """Sentinel: documents the absence of an upstream test class so the

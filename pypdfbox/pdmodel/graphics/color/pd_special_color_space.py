@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .pd_color_space import PDColorSpace
 
 

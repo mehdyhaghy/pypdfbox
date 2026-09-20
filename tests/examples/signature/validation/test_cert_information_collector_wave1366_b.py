@@ -18,8 +18,6 @@ shapes. This module adds:
   chain just like :meth:`get_last_cert_info`.
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 from typing import Any
 

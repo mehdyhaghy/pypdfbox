@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.graphics.pattern import PDShadingPattern
 from pypdfbox.pdmodel.graphics.shading import PDShadingType2

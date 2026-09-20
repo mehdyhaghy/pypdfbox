@@ -10,8 +10,6 @@ pin the encrypted round-trip in both output modes:
 * explicit ``NO_COMPRESSION`` save — classic ``xref`` table + ``trailer``.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

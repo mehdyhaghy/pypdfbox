@@ -7,8 +7,6 @@ When the export value is not found in the options, the raw ``/V`` export
 value is rendered unchanged.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat, COSName, COSStream
 from pypdfbox.pdmodel.interactive.form import PDAcroForm, PDAppearanceGenerator
 from pypdfbox.pdmodel.interactive.form.pd_combo_box import PDComboBox

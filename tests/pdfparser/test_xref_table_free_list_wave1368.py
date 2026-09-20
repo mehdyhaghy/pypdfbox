@@ -10,8 +10,6 @@ Covers spec corners that are easy to mis-handle when parsing PDF
 * Older-style 20-byte entries with CRLF line endings.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSObjectKey, COSString
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import PDFParser

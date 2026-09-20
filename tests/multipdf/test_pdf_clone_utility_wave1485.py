@@ -42,8 +42,6 @@ hardening divergence — strictly more robust, and consistent with the
 dict/stream codepath upstream itself uses.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

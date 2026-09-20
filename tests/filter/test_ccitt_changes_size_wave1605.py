@@ -10,8 +10,6 @@ Upstream 3.0.9 adds ``changesSize = (cols + 2) * 4 * 2`` to the compared
 total and names both halves in the error message.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

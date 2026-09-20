@@ -14,8 +14,6 @@ to build the dictionary from a real TTF — there is no subset path here
 (``buildSubset`` raises ``UnsupportedOperationException``).
 """
 
-from __future__ import annotations
-
 import io
 from typing import TYPE_CHECKING, Any
 

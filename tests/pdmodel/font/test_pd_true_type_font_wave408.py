@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any, cast
 
 import pytest
@@ -111,7 +109,7 @@ class _TTFStub:
     def get_number_of_glyphs(self) -> int:
         return 2
 
-    def get_post_script(self):
+    def get_post_script(self):  # stub
         # Wave-1434: a no-/Encoding TrueType now resolves its encoding via
         # read_encoding_from_font(), which consults the post table for glyph
         # names. A real TTF has one; this minimal stub has none (the production

@@ -53,8 +53,6 @@ filter chain themselves (`PDFParser.decode_page_offset_hint_table` does
 this when handed the hint stream as a `COSStream`).
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 

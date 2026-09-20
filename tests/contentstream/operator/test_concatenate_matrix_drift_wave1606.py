@@ -11,8 +11,6 @@ upstream's ``IOException`` rather than leaking an unchecked exception out
 of the operator dispatch loop.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

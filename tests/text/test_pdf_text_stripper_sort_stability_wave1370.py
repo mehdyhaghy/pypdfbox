@@ -8,8 +8,6 @@ data-holder level so future changes (e.g. switching to
 ``TextPositionComparator`` everywhere) don't silently introduce
 non-determinism.
 """
-from __future__ import annotations
-
 from functools import cmp_to_key
 
 from pypdfbox.cos import COSStream

@@ -7,8 +7,6 @@ Closes False-branch arrows:
 * 62->exit — node has /Type but it's not /Page and has no /Kids → skipped
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.page_iterator import PageIterator
 

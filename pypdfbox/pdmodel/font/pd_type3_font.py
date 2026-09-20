@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, overload
 
 from pypdfbox.cos import (
@@ -458,7 +456,7 @@ class PDType3Font(PDSimpleFont):
 
     # ---------- font-program escape hatches (Type 3 has no font program) ----------
 
-    def get_font_box_font(self) -> Any:
+    def get_font_box_font(self) -> Any:  # (mirrors upstream FontBoxFont return)
         """Type 3 fonts do not carry a FontBox font program.
 
         Mirrors upstream ``PDType3Font.getFontBoxFont()`` which throws
@@ -468,7 +466,7 @@ class PDType3Font(PDSimpleFont):
         """
         raise NotImplementedError("not supported for Type 3 fonts")
 
-    def get_path(self, name: str) -> Any:
+    def get_path(self, name: str) -> Any:  # (upstream returns GeneralPath)
         """Type 3 fonts do not expose vector paths by glyph name.
 
         Mirrors upstream ``PDType3Font.getPath(String)`` which throws
@@ -575,7 +573,7 @@ class PDType3Font(PDSimpleFont):
         self.get_encoding_typed()
         self.get_glyph_list()
 
-    def read_encoding_from_font(self) -> Any:
+    def read_encoding_from_font(self) -> Any:  # (upstream returns Encoding)
         """Type 3 fonts do not have a built-in encoding.
 
         Mirrors upstream protected ``PDType3Font.readEncodingFromFont()``

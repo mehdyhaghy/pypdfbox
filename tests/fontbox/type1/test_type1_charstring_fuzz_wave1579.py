@@ -34,8 +34,6 @@ Values verified against the Adobe Type 1 Font Format spec (Tech Note 5040)
 and a read of the PDFBox 3.0.7 Java sources.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

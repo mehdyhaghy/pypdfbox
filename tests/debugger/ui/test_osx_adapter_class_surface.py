@@ -8,8 +8,6 @@ re-exposes them as ``@staticmethod``s on the class so the parity tool
 counts them and so callers can use the ``OSXAdapter.<name>`` spelling.
 """
 
-from __future__ import annotations
-
 from pypdfbox.debugger.ui import osx_adapter
 from pypdfbox.debugger.ui.osx_adapter import OSXAdapter
 
@@ -24,7 +22,7 @@ def test_is_min_jdk9_on_class_surface() -> None:
 def test_is_correct_method_on_class_surface() -> None:
     assert getattr(OSXAdapter, "is_correct_method", None) is not None
 
-    def sample(a, b):
+    def sample(a, b):  # parameter types not the focus here
         return a + b
 
     # Name match, no type constraints, parameter count check.

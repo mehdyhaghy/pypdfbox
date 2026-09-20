@@ -6,8 +6,6 @@ with last-entry shrink, MutableMapping dunders, and the
 ``init_map`` constructor shape.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.util.small_map import SmallMap

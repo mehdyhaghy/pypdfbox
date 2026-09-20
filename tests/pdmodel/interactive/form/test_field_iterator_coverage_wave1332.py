@@ -7,8 +7,6 @@ both for a terminal field (no descendants pushed beyond ``node`` itself)
 and a non-terminal field (push ``node`` then walk ``/Kids``).
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.form import (
     PDAcroForm,
     PDFieldStub,

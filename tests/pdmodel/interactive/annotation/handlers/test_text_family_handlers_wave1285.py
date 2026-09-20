@@ -16,8 +16,6 @@ non-empty appearance dictionary. These tests dig deeper:
 * the sound handler is a complete no-op (matches upstream).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.interactive.annotation.handlers.pd_caret_appearance_handler import (

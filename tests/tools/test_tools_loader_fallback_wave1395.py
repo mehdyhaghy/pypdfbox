@@ -40,8 +40,6 @@ This module covers all three:
 4. The ``-page N=FILE`` map parser in ``OverlayPDF.main`` (valid
    round-trip + invalid-token ``SystemExit``).
 """
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 

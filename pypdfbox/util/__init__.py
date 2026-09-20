@@ -6,8 +6,6 @@ in Wave 1281 cover ``Hex``, ``IterativeMergeSort``, ``Matrix``, ``Vector``,
 ``XMLUtil``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.util.hex import Hex
 from pypdfbox.util.iterative_merge_sort import IterativeMergeSort
 from pypdfbox.util.matrix import Matrix

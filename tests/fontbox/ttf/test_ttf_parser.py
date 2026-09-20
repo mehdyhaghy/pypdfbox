@@ -7,8 +7,6 @@ paths, file-like streams, ``MemoryTTFDataStream`` instances, and
 table-presence check.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 
@@ -63,7 +61,7 @@ def test_parse_from_memoryview(ttf_bytes: bytes) -> None:
     assert isinstance(font, TrueTypeFont)
 
 
-def test_parse_from_path_str(ttf_bytes: bytes) -> None:
+def test_parse_from_path_str(ttf_bytes: bytes) -> None:  # fixture skip-gates
     parser = TTFParser()
     font = parser.parse(str(FIXTURE))
     assert font.get_units_per_em() > 0
@@ -180,7 +178,7 @@ def test_parse_embedded_tolerates_partial_table_set() -> None:
     by checking that the subsequent ``parse`` call inherits embedded
     semantics (the flag is now True)."""
     parser = TTFParser()
-    parser._is_embedded = True
+    parser._is_embedded = True  # same end state as parse_embedded
     # Embedded parsers must not blow up on a normal full font either.
     font = parser.parse(FIXTURE)
     assert font.has_table("head")

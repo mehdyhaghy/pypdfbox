@@ -14,8 +14,6 @@ subtable, the ``name_to_gid`` ``g\\d+`` literal-GID branch, the
 ``VORG`` projection, and the ``save`` writable-sink error path.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

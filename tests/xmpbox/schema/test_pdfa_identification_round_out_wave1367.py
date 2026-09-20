@@ -10,8 +10,6 @@ Pins:
 * property removal via ``set_xxx(None)``
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox.pdfa_identification_schema import (

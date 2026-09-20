@@ -5,8 +5,6 @@ Java path
 ``pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/DrawObject.java``).
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.cos import COSBase, COSName

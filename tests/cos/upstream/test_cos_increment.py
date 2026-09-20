@@ -11,5 +11,3 @@ test-package mapping for ``cos/TestCOSIncrement.java`` and follow the
 docstring to the actual port. No skipped stubs (which would otherwise
 double-count as "unported" in the parity audit) live here.
 """
-
-from __future__ import annotations

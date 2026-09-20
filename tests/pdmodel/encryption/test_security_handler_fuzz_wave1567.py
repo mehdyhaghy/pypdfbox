@@ -17,8 +17,6 @@ Hammers the key-derivation + permission-bit + password-padding surfaces of
   r6).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSString
@@ -53,7 +51,7 @@ class _FakeDoc:
         arr.add(COSString(self._id))
         return arr
 
-    def get_document(self):
+    def get_document(self):  # duck-typed
         return self
 
     def set_encryption_dictionary(self, enc: PDEncryption) -> None:

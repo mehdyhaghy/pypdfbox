@@ -13,8 +13,6 @@ surface is exercised indirectly through ``DomXmpParserTest``. These tests
 cover the read/write contract for the typed accessors.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import XMPMetadata

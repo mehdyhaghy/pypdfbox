@@ -4,8 +4,6 @@ Mirrors upstream ``ImageType.toBufferedImageType()`` and the three-arg
 overload of ``PDFRenderer.renderImageWithDPI(int, float, ImageType)``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle

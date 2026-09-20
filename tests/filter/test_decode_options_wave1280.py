@@ -5,8 +5,6 @@ Mirrors the upstream Java behaviour of ``DecodeOptions`` /
 ``DecodeOptions.FinalDecodeOptions``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.filter import DecodeOptions, FinalDecodeOptions

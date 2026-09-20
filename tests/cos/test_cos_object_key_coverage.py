@@ -6,8 +6,6 @@ Targets the legacy alias surface (``object_number`` / ``generation_number``
 guards.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos.cos_object_key import COSObjectKey

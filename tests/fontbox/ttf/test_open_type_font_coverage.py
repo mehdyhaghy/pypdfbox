@@ -9,8 +9,6 @@ Targets the branches not exercised by the existing test files:
 * :meth:`get_cff` CID-keyed (``CFFCIDFont``) branch via mocked Top DICT.
 * :meth:`get_glyph_table` raises on PostScript-flavoured fonts.
 """
-from __future__ import annotations
-
 import contextlib
 import io
 from pathlib import Path

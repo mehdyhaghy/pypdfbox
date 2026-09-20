@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream.operator import (
@@ -258,7 +256,7 @@ def test_default_registry_has_at_least_forty_operators() -> None:
     """After this cluster the default registry should expose at least
     the originally-wired 12 operators plus the ~41 new stubs."""
     registry = OperatorRegistry()
-    handler_map = registry._handlers
+    handler_map = registry._handlers  # test-only introspection
     assert len(handler_map) >= 40, (
         f"default registry only exposes {len(handler_map)} handlers"
     )

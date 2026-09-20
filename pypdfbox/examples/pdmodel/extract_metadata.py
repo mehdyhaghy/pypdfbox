@@ -3,8 +3,6 @@
 Pretty-prints a document's XMP metadata to stdout.
 """
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 from typing import Any

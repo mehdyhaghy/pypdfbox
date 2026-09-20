@@ -1,7 +1,5 @@
 """Wave 1391 — coverage round-out for :mod:`pypdfbox.fontbox.ttf.gsub.lookup_subtable`."""
 
-from __future__ import annotations
-
 import logging
 
 import pytest

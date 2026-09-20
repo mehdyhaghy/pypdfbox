@@ -13,8 +13,6 @@ Skipped:
 * Logger / IOException-message text checks — Python error surface differs.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSStream

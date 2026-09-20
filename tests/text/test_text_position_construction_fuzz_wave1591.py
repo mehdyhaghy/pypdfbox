@@ -32,8 +32,6 @@ which is exactly what keeps these origin / width assertions analytic.
 Hand-written (not ported from upstream JUnit).
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

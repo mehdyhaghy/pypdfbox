@@ -4,8 +4,6 @@ The CLI now drives the security cluster end-to-end, so encrypted-input
 tests build a real ``/Encrypt`` dictionary via ``PDDocument.protect`` +
 ``save`` and then decrypt the resulting bytes.
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

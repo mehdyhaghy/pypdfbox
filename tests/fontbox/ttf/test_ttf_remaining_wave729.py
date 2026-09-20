@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import struct
 from types import SimpleNamespace
 from typing import Any

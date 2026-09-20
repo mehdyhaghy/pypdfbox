@@ -17,8 +17,6 @@ wave (oracle-confirmed via ``FontDescCacheLenientProbe``):
    lines 411-419 + PDRectangle(COSArray) lines 143-160.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString

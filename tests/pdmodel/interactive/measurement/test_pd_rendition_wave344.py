@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName, COSNull, COSObject
 from pypdfbox.pdmodel.interactive.measurement import (
     PDMediaClip,

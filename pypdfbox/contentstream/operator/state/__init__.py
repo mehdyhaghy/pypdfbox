@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 # ``ConcatenateMatrix`` is the original pypdfbox handler that performs
 # the actual CTM mutation (the upstream-named ``Concatenate`` parity
 # class delegates to it). The dedicated ``concatenate.py`` module hosts

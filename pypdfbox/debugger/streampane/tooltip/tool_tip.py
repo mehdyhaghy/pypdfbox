@@ -14,8 +14,6 @@ with ``tag_configure`` + ``insert(..., tags=...)``.
 See ``CHANGES.md`` for the HTML-to-structured-segment migration note.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 

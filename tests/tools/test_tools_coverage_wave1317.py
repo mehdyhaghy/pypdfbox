@@ -16,8 +16,6 @@ needs the ``_PDLoaderShim`` introduced in wave 1314 so the parser's
 ``COSDocument`` is wrapped in a ``PDDocument`` with the upstream
 ``try-with-resources`` shape.
 """
-from __future__ import annotations
-
 import contextlib
 from collections.abc import Iterator
 from pathlib import Path
@@ -275,7 +273,7 @@ def test_encrypt_tool_access_permission_flags_propagate() -> None:
     runner.can_assemble = False
     runner.can_extract_for_accessibility = False
     runner.can_print_faithful = False
-    ap = runner._access_permission()
+    ap = runner._access_permission()  # exercising port invariant
     assert ap.can_print() is False
     assert ap.can_modify() is False
     assert ap.can_extract_content() is False
@@ -471,14 +469,14 @@ def test_import_fdf_no_acroform_pdf_still_saves(
 
 def test_import_fdf_missing_infile_raises() -> None:
     runner = import_fdf.ImportFDF()
-    runner.fdffile = Path("/tmp/x.fdf")
+    runner.fdffile = Path("/tmp/x.fdf")  # placeholder
     with pytest.raises(OSError, match="infile and fdffile are required"):
         runner.call()
 
 
 def test_import_fdf_missing_fdffile_raises() -> None:
     runner = import_fdf.ImportFDF()
-    runner.infile = Path("/tmp/x.pdf")
+    runner.infile = Path("/tmp/x.pdf")  # placeholder
     with pytest.raises(OSError, match="infile and fdffile are required"):
         runner.call()
 
@@ -805,7 +803,7 @@ def test_md_write_paragraph_end_clears_font_state(
     patched_parent: list[str],
 ) -> None:
     p = PDFText2Markdown()
-    p._font_state.open("**")
+    p._font_state.open("**")  # exercising port invariant
     p.write_paragraph_end()
     captured = "".join(patched_parent)
     # The closing ``**`` from clear() is present, then the parent's

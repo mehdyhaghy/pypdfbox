@@ -5,8 +5,6 @@ reflection-based helpers (``isMinJdk9`` / ``isCorrectMethod`` /
 ``invoke`` / ``callTarget`` / ``setApplicationEventHandled``).
 """
 
-from __future__ import annotations
-
 import sys
 from typing import Any
 

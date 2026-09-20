@@ -1,6 +1,4 @@
 """Wave 344 robustness coverage for detached sibling insertion."""
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.interactive.documentnavigation.outline import (
     PDDocumentOutline,

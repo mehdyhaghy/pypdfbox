@@ -9,8 +9,6 @@ PDFMergerUtility may land in a later wave; the tests use
 ``pytest.importorskip`` to remain dispatch-order-agnostic.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox import PDDocument, PDPage

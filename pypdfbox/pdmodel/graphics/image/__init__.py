@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .ccitt_factory import CCITTFactory
 from .custom_factory import CustomFactory
 from .jpeg_factory import JPEGFactory

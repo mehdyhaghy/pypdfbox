@@ -10,8 +10,6 @@ non-fatal note as :doc:`test_alignment` applies. ``testMultilineAuto``
 and translate cleanly to pypdfbox.
 """
 
-from __future__ import annotations
-
 import pathlib
 
 from pypdfbox.cos import COSName, COSNumber, COSString

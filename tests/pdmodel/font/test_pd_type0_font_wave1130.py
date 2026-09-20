@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 import tests.pdmodel.font.test_pd_type0_font as type0_tests

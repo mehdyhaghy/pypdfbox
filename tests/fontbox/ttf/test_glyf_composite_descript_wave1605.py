@@ -8,8 +8,6 @@ nested composite glyph cannot keep accumulating point indices.
 Upstream shipped no JUnit test with that commit; these are hand-written.
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.fontbox.ttf.glyf_composite_comp import GlyfCompositeComp
@@ -43,7 +41,7 @@ def _build(component_count: int, points_per_component: int) -> GlyfCompositeDesc
     descriptions = {}
     for index in range(component_count):
         comp = GlyfCompositeComp()
-        comp._glyph_index = index
+        comp._glyph_index = index  # bytes-driven ctor bypassed
         components.append(comp)
         descriptions[index] = _FakeDescript(points_per_component)
     descript._components = components

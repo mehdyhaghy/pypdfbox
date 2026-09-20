@@ -14,8 +14,6 @@ agrees with what the renderer actually paints. See ``CHANGES.md`` for
 the ICC-vs-subtractive deviation note.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import Any
 

@@ -9,8 +9,6 @@ the ``init(owner)`` two-step construction pattern -- the dialog is built
 lazily so importers can register the class without requiring a Tk root.
 """
 
-from __future__ import annotations
-
 import contextlib
 import tkinter as tk
 from typing import Any

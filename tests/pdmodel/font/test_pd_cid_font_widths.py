@@ -1,7 +1,5 @@
 """Tests for PDCIDFont width-table parsing (PDF 32000-1 §9.7.4.3)."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSBase, COSFloat, COSInteger
 from pypdfbox.pdmodel.font.pd_cid_font_type0 import PDCIDFontType0
 from pypdfbox.pdmodel.font.pd_cid_font_type2 import PDCIDFontType2

@@ -6,8 +6,6 @@ property getters/setters) end-to-end against an in-memory PDF so the
 suite does not require network access or a real CA.
 """
 
-from __future__ import annotations
-
 from io import BytesIO
 from pathlib import Path
 

@@ -18,8 +18,6 @@ signed value (-128..127) just like Java's ``short``-promoted ``readByte()``, so
 the AT coordinates stay signed.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from pypdfbox.jbig2.bitmap import Bitmap

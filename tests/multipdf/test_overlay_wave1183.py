@@ -1,7 +1,5 @@
 """Coverage cleanup for ``tests.multipdf.test_overlay`` helpers."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSStream
 from pypdfbox.pdmodel import PDPage
 from tests.multipdf.test_overlay import _flatten_contents

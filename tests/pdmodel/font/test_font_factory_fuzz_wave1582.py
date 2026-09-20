@@ -22,8 +22,6 @@ PDFBox ``PDFontFactory.createFont`` (read from
 * the descendant-CIDFont factory ``create_descendant_font``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

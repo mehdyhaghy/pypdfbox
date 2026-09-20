@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.contentstream.operator.markedcontent import resolve_property_dict
 from pypdfbox.cos import COSDictionary, COSName
 

@@ -7,8 +7,6 @@ array). Round-trips each accessor and verifies the documented defaults
 when the entry is absent.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .io_utils import (
     close_and_log_exception,
     close_quietly,

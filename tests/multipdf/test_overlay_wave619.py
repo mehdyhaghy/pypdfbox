@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from types import MethodType
 from typing import cast
 

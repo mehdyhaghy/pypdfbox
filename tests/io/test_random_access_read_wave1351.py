@@ -6,8 +6,6 @@ shipped today overrides ``create_view``, so the ABC's default body
 needs a tailor-made subclass that *doesn't* override to be exercised.
 """
 
-from __future__ import annotations
-
 from pypdfbox.io.random_access_read import RandomAccessRead
 from pypdfbox.io.random_access_read_view import RandomAccessReadView
 

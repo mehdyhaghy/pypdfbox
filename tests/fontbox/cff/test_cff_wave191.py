@@ -13,8 +13,6 @@ All tests exercise the synthetic / empty-instance paths so they run
 unconditionally, without needing a real OTF on the host.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.fontbox.cff.cff_cid_font import CFFCIDFont

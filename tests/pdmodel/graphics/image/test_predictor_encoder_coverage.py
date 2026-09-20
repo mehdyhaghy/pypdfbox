@@ -6,8 +6,6 @@ helpers — the bits of the wave 1286 module that the existing tests
 didn't reach.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

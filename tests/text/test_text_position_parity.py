@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import unicodedata
 
 from pypdfbox.text.text_position import TextPosition

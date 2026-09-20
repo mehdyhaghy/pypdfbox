@@ -28,8 +28,6 @@ this module is hand-written and pins the values so the chain is locked
 even where the oracle jar is unavailable.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream

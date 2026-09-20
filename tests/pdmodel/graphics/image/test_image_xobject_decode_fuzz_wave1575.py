@@ -17,8 +17,6 @@ Hammers the raster-decode parameter surface against upstream PDFBox 3.0.7
 - ``/Mask`` as a stream (explicit mask) vs array (color key).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName, COSStream

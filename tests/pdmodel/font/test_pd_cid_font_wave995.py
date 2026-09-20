@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSInteger
 from tests.pdmodel.font.test_pd_cid_font_wave435 import _ints, _MappedCIDFont
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from importlib import resources
 from io import BytesIO
 from typing import Any

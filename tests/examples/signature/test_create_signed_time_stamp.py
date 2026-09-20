@@ -1,7 +1,5 @@
 """Tests for ``CreateSignedTimeStamp``."""
 
-from __future__ import annotations
-
 from io import BytesIO
 
 import pytest

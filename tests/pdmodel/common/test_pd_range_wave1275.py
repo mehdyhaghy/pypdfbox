@@ -1,7 +1,5 @@
 """Wave 1275 round-out: ``PDRange.to_string()`` explicit method."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat
 from pypdfbox.pdmodel.common.pd_range import PDRange
 

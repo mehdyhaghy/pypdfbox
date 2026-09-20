@@ -6,8 +6,6 @@ Targets:
     (lines 167-175).
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.cmap_lookup import CmapLookup
 from pypdfbox.fontbox.ttf.gsub import GsubData, GsubWorkerForBengali
 

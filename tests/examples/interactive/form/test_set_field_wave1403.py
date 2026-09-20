@@ -6,8 +6,6 @@ of ``(PDComboBox, PDListBox, PDRadioButton, PDTextField)`` (e.g. a
 ``set_field`` returns without mutating any value.
 """
 
-from __future__ import annotations
-
 from pypdfbox.examples.interactive.form.set_field import SetField
 from pypdfbox.pdmodel.interactive.form.pd_acro_form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_push_button import PDPushButton

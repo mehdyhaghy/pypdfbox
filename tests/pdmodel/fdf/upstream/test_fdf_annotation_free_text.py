@@ -15,8 +15,6 @@ Keep tests upstream-shaped: assert names and return types as documented in
 ``getRotation`` returns ``String``).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.fdf import FDFAnnotationFreeText
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle

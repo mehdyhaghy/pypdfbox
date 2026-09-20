@@ -23,8 +23,6 @@ the visible output is identical regardless of TK, so we skip the
 sub-canvas allocation to keep the fast path fast.
 """
 
-from __future__ import annotations
-
 import io
 
 from PIL import Image

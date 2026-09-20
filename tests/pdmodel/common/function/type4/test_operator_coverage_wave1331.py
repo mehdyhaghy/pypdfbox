@@ -6,8 +6,6 @@ method (reached by an opt-out subclass that defers to ``super``), and
 the dispatch path via concrete subclasses.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.common.function.type4 import (

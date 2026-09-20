@@ -10,8 +10,6 @@ Also exercises the factory's matrix-clone path, weakref fallback for
 non-weakly-referenceable paints, and re-use from the cache.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

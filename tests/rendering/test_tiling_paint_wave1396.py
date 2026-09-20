@@ -9,8 +9,6 @@ parity has to hold so future drawer changes that *do* acquire resources
 inherit the correct cleanup ordering.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

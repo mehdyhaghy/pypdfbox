@@ -7,8 +7,6 @@ test suites so producers iterating across many form fields share a
 consistent surface.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName

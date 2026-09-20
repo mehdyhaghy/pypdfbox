@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from tests.contentstream import test_pdf_stream_engine_wave1228 as wave1228

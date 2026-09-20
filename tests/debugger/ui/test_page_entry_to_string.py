@@ -4,8 +4,6 @@ Splits ``__str__`` into a public ``to_string`` that returns the upstream
 ``toString`` rendering, with ``__str__`` delegating to it.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary
 from pypdfbox.debugger.ui.page_entry import PageEntry
 

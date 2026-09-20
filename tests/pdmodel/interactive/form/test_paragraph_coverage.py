@@ -7,8 +7,6 @@ and the ``find_max_fitting_chars`` binary search (including the
 single-char-overflow PDFBOX-6082 guard).
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.form.paragraph import Line, Paragraph
 from pypdfbox.pdmodel.interactive.form.word import Word
 

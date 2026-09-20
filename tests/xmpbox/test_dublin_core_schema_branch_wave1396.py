@@ -10,8 +10,6 @@ underlying list/array and filters out items of the wrong type:
 * 496->495 — ``set_dates_property`` skips non-DateType/TextType children
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 from pypdfbox.xmpbox import (

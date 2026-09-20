@@ -5,8 +5,6 @@ Targets the success branch of ``_on_text_input`` (lines 128-130) where
 ``selection_set`` / ``see`` / ``focus_set`` the located node.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 from tkinter import ttk
 

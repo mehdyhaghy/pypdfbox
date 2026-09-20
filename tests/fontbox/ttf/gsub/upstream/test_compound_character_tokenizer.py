@@ -5,8 +5,6 @@ Translated from
 upstream Apache PDFBox 3.0.x.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub import CompoundCharacterTokenizer
 
 

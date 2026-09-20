@@ -4,8 +4,6 @@ Mac Expert is the typographic-extras encoding (small caps, ligatures,
 old-style figures) — it does NOT cover the regular ASCII range.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.font.encoding import Encoding, MacExpertEncoding
 

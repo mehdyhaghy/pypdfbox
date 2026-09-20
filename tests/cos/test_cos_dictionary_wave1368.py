@@ -16,8 +16,6 @@ Round-out tests for accessor paths not yet exercised:
 * ``get_name_as_string`` coercing both name and string values to text.
 """
 
-from __future__ import annotations
-
 import datetime as dt
 
 import pytest

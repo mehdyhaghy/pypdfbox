@@ -12,8 +12,6 @@ The functional contract of the helpers we ported (``getMDPPermission`` /
 covered by the hand-written tests in ``test_sig_utils.py``.
 """
 
-from __future__ import annotations
-
 
 def test_upstream_has_no_dedicated_sig_utils_test():
     # Marker — see module docstring. Behavior parity is exercised in the

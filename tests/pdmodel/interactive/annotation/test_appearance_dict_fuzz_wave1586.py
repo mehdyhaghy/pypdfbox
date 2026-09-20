@@ -15,8 +15,6 @@ PDAnnotation /AP /AS /Rect handling against the behaviour of upstream PDFBox
   normalization of reversed corners).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

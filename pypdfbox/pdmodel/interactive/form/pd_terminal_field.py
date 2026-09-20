@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING
 
@@ -210,7 +208,7 @@ class PDTerminalField(PDField):
           to mirror upstream's IOException-equivalent fallback being
           unreachable for well-formed FDFs.
         """
-        from pypdfbox.cos import COSStream
+        from pypdfbox.cos import COSStream  # avoid I/O cycle
 
         if isinstance(value, COSName):
             self.set_value(value.name)
@@ -222,7 +220,7 @@ class PDTerminalField(PDField):
             self.set_value(value.to_text_string())
             return
         if isinstance(value, COSArray):
-            from .pd_choice import PDChoice
+            from .pd_choice import PDChoice  # defer import
 
             if isinstance(self, PDChoice):
                 self.set_value(value.to_cos_string_string_list())

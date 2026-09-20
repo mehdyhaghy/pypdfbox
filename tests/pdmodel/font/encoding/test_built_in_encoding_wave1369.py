@@ -6,8 +6,6 @@ from the font program's own ``Encoding`` array. Mirrors upstream
 PDType1Font.readEncoding's symbolic-font fallback branch.
 """
 
-from __future__ import annotations
-
 from collections import OrderedDict
 
 from pypdfbox.cos import COSDictionary, COSName

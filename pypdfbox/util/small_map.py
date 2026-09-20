@@ -7,8 +7,6 @@ Upstream marks this class ``@Deprecated`` for removal in 4.0. We retain it
 so ports of older PDFBox code that wire up ``SmallMap`` continue to work.
 """
 
-from __future__ import annotations
-
 from collections.abc import Iterator, Mapping, MutableMapping
 from typing import Any
 

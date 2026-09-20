@@ -12,8 +12,6 @@ upstream ``ViewMenu``:
   Swing-shaped object that exposes ``action_command``/``label``).
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 from collections.abc import Iterator
 from dataclasses import dataclass

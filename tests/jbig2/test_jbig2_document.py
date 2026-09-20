@@ -6,8 +6,6 @@ resolution and full page composition — against the real upstream ``.jb2``
 fixtures, without requiring the live oracle.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

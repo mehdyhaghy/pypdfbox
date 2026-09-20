@@ -4,8 +4,6 @@ for the new array-form ``/Function`` accessors and the
 ``get_functions_array`` helper added in this round.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat
 from pypdfbox.pdmodel.common.function import (
     PDFunctionType2,

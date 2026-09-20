@@ -5,8 +5,6 @@ on the apache/pdfbox 3.0 branch — the small subset that targets methods
 defined on ``Filter`` itself rather than its concrete subclasses.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

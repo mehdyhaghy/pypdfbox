@@ -19,8 +19,6 @@ No real divergence was found while authoring these; they pin the current
 parity-correct behaviour so a future refactor can't regress it.
 """
 
-from __future__ import annotations
-
 import random
 
 import pytest

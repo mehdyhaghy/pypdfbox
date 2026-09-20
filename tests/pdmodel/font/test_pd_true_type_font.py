@@ -13,8 +13,6 @@ Exercises the four upstream-Java methods we missed in earlier waves:
   load overloads (PDTrueTypeFont.java lines 206/226/246/266).
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

@@ -5,8 +5,6 @@ exists so ``PDFRenderer`` and ``PageDrawer`` can share private
 implementation data without breaking the public ``PageDrawer`` ctor.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from .render_destination import RenderDestination

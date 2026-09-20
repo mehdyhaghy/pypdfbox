@@ -3,8 +3,6 @@
 Mirrors PDFBox ``org.apache.pdfbox.pdmodel.graphics.shading.RadialShadingContext``.
 """
 
-from __future__ import annotations
-
 import math
 from typing import Any
 

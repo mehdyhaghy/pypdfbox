@@ -21,8 +21,6 @@ Targets the previously-uncovered branches:
 - ``to_raw_image`` short-raster zero-pad (line 376).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
@@ -69,7 +67,7 @@ class _CosLessColorSpace(PDColorSpace):
     """A color space whose ``get_cos_object`` returns ``None``. Used to
     exercise the ``set_alternate_color_space`` TypeError branch."""
 
-    def __init__(self) -> None:
+    def __init__(self) -> None:  # test fixture
         # Skip super().__init__ to keep _array unset.
         pass
 
@@ -93,7 +91,7 @@ class _CosLessFunction:
     """A duck-typed PDFunction substitute whose ``get_cos_object`` returns
     ``None`` — used to verify ``set_tint_transform``'s TypeError branch."""
 
-    def get_cos_object(self):
+    def get_cos_object(self):  # test fixture
         return None
 
 

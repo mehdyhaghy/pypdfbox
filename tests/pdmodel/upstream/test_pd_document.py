@@ -5,8 +5,6 @@ Upstream baseline: PDFBox 3.0 (commit on the 3.0 branch).
 Translation conventions follow the project's "Test Porting Conventions".
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

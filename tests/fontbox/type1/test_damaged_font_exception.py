@@ -5,8 +5,6 @@ only exercised indirectly via ``Type1LexerTest``. These hand-written tests
 cover construction, message round-trip, inheritance, and raise/catch.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.type1 import DamagedFontException as DamagedFontExceptionReexport

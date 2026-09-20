@@ -16,8 +16,6 @@ Pre-wave the module sat at 92.9 %. Remaining uncovered surface:
   re-raises.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

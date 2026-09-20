@@ -12,8 +12,6 @@ fresh snapshot lists returned by the getters. The round-trip
 assertions below verify that fix.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

@@ -6,8 +6,6 @@ three ``create_cloudy_*`` entry points end-to-end so the path generation
 math is covered.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSStream
 from pypdfbox.pdmodel.interactive.annotation.handlers.cloudy_border import (
     CloudyBorder,

@@ -12,8 +12,6 @@ The first three pdf-bearing tests in
 branch; only the alternate shapes need extra coverage here.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.examples.ant.pdf_to_text_task import PDFToTextTask

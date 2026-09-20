@@ -17,8 +17,6 @@ Coverage:
 * nested null inside an array: arrays preserve null elements verbatim.
 """
 
-from __future__ import annotations
-
 import io
 import re
 

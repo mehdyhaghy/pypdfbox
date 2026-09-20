@@ -8,8 +8,6 @@ exposes that upstream covers indirectly through other tests
 ``create``, ``getName``, ``toString``).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSName, COSStream

@@ -18,8 +18,6 @@ Public surface kept compatible with upstream:
 GID 0 (``.notdef``) is always retained, matching upstream behaviour.
 """
 
-from __future__ import annotations
-
 import io
 import math
 import struct

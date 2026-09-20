@@ -12,8 +12,6 @@ Targets the residual partial branches in
   is not a ``COSObject`` ⇒ falls through to the ``XrefEntry`` branch.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSDictionary,
     COSInteger,

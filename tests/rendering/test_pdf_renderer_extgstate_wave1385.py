@@ -15,8 +15,6 @@ field; the overprint / transfer / halftone entries remain deferred (no
 behavioural effect on the lite renderer's raster output).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.graphics.pd_line_dash_pattern import PDLineDashPattern

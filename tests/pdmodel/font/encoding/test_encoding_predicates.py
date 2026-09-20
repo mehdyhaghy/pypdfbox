@@ -11,8 +11,6 @@ Covers Wave 195 additions on the abstract base ``Encoding``:
 * ``get_glyph_names()`` — distinct glyph-name set.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.font.encoding import (
     BuiltInEncoding,

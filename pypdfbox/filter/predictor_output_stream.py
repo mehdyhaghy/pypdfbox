@@ -12,8 +12,6 @@ nested-class visibility model; users should treat this as an
 implementation detail of :class:`pypdfbox.filter.predictor.Predictor`.
 """
 
-from __future__ import annotations
-
 import contextlib
 import io
 import os

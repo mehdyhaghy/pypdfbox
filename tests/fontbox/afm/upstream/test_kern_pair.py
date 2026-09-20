@@ -4,8 +4,6 @@ Source:
 ``pdfbox/fontbox/src/test/java/org/apache/fontbox/afm/KernPairTest.java``
 (Apache PDFBox 3.0.x).
 """
-from __future__ import annotations
-
 from pypdfbox.fontbox.afm import KernPair
 
 

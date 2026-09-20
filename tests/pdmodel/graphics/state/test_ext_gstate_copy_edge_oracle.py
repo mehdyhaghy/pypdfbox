@@ -15,8 +15,6 @@ Modes:
   (``lineWidth=1``).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName

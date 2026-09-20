@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSBoolean, COSName
 from pypdfbox.pdmodel.interactive.action import PDActionURI
 

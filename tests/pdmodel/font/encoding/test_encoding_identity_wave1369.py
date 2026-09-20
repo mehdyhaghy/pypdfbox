@@ -7,8 +7,6 @@ predefined singletons must be reference-identity stable so callers can
 key dicts and sets on them.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName

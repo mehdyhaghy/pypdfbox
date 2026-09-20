@@ -9,8 +9,6 @@ The class is kept for API-surface parity; the PDF ``/JBIG2Decode`` filter path
 does not route through the SPI (it constructs :class:`JBIG2Document` directly).
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING
 

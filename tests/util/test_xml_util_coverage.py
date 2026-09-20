@@ -12,8 +12,6 @@ The defusedxml fallback (line 48) is unreachable on this dev machine
 file does not attempt to install it.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

@@ -18,8 +18,6 @@ These tests guard the four interesting cases:
 4. A clip stacked under ``q`` / ``Q`` resets to the outer clip after the
    restore, so a paint outside the inner box becomes visible again.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSName, COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.rendering import PDFRenderer

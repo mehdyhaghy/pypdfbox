@@ -4,8 +4,6 @@ Each test targets a narrow, previously uncovered branch so the module
 reaches 100% line coverage. Grouped by submodule for readability.
 """
 
-from __future__ import annotations
-
 import math
 from typing import Any
 

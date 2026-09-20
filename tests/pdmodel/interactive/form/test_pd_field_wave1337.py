@@ -5,8 +5,6 @@ Targets the abstract-method raise paths (``get_value_as_string``,
 branches (``/Ff`` mutation, ``/SetFf`` mutation, ``/ClrFf`` mutation).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSInteger, COSName

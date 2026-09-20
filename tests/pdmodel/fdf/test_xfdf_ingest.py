@@ -7,8 +7,6 @@ inline XFDF samples through :meth:`FDFDocument.set_xfdf` and
 helper (added in waves 1273 / 1278 / 1281) is correctly invoked.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.fdf import FDFDocument

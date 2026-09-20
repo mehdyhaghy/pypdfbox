@@ -15,8 +15,6 @@ cover the happy path; this file fills in:
 * Setters reset state cleanly.
 """
 
-from __future__ import annotations
-
 import struct
 
 from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream

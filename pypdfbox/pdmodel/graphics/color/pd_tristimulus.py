@@ -3,8 +3,6 @@
 Mirrors ``org.apache.pdfbox.pdmodel.graphics.color.PDTristimulus``.
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 
 from pypdfbox.cos import COSArray, COSBase, COSFloat, COSNumber

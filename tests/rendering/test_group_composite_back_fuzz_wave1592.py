@@ -20,8 +20,6 @@ Mirrors upstream ``org.apache.pdfbox.rendering.PageDrawer``'s
 a single object at the group's overall opacity + blend + soft mask).
 """
 
-from __future__ import annotations
-
 import pytest
 from PIL import Image
 

@@ -6,8 +6,6 @@ Upstream Java reference:
 
 The inner ``PageSizes`` enum is ported as a module-level enum.
 """
-from __future__ import annotations
-
 import argparse
 import enum
 import sys

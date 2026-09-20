@@ -8,8 +8,6 @@ Sibling wave-N test files exercise older surface; this file owns the
 ``get_name`` overrides added in wave 1257.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSName

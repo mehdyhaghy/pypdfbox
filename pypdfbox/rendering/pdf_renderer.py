@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import contextlib
 import io
 import logging
@@ -1560,13 +1558,13 @@ class PDFRenderer(PDFStreamEngine):
             # ``shouldSkipAnnotation``.
             try:
                 annotations = page.get_annotations(self._annotation_filter)
-            except Exception as exc:
+            except Exception as exc:  # defensive
                 _log.debug("annotation iteration failed: %s", exc)
                 annotations = []
             for annotation in annotations:
                 try:
                     self._render_annotation(annotation)
-                except Exception as exc:
+                except Exception as exc:  # log-and-continue
                     subtype = None
                     with contextlib.suppress(Exception):
                         subtype = annotation.get_subtype()
@@ -1596,7 +1594,7 @@ class PDFRenderer(PDFStreamEngine):
             return 0
         try:
             return _normalise_rotation(getter())
-        except Exception:
+        except Exception:  # hostile/odd page, fall back to 0
             return 0
 
     def _get_page_for_render(self, page_index: int) -> PDPage:
@@ -4208,7 +4206,7 @@ class PDFRenderer(PDFStreamEngine):
         CTM in force at the fill (PDF 32000-1 §8.7.3.1)."""
         try:
             matrix = tuple(pattern.get_matrix())
-        except Exception:
+        except Exception:  # defensive, missing /Matrix
             return _IDENTITY
         if len(matrix) != 6:
             return _IDENTITY
@@ -6448,7 +6446,7 @@ class PDFRenderer(PDFStreamEngine):
                 return True
             if destination in ("View", "Export") and annotation.is_no_view():
                 return True
-        except Exception:
+        except Exception:  # defensive: malformed flags
             return False
         # Unknown subtypes with the Invisible bit set are dropped per spec.
         if annotation.__class__.__name__ == "PDAnnotationUnknown":
@@ -6618,7 +6616,7 @@ class PDFRenderer(PDFStreamEngine):
         no_rotate = False
         try:
             no_rotate = bool(annotation.is_no_rotate())
-        except Exception:
+        except Exception:  # defensive accessor
             no_rotate = False
         if no_rotate and self._render_page_rotation:
             r_matrix = _no_rotate_matrix(
@@ -6743,7 +6741,7 @@ class PDFRenderer(PDFStreamEngine):
         if callable(helper):
             try:
                 return bool(helper())
-            except Exception:
+            except Exception:  # defensive
                 pass
         try:
             group = form.get_group()

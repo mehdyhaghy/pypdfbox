@@ -20,8 +20,6 @@ without a JDK. The companion ``tests/contentstream/oracle/`` suite re-runs the
 live comparison when an oracle JAR is present.
 """
 
-from __future__ import annotations
-
 import hashlib
 import zlib
 

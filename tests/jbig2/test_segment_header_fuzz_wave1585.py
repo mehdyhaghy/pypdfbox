@@ -24,8 +24,6 @@ conventions already established in ``test_segment_header.py`` /
 ``test_segment_header_wave1510.py``.
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

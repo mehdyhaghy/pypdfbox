@@ -1,7 +1,5 @@
 """Wave 1281: IOUtils factory helpers."""
 
-from __future__ import annotations
-
 import os
 import stat
 from pathlib import Path

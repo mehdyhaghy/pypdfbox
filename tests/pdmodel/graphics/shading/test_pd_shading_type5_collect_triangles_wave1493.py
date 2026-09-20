@@ -13,8 +13,6 @@ BitsPerComponent). ``/Decode`` is x,y in ``[0, 100]`` and three DeviceRGB
 components in ``[0, 1]``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream

@@ -8,8 +8,6 @@ Closes residual partial branches in
 * Context lacks ``show_form`` — the dispatch is skipped (branch 68 → 71).
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.contentstream import Operator, PDFStreamEngine
@@ -64,7 +62,7 @@ class _EngineWithoutShowTransparency(PDFStreamEngine):
         self._resources = resources
 
     def show_form(self, form: Any) -> None:  # type: ignore[override]
-        del form
+        del form  # recorded via spy
 
 
 _EngineWithoutShowTransparency.show_transparency_group = None  # type: ignore[assignment]

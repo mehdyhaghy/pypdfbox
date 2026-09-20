@@ -4,8 +4,6 @@ Ported from ``org.apache.pdfbox.debugger.flagbitspane.FieldFlag``. The bit
 tables depend on the value of /FT (Tx / Btn / Ch / generic).
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import COSDictionary, COSName

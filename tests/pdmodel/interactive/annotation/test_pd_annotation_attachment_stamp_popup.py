@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.common.filespecification import PDSimpleFileSpecification
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_file_attachment import (

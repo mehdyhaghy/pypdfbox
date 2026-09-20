@@ -9,8 +9,6 @@ surface defined in
 to keep behavior parity verifiable without those external fixtures.
 """
 
-from __future__ import annotations
-
 from io import BytesIO
 
 import pytest

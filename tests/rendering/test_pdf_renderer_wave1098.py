@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 import tests.rendering.test_pdf_renderer_font_fallback as font_fallback_tests

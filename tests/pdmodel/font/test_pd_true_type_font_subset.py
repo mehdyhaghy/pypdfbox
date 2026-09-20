@@ -8,8 +8,6 @@ the PostScript ``/BaseFont`` (plus mirrored ``/FontName``) gets the
 six-letter PDF subset tag prepended.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

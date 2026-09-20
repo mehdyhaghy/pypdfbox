@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 
 class DecryptionMaterial:
     """This class represents data required to decrypt PDF documents.

@@ -1,7 +1,5 @@
 """Tests for :class:`StreamPane`."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName, COSStream
 from pypdfbox.debugger.streampane.stream_pane import StreamPane
 
@@ -24,7 +22,7 @@ def test_content_stream_pane_builds_nice_and_raw_views(tk_root) -> None:
     pane = StreamPane(tk_root, _content_stream(), is_content_stream=True, is_thumb=False)
     pane.init()
     # Three tabs: Nice / Raw / Hex.
-    tabs = pane._notebook.tabs()
+    tabs = pane._notebook.tabs()  # internal accessor
     assert len(tabs) == 3
 
 

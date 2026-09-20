@@ -9,8 +9,6 @@ Covers:
   :class:`PDBorderEffectDictionary` returns from ``get_border_effect``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName

@@ -1,8 +1,6 @@
 """Tests for ``PDActionLaunch`` — PDF 32000-1 §12.6.4.5 Table 196 +
 WinLaunchParameters Table 197."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (
     PDComplexFileSpecification,

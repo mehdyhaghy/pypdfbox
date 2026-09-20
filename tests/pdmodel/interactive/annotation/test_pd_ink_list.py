@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat
 from pypdfbox.pdmodel.interactive.annotation.pd_ink_list import PDInkList
 from pypdfbox.pdmodel.interactive.annotation.pd_line_info import PDLineInfo

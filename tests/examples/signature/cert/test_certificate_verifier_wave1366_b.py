@@ -15,8 +15,6 @@ module fills the remaining edges:
   not self-signed but no trust anchors are supplied.
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 
 from cryptography import x509

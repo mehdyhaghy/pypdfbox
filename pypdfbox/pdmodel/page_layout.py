@@ -7,8 +7,6 @@ compare equal to their underlying string value, which keeps callers that
 still pass plain strings working without changes.
 """
 
-from __future__ import annotations
-
 from enum import StrEnum
 
 from pypdfbox.cos import COSName

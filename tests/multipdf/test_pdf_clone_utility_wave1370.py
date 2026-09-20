@@ -17,8 +17,6 @@ clone-utility suite doesn't already nail down:
 - ``clone_merge_cos_base`` is cycle-safe across two parallel cycles in
   source + target (Python-side ``seen_pairs`` guard).
 """
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

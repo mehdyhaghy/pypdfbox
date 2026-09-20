@@ -8,8 +8,6 @@ TIFF byte equivalence) — those belong to the rendering test suite
 (``tests/rendering/``) and are skipped here.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSName, COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.font import PDType1Font

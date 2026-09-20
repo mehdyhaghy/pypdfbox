@@ -7,8 +7,6 @@ license, not redistributable); synthetic coverage of the same code
 paths lives in ``tests/fontbox/ttf/gsub/test_gsub_worker_for_aalt.py``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 

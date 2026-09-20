@@ -6,8 +6,6 @@ xref gap detection. Library-first: certificate usage parsing comes from
 ``cryptography`` extensions (``KeyUsage`` + ``ExtendedKeyUsage``).
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING
 

@@ -8,8 +8,6 @@ operators into the page drawer so printing pipelines do not pay the
 transparency-group cost (PDFBOX-4123, PDFBOX-5605).
 """
 
-from __future__ import annotations
-
 from pypdfbox.examples.printing.opaque_draw_object import OpaqueDrawObject
 from pypdfbox.examples.printing.opaque_set_graphics_state_parameters import (
     OpaqueSetGraphicsStateParameters,

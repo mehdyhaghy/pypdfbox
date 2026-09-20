@@ -10,8 +10,6 @@ implementation, then hardened it to emit only characters that are legal in
 XML 1.0 (PDFBOX-6242).
 """
 
-from __future__ import annotations
-
 import logging
 
 _log = logging.getLogger(__name__)

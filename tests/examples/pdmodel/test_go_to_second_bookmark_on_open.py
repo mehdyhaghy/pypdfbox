@@ -5,8 +5,6 @@ covers the remaining branches (encryption guard, page-count guard,
 happy path with a real two-bookmark outline).
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

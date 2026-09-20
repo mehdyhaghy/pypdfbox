@@ -6,8 +6,6 @@ Translation rules per the project's "Test Porting Conventions": JUnit
 ``assert actual == expected``; ``assertNull(x)`` → ``assert x is None``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName

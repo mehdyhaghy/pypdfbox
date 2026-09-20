@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from .cos_parser import COSParser
@@ -125,7 +123,7 @@ class BruteForceParser(COSParser):
         return []
 
     @staticmethod
-    def compare_cos_objects(a, b) -> int:
+    def compare_cos_objects(a, b) -> int:  # match upstream signature
         """Compare two ``COSObject`` candidates by object number.
 
         Mirrors upstream ``compareCOSObjects`` (Java line ~810,
@@ -158,7 +156,7 @@ class BruteForceParser(COSParser):
         return {}
 
     @staticmethod
-    def is_catalog(dictionary) -> bool:
+    def is_catalog(dictionary) -> bool:  # match upstream signature
         """``True`` if ``dictionary`` is a PDF or FDF catalog.
 
         Mirrors upstream ``isCatalog`` (Java line 763-767, private):
@@ -176,7 +174,7 @@ class BruteForceParser(COSParser):
         )
 
     @staticmethod
-    def is_info(dictionary) -> bool:
+    def is_info(dictionary) -> bool:  # match upstream signature
         """``True`` if ``dictionary`` looks like a document info dictionary.
 
         Mirrors upstream ``isInfo`` (Java line ~509, private static).

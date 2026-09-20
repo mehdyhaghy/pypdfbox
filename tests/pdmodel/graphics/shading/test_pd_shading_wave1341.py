@@ -12,8 +12,6 @@ Targets the still-uncovered branches in the wave-1332 snapshot:
   so we exercise the base directly via ``PDShading.to_paint(instance)``.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSStream

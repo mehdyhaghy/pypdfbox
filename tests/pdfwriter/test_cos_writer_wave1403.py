@@ -12,8 +12,6 @@ gap, forcing ``_build_ranges`` to emit two ranges — which exercises the
 skip arm.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import COSObjectKey

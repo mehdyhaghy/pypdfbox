@@ -19,8 +19,6 @@ roughly six themes:
 Tests honour ``PYPDFBOX_SKIP_TK=1`` via the local ``tk_root`` fixture.
 """
 
-from __future__ import annotations
-
 import contextlib
 import os
 import tkinter as tk

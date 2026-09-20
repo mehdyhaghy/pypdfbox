@@ -34,8 +34,6 @@ Two surfaces are hammered:
      leniency rules.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream import Operator

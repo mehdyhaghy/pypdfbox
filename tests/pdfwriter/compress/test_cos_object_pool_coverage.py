@@ -5,8 +5,6 @@ the parity ``contains`` overload, and the ``set_key`` AttributeError swallow
 when the registered object isn't a real ``COSBase``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos.cos_array import COSArray
 from pypdfbox.cos.cos_dictionary import COSDictionary
 from pypdfbox.cos.cos_object import COSObject

@@ -9,8 +9,6 @@ Targets the residual exception arms that the existing test corpus skips:
   * :meth:`DocumentCreator.get_content_stream_document` broad-except path
     (lines 636-638) when the parser raises a non-OSError exception.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSStream
 
 # ---------- _content_stream_segments broad-except ----------

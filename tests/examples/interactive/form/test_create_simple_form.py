@@ -1,7 +1,5 @@
 """Smoke test for the :class:`CreateSimpleForm` example port."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.examples.interactive.form.create_simple_form import CreateSimpleForm

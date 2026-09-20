@@ -10,8 +10,6 @@ Closes residual partial branches in ``pypdfbox/pdfparser/base_parser.py``:
   not followed by another ``COSInteger`` (malformed indirect reference).
 """
 
-from __future__ import annotations
-
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser.base_parser import BaseParser
 

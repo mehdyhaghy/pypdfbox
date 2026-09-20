@@ -12,8 +12,6 @@ Targets the residual ``_same_kid`` / objectable-passthrough branches:
   equal to the bare target on either side.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSInteger, COSObject
 from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_marked_content_reference import (
     PDMarkedContentReference,

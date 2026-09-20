@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger
 from pypdfbox.pdmodel.interactive.digitalsignature.cos_filter_input_stream import (
     COSFilterInputStream,

@@ -9,8 +9,6 @@ Targets the three uncovered branches left by wave 1319/1332:
   outer ``try``/``except``.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.tools import extract_images

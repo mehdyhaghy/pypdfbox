@@ -25,8 +25,6 @@ These are plain value pins (no oracle required). The trailing
 ``@requires_oracle`` test re-derives the same report from the live jar.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import COSName

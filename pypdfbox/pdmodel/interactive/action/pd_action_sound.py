@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSBase, COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.interactive.sound.pd_sound_stream import PDSoundStream
 

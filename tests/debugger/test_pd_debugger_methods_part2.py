@@ -5,8 +5,6 @@ dispatchers, window-state updaters, and drag-drop stubs. Honours
 ``PYPDFBOX_SKIP_TK=1`` for headless CI shards.
 """
 
-from __future__ import annotations
-
 import contextlib
 import os
 import tkinter as tk

@@ -1,7 +1,5 @@
 """Wave 1275 — PDVariableText.get_default_appearance_string."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSString

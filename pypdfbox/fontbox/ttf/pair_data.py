@@ -7,8 +7,6 @@ that concrete subclasses (currently :class:`PairData0Format0`) can be
 plugged in without the consumer reaching into a nested private type.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 

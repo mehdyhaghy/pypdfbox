@@ -9,8 +9,6 @@ keystore loading, ``cryptography.hazmat.primitives.serialization.pkcs7``
 for detached PKCS#7 signing.
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 from io import BytesIO
 from typing import IO

@@ -25,8 +25,6 @@ Targets the residual partial branches reported by ``--cov-branch`` on
 The fixture pattern matches ``test_pd_debugger_wave1339.py``.
 """
 
-from __future__ import annotations
-
 import contextlib
 import os
 import tkinter as tk
@@ -145,7 +143,7 @@ def test_on_tree_open_skips_when_single_child_is_not_sentinel(
 ) -> None:
     """797->exit — when the only child has a real label / node, the
     sentinel-replacement guard is False and we just return."""
-    debugger._document = MagicMock()
+    debugger._document = MagicMock()  # guard at line 790
     tree = debugger._tree
     parent_iid = tree.insert("", "end", text="parent")
     # Single child with non-"..." text and a registered node, so the

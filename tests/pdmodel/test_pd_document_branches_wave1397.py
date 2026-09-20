@@ -13,8 +13,6 @@ acroform fixup loop run during page import:
   existing ``_import_field_counter``
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 

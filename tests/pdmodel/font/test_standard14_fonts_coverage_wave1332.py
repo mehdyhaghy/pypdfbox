@@ -11,8 +11,6 @@ unmapped-name / missing-resource / parse-failure branches, the
 the ``get_glyph_path`` ``mapped_font.has_glyph`` direct hit.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

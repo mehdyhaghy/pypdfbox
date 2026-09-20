@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from enum import Enum
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName

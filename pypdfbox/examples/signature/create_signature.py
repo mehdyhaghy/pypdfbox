@@ -1,7 +1,5 @@
 """Port of ``CreateSignature`` (upstream 1-227)."""
 
-from __future__ import annotations
-
 import datetime as _dt
 from pathlib import Path
 from typing import IO

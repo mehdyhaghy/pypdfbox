@@ -1,7 +1,5 @@
 """Tests for :class:`FieldFlag`."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSInteger, COSName

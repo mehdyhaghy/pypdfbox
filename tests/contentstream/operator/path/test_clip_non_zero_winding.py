@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.contentstream.operator import Operator
 from pypdfbox.contentstream.operator.path import ClipNonZeroWinding
 from pypdfbox.contentstream.operator.path.clip_non_zero_winding import (

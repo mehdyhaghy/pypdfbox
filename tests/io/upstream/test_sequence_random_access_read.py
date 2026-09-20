@@ -10,8 +10,6 @@ EOF, empty-stream filtering, and the PDFBOX-5981 regression that probed
 ``RandomAccessInputStream`` over a many-segment sequence.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.io.random_access_input_stream import RandomAccessInputStream

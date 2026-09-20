@@ -18,8 +18,6 @@ asserted directly against the Java source of ``COSWriter.doWriteXRefInc`` /
 ``PDFXRefStream`` at 3.0.8.
 """
 
-from __future__ import annotations
-
 import io
 import re
 import zlib

@@ -1,7 +1,5 @@
 """Tests for :class:`ColorBarCellRenderer`."""
 
-from __future__ import annotations
-
 import tkinter as tk
 
 from pypdfbox.debugger.colorpane.color_bar_cell_renderer import (

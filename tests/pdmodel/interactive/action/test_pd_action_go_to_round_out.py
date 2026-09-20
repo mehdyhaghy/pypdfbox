@@ -6,8 +6,6 @@ and removal-via-``None`` paths in addition to the ``PDDestination``
 typed setter.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString
 from pypdfbox.pdmodel.interactive.action import PDActionGoTo
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (

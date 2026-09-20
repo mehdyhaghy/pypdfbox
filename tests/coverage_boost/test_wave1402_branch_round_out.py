@@ -42,8 +42,6 @@ Closes single-partial False-branch arrows across many modules:
 * ``pypdfbox/tools/imageio/jpeg_util.py 36->exit``
 """
 
-from __future__ import annotations
-
 import contextlib
 from typing import Any
 

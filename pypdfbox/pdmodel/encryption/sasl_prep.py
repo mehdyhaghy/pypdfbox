@@ -8,8 +8,6 @@ classification helpers and NFKC normalisation step (via Python's
 :mod:`unicodedata` stdlib module).
 """
 
-from __future__ import annotations
-
 import unicodedata
 
 

@@ -32,8 +32,6 @@ These tests guard the post-fallback coverage floor (must remain at
 integration path.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.encoding.symbol_encoding import SymbolEncoding

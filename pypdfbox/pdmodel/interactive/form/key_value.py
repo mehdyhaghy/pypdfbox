@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 
 class KeyValue:
     """A basic key/value pair. Mirrors

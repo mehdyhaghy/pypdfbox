@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Iterable, Iterator
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSObject

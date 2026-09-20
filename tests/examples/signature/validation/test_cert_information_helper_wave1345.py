@@ -11,8 +11,6 @@ Targets the remaining uncovered branches:
   (line 90).
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 
 import pytest

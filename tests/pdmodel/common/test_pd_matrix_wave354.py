@@ -1,7 +1,5 @@
 """Wave 354 robustness tests for :class:`pypdfbox.pdmodel.common.PDMatrix`."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.common import PDMatrix

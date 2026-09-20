@@ -5,8 +5,6 @@ class. We cover the :class:`FontInfo` accessors and the lazy ``get_font``
 loader's null-on-error contract.
 """
 
-from __future__ import annotations
-
 import pathlib
 from typing import Any
 

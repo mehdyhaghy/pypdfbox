@@ -12,8 +12,6 @@ its written value, which is a strict superset of what the upstream
 non-fatal warning covers.
 """
 
-from __future__ import annotations
-
 import pathlib
 
 import pytest

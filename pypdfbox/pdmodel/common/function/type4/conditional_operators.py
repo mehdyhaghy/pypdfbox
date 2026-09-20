@@ -20,8 +20,6 @@ the upstream type). Anything else raises :class:`TypeError` (Python's
 equivalent of upstream ``ClassCastException``).
 """
 
-from __future__ import annotations
-
 # Import ``Operator`` and ``ExecutionContext`` directly from leaf modules
 # rather than the package root — same rationale as
 # :mod:`bitwise_operators` (some sibling modules land in parallel waves).

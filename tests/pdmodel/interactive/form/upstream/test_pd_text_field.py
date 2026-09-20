@@ -2,8 +2,6 @@
 
 Source: ``pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/PDTextFieldTest.java``
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSName

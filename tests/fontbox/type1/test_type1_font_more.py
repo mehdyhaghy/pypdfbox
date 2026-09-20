@@ -9,8 +9,6 @@ dict and inject it via ``_t1`` so we exercise the accessor surface
 without depending on a binary fixture.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.fontbox.type1.type1_font import Type1Font

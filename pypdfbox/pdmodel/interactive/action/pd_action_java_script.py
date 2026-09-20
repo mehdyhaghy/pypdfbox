@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName, COSStream, COSString
 
 from .pd_action import PDAction

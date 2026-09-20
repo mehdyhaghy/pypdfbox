@@ -12,8 +12,6 @@ Also verifies:
 * A return value from a visitor is propagated through ``accept``.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import (

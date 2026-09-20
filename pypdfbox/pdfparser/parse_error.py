@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 
 class PDFParseError(ValueError):
     """Raised by parsers when malformed PDF input is encountered.

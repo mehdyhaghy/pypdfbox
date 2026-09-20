@@ -1,7 +1,5 @@
 """Tests for :class:`SubstitutingCmapLookup`."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.fontbox.ttf.cmap_lookup import CmapLookup

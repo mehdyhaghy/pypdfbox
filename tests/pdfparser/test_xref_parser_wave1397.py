@@ -19,8 +19,6 @@ return value is what the stub returned (so the ``return self._parser.X``
 line is fully exercised).
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import COSObjectKey

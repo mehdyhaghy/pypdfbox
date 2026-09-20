@@ -6,8 +6,6 @@ the output is genuinely encrypted, the supplied permissions land on
 ``/Encrypt /P``, and ``-keyLength`` plumbs through to the protection
 policy.
 """
-from __future__ import annotations
-
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Protocol

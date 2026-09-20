@@ -3,8 +3,6 @@
 Mirrors ``org.apache.pdfbox.pdmodel.graphics.color.PDCIEDictionaryBasedColorSpace``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 
 from .pd_cie_based_color_space import PDCIEBasedColorSpace

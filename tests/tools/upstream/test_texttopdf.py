@@ -13,8 +13,6 @@ If upstream ever adds a dedicated ``TextToPDFTest.java``, port the
 JUnit cases here using the project's "Test Porting
 Conventions" matrix.
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.pdmodel import PDDocument

@@ -12,8 +12,6 @@ Closes False-branch arrows:
   inside the get_indirect_object_keys / reset_object_keys recursion
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

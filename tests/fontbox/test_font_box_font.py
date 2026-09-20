@@ -5,8 +5,6 @@ Covers :class:`pypdfbox.fontbox.FontBoxFont` and
 upstream interfaces.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox import EncodedFont, FontBoxFont
 
 # ---------- FontBoxFont protocol ------------------------------------------

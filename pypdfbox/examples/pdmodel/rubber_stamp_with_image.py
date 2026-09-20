@@ -11,8 +11,6 @@ path that drives :meth:`do_it_bytes` against a Pillow-generated PNG instead
 of staging an on-disk fixture.
 """
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 

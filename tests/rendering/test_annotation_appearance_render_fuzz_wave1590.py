@@ -36,8 +36,6 @@ appearance objects and its path / clip / content-walk methods are
 stubbed so each invocation records only the composed ``self._gs.ctm``.
 """
 
-from __future__ import annotations
-
 import math
 from typing import Any
 

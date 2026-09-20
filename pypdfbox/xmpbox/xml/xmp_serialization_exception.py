@@ -9,8 +9,6 @@ message-plus-cause constructor. The Python mirror subclasses the built-in
 exception's ``__cause__`` so ``raise ... from cause`` semantics are preserved.
 """
 
-from __future__ import annotations
-
 
 class XmpSerializationException(Exception):
     """Raised when XMP serialization fails."""

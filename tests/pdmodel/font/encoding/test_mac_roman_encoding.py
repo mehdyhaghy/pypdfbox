@@ -1,7 +1,5 @@
 """Hand-written tests for the pdmodel ``MacRomanEncoding`` wrapper."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.font.encoding import Encoding, MacRomanEncoding
 

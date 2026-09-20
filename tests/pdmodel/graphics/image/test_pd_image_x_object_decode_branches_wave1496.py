@@ -19,8 +19,6 @@ Pins still-uncovered deterministic decode paths:
 Each test asserts an observable pixel/return contract, not bare execution.
 """
 
-from __future__ import annotations
-
 import struct
 
 from PIL import Image

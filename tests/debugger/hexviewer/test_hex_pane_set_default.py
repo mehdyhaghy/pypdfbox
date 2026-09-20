@@ -1,7 +1,5 @@
 """Tests for ``HexPane.set_default`` (mirrors upstream ``setDefault``)."""
 
-from __future__ import annotations
-
 import tkinter as tk
 
 from pypdfbox.debugger.hexviewer.hex_model import HexModel

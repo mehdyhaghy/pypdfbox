@@ -13,8 +13,6 @@ opaque paints the two are visually equivalent at the painted region but
 the structural code paths still differ.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSBoolean, COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.graphics.form.pd_form_x_object import PDFormXObject

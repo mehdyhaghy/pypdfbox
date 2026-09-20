@@ -15,8 +15,6 @@ Array ``[/X 5 R]``: parsing ``R`` yields a ``COSObject`` placeholder while
 966 is False (966->979).
 """
 
-from __future__ import annotations
-
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser.base_parser import BaseParser
 

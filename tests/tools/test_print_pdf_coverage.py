@@ -13,8 +13,6 @@ Targets the branches not exercised by the primary test file:
 * :meth:`PrintPDF.call` — permission-denied probe, Windows
   ``startfile`` OSError, ``TUMBLE`` duplex, ``media_size`` flag.
 """
-from __future__ import annotations
-
 import subprocess
 import sys
 from pathlib import Path

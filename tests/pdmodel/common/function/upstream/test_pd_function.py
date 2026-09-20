@@ -15,8 +15,6 @@ contract that ``PDFunction.create()`` documents:
   - the static ``interpolate`` helper (PDF 32000-1 §7.10.2),
   - the abstract ``toString()`` contract.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSObject, COSStream

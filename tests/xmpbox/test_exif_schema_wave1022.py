@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.xmpbox import test_exif_schema_wave390 as wave390
 
 

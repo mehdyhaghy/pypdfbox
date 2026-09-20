@@ -17,8 +17,6 @@ operand storage and a ``with_operands`` factory) is exercised
 separately by ``tests/contentstream/test_operator.py``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSInteger, COSName

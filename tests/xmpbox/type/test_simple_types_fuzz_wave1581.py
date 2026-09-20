@@ -10,8 +10,6 @@ Python port reproduces them byte-for-byte (lower-case ``inf``/``nan`` rejected,
 ``Infinity``/``NaN``/``1.5f``/hex-float accepted, int32 bounds enforced, etc.).
 """
 
-from __future__ import annotations
-
 from datetime import UTC, date, datetime, timedelta, timezone
 
 import pytest

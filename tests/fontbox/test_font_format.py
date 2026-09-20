@@ -6,8 +6,6 @@ identity comparable, ``str`` formatting that matches Java's enum
 ``toString()`` output.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.font_format import FontFormat
 
 
@@ -24,7 +22,7 @@ def test_str_returns_member_name_for_each() -> None:
 
 
 def test_identity_comparison_works() -> None:
-    assert FontFormat.TTF is FontFormat.TTF
+    assert FontFormat.TTF is FontFormat.TTF  # identity check
     assert FontFormat.OTF is not FontFormat.TTF
 
 

@@ -7,8 +7,6 @@ Wave 41 covers:
 - /RoleMap read+normalize standard names; resolve_role_map helper
 - /ParentTree build from /MCID-keyed objects in pages
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
     PDAttributeObject,

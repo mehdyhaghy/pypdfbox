@@ -4,8 +4,6 @@ Predefined CMap loader/cache parity with upstream
 ``org.apache.pdfbox.pdmodel.font.CMapManager``.
 """
 
-from __future__ import annotations
-
 from io import BytesIO
 
 import pytest

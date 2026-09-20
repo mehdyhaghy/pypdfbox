@@ -11,8 +11,6 @@ Format) and verified line-for-line against PDFBox 3.0.x
 ``Type2CharStringParser.java`` / ``Type2CharString.java``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.char_string_command import CharStringCommand

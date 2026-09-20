@@ -15,8 +15,6 @@ NOTE: post-EOD libtiff byte-padding differs between POSIX and Windows
 wheels — we never assert on bytes past the declared row*rows footprint.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

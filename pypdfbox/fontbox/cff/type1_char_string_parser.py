@@ -13,8 +13,6 @@ spec section 6.2 plus the ``callsubr`` / ``callothersubr`` unrolling
 that upstream's parser performs before calling the renderer).
 """
 
-from __future__ import annotations
-
 import logging
 from collections.abc import Sequence
 from typing import Any

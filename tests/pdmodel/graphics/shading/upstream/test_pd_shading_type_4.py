@@ -8,8 +8,6 @@ defer mesh rendering to the rendering cluster — assertions here pin the
 documented fallback contracts.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSFloat, COSStream

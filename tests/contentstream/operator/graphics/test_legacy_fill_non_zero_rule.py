@@ -4,8 +4,6 @@ The legacy ``F`` operator is the pre-PDF 1.2 alias for ``f``. Upstream
 subclasses :class:`FillNonZeroRule` and only overrides the operator name.
 """
 
-from __future__ import annotations
-
 from pypdfbox.contentstream import Operator, PDFStreamEngine
 from pypdfbox.contentstream.operator.graphics.fill_non_zero_rule import (
     FillNonZeroRule,

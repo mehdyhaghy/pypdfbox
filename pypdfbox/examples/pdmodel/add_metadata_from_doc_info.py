@@ -16,8 +16,6 @@ side fully), but serialise the resulting metadata via a small inline DOM
 template that walks the same field set the upstream serializer would emit.
 """
 
-from __future__ import annotations
-
 import sys
 from datetime import datetime
 from pathlib import Path

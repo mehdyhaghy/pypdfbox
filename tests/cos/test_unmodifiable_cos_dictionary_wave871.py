@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from tests.cos.upstream import test_unmodifiable_cos_dictionary as upstream

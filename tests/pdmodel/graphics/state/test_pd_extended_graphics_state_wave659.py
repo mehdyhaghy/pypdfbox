@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName
 from pypdfbox.pdmodel.graphics.state import PDExtendedGraphicsState
 

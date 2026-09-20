@@ -17,8 +17,6 @@ Skipped from upstream:
     isn't reachable from here.
 """
 
-from __future__ import annotations
-
 import io
 import random
 

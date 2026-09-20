@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSInteger, COSName
 from tests.multipdf import test_pdf_merger_utility_wave605 as wave605
 

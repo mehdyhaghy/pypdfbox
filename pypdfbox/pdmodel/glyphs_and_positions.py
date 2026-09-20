@@ -12,8 +12,6 @@ adjustments, then hands it to
 which renders it as a ``TJ`` array.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 __all__ = ["GlyphsAndPositions"]

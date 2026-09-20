@@ -4,8 +4,6 @@ Mirrors ``org.apache.pdfbox.rendering.TilingPaintFactory`` plus its
 package-private inner ``TilingPaintParameter`` key.
 """
 
-from __future__ import annotations
-
 import logging
 import weakref
 from typing import TYPE_CHECKING, Any

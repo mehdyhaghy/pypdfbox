@@ -9,8 +9,6 @@ random override, version-number computation, COSBase decrypt dispatch,
 RC4 / AES-256 byte helpers, AES IV preparation).
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

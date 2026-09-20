@@ -8,8 +8,6 @@ Upstream uses Java getter methods (``getCode`` / ``getName`` /
 properties so the value reads naturally in Python (``mapping.code``).
 """
 
-from __future__ import annotations
-
 from collections.abc import Iterator
 from typing import Any
 

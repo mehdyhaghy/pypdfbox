@@ -4,8 +4,6 @@ Also includes the ported upstream JUnit test from
 ``GlyfCompositeDescriptTest.java`` (PDFBox 3.0.x).
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

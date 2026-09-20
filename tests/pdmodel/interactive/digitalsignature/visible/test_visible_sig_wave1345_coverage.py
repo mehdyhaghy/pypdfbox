@@ -18,8 +18,6 @@ returns a sentinel ``io.BytesIO`` without driving the real
 fully-formed :class:`PDDocument` to operate on.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

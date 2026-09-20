@@ -15,8 +15,6 @@ covered by ``tests/pdmodel/encryption/test_pd_encryption.py`` and the
   document so it round-trips unencrypted.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest
@@ -163,7 +161,7 @@ def test_is_encrypted_after_parsing_encrypted_pdf() -> None:
     try:
         assert cos_doc.is_encrypted() is True
         with PDDocument(cos_doc) as pd:
-            pd._owns_document = False
+            pd._owns_document = False  # keep cos alive
             assert pd.is_encrypted() is True
     finally:
         cos_doc.close()

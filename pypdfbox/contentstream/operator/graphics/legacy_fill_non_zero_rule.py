@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .. import OperatorName
 from .fill_non_zero_rule import FillNonZeroRule
 

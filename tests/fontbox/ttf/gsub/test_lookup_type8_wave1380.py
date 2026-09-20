@@ -34,8 +34,6 @@ Tests cover:
   ``(input,) -> output``) — matches the Type 5 / Type 6 contract.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub import (
     LookupTypeReverseChainedContextualSubstitutionFormat1,
 )

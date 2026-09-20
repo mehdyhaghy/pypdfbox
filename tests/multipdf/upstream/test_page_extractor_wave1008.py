@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.multipdf.upstream.test_page_extractor import _close_doc
 
 

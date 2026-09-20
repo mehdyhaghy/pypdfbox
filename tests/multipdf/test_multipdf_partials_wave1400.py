@@ -62,8 +62,6 @@ Closed partials:
   ``sp`` stays ``-1`` and the clone is skipped.
 """
 
-from __future__ import annotations
-
 import logging
 
 import pytest

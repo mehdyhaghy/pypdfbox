@@ -6,8 +6,6 @@ hosts both the existing functional handlers (``SetStrokingColor``,
 (``SetColor``, ``SetStrokingDeviceCMYKColor``, etc.).
 """
 
-from __future__ import annotations
-
 from .set_color import SetColor
 from .set_non_stroking_color import SetNonStrokingColor
 from .set_non_stroking_color_n import SetNonStrokingColorN

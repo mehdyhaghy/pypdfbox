@@ -18,8 +18,6 @@ in some appearance token, but skip the strict token-equality assertion
 against Acrobat's pre-existing fields.
 """
 
-from __future__ import annotations
-
 import pathlib
 
 import pytest

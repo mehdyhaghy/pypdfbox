@@ -1,6 +1,4 @@
 """Tests for ``pypdfbox.examples.ant.pdf_to_text_task``."""
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.examples.ant.pdf_to_text_task import PDFToTextTask

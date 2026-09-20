@@ -22,8 +22,6 @@ No single upstream JUnit class covers ``PDStream``/``COSStream`` directly
 upstream method semantics described in ``PDStream.java`` / ``COSStream.java``.
 """
 
-from __future__ import annotations
-
 import io
 import zlib
 

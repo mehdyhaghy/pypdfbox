@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import struct
 
 from pypdfbox.fontbox.ttf.os2_windows_metrics_table import OS2WindowsMetricsTable

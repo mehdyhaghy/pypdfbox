@@ -9,8 +9,6 @@ hierarchy (``getPartProperty().getStringValue()`` round-trips) is
 exercised through pypdfbox's flatter property store, since the typed
 field hierarchy is not yet ported in cluster #1 of xmpbox.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import (

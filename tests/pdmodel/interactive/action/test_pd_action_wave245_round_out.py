@@ -4,8 +4,6 @@
 :class:`PDActionEmbeddedGoTo` (``set_open_in_new_window(None)`` removing
 ``/NewWindow`` to mirror upstream ``setOpenInNewWindow(null)``)."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.interactive.action.open_mode import OpenMode
 from pypdfbox.pdmodel.interactive.action.pd_action_embedded_go_to import (

@@ -9,8 +9,6 @@ Targets the small islands of uncovered branches left after waves 1246–
 invalid-bpc guard, and the ``_clamp`` extremes.
 """
 
-from __future__ import annotations
-
 import io
 import struct
 import zlib

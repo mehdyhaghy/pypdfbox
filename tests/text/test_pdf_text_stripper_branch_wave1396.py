@@ -9,8 +9,6 @@ arms (mistyped or missing operands) hit ``757->exit``, ``778->exit``,
 directly with bad operands and assert the state was *not* mutated.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSInteger, COSName, COSString
 from pypdfbox.text.pdf_text_stripper import PDFTextStripper, _TextState
 

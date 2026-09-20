@@ -20,8 +20,6 @@ Closes False-branch arrows in
   ``create_fs`` returns ``None`` for an entry
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSNull
 from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (
     PDNamedDestination,

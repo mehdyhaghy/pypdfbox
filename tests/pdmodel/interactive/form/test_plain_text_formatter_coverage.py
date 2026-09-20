@@ -8,8 +8,6 @@ stream that just records the calls. The formatter only consumes
 fakes can be tiny.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.pdmodel.interactive.form.appearance_style import AppearanceStyle

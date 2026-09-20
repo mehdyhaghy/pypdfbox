@@ -20,8 +20,6 @@ COSParser.java``). Key upstream invariants exercised here:
     is tolerated in lenient mode.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 import pytest

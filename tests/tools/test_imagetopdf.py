@@ -1,6 +1,4 @@
 """Tests for ``pypdfbox imagetopdf`` and the ``images_to_pdf`` helper."""
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

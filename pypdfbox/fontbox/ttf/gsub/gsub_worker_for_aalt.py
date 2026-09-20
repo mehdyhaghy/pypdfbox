@@ -9,8 +9,6 @@ Access-All-Alternates shaping can ask the factory for it rather than
 hand-rolling the loop themselves.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING
 

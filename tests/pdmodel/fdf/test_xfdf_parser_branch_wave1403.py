@@ -10,8 +10,6 @@ Closes the False-branch arrow in
   the unknown element is simply ignored.
 """
 
-from __future__ import annotations
-
 from xml.dom.minidom import parseString
 
 from pypdfbox.pdmodel.fdf.fdf_dictionary import FDFDictionary

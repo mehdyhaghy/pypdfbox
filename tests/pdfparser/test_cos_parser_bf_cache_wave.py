@@ -10,8 +10,6 @@ fresh, un-cached scan, and repeated probes for a missing key do not re-read
 the source.
 """
 
-from __future__ import annotations
-
 import pathlib
 
 from pypdfbox.cos import COSDocument, COSName, COSObjectKey

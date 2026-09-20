@@ -4,8 +4,6 @@ These fixtures build a self-signed RSA certificate + matching PKCS#12
 keystore entirely in-memory so the suite never depends on a real CA.
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 
 import pytest

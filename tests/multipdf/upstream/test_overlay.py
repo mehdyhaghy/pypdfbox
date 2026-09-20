@@ -13,8 +13,6 @@ catches every behavioural regression the upstream test cares about
 that doesn't depend on per-pixel rasterisation parity.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

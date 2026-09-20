@@ -4,8 +4,6 @@ Filter encode/decode integration on ``COSStream`` — exercises the
 and ``create_input_stream()``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSName, COSStream

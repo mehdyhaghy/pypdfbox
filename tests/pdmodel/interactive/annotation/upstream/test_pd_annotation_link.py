@@ -9,8 +9,6 @@ stack). The asserts below pin the public-API behaviours documented on
 surfaces immediately.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.action import PDActionURI
 from pypdfbox.pdmodel.interactive.annotation import (

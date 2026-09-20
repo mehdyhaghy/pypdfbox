@@ -4,8 +4,6 @@ Upstream Java reference:
     pdfbox/tools/src/main/java/org/apache/pdfbox/tools/WriteDecodedDoc.java
     (lines 46-178)
 """
-from __future__ import annotations
-
 import argparse
 import contextlib
 import sys

@@ -10,8 +10,6 @@ Targets the three previously uncovered branches:
   (returns an empty ``RandomAccessReadBuffer``).
 """
 
-from __future__ import annotations
-
 from io import BytesIO
 
 from pypdfbox.cos import COSStream

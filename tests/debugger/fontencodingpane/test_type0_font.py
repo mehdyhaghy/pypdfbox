@@ -1,7 +1,5 @@
 """Tests for the :class:`Type0Font` encoding pane."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.debugger.fontencodingpane.type0_font import Type0Font
 from pypdfbox.pdmodel.font import PDType0Font

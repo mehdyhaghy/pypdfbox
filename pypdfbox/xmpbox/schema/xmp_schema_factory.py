@@ -4,8 +4,7 @@ Mirrors ``org.apache.xmpbox.schema.XMPSchemaFactory`` (PDFBox 3.0,
 ``xmpbox/src/main/java/org/apache/xmpbox/schema/XMPSchemaFactory.java``).
 """
 
-from __future__ import annotations
-
+import annotationlib
 import inspect
 from typing import TYPE_CHECKING
 
@@ -47,7 +46,15 @@ class XMPSchemaFactory:
     ) -> XMPSchema:
         """Construct the schema instance and attach it to ``metadata``."""
         try:
-            sig = inspect.signature(self._schema_class.__init__)
+            # FORWARDREF, not the default: under PEP 649 (Python 3.14) reading a
+            # signature evaluates the callable's annotations, and every XMPSchema
+            # subclass annotates __init__ with names imported only under
+            # TYPE_CHECKING. The default format would raise NameError here; we
+            # only count parameters, so unresolved names are fine left unresolved.
+            sig = inspect.signature(
+                self._schema_class.__init__,
+                annotation_format=annotationlib.Format.FORWARDREF,
+            )
             params = [p for p in sig.parameters.values() if p.name != "self"]
             args: list = [metadata]
             if self._schema_class is XMPSchema:

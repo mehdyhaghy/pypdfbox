@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import tests.cos.upstream.test_cos_string as upstream_cos_string
 
 

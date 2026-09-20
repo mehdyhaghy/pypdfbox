@@ -1,7 +1,5 @@
 """Wave 1275 — explicit ``to_string()`` parity for PDPanoseClassification."""
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.font.pd_font_descriptor import PDPanoseClassification
 
 

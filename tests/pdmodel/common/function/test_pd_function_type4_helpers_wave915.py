@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from tests.pdmodel.common.function import test_pd_function_type4 as type4_mod

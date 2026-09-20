@@ -17,8 +17,6 @@ strategy. These tests pin down the corner cases:
 - :meth:`set_ignore_acro_form_errors` swallows any per-field error
   without aborting the whole merge.
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.cos import (

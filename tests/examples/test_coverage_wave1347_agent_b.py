@@ -18,8 +18,6 @@ Covers the residual missing branches in seven targets:
   ``overlayer.close()`` + the ``__main__`` block.
 """
 
-from __future__ import annotations
-
 import hashlib
 import io
 import runpy
@@ -63,7 +61,7 @@ def test_create_multi_widgets_form_set_widgets_fallback(
 
     original = pd_terminal_field.PDTerminalField.set_widgets
 
-    def _raises(self, widgets):
+    def _raises(self, widgets):  # pytest monkeypatch
         raise RuntimeError("simulated upstream gap")
 
     monkeypatch.setattr(

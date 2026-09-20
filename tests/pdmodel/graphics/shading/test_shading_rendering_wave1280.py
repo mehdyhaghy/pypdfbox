@@ -10,8 +10,6 @@ Covers the new low-level rasterisation primitives:
   patch/Gouraud intermediates.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

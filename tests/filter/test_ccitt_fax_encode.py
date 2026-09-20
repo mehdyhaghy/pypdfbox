@@ -5,8 +5,6 @@ libtiff Group 3/4 codecs and extracts the encoded strip. Each test
 encodes a small bitmap, then round-trips through ``decode()`` to
 confirm the output reproduces the input byte-for-byte.
 """
-from __future__ import annotations
-
 import io
 
 import pytest

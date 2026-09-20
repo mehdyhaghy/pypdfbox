@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import enum
 import logging
 import os
@@ -795,7 +793,7 @@ class PDFMergerUtility:
                     if owns:
                         try:
                             source_doc.close()
-                        except Exception:
+                        except Exception:  # best-effort close
                             _LOG.exception("error closing source PDDocument")
                         else:
                             # Only release ownership on a clean close so
@@ -903,7 +901,7 @@ class PDFMergerUtility:
             src_version = float(source.get_version())
             if dest_version < src_version:
                 destination.set_version(src_version)
-        except Exception:
+        except Exception:  # version lookup may fail on minimal docs
             _LOG.debug("PDF version bump skipped", exc_info=True)
 
         dest_catalog = destination.get_document_catalog()

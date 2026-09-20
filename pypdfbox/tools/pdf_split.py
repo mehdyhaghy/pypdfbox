@@ -7,8 +7,6 @@ A picocli ``Callable<Integer>`` that wraps ``Splitter``. Splits a PDF
 into N-page chunks (or a single-page-per-file default) and writes the
 output files with the configured prefix.
 """
-from __future__ import annotations
-
 import argparse
 import contextlib
 from pathlib import Path

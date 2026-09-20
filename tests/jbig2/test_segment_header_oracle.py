@@ -5,8 +5,6 @@ a crafted segment-header stream and asserts pypdfbox parses the identical fields
 for every header. Skipped automatically when the oracle jar / JDK is absent.
 """
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.io.image_input_stream import ImageInputStream
 from pypdfbox.jbig2.io.sub_input_stream import SubInputStream
 from pypdfbox.jbig2.segment_header import SEQUENTIAL, SegmentHeader

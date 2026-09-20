@@ -7,8 +7,6 @@ inverts ``encode``s applied in reverse, the canonical PDF use case being
 left-to-right application semantics).
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

@@ -16,8 +16,6 @@ exercised by the existing parity / aliases test files:
 - ``find_destination_page`` resolves through a ``/A`` ``GoTo`` action's
   destination when ``/Dest`` is absent (upstream fallback path).
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName

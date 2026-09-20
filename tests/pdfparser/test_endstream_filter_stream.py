@@ -7,8 +7,6 @@ stream body would have once a spurious final CR LF / LF is stripped
 exercise edge cases that aren't covered by the upstream JUnit suite.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdfparser import EndstreamFilterStream
 
 

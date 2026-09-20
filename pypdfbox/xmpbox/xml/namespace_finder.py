@@ -6,8 +6,6 @@ Mirrors the inner class ``DomXmpParser.NamespaceFinder`` (PDFBox 3.0,
 host it as a sibling module so it can be unit-tested in isolation.
 """
 
-from __future__ import annotations
-
 from collections import deque
 from xml.dom.minidom import Element
 

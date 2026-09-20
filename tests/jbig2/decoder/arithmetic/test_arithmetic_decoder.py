@@ -11,8 +11,6 @@ and ``seek`` — matching ``MemoryCacheImageInputStream`` semantics verified
 against the JDK.
 """
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.decoder.arithmetic.arithmetic_decoder import QE, ArithmeticDecoder
 from pypdfbox.jbig2.decoder.arithmetic.arithmetic_integer_decoder import (
     LONG_MAX_VALUE,

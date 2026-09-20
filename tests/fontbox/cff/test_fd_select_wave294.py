@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.fontbox.cff.fd_select import FDSelect, Format0FDSelect, Format3FDSelect

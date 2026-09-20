@@ -6,8 +6,6 @@ so downstream tooling that mirrors PDFBox call sites doesn't blow up on
 ``test_pdf_renderer.py`` — these tests intentionally stay shallow.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.rendering import PDFRenderer

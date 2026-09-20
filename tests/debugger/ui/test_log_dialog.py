@@ -1,7 +1,5 @@
 """Hand-written tests for ``pypdfbox.debugger.ui.LogDialog``."""
 
-from __future__ import annotations
-
 import tkinter as tk
 from collections.abc import Iterator
 

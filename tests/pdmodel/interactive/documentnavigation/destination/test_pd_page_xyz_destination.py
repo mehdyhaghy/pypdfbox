@@ -6,8 +6,6 @@ mirror upstream's ``-1`` "use current viewer value" semantics from
 ``org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageXYZDestination``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName, COSNull
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDPageDestination,

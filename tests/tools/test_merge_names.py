@@ -1,6 +1,4 @@
 """Catalog /Names reconciliation tests for ``pypdfbox merge``."""
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString

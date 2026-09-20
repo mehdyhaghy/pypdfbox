@@ -7,8 +7,6 @@ These cover the snake_case method surface that mirrors PDFBox's
 (raw AFM numerics) and the per-font class constants.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.font.afm_loader import AfmMetrics

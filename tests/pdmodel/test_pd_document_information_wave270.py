@@ -6,8 +6,6 @@ predicate. The existing wave tests already cover the standard /Title …
 remaining cold gaps without duplicating that ground.
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 
 from pypdfbox.cos import COSName

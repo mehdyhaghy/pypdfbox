@@ -10,8 +10,6 @@ classes, so they live alongside the hand-written tests rather than under
 ``upstream/``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.documentinterchange.taggedpdf import (
     PDExportFormatAttributeObject,

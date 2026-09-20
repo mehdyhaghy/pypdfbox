@@ -7,8 +7,6 @@ covered in Wave 193: ``get_unique_id``, ``get_stroke_width``,
 ``is_force_bold``, ``get_language_group``, ``get_len_iv``).
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.fontbox.type1.type1_font import Type1Font

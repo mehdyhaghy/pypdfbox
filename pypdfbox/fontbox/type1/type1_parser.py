@@ -29,8 +29,6 @@ delegates to fontTools); it only recovers the raw byte payload so the
 Type1Font accessors can hand it on.
 """
 
-from __future__ import annotations
-
 import re
 import string
 from typing import Any

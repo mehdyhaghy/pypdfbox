@@ -14,8 +14,6 @@ Targets the missing branches around:
     out-of-range (year=0 / month=13 / day=32 etc.) field so the
     ``cal.validate()`` ``ValueError`` arm executes and returns ``(None, 0)``.
 """
-from __future__ import annotations
-
 from pypdfbox.xmpbox import DateConverter
 from pypdfbox.xmpbox.date_converter import (
     ParsePosition,

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import tests.rendering.test_pdf_renderer_shading_type1 as shading_helpers
 from pypdfbox.cos import COSArray, COSFloat, COSName
 

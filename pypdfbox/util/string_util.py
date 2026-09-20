@@ -4,8 +4,6 @@ Mirrors ``org.apache.pdfbox.util.StringUtil`` (PDFBox 3.0,
 ``pdfbox/src/main/java/org/apache/pdfbox/util/StringUtil.java``).
 """
 
-from __future__ import annotations
-
 import re
 
 PATTERN_SPACE = re.compile(r"\s")

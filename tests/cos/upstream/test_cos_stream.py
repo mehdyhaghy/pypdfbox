@@ -8,8 +8,6 @@ and exercised through ``COSStream.create_output_stream(filters=...)`` /
 ``create_input_stream()``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSName, COSStream

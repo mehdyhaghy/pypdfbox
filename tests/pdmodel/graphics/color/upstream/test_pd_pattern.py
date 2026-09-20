@@ -9,8 +9,6 @@ file exercises every public/protected surface declared on
 Source: ``/tmp/pdfbox/pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDPattern.java``
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSName

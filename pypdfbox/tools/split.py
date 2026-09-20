@@ -19,8 +19,6 @@ Default behaviour matches upstream:
 * When ``-split N`` is given (with or without a range), the range is
   chunked at every ``N`` pages.
 """
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
 

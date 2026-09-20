@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.filter.test_run_length_decode import _ShortReadBytesIO
 
 

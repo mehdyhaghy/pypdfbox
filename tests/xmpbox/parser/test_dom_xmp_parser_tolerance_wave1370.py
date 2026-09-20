@@ -6,8 +6,6 @@ multiple namespaces sharing one ``rdf:Description``, BOM/whitespace
 prefixes, and embedded comments.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox.dom_xmp_parser import DomXmpParser, XmpParsingException

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import io
 import logging
 import math
@@ -895,7 +893,7 @@ class PDImageXObject(PDXObject):
         soft_mask = None
         try:
             soft_mask = self.get_soft_mask()
-        except Exception:
+        except Exception:  # best-effort; opaque raster on failure
             soft_mask = None
         if soft_mask is not None:
             # /SMask replaces the alpha band wholesale (Java applyMask line 679),
@@ -1309,7 +1307,7 @@ def _apply_soft_mask(
     unchanged."""
     try:
         mask_image = smask.to_pil_image()
-    except Exception:
+    except Exception:  # best-effort; opaque raster on failure
         return image
     if mask_image is None:
         return image
@@ -1349,7 +1347,7 @@ def _unpremultiply_matte(
     absent matte (or any resolution failure) returns ``rgba`` unchanged."""
     try:
         matte = base.extract_matte(smask)
-    except Exception:
+    except Exception:  # best-effort
         return rgba
     if not matte or len(matte) < 3:
         return rgba
@@ -1392,7 +1390,7 @@ def _apply_explicit_mask(image: Image.Image, mask: PDImageXObject) -> Image.Imag
         samples = _unpack_sub_byte_samples(data, mw, mh, 1)
         if samples is None:
             return image
-    except Exception:
+    except Exception:  # best-effort; opaque raster on failure
         return image
 
     try:
@@ -1855,7 +1853,7 @@ def _decode_devicen_to_rgb(
             try:
                 components = [b / 255.0 for b in sample]
                 triple = cs_to_rgb(components)
-            except Exception:
+            except Exception:  # defensive: any eval/alt-space failure
                 triple = None
             if triple is None:
                 fallback_used = True

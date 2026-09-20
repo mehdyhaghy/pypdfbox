@@ -12,8 +12,6 @@ exercised through ``Type1KeyWord`` is ``key`` (carrying the hash value)
 and ``name``.
 """
 
-from __future__ import annotations
-
 from typing import ClassVar
 
 

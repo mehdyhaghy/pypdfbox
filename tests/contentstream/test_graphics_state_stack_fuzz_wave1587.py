@@ -27,8 +27,6 @@ The tests drive the *real* operator classes through a recording
 stack — the same contract the rendering subclass fulfils.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

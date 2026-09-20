@@ -6,8 +6,6 @@ exercise the simple string-form happy path; these tests pin the
 two-way typed/string interop and absent-vs-empty-string distinction.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox.adobe_pdf_schema import AdobePDFSchema

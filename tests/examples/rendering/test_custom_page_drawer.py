@@ -17,8 +17,6 @@ opacity. The Python port keeps the public hooks; this suite exercises:
 * ``CustomPageDrawer.main`` failing cleanly when the demo PDF is absent
 """
 
-from __future__ import annotations
-
 from typing import Any
 from unittest.mock import MagicMock
 

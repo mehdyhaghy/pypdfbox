@@ -14,8 +14,6 @@ present. The parity oracle (``oracle/test_color_key_mask_smask_oracle.py``)
 proves this against live Java; these tests lock the same behaviour without the
 oracle so the contract is guarded on every run.
 """
-from __future__ import annotations
-
 from PIL import Image
 
 from pypdfbox.pdmodel.graphics.image.lossless_factory import LosslessFactory

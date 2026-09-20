@@ -17,8 +17,6 @@ page so the fix is guarded even when the live Java oracle is unavailable, and
 unit-test the ``_java_mod`` helper directly.
 """
 
-from __future__ import annotations
-
 import hashlib
 from pathlib import Path
 

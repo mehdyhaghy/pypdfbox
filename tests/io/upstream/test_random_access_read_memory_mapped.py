@@ -7,8 +7,6 @@ pypdfbox's class is named ``RandomAccessReadMemoryMapped`` (no trailing
 ``File``); upstream uses ``RandomAccessReadMemoryMappedFile``.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

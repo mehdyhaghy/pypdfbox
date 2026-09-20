@@ -13,8 +13,6 @@ Synthetic content streams stand in for the upstream test fixtures so the
 lite stripper can drive each path end-to-end.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.interactive.pagenavigation import PDThreadBead

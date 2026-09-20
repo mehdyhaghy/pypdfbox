@@ -13,8 +13,6 @@ ctor signature. Upstream has no dedicated JUnit; we pin the six getters
 and the constructor argument round-trip here so any future re-arrange
 catches.
 """
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

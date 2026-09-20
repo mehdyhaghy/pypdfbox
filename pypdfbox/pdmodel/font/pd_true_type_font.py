@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 import secrets
 import string
@@ -205,7 +203,7 @@ class PDTrueTypeFont(PDSimpleFont):
                     adapted = _adapt_substitute_to_true_type_font(fonttools_font)
                     if adapted is not None:
                         return adapted
-        except Exception:
+        except Exception:  # mapping failures must not crash callers
             _LOG.exception("substitute lookup failed for %s", self.get_name())
         # Deterministic bundled-Liberation last resort.
         return self._bundled_last_resort_substitute(descriptor)
@@ -1112,7 +1110,7 @@ class PDTrueTypeFont(PDSimpleFont):
         # internally and returns ``None`` for unknown names.
         try:
             path = cff.get_path(name)
-        except Exception:
+        except Exception:  # malformed charstring should not crash callers
             _LOG.exception("CFF charstring draw failed for glyph %s", name)
             return None
         if not path:
@@ -1127,7 +1125,7 @@ class PDTrueTypeFont(PDSimpleFont):
         | bytearray
         | memoryview
         | BinaryIO,
-        is_embedded: bool = True,
+        is_embedded: bool = True,  # mirror upstream signature
     ) -> Any:
         """Return a :class:`TTFParser` (or :class:`OTFParser`) suited to
         the SFNT flavour of ``random_access_read``.
@@ -1391,7 +1389,7 @@ def _adapt_substitute_to_true_type_font(
             from pathlib import Path
 
             return TrueTypeFont.from_bytes(Path(path).read_bytes())
-        except Exception:
+        except Exception:  # fall through to the save() round-trip
             _LOG.debug("substitute re-parse from path %s failed", path)
     # 3. Serialise the in-memory fontTools font and re-parse.
     save = getattr(fonttools_font, "save", None)
@@ -1403,7 +1401,7 @@ def _adapt_substitute_to_true_type_font(
         buf = io.BytesIO()
         save(buf)
         return TrueTypeFont.from_bytes(buf.getvalue())
-    except Exception:
+    except Exception:  # unparsable substitute must not crash callers
         _LOG.exception("substitute fontTools save() round-trip failed")
         return None
 
@@ -1477,7 +1475,7 @@ def _draw_glyph_by_name(ttf: TrueTypeFont, name: str) -> list[tuple[Any, ...]]:
 
         pen = DecomposingRecordingPen(glyph_set)
         glyph_set[name].draw(pen)
-    except Exception:
+    except Exception:  # unparsable charstrings should not crash callers
         _LOG.exception("recordingPen draw failed for glyph %s", name)
         return []
     return list(pen.value)

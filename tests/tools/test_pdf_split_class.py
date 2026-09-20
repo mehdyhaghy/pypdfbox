@@ -1,6 +1,4 @@
 """Hand-written tests for :class:`pypdfbox.tools.pdf_split.PDFSplit`."""
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.tools.pdf_split import PDFSplit

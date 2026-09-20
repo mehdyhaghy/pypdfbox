@@ -16,8 +16,6 @@ Behavioural checks drive ``is_paragraph_separation`` and
 ``is_para_break_indented`` directly with hand-built ``TextPosition``
 objects so the heuristic stays disentangled from PDF parsing quirks.
 """
-from __future__ import annotations
-
 from pypdfbox.text import PDFTextStripper, TextPosition
 
 

@@ -19,8 +19,6 @@ Crafted 19-byte page-information data part:
     bit0-14 maxStripeSize   = 100
 """
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.io.image_input_stream import ImageInputStream
 from pypdfbox.jbig2.io.sub_input_stream import SubInputStream
 from pypdfbox.jbig2.segments.page_information import PageInformation

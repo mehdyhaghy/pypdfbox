@@ -5,8 +5,6 @@ Mirrors ``org.apache.pdfbox.contentstream.operator.text.SetTextHorizontalScaling
 ``pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/SetTextHorizontalScaling.java``).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSBase, COSNumber
 
 from .. import MissingOperandException, Operator, OperatorName

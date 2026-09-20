@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
 from pypdfbox.pdmodel.graphics.form import PDFormXObject

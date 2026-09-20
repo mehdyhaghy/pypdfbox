@@ -1,7 +1,5 @@
 """Widget tests for ``AddressPane``."""
 
-from __future__ import annotations
-
 import tkinter as tk
 
 from pypdfbox.debugger.hexviewer.address_pane import AddressPane

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdmodel.interactive.annotation.test_appearance_tail_wave766 import (
     _NegativeModuloInt,
 )

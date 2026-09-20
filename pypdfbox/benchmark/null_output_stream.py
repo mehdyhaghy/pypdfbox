@@ -8,8 +8,6 @@ Ported from
 :meth:`PDDocument.save` in place of a real file handle.
 """
 
-from __future__ import annotations
-
 from io import RawIOBase
 
 

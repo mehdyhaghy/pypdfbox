@@ -8,8 +8,6 @@ subclass or parser sets the value back to ``None`` the getter must not
 crash. This test forces that state directly.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 from pypdfbox.xmpbox.type.date_type import DateType

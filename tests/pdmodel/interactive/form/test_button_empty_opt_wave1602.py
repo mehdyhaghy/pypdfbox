@@ -6,8 +6,6 @@ empty; a non-empty single string still yields a singleton list and array
 entries are unaffected.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSName, COSString
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_check_box import PDCheckBox

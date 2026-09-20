@@ -1,7 +1,5 @@
 """Wave 1275 — PDArtifactMarkedContent.is_attached public helper."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.documentinterchange.markedcontent import (
     PDArtifactMarkedContent,

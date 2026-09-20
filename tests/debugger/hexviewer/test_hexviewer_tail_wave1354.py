@@ -11,8 +11,6 @@ Covers four short branches that the existing test files miss:
 * ``HexModel(None)`` empty-data branch (line 26 in ``hex_model.py``).
 """
 
-from __future__ import annotations
-
 import contextlib
 import tkinter as tk
 

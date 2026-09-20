@@ -6,8 +6,6 @@ and the ``(AttributeError, NotImplementedError)`` guard that swallows
 encryption introspection errors.
 """
 
-from __future__ import annotations
-
 from collections.abc import Callable
 from pathlib import Path
 

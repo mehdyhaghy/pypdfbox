@@ -17,8 +17,6 @@ Targets the residual branches not exercised by
   ``getGlyphID`` failure (516-517)
 """
 
-from __future__ import annotations
-
 import contextlib
 from pathlib import Path
 from typing import Any
@@ -474,7 +472,7 @@ def test_get_unicode_cmap_reverse_returns_empty_when_best_cmap_none() -> None:
     embedder, _dict, _doc, _parent, _ttf = _new_embedder(embed_subset=True)
 
     class _CMap:
-        def getBestCmap(self) -> None:
+        def getBestCmap(self) -> None:  # upstream API
             return None
 
     class _Proxy:
@@ -492,7 +490,7 @@ def test_get_unicode_cmap_reverse_skips_glyph_id_failures() -> None:
     embedder, _dict, _doc, _parent, _ttf = _new_embedder(embed_subset=True)
 
     class _CMap:
-        def getBestCmap(self) -> dict[int, str]:
+        def getBestCmap(self) -> dict[int, str]:  # upstream API
             return {65: "A", 66: "B"}
 
     class _Proxy:

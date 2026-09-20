@@ -25,8 +25,6 @@ output-device transfer functions were silently discarded:
   ``PDExtendedGraphicsState.copyIntoGraphicsState``).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

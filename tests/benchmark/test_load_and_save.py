@@ -1,6 +1,4 @@
 """Tests for ``pypdfbox.benchmark.load_and_save``."""
-from __future__ import annotations
-
 from pathlib import Path
 from unittest import mock
 

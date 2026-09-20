@@ -4,8 +4,6 @@ This is a pypdfbox addition with no upstream PDFBox equivalent — PDFBox 3.0
 ships no flavour-detection helper. The detector reports what the metadata
 *claims*; it does not validate.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel import PDDocument, PDPage

@@ -9,8 +9,6 @@ Targets the residual uncovered branches in:
   ``write_tokens_to_stream``.
 """
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 from typing import Any

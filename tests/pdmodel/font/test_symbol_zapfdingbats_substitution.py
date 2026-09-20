@@ -19,8 +19,6 @@ GlyphList → Unicode codepoint fallback that catches names like
 ``universal`` (Symbol code 0x22 → "alpha-symbol" in DejaVu).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.encoding.symbol_encoding import SymbolEncoding

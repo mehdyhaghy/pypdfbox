@@ -11,8 +11,6 @@ fake exposing the pypdfbox ``Type1Font`` accessor surface
 ``get_italic_angle`` / ``get_encoding`` / ``get_width``).
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

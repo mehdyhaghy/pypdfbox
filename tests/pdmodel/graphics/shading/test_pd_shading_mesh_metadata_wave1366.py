@@ -11,8 +11,6 @@ Also pins:
   * Setter accepts every spec-listed legal value without normalising.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.graphics.shading import (

@@ -15,8 +15,6 @@ Closes residual branch arrows surfaced by the wave 1401 audit:
   size 4, so the body short-circuits and never enters the rect-array branch.
 """
 
-from __future__ import annotations
-
 import contextlib
 from typing import Any
 

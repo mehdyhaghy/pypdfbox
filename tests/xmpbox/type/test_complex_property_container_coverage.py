@@ -11,8 +11,6 @@ Targets the previously-untested branches:
   no-matching-name short-circuit.
 """
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox.type.complex_property_container import ComplexPropertyContainer
 from pypdfbox.xmpbox.type.integer_type import IntegerType
 from pypdfbox.xmpbox.type.text_type import TextType

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.cos.upstream import test_cos_object_key as target
 
 

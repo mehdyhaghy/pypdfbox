@@ -6,8 +6,6 @@ missing rectangle) plus the happy-path stroke that walks
 ``move_to``/``line_to``/``stroke`` for one and multiple paths.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.annotation.handlers.pd_ink_appearance_handler import (
     PDInkAppearanceHandler,
 )

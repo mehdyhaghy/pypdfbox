@@ -12,8 +12,6 @@ ranges declared by ``/Index``. Tests cover:
 * /Index ranges that overlap the explicit object 0 free-root.
 """
 
-from __future__ import annotations
-
 import zlib
 
 import pytest

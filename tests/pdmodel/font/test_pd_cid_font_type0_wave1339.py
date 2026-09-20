@@ -11,8 +11,6 @@ Targets the few remaining uncovered branches in
   exception swallow (lines 655-656).
 """
 
-from __future__ import annotations
-
 import io
 import struct
 

@@ -1,6 +1,4 @@
 """Tests for ``pypdfbox extracttext`` and the ``extract_text`` helper."""
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from tests.pdmodel.graphics.optionalcontent.test_tail_sweep_wave842 import (
     _NoneBaseStateDictionary,

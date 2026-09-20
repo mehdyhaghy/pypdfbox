@@ -11,8 +11,6 @@ the upstream bug is the parser's ``readUntilEndStream`` fallback when
 ``/Length`` is missing.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSStream
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import EndstreamFilterStream

@@ -6,8 +6,6 @@ mask methods: ``getMask``, ``getColorKeyMask``, ``getSoftMask``, plus the
 the ``/Thumb`` accessor on ``PDPage`` (the PDF spec puts thumbnails on
 the page, not the image XObject).
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSStream

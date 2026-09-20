@@ -10,8 +10,6 @@ Each test verifies the appearance stream is populated with non-empty
 content after the relevant handler runs.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.annotation.handlers import (
     PDCircleAppearanceHandler,
     PDFileAttachmentAppearanceHandler,

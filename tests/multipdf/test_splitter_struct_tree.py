@@ -7,8 +7,6 @@ plus a fresh ``/ParentTree`` keyed by the chunk's ``/StructParents``
 indices.
 """
 
-from __future__ import annotations
-
 from pypdfbox import PDDocument, PDPage
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.multipdf import Splitter

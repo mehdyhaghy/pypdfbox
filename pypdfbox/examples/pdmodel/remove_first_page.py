@@ -3,8 +3,6 @@
 Removes the first page of a PDF document.
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.pdmodel.pd_document import PDDocument

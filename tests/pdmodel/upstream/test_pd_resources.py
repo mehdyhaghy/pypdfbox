@@ -14,8 +14,6 @@ exercised indirectly. This file ports the resource interactions found in:
 Translation conventions follow the project's "Test Porting Conventions".
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel import PDResources
 from pypdfbox.pdmodel.graphics.form import PDFormXObject

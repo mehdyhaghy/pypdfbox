@@ -38,8 +38,6 @@ API. This file targets the remaining branches in the geometry engine:
 * ``finish`` close-path branch.
 """
 
-from __future__ import annotations
-
 import math
 
 from pypdfbox.cos import COSStream

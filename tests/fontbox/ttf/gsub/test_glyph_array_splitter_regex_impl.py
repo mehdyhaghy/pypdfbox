@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`GlyphArraySplitterRegexImpl`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub import GlyphArraySplitterRegexImpl
 
 

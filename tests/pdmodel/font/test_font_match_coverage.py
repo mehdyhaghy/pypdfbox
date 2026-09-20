@@ -7,8 +7,6 @@ ordering and ``__repr__``; this module fills the remaining gap on
 int that orders highest score first.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.font.font_match import FontMatch
 
 

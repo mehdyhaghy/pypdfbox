@@ -29,8 +29,6 @@ Apache PDFBox oracle lives in
 ``oracle/test_form_x_object_fuzz_wave1550.py``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

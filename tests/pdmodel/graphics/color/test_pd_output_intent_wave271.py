@@ -12,8 +12,6 @@ Targets the small enrichment surface added on top of upstream PDFBox 3.0
   stream after construction
 - ``is_empty`` structural-emptiness predicate
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream

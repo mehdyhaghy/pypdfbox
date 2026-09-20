@@ -25,8 +25,6 @@ after wave 1286:
    not previously exercised end-to-end.
 """
 
-from __future__ import annotations
-
 import datetime
 import io
 

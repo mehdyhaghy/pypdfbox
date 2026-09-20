@@ -12,8 +12,6 @@ and is covered by ``test_pdfa_identification_others.py``; the upstream
 test merely happens to live in this file, so it is not duplicated here.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import AdobePDFSchema, TextType, XMPMetadata

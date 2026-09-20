@@ -1,7 +1,5 @@
 """Hand-written tests for ``pypdfbox.debugger.ui.FileOpenSaveDialog``."""
 
-from __future__ import annotations
-
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any

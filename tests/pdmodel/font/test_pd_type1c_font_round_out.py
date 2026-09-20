@@ -26,8 +26,6 @@ Constructor + class-constant parity:
   freshly-created dictionary.
 * :class:`PDType1CFont` is a strict subclass of :class:`PDType1Font`.
 """
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import (

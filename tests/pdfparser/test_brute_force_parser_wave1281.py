@@ -1,7 +1,5 @@
 """Wave 1281: BruteForceParser subclass port."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDocument
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import BruteForceParser, COSParser

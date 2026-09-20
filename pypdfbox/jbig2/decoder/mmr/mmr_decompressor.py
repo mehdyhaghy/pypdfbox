@@ -11,8 +11,6 @@ as Java's two's-complement ``int`` shifts. The caller masks the register down to
 24 bits before the (two-level) code-table lookup.
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.jbig2.bitmap import Bitmap
@@ -478,7 +476,7 @@ class MMRDecompressor:
                         <= current_line_bit_position
                     ):
                         reference_buffer_offset += 2
-        except Exception:
+        except Exception:  # mirrors upstream catch (Throwable)
             strbuf = (
                 f"whiteRun           = {white_run}\n"
                 f"code               = {code}\n"

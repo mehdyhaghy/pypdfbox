@@ -18,8 +18,6 @@ went uncovered:
 * :meth:`ImageGraphicsEngine.run` — ext-g-state iteration with a
   soft-mask group (mirrors upstream's process_soft_mask loop).
 """
-from __future__ import annotations
-
 import contextlib
 from collections.abc import Iterator
 from pathlib import Path

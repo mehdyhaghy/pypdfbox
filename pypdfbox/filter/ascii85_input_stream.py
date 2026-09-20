@@ -7,8 +7,6 @@ original binary data. Library-first: delegates the codec to the stdlib
 terminator.
 """
 
-from __future__ import annotations
-
 import base64
 import contextlib
 import io

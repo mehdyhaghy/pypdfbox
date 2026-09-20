@@ -4,8 +4,6 @@ single-code ``to_unicode`` accessor lifted from upstream's
 ``PDSimpleFont``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.fontbox.cmap.cmap import CMap
 from pypdfbox.fontbox.encoding.glyph_list import GlyphList

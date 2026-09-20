@@ -12,8 +12,6 @@ to the resolved upstream table — verified against the Java samples in
 transcribing 256 SID rows.
 """
 
-from __future__ import annotations
-
 # Imported unaliased: aliasing a CamelCase third-party symbol trips one of
 # pep8-naming's N81x rules whatever the alias looks like, and the upstream
 # name is the clearer one here.

@@ -17,8 +17,6 @@ the same." vs "The number of export values must match the number of
 display values".
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSName

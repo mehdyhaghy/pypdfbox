@@ -16,8 +16,6 @@ The actual implementation lives in :mod:`pypdfbox.filter.lzw_decode`;
 this module is a thin alias to avoid duplicating the codec.
 """
 
-from __future__ import annotations
-
 from typing import BinaryIO
 
 from .filter_factory import FilterFactory

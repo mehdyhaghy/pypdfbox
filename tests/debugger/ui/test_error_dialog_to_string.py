@@ -5,8 +5,6 @@ list of stack frames as one indented string, optionally filtering out
 boilerplate frames.
 """
 
-from __future__ import annotations
-
 import traceback
 
 from pypdfbox.debugger.ui.error_dialog import ErrorDialog

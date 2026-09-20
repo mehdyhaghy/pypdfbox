@@ -11,8 +11,6 @@ pdfwriter cluster has not been ported yet, so we replace it with a
 recording visitor that confirms the visitor dispatch.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSBoolean
 from tests.cos.helpers import RecordingVisitor
 

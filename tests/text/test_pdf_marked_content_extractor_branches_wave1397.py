@@ -10,8 +10,6 @@ Closes False-branch arrows:
   None on the resources lookup → returns None
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import COSName
@@ -39,6 +37,7 @@ def test_dispatch_marked_skips_non_text_non_state_operator() -> None:
     extractor = PDFMarkedContentExtractor()
     # Use a path-state operator (q = save graphics state) — unknown to
     # the dispatcher. It should be silently ignored.
+    # pass None state; the unknown branch never touches it
     extractor._dispatch_marked("q", [], None)
     # No marked content collected.
     assert extractor._marked_contents == []

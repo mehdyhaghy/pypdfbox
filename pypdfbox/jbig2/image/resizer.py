@@ -23,8 +23,6 @@ masked to a signed 32-bit value via :func:`_int32` before the arithmetic shift,
 exactly reproducing the Java overflow/sign behaviour.
 """
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.bitmap import Bitmap
 from pypdfbox.jbig2.image.filter import Filter, Point
 from pypdfbox.jbig2.util import utils

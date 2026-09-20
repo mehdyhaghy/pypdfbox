@@ -8,8 +8,6 @@ the same defaults, round-trips, and constant catalogue that upstream Java
 callers rely on.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.annotation import PDAnnotationPolyline
 

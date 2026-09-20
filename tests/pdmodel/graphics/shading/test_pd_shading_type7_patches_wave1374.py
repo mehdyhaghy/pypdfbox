@@ -7,8 +7,6 @@ the flag-driven shared-edge logic with Type 6 but with
 ``control_points=16``.
 """
 
-from __future__ import annotations
-
 import math
 from collections.abc import Iterable
 

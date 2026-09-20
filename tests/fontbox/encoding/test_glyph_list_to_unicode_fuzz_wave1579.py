@@ -38,8 +38,6 @@ re-derives the same table from the live PDFBox jar so future upstream drift is
 caught.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.encoding.glyph_list import GlyphList

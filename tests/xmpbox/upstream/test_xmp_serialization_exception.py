@@ -24,8 +24,6 @@ because pypdfbox's serializer raised plain ``RuntimeError``. Now that the
 upstream-named class exists they are translated here verbatim.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox.xml import XmpSerializationException

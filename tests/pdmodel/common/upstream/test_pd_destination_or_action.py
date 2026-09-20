@@ -16,5 +16,3 @@ diffable) but contains no ported cases — see
 ``tests/pdmodel/common/test_pd_destination_or_action.py`` for the
 hand-written behavioural coverage.
 """
-
-from __future__ import annotations

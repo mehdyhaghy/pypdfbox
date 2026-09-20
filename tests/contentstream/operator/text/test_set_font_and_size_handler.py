@@ -8,8 +8,6 @@ font + size) is tested separately. Both share the upstream class name
 avoid colliding with the older engine-coupled module.
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.contentstream import Operator

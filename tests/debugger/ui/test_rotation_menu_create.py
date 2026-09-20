@@ -1,7 +1,5 @@
 """Hand-written tests for ``RotationMenu.create_rotation_menu``."""
 
-from __future__ import annotations
-
 import tkinter as tk
 from collections.abc import Iterator
 
@@ -38,5 +36,5 @@ def test_create_rotation_menu_entries_match_labels(tk_root: tk.Tk) -> None:
 
 def test_create_rotation_menu_private_alias_still_works(tk_root: tk.Tk) -> None:
     menu = RotationMenu.get_instance(master=tk_root)
-    rebuilt = menu._create_rotation_menu()
+    rebuilt = menu._create_rotation_menu()  # back-compat alias
     assert isinstance(rebuilt, tk.Menu)

@@ -9,8 +9,6 @@ loud test failure rather than producing a malformed TIFF wrapper at
 runtime.
 """
 
-from __future__ import annotations
-
 from pypdfbox.filter import TIFFExtension
 from pypdfbox.filter.tiff_extension import TIFFExtension as DirectTIFFExtension
 

@@ -12,8 +12,6 @@ This wave exercises the previously-uncovered:
 * ``OSError`` mapping to exit code 4 (missing-input branch) with the
   expected stderr signal.
 """
-from __future__ import annotations
-
 import contextlib
 from collections.abc import Iterator
 from pathlib import Path

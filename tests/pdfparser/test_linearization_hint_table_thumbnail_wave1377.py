@@ -19,8 +19,6 @@ Tests cover:
     tiny linearized PDF stub.
 """
 
-from __future__ import annotations
-
 import struct
 import zlib
 

@@ -15,8 +15,6 @@ whose lookup method is ``get_destination`` (not the name-tree node's
 ``get_value``). The stub below mirrors that surface.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel import PDDocument

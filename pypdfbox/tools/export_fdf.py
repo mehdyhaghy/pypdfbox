@@ -4,8 +4,6 @@ Upstream Java reference:
     pdfbox/tools/src/main/java/org/apache/pdfbox/tools/ExportFDF.java
     (lines 40-105)
 """
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
 

@@ -23,8 +23,6 @@ The TIFF parser follows upstream's byte-by-byte IFD walk in
   ``fliptable``;
 * multi-page navigation through the next-IFD-offset chain.
 """
-from __future__ import annotations
-
 import io
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO
@@ -207,7 +205,7 @@ def extract_from_tiff(
                 raise OSError(
                     "CCITT Group 3 'fill bits before EOL' is not supported"
                 )
-        elif tag == 324:
+        elif tag == 324:  # mirrors upstream switch/if structure
             if count == 1:
                 dataoffset = val
         elif tag == 325:  # noqa: SIM102 - mirrors upstream switch/if structure

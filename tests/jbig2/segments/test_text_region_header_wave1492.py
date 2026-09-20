@@ -14,8 +14,6 @@ Region-segment-flags bit layout consumed by ``_read_region_flags`` (16 bits):
     1 SBREFINE       0 SBHUFF
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

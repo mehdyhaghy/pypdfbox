@@ -11,8 +11,6 @@ Round-out cold gaps last touched in Wave 216:
   caret-specific entries (``/RD``, ``/Sy``) are entirely spec-default
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_caret import (
     PDAnnotationCaret,

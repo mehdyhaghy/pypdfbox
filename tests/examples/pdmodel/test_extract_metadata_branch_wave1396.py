@@ -10,8 +10,6 @@ each ``show_*`` method:
 * 81->exit — ``show_document_information`` False arm via main path
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.examples.pdmodel.extract_metadata import ExtractMetadata

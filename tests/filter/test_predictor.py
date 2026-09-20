@@ -2,8 +2,6 @@
 ``pypdfbox.filter._predictor`` and the encode-side predictor wiring of
 both ``FlateDecode`` and ``LZWDecode``."""
 
-from __future__ import annotations
-
 import io
 import random
 

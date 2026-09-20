@@ -14,8 +14,6 @@ with the membership counterparts that complete the OCG-management surface:
 These additions are pypdfbox enrichment — Apache PDFBox 3.0 leaves
 callers to manipulate the underlying ``COSArray`` themselves.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSName

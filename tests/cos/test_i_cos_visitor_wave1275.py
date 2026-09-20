@@ -1,7 +1,5 @@
 """Wave 1275 — ICOSVisitor.visit_from_int default parity."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos.i_cos_visitor import ICOSVisitor

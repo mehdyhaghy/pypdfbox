@@ -17,8 +17,6 @@ The CRC is *not* validated by ``parse_png_chunks`` (only by
 ``check_chunk_sane``), so the constructed chunks can use ``crc=0``.
 """
 
-from __future__ import annotations
-
 import builtins
 import sys
 

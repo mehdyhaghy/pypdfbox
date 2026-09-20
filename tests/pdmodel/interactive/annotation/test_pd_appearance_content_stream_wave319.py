@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSStream
 from pypdfbox.pdmodel.interactive.annotation.pd_appearance_content_stream import (
     PDAppearanceContentStream,

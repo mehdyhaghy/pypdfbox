@@ -1,7 +1,5 @@
 """Wave 1275 — FontHeaders: strict-snake gcid142 accessor parity."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.ttf_parser import FontHeaders
 
 

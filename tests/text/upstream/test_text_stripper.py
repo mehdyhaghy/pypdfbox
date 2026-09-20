@@ -19,8 +19,6 @@ We skip:
 Fixtures bundled: ``with_outline.pdf`` at ``tests/fixtures/pdmodel/`` and
 ``eu-001.pdf`` at ``tests/fixtures/text/input/``.
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

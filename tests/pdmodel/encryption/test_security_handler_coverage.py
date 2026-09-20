@@ -5,8 +5,6 @@ dict skip path, public-name aliases, and the ``TypeError`` fallback in
 ``compute_version_number`` that weren't previously exercised.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

@@ -6,8 +6,6 @@ current_access_permission, decryption_material, decrypt_metadata flag, plus
 the data convenience wrappers and the subclass-override placeholders).
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

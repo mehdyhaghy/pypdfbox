@@ -8,8 +8,6 @@ Closes two loop-continuation partials in ``ReplaceURLs.main``:
   ``PDActionURI`` skips the rewrite and the loop advances.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.examples.pdmodel.replace_urls import ReplaceURLs

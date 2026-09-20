@@ -5,8 +5,6 @@ exist. The shape we need to preserve is *ordering*: highest-scoring
 match pops first from a heap.
 """
 
-from __future__ import annotations
-
 import heapq
 from typing import Any
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.fontbox.type1.type1_font import Type1Font

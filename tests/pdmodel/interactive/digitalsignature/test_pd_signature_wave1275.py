@@ -1,7 +1,5 @@
 """Wave 1275 — PDSignature.get_converted_contents helper."""
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import PDSignature
 
 

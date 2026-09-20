@@ -18,8 +18,6 @@ Targets the still-uncovered branches after wave 1330:
   ``_coerce_program_token`` last-resort ``str()`` fallback (662).
 """
 
-from __future__ import annotations
-
 from typing import Any
 from unittest.mock import patch
 

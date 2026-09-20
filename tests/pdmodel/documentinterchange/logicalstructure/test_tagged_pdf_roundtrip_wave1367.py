@@ -28,8 +28,6 @@ round-trip is a tighter contract that catches xref / serialisation drift in
 the tagged-PDF cluster.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

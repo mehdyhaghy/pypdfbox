@@ -5,8 +5,6 @@ matches the parity surface upstream and the pattern already wired on
 :class:`PDAnnotationFileAttachment`.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from pypdfbox.cos import COSDictionary, COSName

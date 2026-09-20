@@ -4,8 +4,6 @@ Ported from
 ``org.apache.pdfbox.debugger.streampane.tooltip.RGToolTip``.
 """
 
-from __future__ import annotations
-
 from .color_tool_tip import ColorToolTip
 
 

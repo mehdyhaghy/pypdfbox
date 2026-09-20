@@ -25,8 +25,6 @@ which exercises the same multi-encoding ``get_char_codes`` path that the
 PDFBOX-5328 test pins down).
 """
 
-from __future__ import annotations
-
 import pytest
 
 

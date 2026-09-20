@@ -4,8 +4,6 @@ Closes branch (52 → 53) — resources lacking ``get_x_object`` short-
 circuits with a return.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.contentstream import Operator, PDFStreamEngine

@@ -1,7 +1,5 @@
 """Event describing a single byte change emitted from the hex pane."""
 
-from __future__ import annotations
-
 
 class HexChangedEvent:
     """Event for byte-value changes originating in the hex pane."""

@@ -52,8 +52,6 @@ Each fixture is a 100x100 page (1:1 device pixels at 72 DPI) filled solid red
 first (so "destination untouched" is observable), then one ``/Sh0 sh``.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

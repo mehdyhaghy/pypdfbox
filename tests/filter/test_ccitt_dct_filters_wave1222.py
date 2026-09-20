@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.filter.test_ccitt_dct_filters_wave695 import _decode_params
 
 

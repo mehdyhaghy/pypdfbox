@@ -28,8 +28,6 @@ Entry points:
   14289 (currently ``{1, 2}`` — Part 1 published 2014, Part 2 published
   2024).
 """
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 

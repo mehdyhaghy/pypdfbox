@@ -21,8 +21,6 @@ Wave 1309 covered the public dispatch helpers. This wave exercises:
 * :func:`_xml_segments` fallback on parse failure.
 """
 
-from __future__ import annotations
-
 import io
 from typing import Any
 
@@ -166,7 +164,7 @@ def test_on_filter_changed_with_no_combo_returns_early(tk_root) -> None:
         tk_root, _content_stream(), is_content_stream=True, is_thumb=False
     )
     # ``_filter_combo`` is None until create_header_panel is called.
-    pane._on_filter_changed()
+    pane._on_filter_changed()  # no exception expected
 
 
 def test_on_filter_changed_oserror_is_logged(
@@ -186,7 +184,7 @@ def test_on_filter_changed_oserror_is_logged(
 
     monkeypatch.setattr(pane, "request_stream_text", _raise)
     pane._filter_combo.set(Stream.DECODED)
-    pane._on_filter_changed()
+    pane._on_filter_changed()  # must not propagate
     assert any("synthetic" in r.message for r in caplog.records)
 
 
@@ -337,7 +335,7 @@ def test_emitter_handles_cos_dictionary_and_cos_null() -> None:
 def test_emitter_fallback_repr_branch() -> None:
     """Unknown objects fall back to ``repr(obj)`` with brace-trim."""
     emitter = _ContentStreamEmitter()
-    emitter._write_operand("plain-str")
+    emitter._write_operand("plain-str")  # not a COS object
     text = "".join(s for s, _ in emitter.segments)
     # The fallback writes the repr (with surrounding quotes for a str).
     assert "plain-str" in text
@@ -350,9 +348,9 @@ def test_emitter_indent_pushed_on_bt_popped_on_et() -> None:
     emitter = _ContentStreamEmitter()
     bt = Operator.get_operator(OperatorName.BEGIN_TEXT)
     et = Operator.get_operator(OperatorName.END_TEXT)
-    emitter._add_operator(bt)
+    emitter._add_operator(bt)  # pushes indent
     assert emitter._indent == 1
-    emitter._add_operator(et)
+    emitter._add_operator(et)  # pops back
     assert emitter._indent == 0
 
 

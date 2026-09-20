@@ -19,8 +19,6 @@ These exercise the helpers directly (no Java oracle needed) and assert the
 byte-level polarity invariants upstream guarantees.
 """
 
-from __future__ import annotations
-
 import io
 from unittest import mock
 

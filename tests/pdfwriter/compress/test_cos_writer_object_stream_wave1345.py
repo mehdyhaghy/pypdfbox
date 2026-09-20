@@ -8,8 +8,6 @@ Targets:
     arrived via the top-level dispatch rather than the typed helper).
 """
 
-from __future__ import annotations
-
 from io import BytesIO
 
 import pytest

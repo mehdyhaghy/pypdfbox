@@ -8,8 +8,6 @@ Used when a Type1 font has no usable charset; only ``.notdef`` is
 populated.
 """
 
-from __future__ import annotations
-
 from .cff_charset_type1 import CFFCharsetType1
 
 

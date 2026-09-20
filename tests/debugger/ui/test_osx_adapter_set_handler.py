@@ -1,7 +1,5 @@
 """Tests for ``OSXAdapter.set_handler`` (port of upstream ``setHandler``)."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.debugger.ui import OSXAdapter

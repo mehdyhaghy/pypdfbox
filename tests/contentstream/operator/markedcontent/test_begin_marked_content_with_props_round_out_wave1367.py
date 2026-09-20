@@ -13,8 +13,6 @@ hook with ``None``) were a divergence; this file now pins the
 oracle-proven behavior.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream import Operator, PDFStreamEngine

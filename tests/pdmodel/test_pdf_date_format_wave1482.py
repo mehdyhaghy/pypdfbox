@@ -20,8 +20,6 @@ the oracle. A previous port emitted a bare ``Z`` / ``Z00'00'`` for UTC — fixed
 in wave 1482.
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 
 import pytest

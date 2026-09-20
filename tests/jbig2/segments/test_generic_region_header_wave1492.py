@@ -12,8 +12,6 @@ Generic-region-flags byte (8 bits, read MSB first):
     7-5 reserved   4 EXTTEMPLATE   3 TPGDON   2-1 GBTEMPLATE   0 MMR
 """
 
-from __future__ import annotations
-
 import struct
 
 from pypdfbox.jbig2.io.image_input_stream import ImageInputStream

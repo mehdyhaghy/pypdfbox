@@ -14,8 +14,6 @@ Source: ``pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/TestFontEncoding.j
   text-extraction pipeline.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos.cos_array import COSArray

@@ -24,8 +24,6 @@ Predefined charsets (ISOAdobe=0, Expert=1, ExpertSubset=2) and encodings
 as offsets — exercised through their singleton getters here.
 """
 
-from __future__ import annotations
-
 import pytest
 from fontTools.cffLib import cffStandardStrings
 

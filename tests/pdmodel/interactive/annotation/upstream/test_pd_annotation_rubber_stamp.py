@@ -7,8 +7,6 @@ constants from PDF 32000-1 Table 183, ``/Name`` accessor with spec
 default ``Draft``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName

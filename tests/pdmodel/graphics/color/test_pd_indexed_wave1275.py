@@ -13,8 +13,6 @@ factory):
 * the removed 3.x name is really gone.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSInteger, COSName, COSNull

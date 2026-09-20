@@ -15,8 +15,6 @@ Swing → Tkinter mapping:
 * ``JScrollPane`` → ``ttk.Scrollbar`` wired into the treeview.
 """
 
-from __future__ import annotations
-
 import contextlib
 import tkinter as tk
 from tkinter import font as tkfont

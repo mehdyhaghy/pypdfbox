@@ -7,8 +7,6 @@ entities — a "billion laughs" DoS vector. ISO 16684-1 §7.3.2 forbids a DOCTYP
 in an XMP packet, so the parser now rejects any DOCTYPE before parsing.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import XmpParsingException

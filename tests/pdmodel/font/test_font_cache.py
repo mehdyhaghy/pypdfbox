@@ -5,8 +5,6 @@ through :class:`FileSystemFontProvider`. We cover put/get round-trip,
 missing-key lookup, and the pypdfbox-specific :meth:`clear` extension.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

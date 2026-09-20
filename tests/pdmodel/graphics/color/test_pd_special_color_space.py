@@ -6,8 +6,6 @@ hierarchy is wired correctly: the concrete subtypes inherit from it, it inherits
 from ``PDColorSpace``, and re-parenting did not change subclass behavior.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.graphics.color.pd_color_space import PDColorSpace

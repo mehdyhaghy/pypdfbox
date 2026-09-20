@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSString
 from pypdfbox.pdmodel.encryption.access_permission import AccessPermission
 from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption

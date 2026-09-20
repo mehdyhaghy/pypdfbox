@@ -18,8 +18,6 @@ Closes the remaining gaps:
 * No-op rollover / down appearance hooks (returning ``None``).
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName

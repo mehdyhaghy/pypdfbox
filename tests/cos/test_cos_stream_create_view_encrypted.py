@@ -19,8 +19,6 @@ Three layers:
   exercised by ``PDDocument.decrypt`` is covered, not just the mock path.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSName, COSStream

@@ -3,8 +3,6 @@
 Covers the abstract ``process`` raise-path so the module reaches >=95%.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.fixup.processor.abstract_processor import AbstractProcessor

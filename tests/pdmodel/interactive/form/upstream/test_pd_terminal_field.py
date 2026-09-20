@@ -12,8 +12,6 @@ the behaviour exercised here is taken straight from
 * ``importFDF`` (lines 99-139) + ``PDField.importFDF`` (lines 237-306).
 * ``exportFDF`` (lines 142-152).
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

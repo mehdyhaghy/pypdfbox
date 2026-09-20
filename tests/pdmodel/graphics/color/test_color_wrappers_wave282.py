@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.graphics.color.pd_cal_gray import PDCalGray
 from pypdfbox.pdmodel.graphics.color.pd_cal_rgb import PDCalRGB

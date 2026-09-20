@@ -9,8 +9,6 @@ the same tree with :mod:`xml.dom.minidom`, then call
 ``writexml``/``toprettyxml`` for the final byte stream.
 """
 
-from __future__ import annotations
-
 from datetime import datetime
 from io import StringIO
 from typing import BinaryIO

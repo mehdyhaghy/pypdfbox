@@ -1,7 +1,5 @@
 """Tests for :mod:`pypdfbox.debugger.streampane.stream`."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSName, COSStream
 from pypdfbox.debugger.streampane.stream import Stream
 

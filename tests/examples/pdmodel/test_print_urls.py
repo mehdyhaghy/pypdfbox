@@ -11,8 +11,6 @@ Drives ``PrintURLs.main()`` against in-memory PDFs that carry
 * ``usage()`` writes to stderr
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 

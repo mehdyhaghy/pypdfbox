@@ -1,7 +1,5 @@
 """Tests for ``pypdfbox.examples.printing.opaque_draw_object``."""
 
-from __future__ import annotations
-
 import logging
 
 import pytest

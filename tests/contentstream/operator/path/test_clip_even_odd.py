@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.contentstream.operator import Operator
 from pypdfbox.contentstream.operator.path import ClipEvenOdd
 from pypdfbox.contentstream.operator.path.clip_even_odd import (

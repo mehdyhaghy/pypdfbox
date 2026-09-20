@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from tests.pdfparser.test_cos_parser_wave673 import _FailingHandler, _parser

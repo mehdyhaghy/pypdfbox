@@ -19,8 +19,6 @@ coded payload. The inner procedure is bit-exact against the live PDFBox 3.0.7 ja
 wiring deterministically.
 """
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.bitmap import Bitmap
 from pypdfbox.jbig2.decoder.arithmetic.arithmetic_decoder import ArithmeticDecoder
 from pypdfbox.jbig2.decoder.arithmetic.cx import CX

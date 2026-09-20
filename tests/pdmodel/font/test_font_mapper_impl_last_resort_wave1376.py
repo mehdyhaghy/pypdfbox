@@ -16,8 +16,6 @@ the resulting font is a real :class:`FontBoxFont` indistinguishable
 from one resolved off the system font directories.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.font_format import FontFormat

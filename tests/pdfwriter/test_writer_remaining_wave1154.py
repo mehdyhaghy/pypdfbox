@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdfwriter.content_stream_writer import ContentStreamWriter

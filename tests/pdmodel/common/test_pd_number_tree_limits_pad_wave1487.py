@@ -28,8 +28,6 @@ this module pins the serialized bytes so the representation choice cannot drift
 into an observable divergence.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import (

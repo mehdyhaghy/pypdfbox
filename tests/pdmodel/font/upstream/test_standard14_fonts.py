@@ -17,8 +17,6 @@ font-descriptor / width-table machinery; this module focuses on the
 upstream-named camelCase surface and the alias inventory.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.font.afm_loader import AfmMetrics

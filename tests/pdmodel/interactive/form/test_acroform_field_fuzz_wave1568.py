@@ -14,8 +14,6 @@ These exercise the convergence fix landed in this wave:
 ancestor value instead of falling through to inherit it.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

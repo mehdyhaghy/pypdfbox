@@ -1,6 +1,4 @@
 """Wave 445 coverage for ``pypdfbox.tools.listbookmarks`` edge branches."""
-from __future__ import annotations
-
 import argparse
 import io
 from pathlib import Path

@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`CFFCharsetCID`."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff import CFFCharsetCID

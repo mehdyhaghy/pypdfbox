@@ -1,7 +1,5 @@
 """Wave 1281: COSUpdateInfo ABC port — default-method helpers."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSUpdateInfo
 
 

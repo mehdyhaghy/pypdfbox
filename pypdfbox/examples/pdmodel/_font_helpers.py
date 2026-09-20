@@ -7,8 +7,6 @@ the gap by constructing the dictionary that upstream's enum-accepting
 constructor would emit.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import COSDictionary, COSName

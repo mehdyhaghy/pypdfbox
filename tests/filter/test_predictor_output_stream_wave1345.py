@@ -7,8 +7,6 @@ Targets:
     short and must be zero-padded before decode.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.filter import PredictorOutputStream

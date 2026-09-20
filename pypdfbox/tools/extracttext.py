@@ -36,8 +36,6 @@ Exit codes follow upstream:
   1  permission denied or password incorrect
   4  IO error (raised as ``OSError`` and caught by ``cli.run_cli``)
 """
-from __future__ import annotations
-
 import argparse
 import html as _htmlmod
 import sys

@@ -4,8 +4,6 @@ Source: ``pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/TestFi
 (PDFBox 3.0.x).
 """
 
-from __future__ import annotations
-
 import pathlib
 
 from pypdfbox.cos import COSName, COSStream, COSString

@@ -18,8 +18,6 @@ coverage here is hand-written but anchored to the upstream public API
 shape extracted from the Java sources.
 """
 
-from __future__ import annotations
-
 import re
 
 import pytest

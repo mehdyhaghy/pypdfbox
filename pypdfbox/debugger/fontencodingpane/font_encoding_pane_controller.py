@@ -7,8 +7,6 @@ returns the appropriate :class:`SimpleFont`, :class:`Type0Font`, or
 :class:`Type3Font` pane.
 """
 
-from __future__ import annotations
-
 import logging
 import tkinter as tk
 from typing import TYPE_CHECKING

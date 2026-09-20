@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .abstract_glyph_layout_processor import AbstractGlyphLayoutProcessor
 from .content_stream_for_glyph_layout_interface import (
     ContentStreamForGlyphLayoutInterface,

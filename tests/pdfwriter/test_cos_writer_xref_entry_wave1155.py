@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from tests.pdfwriter import test_cos_writer_xref_entry as xref_entry_tests

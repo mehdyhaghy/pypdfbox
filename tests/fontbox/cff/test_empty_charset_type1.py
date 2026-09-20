@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`EmptyCharsetType1`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff import CFFCharsetType1, EmptyCharsetType1
 
 

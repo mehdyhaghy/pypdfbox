@@ -6,8 +6,6 @@ only so the GSUB-table loader has a valid worker to hand back when the
 selected language is not supported by FontBox.
 """
 
-from __future__ import annotations
-
 import logging
 
 from .gsub_worker import GsubWorker

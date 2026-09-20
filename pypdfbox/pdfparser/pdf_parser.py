@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import contextlib
 import logging
 from collections import OrderedDict
@@ -1862,7 +1860,7 @@ class PDFParser:
         helpers that need a document-level view of the raw file."""
         try:
             saved = self._src.get_position()
-        except Exception:
+        except Exception:  # source without a position cursor
             return None
         try:
             length = self._src.length()
@@ -1875,7 +1873,7 @@ class PDFParser:
                     break
                 read += n
             return bytes(buf[:read])
-        except Exception:
+        except Exception:  # unreadable source: skip the EOF rule
             return None
         finally:
             with contextlib.suppress(Exception):

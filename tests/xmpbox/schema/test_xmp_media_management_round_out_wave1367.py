@@ -6,8 +6,6 @@ and ManagedFrom, the Versions Seq and Ingredients Bag string accessors,
 and the SaveID typed/string fallback paths.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox.type.integer_type import IntegerType

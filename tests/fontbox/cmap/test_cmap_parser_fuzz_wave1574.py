@@ -26,8 +26,6 @@ the upstream JUnit port lives in
 ``tests/fontbox/cmap/upstream/test_cmap_parser.py``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cmap import CMap, CMapParser

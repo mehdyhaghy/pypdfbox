@@ -12,8 +12,6 @@ and adds clamping edge cases that are common entry points for downstream
 shading / soft-mask code.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

@@ -11,8 +11,6 @@ The numeric glyph IDs below are arbitrary — they only need to be
 internally consistent across one test.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.cmap_lookup import CmapLookup
 from pypdfbox.fontbox.ttf.gsub import GsubData, GsubWorkerForBengali
 

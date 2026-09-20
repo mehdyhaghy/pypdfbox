@@ -10,8 +10,6 @@ createProtectedTempDir, createProtectedTempFile) are out of scope for the
 io-module backfill.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.io import close_quietly, copy, populate_buffer, to_byte_array

@@ -6,8 +6,6 @@ Targets the upstream-aligned public methods promoted in this wave:
 ``fire_selection_changed``.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 
 import pytest

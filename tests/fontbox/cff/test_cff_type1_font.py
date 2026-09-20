@@ -4,8 +4,6 @@ Empty-instance tests run unconditionally; parsed-font tests are gated
 on a name-keyed OTF being present on the host (mirrors the strategy in
 ``test_cff_font_parity.py``)."""
 
-from __future__ import annotations
-
 import io
 import struct
 from pathlib import Path

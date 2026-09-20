@@ -3,8 +3,6 @@
 Demonstrates a variety of text-matrix transforms across three pages.
 """
 
-from __future__ import annotations
-
 import math
 import sys
 

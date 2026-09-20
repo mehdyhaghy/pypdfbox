@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.fontbox.ttf.test_ttf_remaining_wave729 import _BytesRandomAccessSource
 
 

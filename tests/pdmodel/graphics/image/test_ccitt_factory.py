@@ -4,8 +4,6 @@ Covers 1-bit image encoding plus single-strip CCITT TIFF extraction:
 filter wiring, ``/DecodeParms`` metadata, byte preservation, decoder
 round-trips, and input-validation guards.
 """
-from __future__ import annotations
-
 import io
 
 import pytest

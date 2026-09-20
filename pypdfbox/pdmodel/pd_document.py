@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 import os
 from typing import TYPE_CHECKING, Any, BinaryIO
@@ -102,7 +100,7 @@ class PDDocument:
             )
         if source is not None:
             # Late-bound source override (rare — primarily test plumbing).
-            self._document._source = source
+            self._document._source = source  # sibling-package handoff
 
         # Cached high-level wrappers, lazily built.
         self._catalog: PDDocumentCatalog | None = None
@@ -887,7 +885,7 @@ class PDDocument:
             return header_version
         try:
             catalog_str = self.get_document_catalog().get_version()
-        except Exception:
+        except Exception:  # catalog may be absent on raw docs
             catalog_str = None
         if catalog_str is not None:
             try:

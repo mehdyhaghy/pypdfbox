@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.encoding.glyph_list import GlyphList

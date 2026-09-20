@@ -6,8 +6,6 @@ returns the digest. We wrap ``hashlib`` (already a stdlib library
 implementation) so we don't reimplement SHA-1.
 """
 
-from __future__ import annotations
-
 import hashlib
 import io
 

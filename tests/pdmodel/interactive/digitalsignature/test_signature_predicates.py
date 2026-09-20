@@ -7,8 +7,6 @@ the digital-signature cluster:
 * :class:`PDPropBuildDataDict` — ``has_revision`` / ``has_minimum_revision``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName

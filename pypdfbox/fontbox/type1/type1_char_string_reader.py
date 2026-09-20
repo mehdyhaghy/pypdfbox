@@ -4,8 +4,6 @@ Mirrors ``org.apache.fontbox.type1.Type1CharStringReader`` (PDFBox 3.0,
 ``fontbox/src/main/java/org/apache/fontbox/type1/Type1CharStringReader.java``).
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 

@@ -8,8 +8,6 @@ we mirror the type for parity. It behaves like a plain ``(x, y)`` value
 object with a faster hash.
 """
 
-from __future__ import annotations
-
 
 class IntPoint:
     """A 2D point with integer coordinates and a fast :py:meth:`__hash__`."""

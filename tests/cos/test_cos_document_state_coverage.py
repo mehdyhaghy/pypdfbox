@@ -3,8 +3,6 @@
 Exercise the lifecycle round-trip the primary test file doesn't touch
 (set-parsing / is-accepting-updates state transitions).
 """
-from __future__ import annotations
-
 from pypdfbox.cos.cos_document_state import COSDocumentState
 
 

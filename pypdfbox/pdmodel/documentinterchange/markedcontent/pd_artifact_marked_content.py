@@ -13,8 +13,6 @@ and ``isinstance`` checks resolve to the same identity regardless of the
 import path used.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.documentinterchange.taggedpdf.pd_artifact_marked_content import (
     PDArtifactMarkedContent,
 )

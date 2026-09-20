@@ -9,8 +9,6 @@ subset of fields populated:
 * ``get_jobs_property`` 287->286 — non-dict entry in JOB_REF bag is skipped
 """
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox import XMPMetadata
 from pypdfbox.xmpbox.type.job_type import JobType as TypedJobType
 from pypdfbox.xmpbox.xmp_basic_job_ticket_schema import XMPBasicJobTicketSchema

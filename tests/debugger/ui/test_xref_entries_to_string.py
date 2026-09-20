@@ -4,8 +4,6 @@ Splits ``__str__`` into a public ``to_string`` that returns the upstream
 ``toString`` rendering — the ``CRT`` path constant.
 """
 
-from __future__ import annotations
-
 from pypdfbox.debugger.ui import XrefEntries
 from pypdfbox.pdmodel import PDDocument
 

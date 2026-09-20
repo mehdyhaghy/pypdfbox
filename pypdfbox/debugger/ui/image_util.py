@@ -7,8 +7,6 @@ draws a ``BufferedImage`` onto a new ``Graphics2D`` and uses
 90 degrees that this helper accepts.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

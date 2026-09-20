@@ -15,8 +15,6 @@ Targets:
   emits a trailing ``.0`` for integral floats.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSName

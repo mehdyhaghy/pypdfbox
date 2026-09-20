@@ -32,8 +32,6 @@ All assertions are derived from ITU-T T.88 and pinned against the upstream
 ``decodeStripT`` / ``decodeCurrentT`` semantics (verified verbatim).
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

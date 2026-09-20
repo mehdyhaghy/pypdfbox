@@ -15,8 +15,6 @@ keyword, so each glyph cell becomes a generated PIL image rendered with
 alive on the frame to defeat Tk's aggressive image GC.
 """
 
-from __future__ import annotations
-
 import contextlib
 import logging
 import tkinter as tk
@@ -220,7 +218,7 @@ class FontEncodingView(ttk.Frame):
                 resized = value.resize(
                     (_CELL_WIDTH, _CELL_HEIGHT), Image.LANCZOS
                 )
-            except Exception:
+            except Exception:  # defensive
                 return None
             photo = ImageTk.PhotoImage(resized)
             self._photo_refs.append(photo)
@@ -287,7 +285,7 @@ class GlyphCellRenderer:
                 return None
             try:
                 return value.resize((_CELL_WIDTH, _CELL_HEIGHT), Image.LANCZOS)
-            except Exception:
+            except Exception:  # defensive
                 return None
         # Vector path: delegate to the module-level rasteriser.
         return _rasterise_path(value, self._y_bounds)
@@ -296,7 +294,7 @@ class GlyphCellRenderer:
         self,
         table: Any,
         value: Any,
-        is_selected: bool = False,
+        is_selected: bool = False,  # upstream signature parity
         has_focus: bool = False,
         row: int = 0,
         column: int = 0,

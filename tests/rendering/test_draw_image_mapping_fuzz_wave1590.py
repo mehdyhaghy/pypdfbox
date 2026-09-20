@@ -26,8 +26,6 @@ mocked blit, then a handful of end-to-end ``render_image`` placements pin
 the on-canvas result.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

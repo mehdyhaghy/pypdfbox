@@ -1,6 +1,4 @@
 """Tests for ``pypdfbox texttopdf`` and the ``create_pdf_from_text`` helper."""
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.cff_cid_font import CFFCIDFont
 from pypdfbox.fontbox.cff.cff_font import CFFFont
 from pypdfbox.fontbox.cff.cff_type1_font import CFFType1Font

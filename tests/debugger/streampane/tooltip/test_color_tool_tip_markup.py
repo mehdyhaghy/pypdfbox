@@ -1,7 +1,5 @@
 """Hand-written tests for ``ColorToolTip.get_mark_up`` (upstream alias)."""
 
-from __future__ import annotations
-
 from pypdfbox.debugger.streampane.tooltip import ColorToolTip
 
 

@@ -22,8 +22,6 @@ work adds:
   cleanly when no password is staged — the eager path is opt-in.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSObjectKey, COSStream

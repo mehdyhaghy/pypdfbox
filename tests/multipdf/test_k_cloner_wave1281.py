@@ -1,7 +1,5 @@
 """Tests for ``pypdfbox.multipdf.k_cloner``."""
 
-from __future__ import annotations
-
 from pypdfbox.cos.cos_dictionary import COSDictionary
 from pypdfbox.cos.cos_integer import COSInteger
 from pypdfbox.multipdf.k_cloner import KCloner

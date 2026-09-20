@@ -1,7 +1,5 @@
 """Tests for the abstract :class:`Flag` base."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.debugger.flagbitspane.flag import Flag

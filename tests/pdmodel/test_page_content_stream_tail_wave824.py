@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.pdmodel import pd_page_content_stream as content_stream_module
 
 

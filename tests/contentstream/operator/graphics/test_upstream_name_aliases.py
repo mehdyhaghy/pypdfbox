@@ -9,8 +9,6 @@ identifiers (``FillNonZeroRule``, ``ClipNonZeroRule``, ``EndPath``,
 imports without forcing a rename across pypdfbox.
 """
 
-from __future__ import annotations
-
 from pypdfbox.contentstream.operator.graphics import (
     ClipEvenOdd,
     ClipEvenOddRule,

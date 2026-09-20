@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSObjectKey
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import COSParser, PDFParser

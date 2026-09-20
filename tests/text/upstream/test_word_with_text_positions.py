@@ -18,8 +18,6 @@ mirror the upstream contract:
     number of characters in the text due to normalization.
 """
 
-from __future__ import annotations
-
 from pypdfbox.text import TextPosition, WordWithTextPositions
 
 

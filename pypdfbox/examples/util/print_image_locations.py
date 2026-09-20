@@ -10,8 +10,6 @@ class shape and walks page XObjects directly when the operator pipeline
 isn't exposed yet — produces a comparable output.
 """
 
-from __future__ import annotations
-
 import contextlib
 import sys
 from typing import Any

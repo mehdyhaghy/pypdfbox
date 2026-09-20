@@ -21,8 +21,6 @@ at test time from the bundled Liberation TTF resource so the test is
 self-contained and does not need a new committed fixture.
 """
 
-from __future__ import annotations
-
 import pathlib
 import sys
 from pathlib import Path

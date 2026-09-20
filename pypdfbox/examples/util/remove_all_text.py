@@ -12,8 +12,6 @@ helpers and falls back to a best-effort save when the parser plumbing
 isn't available.
 """
 
-from __future__ import annotations
-
 import contextlib
 import sys
 from typing import Any

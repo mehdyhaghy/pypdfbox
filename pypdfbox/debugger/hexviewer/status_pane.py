@@ -4,8 +4,6 @@ Tkinter port of ``org.apache.pdfbox.debugger.hexviewer.StatusPane``. Shows
 ``Line / Column / Index`` for the currently selected byte.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 from tkinter import ttk
 

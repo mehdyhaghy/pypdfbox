@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSObjectKey
 from pypdfbox.fontbox.cmap import CMap
 from pypdfbox.pdfwriter.cos_writer_xref_entry import COSWriterXRefEntry

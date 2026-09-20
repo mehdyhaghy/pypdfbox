@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import builtins
 
 from . import test_page_extractor_loader_wave728 as wave728

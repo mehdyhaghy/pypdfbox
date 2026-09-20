@@ -21,8 +21,6 @@ No upstream JUnit counterpart — pypdfbox's coercion helper is a Python-
 side addition since Java overload resolution handles the equivalent.
 """
 
-from __future__ import annotations
-
 import io
 import os
 from pathlib import Path

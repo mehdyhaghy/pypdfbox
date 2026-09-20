@@ -1,7 +1,5 @@
 """Wave 1275 — CFFType1Font.get_parser / set_encoding parity."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.cff_type1_font import CFFType1Font
 
 

@@ -1,8 +1,6 @@
 """Wave 1272: parity coverage for ``LZWFilter.create_initial_code_table``
 and ``LZWFilter.do_lzw_decode`` static helpers."""
 
-from __future__ import annotations
-
 from io import BytesIO
 
 from pypdfbox.filter.lzw_filter import CLEAR_TABLE, EOD, LZWFilter

@@ -7,8 +7,6 @@ The legacy private ``_get_*`` / ``_set_*`` helpers used by the typed
 subclasses are exercised separately in ``test_attribute_objects.py``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

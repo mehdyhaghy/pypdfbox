@@ -9,8 +9,6 @@ output. These complement the live-oracle raster tests (which only reach the
 both-axes subsample + scaled paths) by pinning the primitive composition logic.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.jbig2.bitmap import Bitmap

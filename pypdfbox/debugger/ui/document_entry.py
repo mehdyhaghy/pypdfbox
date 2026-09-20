@@ -3,8 +3,6 @@
 Ported from ``org.apache.pdfbox.debugger.ui.DocumentEntry``.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from .page_entry import PageEntry

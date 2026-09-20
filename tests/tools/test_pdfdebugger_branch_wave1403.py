@@ -13,8 +13,6 @@ Closes the False-branch arrows in
   the stack is left unchanged.
 """
 
-from __future__ import annotations
-
 import builtins
 
 import pytest

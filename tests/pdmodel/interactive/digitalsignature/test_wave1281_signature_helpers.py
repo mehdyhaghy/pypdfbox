@@ -1,7 +1,5 @@
 """Wave 1281 — parity ports for SignatureOptions / SigningSupport."""
 
-from __future__ import annotations
-
 import io
 
 import pytest

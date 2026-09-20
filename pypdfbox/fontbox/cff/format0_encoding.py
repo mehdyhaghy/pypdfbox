@@ -12,8 +12,6 @@ populates it via inherited :meth:`CFFBuiltInEncoding.add` and
 :meth:`add_supplement`.
 """
 
-from __future__ import annotations
-
 from .cff_built_in_encoding import CFFBuiltInEncoding
 
 

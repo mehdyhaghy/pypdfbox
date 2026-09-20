@@ -4,8 +4,6 @@ Mirrors ``org.apache.pdfbox.util.Hex`` (PDFBox 3.0, ``pdfbox/src/main/java/
 org/apache/pdfbox/util/Hex.java``).
 """
 
-from __future__ import annotations
-
 import base64
 import logging
 import re

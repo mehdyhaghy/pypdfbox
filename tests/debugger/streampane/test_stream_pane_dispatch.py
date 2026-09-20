@@ -13,8 +13,6 @@ All tests honour ``PYPDFBOX_SKIP_TK=1`` via the shared ``tk_root``
 fixture (see ``conftest.py``).
 """
 
-from __future__ import annotations
-
 from tkinter import ttk
 from typing import Any
 

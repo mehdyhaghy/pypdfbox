@@ -10,8 +10,6 @@ Targets the missing branches in wave 1335:
 * ``_tokenize_keep_separators`` empty-string short-circuit
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

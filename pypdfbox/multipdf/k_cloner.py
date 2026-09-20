@@ -12,8 +12,6 @@ This class is a thin adapter that delegates to that method, preserving
 upstream's API surface (``KCloner(dst_page_tree).create_clone(...)``).
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from pypdfbox.cos.cos_array import COSArray

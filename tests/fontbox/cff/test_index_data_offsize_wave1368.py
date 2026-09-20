@@ -12,8 +12,6 @@ Exercises ``read_index_data`` and ``read_index_data_offsets`` past the
 happy paths covered by ``test_cff_parser_coverage.py``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.cff_parser import CFFParser

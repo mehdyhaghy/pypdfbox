@@ -23,8 +23,6 @@ regression run, they can drop the upstream ``src/test/resources/input``
 tree into ``tests/fixtures/text/input/`` and the placeholders flip into
 live tests with no other code change.
 """
-from __future__ import annotations
-
 import pytest
 
 

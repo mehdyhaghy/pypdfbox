@@ -5,8 +5,6 @@ splitter's deep-copy must carry these stream bodies into each chunk
 verbatim. Truncating or losing the subset program corrupts the font and
 breaks downstream rendering.
 """
-from __future__ import annotations
-
 import io
 
 from pypdfbox import PDDocument, PDPage

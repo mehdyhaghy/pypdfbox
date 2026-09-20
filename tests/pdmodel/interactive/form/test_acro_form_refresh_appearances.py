@@ -14,8 +14,6 @@ font-alias from the auto-allocated ``/F0`` to the source ``/DA`` alias
 (e.g. ``/Helv``) so the assertions below now match the original ``/DA``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat, COSName, COSStream
 from pypdfbox.pdmodel.interactive.form import PDAcroForm, PDTextField
 from pypdfbox.pdmodel.pd_document import PDDocument

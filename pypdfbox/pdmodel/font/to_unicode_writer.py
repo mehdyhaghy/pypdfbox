@@ -19,8 +19,6 @@ Mapping batches are limited to :data:`MAX_ENTRIES_PER_OPERATOR` (= 100)
 to keep the CMap parser-friendly (PDFBOX-4302).
 """
 
-from __future__ import annotations
-
 import io
 import math
 

@@ -12,8 +12,6 @@ glyph programs and fontTools-driven outline extraction. The Type 3 path
 is wholly engine-driven (no fontTools, no aggdraw glyph pen) so it gets
 its own focused regression file.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

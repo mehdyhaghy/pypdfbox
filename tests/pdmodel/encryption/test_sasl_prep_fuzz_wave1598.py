@@ -25,8 +25,6 @@ Unicode-version note: the dev interpreter ships Unicode 16 data while Java
 assignment status or properties changed between those versions.
 """
 
-from __future__ import annotations
-
 import random
 
 import pytest

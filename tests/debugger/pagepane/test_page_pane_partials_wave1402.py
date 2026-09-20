@@ -17,8 +17,6 @@ Targets the residual partial branches on
 Uses the shared ``tk_root`` fixture from ``tests/debugger/pagepane/conftest.py``.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 from collections.abc import Iterator
 from typing import Any

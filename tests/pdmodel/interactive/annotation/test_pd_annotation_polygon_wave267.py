@@ -7,8 +7,6 @@ Covers:
 - ``iter_vertex_points`` (alternating-coord -> point pairs)
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_polygon import (
     PDAnnotationPolygon,

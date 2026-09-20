@@ -3,8 +3,6 @@
 Ported from ``org.apache.pdfbox.debugger.flagbitspane.SigFlag``.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import COSDictionary, COSName

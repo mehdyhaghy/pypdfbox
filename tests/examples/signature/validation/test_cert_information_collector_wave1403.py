@@ -6,8 +6,6 @@ certificate whose issuer is absent from the candidate pool,
 not cert`` guard takes its False arc and no child node is attached.
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 
 from cryptography import x509
@@ -59,7 +57,7 @@ def test_build_node_without_issuer_in_pool_skips_chain() -> None:
     collector = CertInformationCollector()
     # Pool contains only the leaf: the issuer (CA) is absent so
     # _find_issuer returns None → 98->102 (no cert chain attached).
-    info = collector._build_node(
+    info = collector._build_node(  # exercising the helper
         leaf, [leaf], signature_hash=None, depth=0,
     )
     assert info.is_self_signed() is False

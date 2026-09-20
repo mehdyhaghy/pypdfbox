@@ -1,7 +1,5 @@
 """Wave 1275 round-out: ``COSStream.write`` bulk-output helper."""
 
-from __future__ import annotations
-
 import io
 
 import pytest

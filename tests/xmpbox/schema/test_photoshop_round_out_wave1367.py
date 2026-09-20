@@ -6,8 +6,6 @@ ArrayProperty synthesis path, and removal-clears-from-/Description for
 typed properties.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox.photoshop_schema import PhotoshopSchema

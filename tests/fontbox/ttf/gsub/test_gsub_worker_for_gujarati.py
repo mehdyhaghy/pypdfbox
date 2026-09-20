@@ -1,7 +1,5 @@
 """Tests for :class:`GsubWorkerForGujarati`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.cmap_lookup import CmapLookup
 from pypdfbox.fontbox.ttf.gsub import GsubData, GsubWorkerForGujarati
 

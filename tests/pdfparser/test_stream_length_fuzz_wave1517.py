@@ -30,8 +30,6 @@ body size); ``len`` = post-parse ``/Length`` entry value; ``dec`` = byte count
 of the fully-decoded body (``create_input_stream``) or ``ERR``/``none``.
 """
 
-from __future__ import annotations
-
 import zlib
 from pathlib import Path
 
@@ -277,7 +275,7 @@ def _dec(stream: COSStream) -> str:
                     break
                 total += len(chunk)
             return str(total)
-    except Exception:
+    except Exception:  # mirror probe dec=ERR
         return "ERR"
 
 
@@ -286,7 +284,7 @@ def _project(pdf_path: Path) -> str:
     document = None
     try:
         document = Loader.load_pdf(str(pdf_path))
-    except Exception as exc:
+    except Exception as exc:  # mirror probe LOAD:<Exc>
         return "LOAD:" + type(exc).__name__
     try:
         obj = document.get_object_from_pool(COSObjectKey(1, 0))
@@ -294,7 +292,7 @@ def _project(pdf_path: Path) -> str:
             return "ABSENT"
         try:
             resolved = obj.get_object()
-        except Exception as exc:
+        except Exception as exc:  # mirror probe ERR:<Exc>
             return "ERR:" + type(exc).__name__
         if resolved is None or isinstance(resolved, COSNull):
             return "null"

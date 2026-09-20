@@ -3,8 +3,6 @@
 Mirrors ``org.apache.fontbox.util.autodetect.UnixFontDirFinder``.
 """
 
-from __future__ import annotations
-
 import os
 
 from pypdfbox.fontbox.util.autodetect.native_font_dir_finder import NativeFontDirFinder

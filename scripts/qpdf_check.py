@@ -22,8 +22,6 @@ When qpdf is not on ``PATH`` the script prints a one-line notice and
 exits 0 (so it can be wired into pre-commit without becoming a hard
 blocker on developer laptops without the tool installed).
 """
-from __future__ import annotations
-
 import argparse
 import shutil
 import subprocess

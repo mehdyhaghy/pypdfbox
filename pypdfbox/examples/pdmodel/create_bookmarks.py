@@ -3,8 +3,6 @@
 Adds one bookmark for every page of a PDF.
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (

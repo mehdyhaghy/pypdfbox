@@ -6,8 +6,6 @@ runs without a real font, mirroring upstream's
 ``KerningSubtableFormat0Test`` / ``KerningSubtableFormat2Test`` style.
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

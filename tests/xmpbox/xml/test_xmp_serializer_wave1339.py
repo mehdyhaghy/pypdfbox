@@ -7,8 +7,6 @@ wave 1337 — :meth:`_normalize_schema_fields`, :meth:`_iter_flat_typed`,
 (``_FIELD_CARDINALITIES`` / ``get_property_cardinality``).
 """
 
-from __future__ import annotations
-
 import io
 from datetime import UTC, datetime
 

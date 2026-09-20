@@ -2,8 +2,6 @@
 
 Upstream baseline: apache/pdfbox 3.0.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.io import RandomAccessReadBuffer

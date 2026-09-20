@@ -8,8 +8,6 @@ this port exposes them as ordinary methods and the panel wires them up via
 :func:`tkinter.Variable.trace_add` / widget ``<<EventName>>`` bindings.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import Any
 

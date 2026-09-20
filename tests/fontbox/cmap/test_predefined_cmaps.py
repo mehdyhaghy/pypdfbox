@@ -13,8 +13,6 @@ resources must fall back to ``None`` rather than raising. The
 curated" documents the intentional gap.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cmap import CMapManager

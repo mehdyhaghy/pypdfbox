@@ -4,8 +4,6 @@ io/src/test/java/org/apache/pdfbox/io/RandomAccessReadViewTest.java
 (Apache PDFBox 3.0).
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

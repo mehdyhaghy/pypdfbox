@@ -8,8 +8,6 @@ modules land we exercise the same operand sequences directly through the
 operator classes; the assertions match the Java pop order.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.common.function.type4.execution_context import (
     ExecutionContext,
 )

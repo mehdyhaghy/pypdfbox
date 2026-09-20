@@ -15,8 +15,6 @@ These tests pin down those edges past the happy paths covered by
 ``test_type2_char_string_parser_coverage.py``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.char_string_command import CharStringCommand

@@ -13,8 +13,6 @@ helpers:
   16 vendor-specific Mac OS Roman differences.
 """
 
-from __future__ import annotations
-
 from types import MappingProxyType
 
 import pytest

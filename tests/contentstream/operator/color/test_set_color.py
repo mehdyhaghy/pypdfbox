@@ -10,8 +10,6 @@ lock in its branching:
 * pattern color spaces skip both validations and pass through any operands.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

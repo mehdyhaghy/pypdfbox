@@ -7,8 +7,6 @@ Original:
 Tests the type-4 function parser.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.common.function.type4 import (

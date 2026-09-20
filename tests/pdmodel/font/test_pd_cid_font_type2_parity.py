@@ -6,8 +6,6 @@ Covers ``get_cid_to_gid_map_bytes``, ``is_identity_cid_to_gid_map``,
 font program streams.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSStream
 from pypdfbox.pdmodel.font.pd_cid_font_type2 import PDCIDFontType2
 from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor

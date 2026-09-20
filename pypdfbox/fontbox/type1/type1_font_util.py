@@ -20,8 +20,6 @@ We expose a class with classmethods so the call sites read the same way
 as the upstream Java statics.
 """
 
-from __future__ import annotations
-
 import secrets
 
 # Adobe Type 1 Font Format spec §7 — fixed cipher constants.

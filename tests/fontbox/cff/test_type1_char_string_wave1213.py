@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.fontbox.cff import test_type1_char_string as type1_mod
 
 

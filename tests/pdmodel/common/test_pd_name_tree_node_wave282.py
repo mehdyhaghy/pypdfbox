@@ -1,7 +1,5 @@
 """Wave 282 name-tree common behavior tests."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSName, COSNull, COSString

@@ -14,8 +14,6 @@ transitively via the full text-strip corpus. We pin each accessor here
 so a future refactor of the directional algebra is parity-checked
 without depending on a corpus diff.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.text import TextPosition

@@ -19,8 +19,6 @@ intrinsic), so :meth:`get_cos_object` returns ``None`` matching
 upstream.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSBase

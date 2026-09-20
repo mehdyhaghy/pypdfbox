@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 import tests.pdmodel.graphics.test_state_pattern_tail_wave763 as wave763

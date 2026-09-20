@@ -4,8 +4,6 @@ Each builds a small input PDF on the fly, then exercises ``main()`` and
 asserts the output PDF is produced or the expected output is emitted.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

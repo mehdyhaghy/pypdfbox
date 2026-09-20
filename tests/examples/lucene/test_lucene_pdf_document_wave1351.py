@@ -6,8 +6,6 @@ Targets the URL-style branch inside :meth:`create_uid` (lines 131-132)
 where the timestamp defaults to ``0``).
 """
 
-from __future__ import annotations
-
 from pypdfbox.examples.lucene.lucene_pdf_document import LucenePDFDocument
 
 

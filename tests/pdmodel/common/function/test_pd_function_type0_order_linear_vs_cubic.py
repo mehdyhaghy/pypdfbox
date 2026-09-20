@@ -10,8 +10,6 @@ contract: ``/Order = 1`` and ``/Order = 3`` (and every other value) produce
 byte-identical linear output.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

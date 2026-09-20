@@ -14,8 +14,6 @@ Closes the easy ones:
   text / leading whitespace / post-TZ parse miss.
 """
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox.date_converter import (
     _make_handler_locale,
     _make_handler_locale_split_at_tz,

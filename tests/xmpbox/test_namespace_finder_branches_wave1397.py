@@ -6,8 +6,6 @@ Closes False-branch arrows:
 * 30->28 — ``push`` skips attributes whose ``namespaceURI`` is not xmlns
 """
 
-from __future__ import annotations
-
 from xml.dom.minidom import parseString
 
 from pypdfbox.xmpbox.xml.namespace_finder import NamespaceFinder

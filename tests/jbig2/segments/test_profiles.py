@@ -1,7 +1,5 @@
 """Hand-written tests for the JBIG2 Profiles segment (empty upstream stub)."""
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.segment_data import SegmentData
 from pypdfbox.jbig2.segments.profiles import Profiles
 

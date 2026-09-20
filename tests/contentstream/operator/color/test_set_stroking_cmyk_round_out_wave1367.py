@@ -13,8 +13,6 @@ this file targets the engine-coupled scenarios that exercise the shared
 * no-context standalone use is a no-op.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

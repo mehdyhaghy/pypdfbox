@@ -12,8 +12,6 @@ Covers the lite XHTML subset called out in the wave brief:
 - fields without ``/RV`` → unchanged ``/V`` rendering (regression)
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSFloat, COSName, COSStream

@@ -16,8 +16,6 @@ literals like ``0.1f`` are compared with ``pytest.approx`` since pypdfbox
 stores them as 32-bit floats widened to Python ``float``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox import PDDocument, PDPage

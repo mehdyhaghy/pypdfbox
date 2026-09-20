@@ -12,8 +12,6 @@ directly with hand-built wrappers.
 Hand-written (not ported from upstream JUnit).
 """
 
-from __future__ import annotations
-
 from pypdfbox.text import PDFTextStripper, TextPosition
 from pypdfbox.text.position_wrapper import PositionWrapper
 

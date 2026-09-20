@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.interactive.action.pd_action_go_to_3d_view import (
     PDActionGoTo3DView,

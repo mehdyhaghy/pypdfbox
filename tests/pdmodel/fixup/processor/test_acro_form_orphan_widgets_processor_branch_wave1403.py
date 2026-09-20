@@ -10,8 +10,6 @@ Closes the False-branch arrow in
   ``ensure_font_resources``.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.pdmodel.fixup.processor.acro_form_orphan_widgets_processor import (

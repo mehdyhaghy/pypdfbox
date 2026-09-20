@@ -7,8 +7,6 @@ invariants those workers depend on (feature lookup, longest-match glyph
 substitution) at the data-class level.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub import GsubData
 
 

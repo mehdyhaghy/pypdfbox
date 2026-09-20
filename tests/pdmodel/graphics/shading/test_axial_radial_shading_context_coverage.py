@@ -16,8 +16,6 @@ without dragging the full ``PDShadingType2`` / ``PDShadingType3`` graph
 through every assertion.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

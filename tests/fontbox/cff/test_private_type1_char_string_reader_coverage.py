@@ -2,8 +2,6 @@
 (``_CFFCIDDefaultReader``) in
 ``pypdfbox.fontbox.cff.private_type1_char_string_reader``.
 """
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.private_type1_char_string_reader import (
     PrivateType1CharStringReader,
     _CFFCIDDefaultReader,

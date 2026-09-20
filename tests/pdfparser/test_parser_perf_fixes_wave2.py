@@ -12,8 +12,6 @@ Two behaviour-preserving optimisations are locked in here:
   text, and stream positions must be identical to the re-read path.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos.cos_float import COSFloat
 from pypdfbox.cos.cos_integer import COSInteger
 from pypdfbox.io import RandomAccessReadBuffer

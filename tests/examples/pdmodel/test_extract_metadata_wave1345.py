@@ -7,8 +7,6 @@ Targets the remaining uncovered lines:
 * the populated ``list_calendar`` branch (lines 111-113).
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 from pathlib import Path
 

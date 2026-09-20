@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .operator import Operator
 from .operator_name import OperatorName
 from .operator_processor import MissingOperandException, OperatorProcessor

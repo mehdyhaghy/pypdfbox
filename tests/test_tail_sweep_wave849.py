@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.font.pd_cid_font import PDCIDFont
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (

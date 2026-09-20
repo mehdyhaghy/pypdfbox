@@ -18,8 +18,6 @@ keep a list of installed commands and replace them all whenever
 :py:meth:`add_menu_listeners` is invoked.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 from collections.abc import Callable
 from typing import Any

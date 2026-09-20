@@ -8,8 +8,6 @@ populate_field_from_xfdf rich-text path, and the lenient error-handling
 ``except`` blocks in :func:`populate_fdf_dictionary_from_xfdf`.
 """
 
-from __future__ import annotations
-
 from xml.dom.minidom import parseString
 
 import pytest

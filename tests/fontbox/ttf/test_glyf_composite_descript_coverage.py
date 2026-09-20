@@ -9,8 +9,6 @@ helpers, and the ``from_glyph`` library-first adapter for both colored
 and uncolored ranges.
 """
 
-from __future__ import annotations
-
 import struct
 from typing import Any
 

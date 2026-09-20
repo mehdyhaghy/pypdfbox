@@ -10,8 +10,6 @@ classes:
 * date Seq round-trip and removal
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 import pytest

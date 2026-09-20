@@ -3,8 +3,6 @@
 Pure data-record tests — no Tk required.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.debugger.colorpane.indexed_colorant import IndexedColorant

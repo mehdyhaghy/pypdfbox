@@ -15,8 +15,6 @@ Tests that depend on a binary PDF fixture we don't ship (e.g.
 tests are translated to use the same in-memory CFF fixture pattern
 as the hand-written tests in :mod:`tests.pdmodel.font.test_pd_cid_font_type0`.
 """
-from __future__ import annotations
-
 import io
 
 import pytest

@@ -3,8 +3,6 @@ the public ``FLAG_INCLUDE_EXCLUDE`` constant, ``get_field_names``
 extractor (PDF 32000-1 §12.7.5.3), and the extended ``set_fields``
 overloads accepting :class:`PDField` / :class:`COSBase` lists."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString

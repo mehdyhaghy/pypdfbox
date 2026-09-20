@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.pdmodel.graphics.color import PDDeviceRGB
 from tests.contentstream.operator.color.test_set_non_stroking_color_n import (
     _GraphicsState,

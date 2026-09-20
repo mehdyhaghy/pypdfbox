@@ -9,8 +9,6 @@ and the multi-column-table line-grouping behaviour they enable, using
 synthetic TextPositions so they run without the live Java oracle.
 """
 
-from __future__ import annotations
-
 from pypdfbox.text import PDFTextStripper, TextPosition
 
 

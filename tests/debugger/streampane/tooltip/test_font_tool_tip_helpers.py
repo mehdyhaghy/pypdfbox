@@ -1,7 +1,5 @@
 """Tests for the newly-promoted helpers on :class:`FontToolTip`."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.debugger.streampane.tooltip import FontToolTip
 

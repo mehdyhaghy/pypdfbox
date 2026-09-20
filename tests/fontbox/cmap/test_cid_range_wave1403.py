@@ -5,8 +5,6 @@ None`` True branch, where the length is derived from ``len(data)`` and
 control then enters the accumulation loop.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cmap.cid_range import _to_int
 
 

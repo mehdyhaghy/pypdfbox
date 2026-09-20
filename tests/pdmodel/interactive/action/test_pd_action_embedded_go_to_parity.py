@@ -3,8 +3,6 @@
 ``setOpenInNewWindow``, and ``getTargetDirectory`` /
 ``setTargetDirectory`` (PDF 32000-1 §12.6.4.4)."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.interactive.action.pd_action_embedded_go_to import (
     PDActionEmbeddedGoTo,

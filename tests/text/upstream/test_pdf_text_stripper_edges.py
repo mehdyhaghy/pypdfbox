@@ -10,8 +10,6 @@ Each test below maps to an upstream concern (commented inline) so the
 intent stays diff-able against future re-syncs of upstream behaviour.
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.cos import COSStream

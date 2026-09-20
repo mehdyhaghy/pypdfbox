@@ -3,8 +3,6 @@
 Pure-logic tests — no Tk required.
 """
 
-from __future__ import annotations
-
 from pypdfbox.debugger.colorpane.indexed_colorant import IndexedColorant
 from pypdfbox.debugger.colorpane.indexed_table_model import IndexedTableModel
 

@@ -20,8 +20,6 @@ These three entry points are easy to mix up if a future refactor
 unifies their fences; this file pins the upstream-faithful boundaries.
 """
 
-from __future__ import annotations
-
 import io
 from typing import IO, Any
 

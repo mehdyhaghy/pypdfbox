@@ -18,8 +18,6 @@ Targets:
   in :meth:`PDSignature.read_contents` (lines 808->813, 814->818, 819).
 """
 
-from __future__ import annotations
-
 from typing import BinaryIO
 
 import pytest
@@ -297,7 +295,7 @@ def test_pdseedvalue_violation_digest_method_required_with_disallowed_hint() -> 
     sv.set_digest_method([PDSeedValue.DIGEST_SHA256, PDSeedValue.DIGEST_SHA384])
     sv.set_digest_method_required(True)
     sig = PDSignature()
-    sig._digest_method_hint = "SHA1"
+    sig._digest_method_hint = "SHA1"  # explicit signer hint.
     violations = sv.check_signature_constraint(sig)
     assert any("DigestMethod" in v for v in violations)
     assert any("SHA1" in v for v in violations)

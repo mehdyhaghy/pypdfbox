@@ -6,8 +6,6 @@ mask, the ARGB white->transparent pass) must produce output that is
 references below re-implement the scalar algorithm independently so the
 comparison is a genuine oracle rather than a tautology.
 """
-from __future__ import annotations
-
 import numpy as np
 import pytest
 from PIL import Image

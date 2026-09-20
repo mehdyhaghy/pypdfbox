@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import re
 from enum import Enum
 from io import BytesIO
@@ -720,7 +718,7 @@ class DomXmpParser:
 
     def _validate_element_form_cardinality(
         self,
-        element: ET.Element,
+        element: ET.Element,  # reserved for future shape detail
         ns: str,
         local: str,
         parsed_value: object,
@@ -830,7 +828,7 @@ class DomXmpParser:
     @staticmethod
     def _schema_for(
         ns: str,
-        local_name_for_prefix_hint: str,
+        local_name_for_prefix_hint: str,  # reserved for future heuristics
         desc: ET.Element,
         metadata: XMPMetadata,
         per_ns: dict[str, XMPSchema],
@@ -1085,7 +1083,7 @@ class DomXmpParser:
         self,
         element: ET.Element,
         ns: str | None,
-        prefix: str | None,
+        prefix: str | None,  # prefix info dropped by ElementTree
         local_name: str | None,
     ) -> None:
         """Mirror of upstream ``expectNaming`` (line 996).
@@ -1229,7 +1227,7 @@ class DomXmpParser:
 
     def maybe_add_non_standard_namespace(
         self,
-        metadata: XMPMetadata,
+        metadata: XMPMetadata,  # placeholder for TypeMapping integration
         prefix: str,
         namespace: str,
     ) -> None:
@@ -1314,7 +1312,7 @@ class DomXmpParser:
 
     def manage_structured_type(
         self,
-        schema: XMPSchema,
+        schema: XMPSchema,  # rich-type system not yet ported
         local: str,
         element: ET.Element,
     ) -> None:
@@ -1410,7 +1408,7 @@ class DomXmpParser:
 
     def parse_schema_extensions(
         self,
-        metadata: XMPMetadata,
+        metadata: XMPMetadata,  # PDF/A extension type system not ported
         description: ET.Element,
     ) -> list[ET.Element]:
         """Mirror of upstream ``parseSchemaExtensions`` (line 266).
@@ -1441,7 +1439,7 @@ class DomXmpParser:
     def parse_li_element(
         self,
         metadata: XMPMetadata,
-        descriptor: tuple[str, str],
+        descriptor: tuple[str, str],  # (ns, local)
         li_element: ET.Element,
     ) -> object:
         """Mirror of upstream ``parseLiElement`` (line 657).

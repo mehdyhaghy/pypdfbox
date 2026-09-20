@@ -1,7 +1,5 @@
 """Hand-written tests for the ``ToolTip`` base + value types."""
 
-from __future__ import annotations
-
 from pypdfbox.debugger.streampane.tooltip import ToolTip, ToolTipSegment, ToolTipText
 
 

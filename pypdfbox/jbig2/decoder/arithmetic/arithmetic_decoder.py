@@ -13,8 +13,6 @@ it is masked to 32 bits on each left shift to faithfully mirror Java ``int``
 wraparound and to keep the value bounded.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

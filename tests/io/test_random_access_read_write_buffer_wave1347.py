@@ -16,8 +16,6 @@ Pre-wave the module sat at 91.2 % (3 missing); this set takes it to
 100 %.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.io import RandomAccessReadWriteBuffer

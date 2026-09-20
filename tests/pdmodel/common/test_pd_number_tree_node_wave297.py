@@ -1,7 +1,5 @@
 """Wave 297 regression tests for PDNumberTreeNode lookup hardening."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSInteger, COSName

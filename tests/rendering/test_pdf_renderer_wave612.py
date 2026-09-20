@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from PIL import Image
 
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle

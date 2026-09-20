@@ -26,8 +26,6 @@ each record consumes ``6 + size`` bytes, so ``sum(size) <= len(pfb)``
 strictly. Flagged in the wave report.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

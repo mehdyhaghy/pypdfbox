@@ -1,7 +1,5 @@
 """Wave 1275 parity test for COSDocument.get_stream_cache."""
 
-from __future__ import annotations
-
 import contextlib
 
 from pypdfbox.cos.cos_document import COSDocument

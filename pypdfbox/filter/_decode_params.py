@@ -29,8 +29,6 @@ That lets callers invoke a codec directly with a flat predictor dict
 synthetic stream dictionary.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 
 _F = COSName.get_pdf_name("F")

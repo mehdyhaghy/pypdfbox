@@ -6,8 +6,6 @@ Covers the public surface (``main`` / ``sign_pdf`` / ``_sign_document`` /
 PDF so the suite does not rely on the network or external CA infrastructure.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

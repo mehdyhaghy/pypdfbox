@@ -10,8 +10,6 @@ Targets:
 - ``to_raw_image`` Pillow ``L`` single-band shortcut
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName

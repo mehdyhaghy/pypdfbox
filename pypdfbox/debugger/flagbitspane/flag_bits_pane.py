@@ -6,8 +6,6 @@ Dispatches a (dictionary, flag-type) pair to the correct :class:`Flag`
 subclass and wraps the resulting decoded rows in a :class:`FlagBitsPaneView`.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 
 from pypdfbox.cos import COSDictionary, COSName

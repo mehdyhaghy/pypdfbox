@@ -5,8 +5,6 @@ Source: ``pdfbox/fontbox/src/test/java/org/apache/fontbox/cff/CFFEncodingTest.ja
 ``@Test void`` -> ``def test_...``, ``assertEquals`` -> ``assert ==``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.cff_expert_encoding import CFFExpertEncoding
 from pypdfbox.fontbox.cff.cff_standard_encoding import CFFStandardEncoding
 

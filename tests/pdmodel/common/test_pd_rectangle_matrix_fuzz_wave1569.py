@@ -29,8 +29,6 @@ Every expected value below is derived by hand from the upstream Java semantics
 ``tests/pdmodel/common/oracle/test_rect_matrix_fuzz_wave1561.py``.
 """
 
-from __future__ import annotations
-
 import math
 import struct
 

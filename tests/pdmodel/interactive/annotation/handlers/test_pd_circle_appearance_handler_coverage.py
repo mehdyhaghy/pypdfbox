@@ -17,8 +17,6 @@ Closes the remaining gaps:
 * Plain (no-cloudy) ellipse path emits curves.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName
 from pypdfbox.pdmodel.interactive.annotation.handlers.pd_circle_appearance_handler import (
     PDCircleAppearanceHandler,

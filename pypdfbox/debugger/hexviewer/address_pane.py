@@ -7,8 +7,6 @@ selected line changes. Tag-driven styling reproduces the bold/highlighted
 appearance of the selected address.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 from tkinter import font as tkfont
 

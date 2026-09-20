@@ -6,8 +6,6 @@ Python lists have no unmodifiable wrapper, so we instead assert the
 worker returns an equal list whose mutation does not affect the input.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub import DefaultGsubWorker
 
 

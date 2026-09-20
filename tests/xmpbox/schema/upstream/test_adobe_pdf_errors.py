@@ -17,8 +17,6 @@ The Python translation maps ``IllegalArgumentException`` to
 strings to mirror the upstream contract).
 """
 
-from __future__ import annotations
-
 from io import BytesIO
 
 import pytest

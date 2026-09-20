@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 DEFAULT_KEY_LENGTH: int = 40
 _VALID_KEY_LENGTHS: frozenset[int] = frozenset({40, 128, 256})
 

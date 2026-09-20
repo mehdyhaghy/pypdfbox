@@ -11,8 +11,6 @@ with optional colour-key masking via Pillow; the raw-raster path
 returns a Pillow image containing the un-colour-converted samples.
 """
 
-from __future__ import annotations
-
 import io
 import logging
 from collections.abc import Iterable

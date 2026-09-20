@@ -4,8 +4,6 @@ Covers :class:`pypdfbox.text.bidi.BidiResolver`, :func:`reorder_visually`,
 :func:`reorder_runs_visually`, and :func:`get_paragraph_direction`, plus
 the integration into :meth:`PDFTextStripper.handle_direction`.
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest
@@ -173,7 +171,7 @@ def test_resolve_RTL_paragraph_with_LTR_run_and_numbers() -> None:
 
 
 def test_resolve_trailing_whitespace_resets_to_paragraph_level() -> None:
-    text = "אבג   "
+    text = "אבג   "  # Hebrew + 3 spaces
     levels = BidiResolver().resolve(text)
     # Trailing whitespace levels reset to paragraph level (1 here).
     # Hebrew levels remain odd, trailing ws becomes odd too (paragraph

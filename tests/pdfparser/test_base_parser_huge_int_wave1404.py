@@ -10,8 +10,6 @@ mode (its int parsing is bounded differently), so this is a Python-runtime
 hardening, not a parity divergence.
 """
 
-from __future__ import annotations
-
 import sys
 
 import pytest

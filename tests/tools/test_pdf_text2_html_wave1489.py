@@ -19,8 +19,6 @@ Pinned contracts (verified byte-for-byte against the upstream
 * non-ASCII characters escaped as ``&#NNN;`` named-decimal entities.
 """
 
-from __future__ import annotations
-
 import re
 from pathlib import Path
 

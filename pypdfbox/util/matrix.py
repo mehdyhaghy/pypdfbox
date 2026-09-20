@@ -13,8 +13,6 @@ Note that ``hx`` and ``hy`` are reversed vs. the PDF spec to align with
 Java's ``AffineTransform`` shear definitions.
 """
 
-from __future__ import annotations
-
 import math
 import struct
 from typing import TYPE_CHECKING

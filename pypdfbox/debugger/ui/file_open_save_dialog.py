@@ -15,8 +15,6 @@ overwrite-confirmation dialog, so the upstream JFileChooser override has no
 Python counterpart.
 """
 
-from __future__ import annotations
-
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any

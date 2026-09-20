@@ -1,7 +1,5 @@
 """Tests for ``pypdfbox.fontbox.pfb.PfbParser``."""
 
-from __future__ import annotations
-
 import io
 
 import pytest

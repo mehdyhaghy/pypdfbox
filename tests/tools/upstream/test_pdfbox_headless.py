@@ -12,8 +12,6 @@ Skipped:
 - ``isHeadlessPDFBoxTest`` exact-string assertion on the upstream PicoCLI
   wording — translated to a substring check on argparse's output.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.tools import cli

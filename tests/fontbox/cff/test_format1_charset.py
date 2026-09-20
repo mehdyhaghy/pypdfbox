@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`Format1Charset`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff import EmbeddedCharset, Format1Charset, RangeMapping
 
 

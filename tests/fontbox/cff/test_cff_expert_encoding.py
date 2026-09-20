@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`CFFExpertEncoding`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.cff_expert_encoding import CFFExpertEncoding
 
 

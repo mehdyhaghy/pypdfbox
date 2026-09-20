@@ -6,8 +6,6 @@ typed/string interop on enum properties, Rational property parsing,
 GPS coordinate round-trip and property removal that clears the slot.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox.exif_schema import ExifSchema

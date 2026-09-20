@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSNumber
 
 from .pd_seed_value_certificate import PDSeedValueCertificate
@@ -433,7 +431,7 @@ class PDSeedValue:
         """
         # Lazy import — pd_signature.py imports from this module via the
         # interactive package, so importing it at module top would cycle.
-        from .pd_signature import PDSignature
+        from .pd_signature import PDSignature  # cycle guard
 
         violations: list[str] = []
         if not isinstance(signature, PDSignature):

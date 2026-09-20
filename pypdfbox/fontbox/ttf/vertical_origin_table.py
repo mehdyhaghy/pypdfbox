@@ -6,8 +6,6 @@ vertical writing modes so a renderer can read the glyph's vertical
 origin Y directly instead of computing it from the CFF bounding box.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from .ttf_table import TTFTable

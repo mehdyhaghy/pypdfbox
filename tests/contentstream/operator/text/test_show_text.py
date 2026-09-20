@@ -8,8 +8,6 @@ shapes upstream documents (empty operands, non-string operand) and the
 strictly more conservative shape — see the class docstring).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream import (

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 
 from .pd_measure_dictionary import PDMeasureDictionary

@@ -19,8 +19,6 @@ the upstream and the ported decoder yields identical bitmaps — so the captured
 expectations double as a bit-exact context-computation parity fixture.
 """
 
-from __future__ import annotations
-
 import io
 import struct
 

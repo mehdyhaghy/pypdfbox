@@ -1,7 +1,5 @@
 """Selection-change event for the hex view."""
 
-from __future__ import annotations
-
 
 class SelectEvent:
     """Describes a selection-related navigation event in the hex view."""

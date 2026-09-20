@@ -10,8 +10,6 @@ number of glyphs in the range *minus one* (so a range of length 1 has
 ``n_left == 0``).
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 

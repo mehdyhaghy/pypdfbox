@@ -13,8 +13,6 @@ Every expected value below is hand-computed from the bit/byte layout in 7.2 and
 cross-checked against the upstream PDFBox oracle (oracle/probes/SegHeaderProbe.java).
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

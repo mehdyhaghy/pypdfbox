@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 import tests.rendering.test_pdf_renderer_type3_font as type3_font

@@ -7,8 +7,6 @@ where the upstream test depends on a JUnit-only mechanism (e.g.
 parameterised seeds) we substitute the equivalent pytest pattern.
 """
 
-from __future__ import annotations
-
 import random
 
 import pytest

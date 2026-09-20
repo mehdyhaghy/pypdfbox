@@ -1,7 +1,5 @@
 """Smoke test for :class:`CreatePushButton`."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.examples.interactive.form.create_push_button import CreatePushButton

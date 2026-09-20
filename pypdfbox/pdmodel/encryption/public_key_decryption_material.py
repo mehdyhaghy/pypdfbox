@@ -9,8 +9,6 @@ we'll decode lazily via ``cryptography.hazmat.primitives.serialization`` —
 matching the spirit of the upstream API while staying idiomatic.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from cryptography.hazmat.primitives import serialization

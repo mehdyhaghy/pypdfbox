@@ -21,8 +21,6 @@ remaining audited gaps:
   shape parity invariants the wave brief calls out.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSString

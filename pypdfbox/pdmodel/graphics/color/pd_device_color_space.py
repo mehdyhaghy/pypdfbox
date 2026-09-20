@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from abc import ABC
 
 from pypdfbox.cos import COSBase, COSName

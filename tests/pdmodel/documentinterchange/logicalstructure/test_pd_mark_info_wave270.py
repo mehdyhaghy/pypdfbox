@@ -6,8 +6,6 @@ Covers the new presence predicates (``has_marked``, ``has_user_properties``,
 :meth:`is_marked`, the ``is_empty`` aggregate predicate, and ``__repr__``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_mark_info import (
     PDMarkInfo,

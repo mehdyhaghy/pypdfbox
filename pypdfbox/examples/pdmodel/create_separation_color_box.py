@@ -5,8 +5,6 @@ The colorspace's tint transform is a type 2 function that maps tint 0 to
 white (1, 1, 1) and tint 1 to yellow (1, 1, 0).
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName

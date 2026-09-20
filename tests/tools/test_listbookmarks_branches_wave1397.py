@@ -9,8 +9,6 @@ Closes False-branch arrows in ``_resolve_page_number`` and
 * ``_describe_item`` 144->151 — GoTo action carries no destination at all
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.action.pd_action_go_to import PDActionGoTo
 from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (
     PDPageDestination,

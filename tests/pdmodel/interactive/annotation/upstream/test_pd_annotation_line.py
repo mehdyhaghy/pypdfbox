@@ -8,8 +8,6 @@ source's behavioural contract: SUB_TYPE stamp, /L coordinate accessor,
 positioning, and /IC interior-color array.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_line import PDAnnotationLine
 

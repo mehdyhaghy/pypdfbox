@@ -3,8 +3,6 @@
 Tkinter port of ``org.apache.pdfbox.debugger.hexviewer.UpperPane``.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import ttk

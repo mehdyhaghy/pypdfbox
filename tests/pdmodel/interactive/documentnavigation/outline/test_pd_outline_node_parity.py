@@ -5,8 +5,6 @@ and its ``PDDocumentOutline`` subclass.
 Pins the surface that PDFBox callers reach for so future refactors
 can't silently break the upstream-shaped public API.
 """
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.documentnavigation.outline import (
     PDDocumentOutline,
     PDOutlineItem,

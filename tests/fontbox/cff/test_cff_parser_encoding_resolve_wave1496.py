@@ -14,8 +14,6 @@ These helpers are pure functions over a fontTools-shaped ``top`` object
 with a hand-built namespace fixture rather than a full CFF parse.
 """
 
-from __future__ import annotations
-
 from types import SimpleNamespace
 
 from pypdfbox.fontbox.cff.cff_expert_encoding import CFFExpertEncoding

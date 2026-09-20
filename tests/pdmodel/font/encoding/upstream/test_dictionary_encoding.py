@@ -7,8 +7,6 @@ surface a direct upstream test would have asserted, in the same style as
 the upstream JUnit tests for sibling encoding classes.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.font.encoding import (
     BuiltInEncoding,

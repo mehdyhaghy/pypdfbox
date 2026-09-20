@@ -5,8 +5,6 @@ the ``is_on_same_side_cc`` / ``is_on_same_side_dd`` helpers, and the
 ``get_flag*_edge`` accessors that the wave 1280 baseline did not exercise.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.graphics.shading.tensor_patch import TensorPatch
 
 

@@ -13,8 +13,6 @@ parser.
 Each test references the originating upstream source line so future
 re-syncs against ``pdfbox.git`` are diffable.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSStream

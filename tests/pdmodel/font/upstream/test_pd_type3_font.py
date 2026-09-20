@@ -15,8 +15,6 @@ that demand a parser or rendering harness are skipped with a
 single-line comment per the project's porting conventions.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream

@@ -29,8 +29,6 @@ no Python ordering), so the pre-fix ``decode[0] > decode[1]`` in
 silently dropped every inline stencil with an inverting ``/D [1 0]``.
 """
 
-from __future__ import annotations
-
 import pytest
 from PIL import Image
 

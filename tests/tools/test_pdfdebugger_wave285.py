@@ -1,6 +1,4 @@
 """Wave 285 coverage for pdfdebugger malformed object-id inputs."""
-from __future__ import annotations
-
 from collections.abc import Callable
 from pathlib import Path
 

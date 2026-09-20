@@ -15,8 +15,6 @@ that drives the same code-table edge case (the encoder's final code
 crossing a width boundary).
 """
 
-from __future__ import annotations
-
 import random
 from io import BytesIO
 

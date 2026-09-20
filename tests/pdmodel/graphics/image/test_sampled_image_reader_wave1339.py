@@ -11,8 +11,6 @@ Targets the remaining misses:
 - ``apply_color_key_mask`` Pillow-missing branch
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

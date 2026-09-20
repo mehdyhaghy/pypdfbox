@@ -27,8 +27,6 @@ Deferred to later clusters (each requires heavier subsystems):
 Entry point: ``pypdfbox.tools.cli:main`` — registered as the ``pypdfbox``
 console script in ``pyproject.toml``.
 """
-from __future__ import annotations
-
 from .cli import main, run_cli
 
 __all__ = ["main", "run_cli"]

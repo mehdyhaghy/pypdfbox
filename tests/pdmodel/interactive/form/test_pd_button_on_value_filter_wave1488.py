@@ -9,8 +9,6 @@ Upstream ``PDButton.getOnValueForWidget`` and ``PDCheckBox.getOnValue`` iterate
 wave 1488 the pypdfbox helpers iterated the raw ``/N`` keys, accepting any
 non-``/Off`` key regardless of value type.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.interactive.annotation import PDAnnotationWidget
 from pypdfbox.pdmodel.interactive.form import PDAcroForm

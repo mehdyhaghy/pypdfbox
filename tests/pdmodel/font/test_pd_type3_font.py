@@ -3,8 +3,6 @@
 ``get_width``, ``has_glyph``, ``is_embedded``).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream

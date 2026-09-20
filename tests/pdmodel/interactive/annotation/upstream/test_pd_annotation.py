@@ -6,8 +6,6 @@ the default constructor and the round-trip via
 ``PDTextField.getWidgets()``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.interactive.annotation import (
     PDAnnotation,

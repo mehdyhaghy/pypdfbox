@@ -11,8 +11,6 @@ Seqs. Wave 1379 adds the typed mirror so callers can populate and read
 back the full PDF/A Extension struct hierarchy without dropping down to
 COS primitives.
 """
-from __future__ import annotations
-
 from pypdfbox.xmpbox import PDFAExtensionSchema, XMPMetadata
 from pypdfbox.xmpbox.type.pdfa_field_description_type import PDFAFieldType
 from pypdfbox.xmpbox.type.pdfa_property_type import PDFAPropertyType

@@ -5,8 +5,6 @@ Closes the partial arc ``[288,291]`` — the ExpertEncoding name-lookup
 through to the ``-1`` return.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.cff_type1_font import CFFType1Font
 
 

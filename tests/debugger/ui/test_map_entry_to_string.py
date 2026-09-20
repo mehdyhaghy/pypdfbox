@@ -1,7 +1,5 @@
 """Tests for ``MapEntry.to_string`` (wave 1312)."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSInteger, COSName
 from pypdfbox.debugger.ui import MapEntry
 

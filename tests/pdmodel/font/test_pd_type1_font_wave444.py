@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSStream
 from pypdfbox.fontbox.type1.type1_font import Type1Font
 from pypdfbox.pdmodel.font import PDFontDescriptor, PDType1Font

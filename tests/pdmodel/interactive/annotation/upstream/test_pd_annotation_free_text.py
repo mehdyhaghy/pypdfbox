@@ -8,8 +8,6 @@ defaulting to ``None``, /RD rect differences, and /BE border-effect
 typed wrapper.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_free_text import (
     PDAnnotationFreeText,

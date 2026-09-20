@@ -11,8 +11,6 @@ Every kernel's ``f(x)`` is ported verbatim; the polynomial coefficient tables in
 :class:`Bessel` are copied byte-for-byte. ``Math.*`` maps to :mod:`math`.
 """
 
-from __future__ import annotations
-
 import math
 from enum import Enum
 

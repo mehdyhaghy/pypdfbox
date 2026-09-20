@@ -15,8 +15,6 @@ subclass. ``test_pd_shading.py`` covers the happy paths for ShadingType
   * Round-trip: ``create(dict)``'s ``get_cos_object()`` is the same dict.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSStream

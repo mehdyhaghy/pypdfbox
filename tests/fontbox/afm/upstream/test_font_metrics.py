@@ -9,8 +9,6 @@ Java's ``Collections.unmodifiableList(...)`` semantics are translated to
 underlying ``FontMetrics`` state" — Python has no first-class read-only
 list, so the parity assertion exercises the behavioural intent.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.afm import (

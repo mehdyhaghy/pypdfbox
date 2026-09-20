@@ -18,8 +18,6 @@ this code, but the API permits constructing extension subtables by hand
 (e.g. for raw GSUB tooling) so each branch needs a covering test.
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.fontbox.ttf.gsub import (

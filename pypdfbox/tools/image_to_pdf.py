@@ -4,8 +4,6 @@ Upstream Java reference:
     pdfbox/tools/src/main/java/org/apache/pdfbox/tools/ImageToPDF.java
     (lines 38-227)
 """
-from __future__ import annotations
-
 import argparse
 import sys
 from pathlib import Path

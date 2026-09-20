@@ -7,8 +7,6 @@ public helper so callers can probe the same condition without reaching
 into protected fields.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName

@@ -16,8 +16,6 @@ and derives the same SHA-1/SHA-256-truncated file key the decrypt path
 expects.
 """
 
-from __future__ import annotations
-
 import hashlib
 import os
 from typing import TYPE_CHECKING, cast
@@ -69,7 +67,7 @@ class PublicKeySecurityHandler(SecurityHandler):
     def prepare_for_decryption(
         self,
         encryption: PDEncryption,
-        document_id: bytes,
+        document_id: bytes,  # kept for API parity (unused for pubsec)
         decryption_material: object,
     ) -> None:
         """Locate the recipient envelope addressed to ``decryption_material``,
@@ -153,7 +151,7 @@ class PublicKeySecurityHandler(SecurityHandler):
                 # final error names the real cause instead of "wrong key".
                 unsupported_algo = True
                 continue
-            except Exception:
+            except Exception:  # try every recipient before giving up
                 continue
             if envelope_plaintext is not None:
                 break
@@ -521,7 +519,7 @@ class PublicKeySecurityHandler(SecurityHandler):
         recipients_array = COSArray()
         for blob in recipients:
             recipients_array.add(COSString(blob))
-        from pypdfbox.cos import COSName
+        from pypdfbox.cos import COSName  # lazy import
 
         crypt_filter.get_cos_object().set_item(
             COSName.get_pdf_name("Recipients"), recipients_array

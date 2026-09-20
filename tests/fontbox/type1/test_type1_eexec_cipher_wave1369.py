@@ -14,8 +14,6 @@ randomness, the inverse relationship of encrypt/decrypt, and the
 specific upstream-shaped ``Type1FontUtil.encrypt`` / ``.decrypt``
 helpers that take an explicit seed.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.type1.type1_font_util import Type1FontUtil

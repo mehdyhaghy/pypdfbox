@@ -9,8 +9,6 @@ they exist as belt-and-braces fallbacks and the modules are always
 importable in the test environment.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

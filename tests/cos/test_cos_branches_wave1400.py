@@ -11,8 +11,6 @@ Closes residual partial branches in:
   base not is_update_info; object actual not updated.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

@@ -1,7 +1,5 @@
 """Coverage cleanup for ``tests.multipdf.test_merger_struct_tree`` helpers."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from tests.multipdf.test_merger_struct_tree import _build_minimal_struct_doc
 

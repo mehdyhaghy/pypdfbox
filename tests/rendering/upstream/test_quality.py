@@ -13,8 +13,6 @@ must be bitonal when rendered at 300 dpi and identical to the scan in
 the PDF", PDFBOX-4831) is covered for representative bitonal images in
 ``tests/rendering/test_pdf_renderer_image_color_wave360.py``.
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

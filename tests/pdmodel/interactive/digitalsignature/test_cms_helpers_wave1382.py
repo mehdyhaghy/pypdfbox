@@ -22,8 +22,6 @@ Test strategy:
   trips through ``cryptography`` and carries the OID.
 """
 
-from __future__ import annotations
-
 import datetime
 import hashlib
 import io

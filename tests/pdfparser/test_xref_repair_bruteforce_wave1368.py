@@ -17,8 +17,6 @@ Tests cover:
 * The ``find_string`` helper locates byte sequences in the source.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDocument, COSName, COSObjectKey
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser.brute_force_parser import BruteForceParser

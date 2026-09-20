@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName
 from tests.pdfparser import test_cos_parser_wave406 as wave406
 

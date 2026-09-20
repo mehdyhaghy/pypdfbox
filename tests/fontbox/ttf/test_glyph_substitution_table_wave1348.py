@@ -16,8 +16,6 @@ We avoid building a real font; instead we fabricate stub objects mirroring
 the fontTools attribute graph (ScriptList, FeatureList, LookupList, etc.).
 """
 
-from __future__ import annotations
-
 import struct
 from types import SimpleNamespace
 from typing import Any

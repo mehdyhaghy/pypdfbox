@@ -29,8 +29,6 @@ once; the values are frozen here). A companion @requires_oracle differential
 test lives in ``oracle/test_function_type0_degenerate_oracle.py``.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

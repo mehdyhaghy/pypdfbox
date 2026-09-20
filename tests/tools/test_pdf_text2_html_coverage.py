@@ -16,8 +16,6 @@ parent's ``write_string`` on a per-test basis with a capture stub. The
 parent's ``write_paragraph_end`` (also a 3-arg in pypdfbox's parent
 signature) is similarly stubbed where touched.
 """
-from __future__ import annotations
-
 import types
 from typing import Any
 
@@ -371,7 +369,7 @@ def test_write_string_with_positions_routes_through_font_state(
 def test_write_paragraph_end_clears_font_state(patched_parent: list[str]) -> None:
     p = PDFText2HTML()
     # Prime the font state so ``clear`` has something to emit.
-    p._font_state.open("b")
+    p._font_state.open("b")  # exercising port invariant
     p.write_paragraph_end()
     captured = "".join(patched_parent)
     assert "</b>" in captured

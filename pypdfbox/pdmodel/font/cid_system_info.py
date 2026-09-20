@@ -13,8 +13,6 @@ lightweight record because no COS object is required for in-memory
 comparison.
 """
 
-from __future__ import annotations
-
 
 class CIDSystemInfo:
     """Immutable ``(registry, ordering, supplement)`` triple.

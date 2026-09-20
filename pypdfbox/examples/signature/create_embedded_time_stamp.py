@@ -1,7 +1,5 @@
 """Port of ``CreateEmbeddedTimeStamp`` (upstream 1-239)."""
 
-from __future__ import annotations
-
 import binascii
 from pathlib import Path
 from typing import IO

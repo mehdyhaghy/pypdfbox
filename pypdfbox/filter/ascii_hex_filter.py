@@ -12,8 +12,6 @@ port from PDFBox source can write::
 and resolve the symbol without disturbing the existing registry wiring.
 """
 
-from __future__ import annotations
-
 from .ascii_hex_decode import ASCIIHexDecode
 from .filter_factory import FilterFactory
 

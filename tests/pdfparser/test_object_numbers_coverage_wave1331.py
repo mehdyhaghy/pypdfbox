@@ -6,8 +6,6 @@ constructor, the ``next()`` alias, and the ``next_value`` range-advance
 path that ``__next__`` skips because it consults ``has_next`` first.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSInteger, COSName

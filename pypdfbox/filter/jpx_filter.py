@@ -12,8 +12,6 @@ from PDFBox Java sources can write::
 and resolve the symbol without re-deriving it.
 """
 
-from __future__ import annotations
-
 from typing import BinaryIO
 
 from pypdfbox.cos import COSDictionary

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSNull
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDPageFitRectangleDestination,

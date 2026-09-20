@@ -6,8 +6,6 @@ features (``ccmp``, ``liga``, ``clig``, ``calt``) in the order
 recommended by the OpenType ScriptList spec.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING
 

@@ -3,8 +3,6 @@
 Create a blank PDF and write the contents to a file.
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.pdmodel.pd_document import PDDocument

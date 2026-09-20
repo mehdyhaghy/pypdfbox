@@ -8,8 +8,6 @@ and a JVM-specific colour-management regression (PDFBOX-5787) that
 has no Python analogue.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
 from pypdfbox.pdmodel.graphics.color.pd_device_cmyk import PDDeviceCMYK
 from pypdfbox.pdmodel.graphics.color.pd_device_color_space import (

@@ -12,8 +12,6 @@ Located under ``tests/multipdf/`` because it crosses the loader / pdmodel
 boundary and feeds the multi-document loader regression net.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

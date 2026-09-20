@@ -14,8 +14,6 @@ output byte-identical to the original algorithms.
   * Fix 3 — optimize-mode resource dedup: an ``id(value)`` digest memo avoids
     re-hashing a shared subgraph per page. Digests and dedup output unchanged.
 """
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName

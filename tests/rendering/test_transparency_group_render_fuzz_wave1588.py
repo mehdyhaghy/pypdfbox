@@ -19,8 +19,6 @@ These compare to the upstream PDFBox ``PageDrawer`` / ``SoftMask``
 behaviour at the structural / value level (not byte-identical pixels).
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

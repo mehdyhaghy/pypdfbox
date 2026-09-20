@@ -9,8 +9,6 @@ value is honoured *for this render only* without mutating the default,
 matching upstream's per-call ``RenderDestination`` argument.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle

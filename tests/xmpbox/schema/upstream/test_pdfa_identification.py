@@ -12,8 +12,6 @@ parametrize. The complementary error-channel tests live in upstream's
 ``test_pdfa_identification_others.py``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import (

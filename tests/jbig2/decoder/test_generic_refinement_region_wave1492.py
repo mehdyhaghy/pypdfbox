@@ -18,8 +18,6 @@ parts the oracle's fixtures don't reach:
   arithmetic decoder, pixel by pixel.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.jbig2.bitmap import Bitmap

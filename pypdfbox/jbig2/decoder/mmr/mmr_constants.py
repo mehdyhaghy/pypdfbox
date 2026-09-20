@@ -5,8 +5,6 @@ tables (white/black run-length codes, two-dimensional mode codes) are mirrored
 exactly: each entry is ``[bit_length, code_word, run_length]``.
 """
 
-from __future__ import annotations
-
 
 class MMRConstants:
     """Constants for MMR (de)compression."""

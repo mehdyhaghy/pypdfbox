@@ -14,8 +14,6 @@ Targets the still-uncovered branches in the wave-1332 snapshot:
 * :meth:`__str__` returning the color-space name (line 434).
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import COSArray, COSName, COSObject

@@ -8,8 +8,6 @@ These tests target the helper methods on ``Type1Parser`` directly
 can verify each one against a hand-built token sequence.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.type1.type1_parser import (

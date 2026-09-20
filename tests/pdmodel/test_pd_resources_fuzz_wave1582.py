@@ -18,8 +18,6 @@ Hammers ``PDResources`` resolution against PDFBox 3.0.7
 - a tiling (PatternType 1) vs shading (PatternType 2) pattern dispatch.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

@@ -6,8 +6,6 @@ These tests focus on the upstream-named ``is_*`` boolean accessors,
 that mirror Apache PDFBox's public Java API surface.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel import PDViewerPreferences
 

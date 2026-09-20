@@ -7,8 +7,6 @@ shapes that mirror ``org.apache.pdfbox.filter.FilterFactory`` /
 ``org.apache.pdfbox.filter.Filter``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSObject

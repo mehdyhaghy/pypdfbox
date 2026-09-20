@@ -20,8 +20,6 @@ These tests cover angles not addressed by ``test_lookup_subtable.py``:
   without partial population.
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.fontbox.ttf.gsub import (

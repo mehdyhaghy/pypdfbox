@@ -11,8 +11,6 @@ object kind. Round-trip parity for each cipher individually is already
 covered by ``test_standard_security_handler.py``.
 """
 
-from __future__ import annotations
-
 from unittest.mock import patch
 
 from pypdfbox.pdmodel.encryption.pd_crypt_filter_dictionary import (

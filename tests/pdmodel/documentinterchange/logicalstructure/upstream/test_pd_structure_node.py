@@ -19,8 +19,6 @@ shape of those tests through a synthetic tree built directly with
 ``createObject`` / ``createObjectFromDic`` dispatch that the upstream
 walker relies on.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName

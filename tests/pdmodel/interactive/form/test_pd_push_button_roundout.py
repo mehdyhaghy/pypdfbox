@@ -19,8 +19,6 @@ Targets small remaining gaps on the push-button subclass surface:
 - ``regenerate_appearance`` dispatches through the shared
   :class:`PDAppearanceGenerator`.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName
@@ -229,7 +227,7 @@ def test_push_button_regenerate_appearance_calls_appearance_generator() -> None:
     calls: list[object] = []
     original = pd_appearance_generator.PDAppearanceGenerator.generate
 
-    def tracker(self, field):
+    def tracker(self, field):  # local monkeypatch
         calls.append(field)
 
     pd_appearance_generator.PDAppearanceGenerator.generate = tracker  # type: ignore[assignment]

@@ -17,8 +17,6 @@ Skipped (Java-only plumbing):
 * TrueType-collection tests in PDFontTest.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSName

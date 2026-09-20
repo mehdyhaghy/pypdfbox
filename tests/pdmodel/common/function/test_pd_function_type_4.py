@@ -14,8 +14,6 @@ This file focuses on the structural / integration surface:
 * error surfacing for malformed bodies
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSStream

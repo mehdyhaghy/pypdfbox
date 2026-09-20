@@ -8,8 +8,6 @@ Library-first: we use :mod:`platform` to dispatch to the right finder and
 metadata, but for *locating* font files the stdlib is sufficient.
 """
 
-from __future__ import annotations
-
 import logging
 import platform
 from pathlib import Path

@@ -23,8 +23,6 @@ silently dropped three classes of image XObject:
 These tests pin the post-wave-1385 contract.
 """
 
-from __future__ import annotations
-
 import pytest
 from PIL import Image
 

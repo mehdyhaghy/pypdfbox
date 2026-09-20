@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .access_permission import AccessPermission
 from .decryption_material import DecryptionMaterial
 from .invalid_password_exception import InvalidPasswordException

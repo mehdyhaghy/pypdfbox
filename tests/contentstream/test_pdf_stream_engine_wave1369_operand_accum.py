@@ -21,8 +21,6 @@ fails to intern the operator instance, this is the first thing to
 break.
 """
 
-from __future__ import annotations
-
 import io
 from typing import IO, Any
 

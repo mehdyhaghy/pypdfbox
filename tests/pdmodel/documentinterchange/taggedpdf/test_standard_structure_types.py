@@ -11,8 +11,6 @@ these are hand-written and cover the constant values, the sorted ``types``
 collection, and the non-instantiable contract.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.documentinterchange.taggedpdf import StandardStructureTypes

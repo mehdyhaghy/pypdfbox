@@ -28,8 +28,6 @@ into a bilevel raster the image pipeline consumes. As upstream,
 :meth:`encode` remains unimplemented (PDFBox ships no JBIG2 encoder).
 """
 
-from __future__ import annotations
-
 import logging
 from typing import BinaryIO
 

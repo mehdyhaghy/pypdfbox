@@ -11,8 +11,6 @@ spec's predefined ISOAdobe charset (where SID == GID for the first 229
 glyphs).
 """
 
-from __future__ import annotations
-
 from fontTools.cffLib import cffISOAdobeStrings
 
 from .cff_charset_type1 import CFFCharsetType1

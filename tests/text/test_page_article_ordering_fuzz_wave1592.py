@@ -29,8 +29,6 @@ Standard-14 Helvetica so glyph metrics resolve identically to PDFBox. The
 companion live differential lives in ``test_bead_separation_oracle.py``.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

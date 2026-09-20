@@ -23,8 +23,6 @@ These tests target angles not addressed by the earlier wave files
   by the shaping walk.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub import (
     LigatureSetTable,
     LigatureTable,

@@ -6,8 +6,6 @@ behavioural contract: SUB_TYPE stamp, /N name accessor pair, /N missing
 returns null.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.action.pd_action_named import PDActionNamed
 

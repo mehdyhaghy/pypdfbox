@@ -23,8 +23,6 @@ Usage in a test::
         assert py == java
 """
 
-from __future__ import annotations
-
 import os
 import shutil
 import subprocess

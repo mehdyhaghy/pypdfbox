@@ -14,8 +14,6 @@ factory dispatch is covered in
 ``tests/fontbox/ttf/gsub/test_gsub_worker_factory.py``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 

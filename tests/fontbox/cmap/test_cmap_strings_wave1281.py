@@ -1,7 +1,5 @@
 """Tests for ``CMapStrings``."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cmap.cmap_strings import CMapStrings
 
 

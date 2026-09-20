@@ -5,8 +5,6 @@ branches, exclusion, processed-object tracking, and the
 ``update_different_origin`` cross-document hook.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

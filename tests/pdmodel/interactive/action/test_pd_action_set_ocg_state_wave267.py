@@ -4,8 +4,6 @@ Cover the predicate / clear / typed-view surface added in wave 267:
 ``has_state``, ``has_preserve_rb``, ``clear_state``, ``clear_preserve_rb``,
 ``is_empty``, ``is_valid``, and ``get_groups``."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_group import (
     PDOptionalContentGroup,

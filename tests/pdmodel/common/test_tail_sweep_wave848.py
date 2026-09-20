@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSName, COSObject, COSString
 from pypdfbox.fontbox.afm import FontMetrics
 from pypdfbox.pdmodel.fdf import FDFField

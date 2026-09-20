@@ -6,8 +6,6 @@ Targets ``pypdfbox/contentstream/operator/text/show_text_with_position.py``
 ``ShowTextLine`` lives in ``show_text_line.py`` and is tested separately.
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.contentstream import Operator

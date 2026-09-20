@@ -16,8 +16,6 @@ Targets:
   pre-2.0 ``set_base_color_space`` route is pinned as removed instead
 """
 
-from __future__ import annotations
-
 import zlib
 
 import pytest

@@ -4,8 +4,6 @@ Mirrors ``org.apache.pdfbox.util.filetypedetector.ByteTrie`` (PDFBox 3.0,
 ``pdfbox/src/main/java/org/apache/pdfbox/util/filetypedetector/ByteTrie.java``).
 """
 
-from __future__ import annotations
-
 from collections.abc import Iterable
 
 

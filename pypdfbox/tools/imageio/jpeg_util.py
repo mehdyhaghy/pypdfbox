@@ -8,8 +8,6 @@ In Pillow the DPI is set by passing ``dpi=(x, y)`` to ``Image.save``; we
 expose a small adapter that builds the matching ``info`` dict so callers
 that need to inspect / round-trip metadata still see the right values.
 """
-from __future__ import annotations
-
 from typing import Any
 
 from .meta_util import MetaUtil

@@ -30,8 +30,6 @@ Provenance: hand-written for pypdfbox (no direct upstream JUnit
 counterpart — PageDrawer's clip path is exercised via rendering parity
 in upstream).
 """
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

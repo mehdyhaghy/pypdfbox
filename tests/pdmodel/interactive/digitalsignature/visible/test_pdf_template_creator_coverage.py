@@ -7,8 +7,6 @@ line 47-129 (the orchestration that fans intermediates through the
 shared :class:`PDFTemplateStructure`).
 """
 
-from __future__ import annotations
-
 import io
 from typing import Any
 

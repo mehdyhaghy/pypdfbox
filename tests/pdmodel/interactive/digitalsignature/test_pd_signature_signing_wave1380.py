@@ -18,8 +18,6 @@ Covers:
   drive the wired :class:`TSAClient` and surface tokens correctly.
 """
 
-from __future__ import annotations
-
 import datetime
 import io
 from pathlib import Path

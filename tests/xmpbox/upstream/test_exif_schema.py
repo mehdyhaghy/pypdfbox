@@ -19,8 +19,6 @@ SpatialFrequencyResponse alias), Flash, and DeviceSettings — those land
 when the matching structured-type wrappers do.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import ExifSchema, XMPMetadata

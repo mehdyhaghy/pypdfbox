@@ -1,7 +1,5 @@
 """Wave 1281: SequenceRandomAccessRead port."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.io import RandomAccessReadBuffer, SequenceRandomAccessRead

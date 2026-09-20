@@ -5,8 +5,6 @@ operators and the ``__repr__`` formatter, plus the equality-with-non-COSName
 edge case.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 
 

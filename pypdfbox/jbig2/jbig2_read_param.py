@@ -14,8 +14,6 @@ inlined here. Field accessors keep the upstream ``ImageReadParam`` names
 ``get_bounds``); ``java.awt.Dimension`` maps to a ``(width, height)`` tuple.
 """
 
-from __future__ import annotations
-
 
 class JBIG2ReadParam:
     """Region-of-interest and scale/subsampling parameters for the reader."""

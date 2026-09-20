@@ -20,8 +20,6 @@ Java -> Python mappings exercised here:
   subsampling dimension bug -> ``IndexError`` (verified against the 3.0.7 jar).
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

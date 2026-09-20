@@ -16,8 +16,6 @@ Closes gaps in:
   a stub mapper, mapper missing ``get_cid_font``, and exception swallow.
 """
 
-from __future__ import annotations
-
 from types import SimpleNamespace
 from typing import Any
 

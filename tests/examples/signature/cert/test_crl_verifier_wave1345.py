@@ -13,8 +13,6 @@ Targets the remaining uncovered branches:
   :meth:`get_crl_distribution_points` (line 113).
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 import logging
 

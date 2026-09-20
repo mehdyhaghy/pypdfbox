@@ -5,8 +5,6 @@ Source: ``pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/TestLi
 Skipped upstream cases:
 - PDF write/annotation resource setup — covered by pypdfbox appearance tests.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSName

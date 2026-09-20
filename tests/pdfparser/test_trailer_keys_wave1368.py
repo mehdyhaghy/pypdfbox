@@ -13,8 +13,6 @@ The trailer is the entry point the loader uses to find ``/Root``,
 * Multiple trailer fragments collapse into a single ``COSDictionary``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSObjectKey, COSString
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import PDFParser

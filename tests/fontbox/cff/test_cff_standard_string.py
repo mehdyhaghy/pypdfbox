@@ -9,8 +9,6 @@ defined to live in the per-font STRING INDEX — :meth:`get_name` returns
 ``CFFParser.java`` lines 909-925).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.cff_standard_string import (

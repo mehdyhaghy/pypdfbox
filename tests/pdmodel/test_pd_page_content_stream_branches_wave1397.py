@@ -9,8 +9,6 @@ resource sub-dictionary searching for a matching COS object:
 * ``_resource_key_for_property_list`` 1827->1830, 1828->1827 — same shape
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.graphics.color.pd_device_n import PDDeviceN

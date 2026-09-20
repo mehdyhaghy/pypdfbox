@@ -12,8 +12,6 @@ No PROVENANCE row is added because no upstream test source is being
 ported; this is a hand-written parity scaffold.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName

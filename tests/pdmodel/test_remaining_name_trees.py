@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSString
 from pypdfbox.pdmodel.pd_alternate_presentations_name_tree_node import (
     PDAlternatePresentationsNameTreeNode,

@@ -9,8 +9,6 @@ host has no suitable font available the entire module is skipped — the
 suite is still expected to pass on every other module's tests.
 """
 
-from __future__ import annotations
-
 import io
 import struct
 from pathlib import Path

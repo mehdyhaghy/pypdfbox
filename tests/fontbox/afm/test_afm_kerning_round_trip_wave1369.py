@@ -15,8 +15,6 @@ direction-specific buckets, the ``KPH`` hex-name decoder, and a
 multi-block scenario combining track + pair kerning. Each test feeds a
 synthetic AFM snippet and checks the round-tripped values.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.afm import AFMParser, FontMetrics, KernPair, TrackKern

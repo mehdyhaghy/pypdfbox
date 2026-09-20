@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .pd_destination import PDDestination
 from .pd_destination_name_tree_node import PDDestinationNameTreeNode
 from .pd_named_destination import PDNamedDestination

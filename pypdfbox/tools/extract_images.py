@@ -8,8 +8,6 @@ The inner ``ImageGraphicsEngine`` walks the page's graphics stream and
 calls ``ImageIOUtil`` to write each unique image. We rely on the
 existing pypdfbox graphics engine + Pillow.
 """
-from __future__ import annotations
-
 import argparse
 import contextlib
 import sys

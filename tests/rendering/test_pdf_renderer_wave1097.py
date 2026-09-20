@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 import tests.rendering.test_pdf_renderer_image_color_wave360 as image_color_tests

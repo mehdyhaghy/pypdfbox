@@ -19,8 +19,6 @@ edge alpha values, mask centroid containment) rather than pixel-exact
 comparison so the suite stays stable across skia / Pillow versions and
 platforms.
 """
-from __future__ import annotations
-
 from PIL import Image
 
 from pypdfbox.cos import COSName, COSStream

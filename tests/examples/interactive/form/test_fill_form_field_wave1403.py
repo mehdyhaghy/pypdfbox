@@ -5,8 +5,6 @@ Closes ``46->55``: when the document has no /AcroForm, the
 straight to the save without touching any fields.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.examples.interactive.form.fill_form_field import FillFormField

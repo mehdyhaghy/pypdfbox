@@ -5,8 +5,6 @@ Verifies the canonical class name, its import paths, base class, and
 raise/catch behaviour.
 """
 
-from __future__ import annotations
-
 import pytest
 
 

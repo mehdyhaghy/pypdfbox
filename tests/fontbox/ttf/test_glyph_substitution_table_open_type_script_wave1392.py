@@ -14,8 +14,6 @@ These tests pin the upstream-parity behaviour of the constants-driven
 path so future refactors cannot silently drop either branch.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.fontbox.ttf.glyph_substitution_table import GlyphSubstitutionTable

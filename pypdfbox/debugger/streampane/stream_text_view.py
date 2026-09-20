@@ -13,8 +13,6 @@ Tooltip support is reduced to a no-op shim: the original ``ToolTip`` /
 object, which mirrors the upstream interface but returns a plain string.
 """
 
-from __future__ import annotations
-
 import contextlib
 import tkinter as tk
 from collections.abc import Iterable, Sequence
@@ -163,7 +161,7 @@ class StreamTextView(ttk.Frame):
         offset = _text_index_to_offset(self._text, index)
         try:
             tip = self._tool_tip_controller.get_tool_tip(offset, self._text)  # type: ignore[attr-defined]
-        except Exception:
+        except Exception:  # controller errors must not break motion
             tip = None
         if tip:
             self._show_tooltip(event.x_root, event.y_root, tip)

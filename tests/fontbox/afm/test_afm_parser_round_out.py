@@ -5,8 +5,6 @@ Each test feeds a small synthetic AFM snippet covering a single dispatch
 branch (or a small cluster) of the parser's tag table, then asserts the
 resulting :class:`FontMetrics` / :class:`CharMetric` graph reflects it.
 """
-from __future__ import annotations
-
 import io
 
 import pytest

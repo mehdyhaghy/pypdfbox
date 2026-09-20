@@ -3,8 +3,6 @@
 Ported from ``org.apache.pdfbox.debugger.ui.XrefEntries``.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSDocument, COSObjectKey

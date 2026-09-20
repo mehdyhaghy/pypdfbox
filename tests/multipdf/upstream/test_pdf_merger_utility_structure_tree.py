@@ -18,8 +18,6 @@ tests, and re-creating them without exercising the corresponding
 fixtures would just be dead code.
 """
 
-from __future__ import annotations
-
 import pytest
 
 

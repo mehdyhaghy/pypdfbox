@@ -6,8 +6,6 @@ The ``-console`` round-trip, embedded-PDF extraction, ``-addFileName``
 prefix, and ``-rotationMagic`` paths are translated into pytest below
 using locally-built fixtures (no upstream binary required).
 """
-from __future__ import annotations
-
 from io import BytesIO
 from pathlib import Path
 

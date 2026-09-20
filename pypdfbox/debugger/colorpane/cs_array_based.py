@@ -14,8 +14,6 @@ Swing → Tkinter mapping:
   configured for ``Courier`` bold.
 """
 
-from __future__ import annotations
-
 import contextlib
 import tkinter as tk
 from tkinter import font as tkfont

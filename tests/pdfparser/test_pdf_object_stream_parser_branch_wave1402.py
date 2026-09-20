@@ -6,8 +6,6 @@ Closes residual partial branch:
   < self._first_object`` is False, so the seek-to-first arm is skipped.
 """
 
-from __future__ import annotations
-
 import contextlib
 
 from pypdfbox.cos import COSDocument, COSInteger, COSName, COSStream

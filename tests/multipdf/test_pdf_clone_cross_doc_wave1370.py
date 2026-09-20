@@ -19,8 +19,6 @@ through indirect references.
 - ``has_self_reference`` static method round-trips: returns True for an
   indirect ref pointing back at its parent, False otherwise.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSBase,

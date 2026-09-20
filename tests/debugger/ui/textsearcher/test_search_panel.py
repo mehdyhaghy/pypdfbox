@@ -4,8 +4,6 @@ The panel relies on a live Tk root; tests skip cleanly when a display is
 unavailable.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 
 import pytest

@@ -12,8 +12,6 @@ recursion and Type3 recursion each count their own depth, exactly like
 upstream.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import Any
 

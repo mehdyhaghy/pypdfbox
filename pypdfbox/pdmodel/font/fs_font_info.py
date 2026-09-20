@@ -24,8 +24,6 @@ loader caches the result via the parent provider's :class:`FontCache`
 so concurrent renders don't re-parse identical fonts.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 

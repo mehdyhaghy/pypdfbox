@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from xml.etree import ElementTree as ET
 
 from pypdfbox.xmpbox import DomXmpParser

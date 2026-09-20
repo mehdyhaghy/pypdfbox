@@ -17,8 +17,6 @@ is a sub-dictionary), a minimal stand-in object is used. No production
 code paths are mocked away — only the input shape varies.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName

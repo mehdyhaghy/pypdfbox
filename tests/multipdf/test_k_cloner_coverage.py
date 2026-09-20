@@ -6,8 +6,6 @@ the wave-1281 baseline left uncovered, plus the splitter-delegation
 path and the fallback (no-splitter) path with non-trivial inputs.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos.cos_array import COSArray
 from pypdfbox.cos.cos_dictionary import COSDictionary
 from pypdfbox.cos.cos_integer import COSInteger

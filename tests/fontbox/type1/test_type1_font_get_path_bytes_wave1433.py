@@ -15,8 +15,6 @@ interpreter (``get_type1_char_string`` → ``Type1CharString``), which runs the
 full op set and emits the same moveto/lineto/curveto/closepath tuples.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

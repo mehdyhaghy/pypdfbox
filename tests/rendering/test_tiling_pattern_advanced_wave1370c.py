@@ -15,8 +15,6 @@ j·YStep) lattice point that overlaps the clip region. These tests pin:
 * PAINT_TYPE_COLORED vs UNCOLORED — only coloured tilings render with
   the lite path (uncoloured raises or falls back gracefully).
 """
-from __future__ import annotations
-
 from PIL import Image as _Image
 
 from pypdfbox.cos import COSArray, COSFloat, COSName, COSStream

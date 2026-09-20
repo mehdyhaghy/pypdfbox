@@ -6,8 +6,6 @@ Exercises :meth:`TreeStatus.generate_path`,
 against a small COS dictionary/array tree.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName

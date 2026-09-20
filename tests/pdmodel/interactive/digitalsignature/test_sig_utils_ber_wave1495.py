@@ -14,8 +14,6 @@ these tests reach the remaining BER indefinite-length scanning branches:
 * an offset already past the buffer end.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.digitalsignature import strip_signature_padding
 from pypdfbox.pdmodel.interactive.digitalsignature.sig_utils import _ber_tlv_end
 

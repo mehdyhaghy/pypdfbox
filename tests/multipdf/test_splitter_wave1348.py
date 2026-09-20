@@ -13,8 +13,6 @@ Targets the remaining uncovered branches:
   /StructParent indices.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox import PDDocument, PDPage

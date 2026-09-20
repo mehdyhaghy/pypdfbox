@@ -1,7 +1,5 @@
 """Tests for :class:`SigFlag`."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSInteger, COSName
 from pypdfbox.debugger.flagbitspane.sig_flag import SigFlag
 

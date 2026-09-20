@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import tests.tools.test_pdfdebugger_wave383 as wave383
 
 

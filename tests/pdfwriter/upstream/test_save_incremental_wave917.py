@@ -8,8 +8,6 @@ no longer applies, so this wave's assertion is left as a no-op
 provenance marker.
 """
 
-from __future__ import annotations
-
 
 def test_wave917_skipped_incremental_placeholders_are_executable() -> None:
     # Provenance marker: see test_save_incremental.py for the live ports.

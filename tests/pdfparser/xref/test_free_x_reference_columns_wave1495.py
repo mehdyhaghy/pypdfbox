@@ -6,8 +6,6 @@ coverage suite overrides these in subclasses, so the real implementations of
 Mirrors ``org.apache.pdfbox.pdfparser.xref.FreeXReference``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos.cos_object_key import COSObjectKey
 from pypdfbox.pdfparser.xref.free_x_reference import FreeXReference
 from pypdfbox.pdfparser.xref.x_reference_type import XReferenceType

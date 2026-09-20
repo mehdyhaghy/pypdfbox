@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.jbig2.io.image_input_stream import EOF, ImageInputStream
 
 

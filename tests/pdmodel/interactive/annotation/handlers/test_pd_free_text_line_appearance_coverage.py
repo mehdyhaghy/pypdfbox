@@ -15,8 +15,6 @@ not exercise:
   endings, contents that explode the font width metric.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.interactive.annotation.handlers import (

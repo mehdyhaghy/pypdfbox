@@ -9,8 +9,6 @@ Covers:
       ``has_fdf_header()`` predicates
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.io import RandomAccessReadBuffer

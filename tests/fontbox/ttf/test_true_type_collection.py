@@ -17,8 +17,6 @@ in-test (same library-first pattern as the existing
 ``test_ttc_cluster_wave1279.py``).
 """
 
-from __future__ import annotations
-
 import io
 import os
 from pathlib import Path

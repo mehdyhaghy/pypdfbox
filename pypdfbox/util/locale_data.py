@@ -20,8 +20,6 @@ and case differences are tolerated (``fevrier`` matches ``février``,
 ``JANUARY`` matches ``January``).
 """
 
-from __future__ import annotations
-
 #: Full month names. Index 0=January, 11=December.
 _MONTH_NAMES_FULL: dict[str, tuple[str, ...]] = {
     "en": (

@@ -9,8 +9,6 @@ Closes the False-branch arrow in
   ``set_need_to_be_updated`` propagation at line 120.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

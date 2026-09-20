@@ -1,7 +1,5 @@
 """Tests for :mod:`pypdfbox.fontbox.ttf.open_type_script`."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.ttf.open_type_script import (

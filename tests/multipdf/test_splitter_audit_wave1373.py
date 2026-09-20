@@ -15,8 +15,6 @@
    popup's ``/Parent`` rewritten to the cloned markup dict.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

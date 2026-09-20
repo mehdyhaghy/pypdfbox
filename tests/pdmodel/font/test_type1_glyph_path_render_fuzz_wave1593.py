@@ -22,8 +22,6 @@ Mirrors upstream ``PDType1Font.getPath`` / ``getNormalizedPath`` and
 ``PDType1CFont.getPath`` / ``getNormalizedPath`` (PDFBox 3.0.7).
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

@@ -10,8 +10,6 @@ mirror the storage + accessor API but lean on the existing
 ``pypdfbox.util.matrix.Matrix`` and PD colour types.
 """
 
-from __future__ import annotations
-
 import copy
 from typing import TYPE_CHECKING, Any
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.text.test_pdf_text_stripper_wave488 import StallingCMap, WidthFont
 
 

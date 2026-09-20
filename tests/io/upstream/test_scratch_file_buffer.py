@@ -11,8 +11,6 @@ pypdfbox's ``ScratchFileBuffer`` mirrors upstream's page-backed semantics
 IOException → OSError per the project's test-porting conventions.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.io import MemoryUsageSetting, ScratchFile

@@ -1,6 +1,4 @@
 """Tests for ``pypdfbox.benchmark.null_output_stream``."""
-from __future__ import annotations
-
 from pypdfbox.benchmark.null_output_stream import NullOutputStream
 
 

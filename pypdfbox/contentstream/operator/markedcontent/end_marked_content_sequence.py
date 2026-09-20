@@ -5,8 +5,6 @@ Mirrors ``org.apache.pdfbox.contentstream.operator.markedcontent.EndMarkedConten
 ``pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/markedcontent/EndMarkedContentSequence.java``).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSBase
 
 from .. import Operator, OperatorName, OperatorProcessor

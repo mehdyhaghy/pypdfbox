@@ -17,8 +17,6 @@ because building a ``tk.Menu`` requires a Tk root, which may not yet
 exist at import time.
 """
 
-from __future__ import annotations
-
 from typing import ClassVar
 
 from .menu_base import MenuBase

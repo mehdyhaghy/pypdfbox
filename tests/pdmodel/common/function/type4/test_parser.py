@@ -1,8 +1,6 @@
 """Hand-written tests for :class:`Parser` and the
 :class:`SyntaxHandler` / :class:`AbstractSyntaxHandler` shapes."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.common.function.type4 import Parser

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.pdmodel.graphics.shading import PDShading
 from tests.pdmodel.graphics.shading.test_pd_shading_wave424 import _ConcreteShading
 

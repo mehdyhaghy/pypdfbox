@@ -10,8 +10,6 @@ printer is left to the host (``PrinterJob`` has no portable Python
 equivalent — see ``CUPS`` / ``ipp`` / ``pywin32``).
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.pdmodel.pd_document import PDDocument

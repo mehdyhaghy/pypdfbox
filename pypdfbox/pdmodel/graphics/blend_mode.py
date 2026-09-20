@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import math
 from collections.abc import Callable
 from typing import ClassVar
@@ -693,7 +691,7 @@ class BlendMode:
 
 def _register(name: str) -> BlendMode:
     instance = BlendMode(name)
-    BlendMode._BY_NAME[name] = instance
+    BlendMode._BY_NAME[name] = instance  # module-private setup
     return instance
 
 

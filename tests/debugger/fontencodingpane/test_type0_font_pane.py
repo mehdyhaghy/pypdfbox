@@ -8,8 +8,6 @@ The full constructor path (which does need Tk) is already covered in
 ``test_type0_font.py``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from pypdfbox.debugger.fontencodingpane.type0_font import Type0Font
 from pypdfbox.pdmodel.font import PDType0Font

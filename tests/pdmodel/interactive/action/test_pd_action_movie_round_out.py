@@ -5,8 +5,6 @@ Targets the 2026-spec gaps not exercised by ``test_pd_action_typed_extras``:
 (PDF 32000-1 §12.6.4.10 Table 209), and the ``has_annotation`` /
 ``has_title`` mutual-exclusivity helpers."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.action.pd_action_movie import PDActionMovie
 

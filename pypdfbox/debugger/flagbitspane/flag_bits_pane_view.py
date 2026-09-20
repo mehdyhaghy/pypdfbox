@@ -8,8 +8,6 @@ returned by the flag. The header ``JLabel`` (monospaced bold) becomes a
 ``ttk.Label`` with a fixed-width font.
 """
 
-from __future__ import annotations
-
 import contextlib
 import tkinter as tk
 from collections.abc import Sequence

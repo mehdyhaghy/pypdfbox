@@ -5,8 +5,6 @@ Mirrors upstream ``org.apache.pdfbox.pdmodel.common.function.type4.Operator``
 ``abc.ABC`` with a single abstract :meth:`execute` method.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 

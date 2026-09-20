@@ -13,8 +13,6 @@ bit-stream reader that handles full / shared-edge patches per PDF
 triangulation runs on top of this output.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 

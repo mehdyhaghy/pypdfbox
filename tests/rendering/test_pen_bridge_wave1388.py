@@ -20,8 +20,6 @@ These tests cover:
     returns a non-empty command sequence after the refactor.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

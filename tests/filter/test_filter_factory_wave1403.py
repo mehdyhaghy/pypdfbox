@@ -10,8 +10,6 @@ The registry is restored afterwards so the shared class-level state is not
 polluted for other tests.
 """
 
-from __future__ import annotations
-
 from pypdfbox.filter.filter_factory import FilterFactory
 
 

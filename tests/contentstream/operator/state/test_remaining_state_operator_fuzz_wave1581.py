@@ -15,8 +15,6 @@ graphics state). Behaviour is cross-checked against PDFBox 3.0.7
 ``SetFlatness`` / ``SetRenderingIntent`` / ``SetGraphicsStateParameters``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream.operator import MissingOperandException, Operator

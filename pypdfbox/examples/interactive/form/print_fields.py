@@ -4,8 +4,6 @@ Walks an AcroForm field tree and prints each field's fully qualified
 name and value.
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.pdmodel.interactive.form.pd_field import PDField

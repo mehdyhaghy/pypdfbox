@@ -9,8 +9,6 @@ payload; and the header must not run past ``/First``. These cases are
 covered here.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDocument

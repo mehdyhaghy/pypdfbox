@@ -15,8 +15,6 @@ The fix routes through :meth:`_full_ctm` so the composition becomes
 paint visible glyphs instead of a blank canvas.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

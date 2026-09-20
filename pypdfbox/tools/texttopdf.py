@@ -29,8 +29,6 @@ Exit codes follow upstream:
   0  success
   4  I/O error (raised as ``OSError`` and caught by ``cli.run_cli``)
 """
-from __future__ import annotations
-
 import argparse
 import sys
 from collections.abc import Iterable

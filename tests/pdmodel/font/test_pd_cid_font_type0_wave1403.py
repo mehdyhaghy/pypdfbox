@@ -11,8 +11,6 @@
   unremapped.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream

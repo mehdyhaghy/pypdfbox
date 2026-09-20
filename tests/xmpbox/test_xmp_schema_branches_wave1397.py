@@ -10,8 +10,6 @@ Closes False-branch arrows:
   append in place without allocating
 """
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox import XMPMetadata
 from pypdfbox.xmpbox.xmp_schema import XMPSchema
 

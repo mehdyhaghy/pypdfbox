@@ -29,8 +29,6 @@ as a plain right shift on those already-non-negative masked values. ``short``
 casts of context bytes wrap to 16 bits via ``& 0xFFFF``.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from pypdfbox.jbig2.bitmap import Bitmap

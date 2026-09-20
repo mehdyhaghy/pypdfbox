@@ -4,8 +4,6 @@ Alternative visible-signature flow that draws a PDF-native appearance
 rather than rasterising an image.
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 from pathlib import Path
 from typing import IO
@@ -68,7 +66,7 @@ class CreateVisibleSignature2(CreateSignatureBase):
         if not in_path.exists():
             raise FileNotFoundError("Document for signing does not exist")
         self.set_tsa_url(tsa_url)
-        self._human_rect = human_rect
+        self._human_rect = human_rect  # captured for appearance draw
 
         from pypdfbox.pdmodel.pd_document import PDDocument
 

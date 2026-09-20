@@ -8,8 +8,6 @@ extensions (family-kind constants, ``is_*`` predicates,
 ``from_family_class_and_classification`` factory, ``CLASSIFICATION_OFFSET``).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.font.pd_font_descriptor import (

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 
 class KernPair:
     """An AFM kerning-pair entry.

@@ -26,8 +26,6 @@ Upstream reference:
 getUndercolorRemoval2 / getHalftone).
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from PIL import Image

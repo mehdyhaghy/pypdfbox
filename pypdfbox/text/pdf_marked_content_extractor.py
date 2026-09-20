@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections import deque
 from typing import TYPE_CHECKING, Any
 
@@ -268,7 +266,7 @@ class PDFMarkedContentExtractor(PDFTextStripper):
                 )
                 if pl is not None:
                     return pl.get_cos_object()
-            except Exception:
+            except Exception:  # defensive: malformed resources
                 return None
         return None
 

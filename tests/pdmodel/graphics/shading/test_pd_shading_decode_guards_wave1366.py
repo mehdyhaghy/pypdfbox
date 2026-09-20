@@ -13,8 +13,6 @@ The math/format guard surface:
   * Non-numeric pair entries return ``None`` (defensive parsing).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

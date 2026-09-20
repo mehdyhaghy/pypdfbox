@@ -10,8 +10,6 @@ Targets the residual ``calculate_glyph_bounds`` exception arms:
   * Non-Type3 bbox point construction raising → returns None
     (lines 615-616).
 """
-from __future__ import annotations
-
 from pypdfbox.cos.cos_array import COSArray
 from pypdfbox.cos.cos_dictionary import COSDictionary
 from pypdfbox.cos.cos_float import COSFloat
@@ -155,7 +153,7 @@ class _NonType3StubFont:
 
     # Conditionally expose ``get_normalized_path`` so the ``getattr``
     # callable check inside calculate_glyph_bounds still triggers.
-    def get_normalized_path(self, code: int):
+    def get_normalized_path(self, code: int):  # duck method
         if self._normalized_path_fn is None:
             return None
         return self._normalized_path_fn(code)

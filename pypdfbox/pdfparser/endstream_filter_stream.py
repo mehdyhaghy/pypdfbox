@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 
 class EndstreamFilterStream:
     """Filter helper used by ``read_until_end_stream`` to strip a

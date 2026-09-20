@@ -18,8 +18,6 @@ Hammers ``BaseParser.read_literal_string`` / ``read_hex_string`` /
   strictness + FORCE_PARSING substitution.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos.cos_string import COSString

@@ -4,8 +4,6 @@ Covers the typed ``convert_cos_to_pd`` / ``convertCOSToPD`` factory the
 ``/IDTree`` name-tree subclass overrides.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSString

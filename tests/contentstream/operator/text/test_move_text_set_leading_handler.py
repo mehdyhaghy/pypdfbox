@@ -9,8 +9,6 @@ upstream class name ``MoveTextSetLeading``; the ``_handler`` filename
 suffix exists only to avoid colliding with the older module.
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.contentstream import Operator

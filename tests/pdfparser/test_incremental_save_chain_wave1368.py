@@ -13,8 +13,6 @@ previous xref offset. Tests cover:
 * /Prev pointing past EOF is recovered under lenient mode.
 """
 
-from __future__ import annotations
-
 import contextlib
 
 from pypdfbox.cos import COSDictionary, COSName, COSObjectKey, COSString

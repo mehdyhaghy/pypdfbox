@@ -12,8 +12,6 @@ No upstream JUnit counterpart — pypdfbox-specific suite around the
 3.0.x ``PDDocument.java`` ~ line 1010).
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

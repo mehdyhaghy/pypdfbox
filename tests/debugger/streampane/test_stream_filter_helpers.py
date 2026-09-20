@@ -11,8 +11,6 @@ their snake_case names for parity tooling:
 * ``is_image_stream``
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSName, COSStream
 from pypdfbox.debugger.streampane.stream import Stream
 

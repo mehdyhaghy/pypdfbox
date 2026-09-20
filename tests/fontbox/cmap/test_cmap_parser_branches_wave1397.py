@@ -15,8 +15,6 @@ token is of the wrong type and the setter is bypassed:
 * 267->exit — ``/CIDSystemInfo`` dict missing /Supplement
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cmap import CMap, CMapParser
 
 

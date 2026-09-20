@@ -9,8 +9,6 @@ table-presence rules its predicates encode) as Python tests, anchored to
 the upstream source line numbers.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

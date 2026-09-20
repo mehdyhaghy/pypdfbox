@@ -12,8 +12,6 @@ these tests target the documented behaviour of the public Java API:
 * ``getDestOutputIntent()`` exposes the underlying ``COSStream`` (no
   typed wrapping).
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.graphics.color import PDOutputIntent
 from pypdfbox.pdmodel.pd_document import PDDocument

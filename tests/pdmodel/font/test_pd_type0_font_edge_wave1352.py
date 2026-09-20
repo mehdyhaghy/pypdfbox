@@ -19,8 +19,6 @@ Targets the under-covered defensive branches in
   the registered raw GIDs to the subsetter.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

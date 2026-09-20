@@ -7,8 +7,6 @@ here — these tests just pin the alias semantics so callers can rely on
 ``isinstance`` identity across both names.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import XMPMetadata

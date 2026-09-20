@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Collection, Iterable, Iterator
 from typing import Any
 
@@ -492,7 +490,7 @@ class COSArray(COSBase):
         scanner counts it) so callers writing PDF-aware code can reuse the
         same wrapping rule when synthesising arrays manually.
         """
-        from .cos_dictionary import COSDictionary
+        from .cos_dictionary import COSDictionary  # avoid cycle
 
         if isinstance(item, (COSDictionary, COSArray)) and not item.is_direct():
             key = item.get_key()

@@ -8,8 +8,6 @@ Ported from
 preserved for parity.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 

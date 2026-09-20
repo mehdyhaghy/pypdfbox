@@ -12,8 +12,6 @@ Also verifies the same separators flow through the ``write_text``
 streaming entry point (which streams text into a caller-supplied
 writer) without dropping any markers along the way.
 """
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import COSStream

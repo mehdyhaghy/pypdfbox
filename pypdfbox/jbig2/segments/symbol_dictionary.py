@@ -21,8 +21,6 @@ negative and is caught by the explicit ``< 0`` validation in
 32-bit reads are sign-extended into the signed-``int`` range.
 """
 
-from __future__ import annotations
-
 import math
 from typing import TYPE_CHECKING
 

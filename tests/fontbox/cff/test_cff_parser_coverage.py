@@ -12,8 +12,6 @@ can map a coverage regression straight back to the operation under
 test.
 """
 
-from __future__ import annotations
-
 import io
 import struct
 

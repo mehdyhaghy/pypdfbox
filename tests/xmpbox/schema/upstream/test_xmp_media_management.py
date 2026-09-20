@@ -11,8 +11,6 @@ reflection-driven matrix to direct accessor calls per property. See
 typed-property pass.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import XMPMediaManagementSchema, XMPMetadata

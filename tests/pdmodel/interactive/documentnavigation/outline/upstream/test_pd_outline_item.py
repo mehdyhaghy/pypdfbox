@@ -8,8 +8,6 @@ with every combination of open/closed parent and open/closed inserted child,
 plus head/tail insertion edge cases and the no-parent rejection invariant.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.interactive.documentnavigation.outline import PDOutlineItem

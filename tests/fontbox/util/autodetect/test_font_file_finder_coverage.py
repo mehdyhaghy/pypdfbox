@@ -8,8 +8,6 @@ Targets the branches not exercised by the wave-1281 hand-written tests:
 * ``check_fontfile`` — every accepted extension and the ``fonts.``
   rejection prefix.
 """
-from __future__ import annotations
-
 import tempfile
 from pathlib import Path
 from unittest import mock

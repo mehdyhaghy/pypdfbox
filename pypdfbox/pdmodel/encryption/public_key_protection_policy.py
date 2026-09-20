@@ -5,8 +5,6 @@ Carries the recipient list (each X.509 cert + its :class:`AccessPermission`)
 that ``PublicKeySecurityHandler`` consumes when wrapping a document.
 """
 
-from __future__ import annotations
-
 from collections.abc import Iterator
 from typing import TYPE_CHECKING
 

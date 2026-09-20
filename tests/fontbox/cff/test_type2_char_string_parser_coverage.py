@@ -17,8 +17,6 @@ Targets the still-uncovered branches after wave 1330:
   direct call even though ``parse_sequence`` filters it out.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.char_string_command import CharStringCommand

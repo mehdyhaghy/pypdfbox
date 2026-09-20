@@ -11,8 +11,6 @@ that this is not a perceptible cost, and Tkinter has no equivalent
 background-then-fold-back idiom.
 """
 
-from __future__ import annotations
-
 import contextlib
 import logging
 import re
@@ -381,7 +379,7 @@ def _xml_segments(data: bytes) -> list[tuple[str, str | None]]:
         # Drop blank lines introduced by toprettyxml.
         pretty = "\n".join(line for line in pretty.splitlines() if line.strip())
         return [(pretty, None)]
-    except Exception:
+    except Exception:  # fall back to raw text on parse failure
         return _plain_text_segments(data, "utf-8")
 
 
@@ -678,7 +676,7 @@ class DocumentCreator:
     ) -> None:
         """Mirror upstream's ``writeOperand(Object, StyledDocument)``."""
         target = emitter or _ContentStreamEmitter()
-        target._write_operand(obj)
+        target._write_operand(obj)  # same-module helper
 
     def add_operators(
         self,

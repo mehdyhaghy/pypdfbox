@@ -1,7 +1,5 @@
 """Hand-written tests for ``ToolTipController``."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.debugger.streampane.tooltip import ToolTipController
 

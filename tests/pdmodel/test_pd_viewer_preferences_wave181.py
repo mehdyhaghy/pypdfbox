@@ -6,8 +6,6 @@ and the ``add_print_page_range_pair`` mutator added to close small
 remaining gaps against upstream Apache PDFBox + PDF 32000-2 §12.4.4.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSName
 from pypdfbox.pdmodel import PDViewerPreferences
 

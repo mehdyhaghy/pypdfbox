@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdmodel.font.test_pd_font_remaining_wave717 import _FakeCFF
 
 

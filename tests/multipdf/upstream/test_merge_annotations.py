@@ -10,8 +10,6 @@ in ``test_pdf_merger_utility.py`` and the annotation-cluster tests
 under ``tests/pdmodel/interactive/annotation/upstream/``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 

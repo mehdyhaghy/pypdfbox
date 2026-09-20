@@ -6,8 +6,6 @@ tests pin down the operator-name surface, the no-throw behaviour on empty
 or extraneous operands, and the engine-context binding.
 """
 
-from __future__ import annotations
-
 from pypdfbox.contentstream import Operator, PDFStreamEngine
 from pypdfbox.contentstream.operator.graphics.clip_non_zero_rule import (
     ClipNonZeroRule,

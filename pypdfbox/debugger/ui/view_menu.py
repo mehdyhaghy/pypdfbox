@@ -32,8 +32,6 @@ dispatch — the debugger shell installs a listener that performs the
 actual text extraction.
 """
 
-from __future__ import annotations
-
 from collections.abc import Callable
 from typing import Any, ClassVar
 

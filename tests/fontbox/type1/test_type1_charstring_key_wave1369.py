@@ -6,8 +6,6 @@ different seed (``4330``) and a font-supplied ``lenIV`` warm-up length
 ``/lenIV 0 def``). These tests exercise the seed bias and the lenIV
 parameterisation in isolation from the higher-level parser.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.type1.type1_font_util import Type1FontUtil

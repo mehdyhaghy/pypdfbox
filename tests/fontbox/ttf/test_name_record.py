@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.name_record import NameRecord
 from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 

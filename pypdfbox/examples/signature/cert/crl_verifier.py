@@ -8,8 +8,6 @@ Library-first: ``cryptography.x509`` does the CRL parsing and extension
 walking; we wrap it with the upstream-shaped helper API.
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 import logging
 from collections.abc import Iterable

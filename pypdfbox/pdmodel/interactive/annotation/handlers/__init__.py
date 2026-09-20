@@ -7,8 +7,6 @@ helper used by the polygon / circle / square handlers when the border
 effect is ``/Cloudy``.
 """
 
-from __future__ import annotations
-
 from .annotation_border import AnnotationBorder
 from .cloudy_border import CloudyBorder
 from .pd_abstract_appearance_handler import PDAbstractAppearanceHandler

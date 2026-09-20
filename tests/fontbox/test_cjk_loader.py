@@ -17,8 +17,6 @@ Tests use a fake in-memory zip + a stub ``opener`` so they never touch
 the real network or filesystem outside ``tmp_path``.
 """
 
-from __future__ import annotations
-
 import hashlib
 import io
 import zipfile

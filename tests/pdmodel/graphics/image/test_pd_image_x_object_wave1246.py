@@ -10,8 +10,6 @@ the private ``_extract_matte`` / ``_apply_mask`` / ``_scale_image`` /
 ``PDImageXObject`` surface up to upstream-method-name parity for the
 public/protected API.
 """
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

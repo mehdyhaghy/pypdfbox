@@ -23,8 +23,6 @@ Round-out tests for paths not yet covered:
 * ``create_cos_stream`` copies a supplied dictionary into the new stream.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

@@ -12,8 +12,6 @@ alpha-mask area, and specific-pixel colour within tolerance — not
 pixel-exact compares.
 """
 
-from __future__ import annotations
-
 from PIL import Image
 
 from pypdfbox.cos import (

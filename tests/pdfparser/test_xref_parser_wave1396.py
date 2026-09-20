@@ -12,8 +12,6 @@ both that the surface is present and that each delegator preserves the
 underlying behaviour.
 """
 
-from __future__ import annotations
-
 import inspect
 
 from pypdfbox.cos import COSDocument, COSObjectKey

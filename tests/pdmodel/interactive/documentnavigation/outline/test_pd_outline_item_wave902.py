@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat, COSString
 from pypdfbox.pdmodel.interactive.documentnavigation.outline import PDOutlineItem
 

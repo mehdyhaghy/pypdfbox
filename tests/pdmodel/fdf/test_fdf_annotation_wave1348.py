@@ -7,8 +7,6 @@ subtype fallback), plus the rare error paths in
 ``parse_rectangle_attributes``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSString

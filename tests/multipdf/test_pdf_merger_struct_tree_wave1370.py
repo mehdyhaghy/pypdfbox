@@ -18,8 +18,6 @@ existing struct-tree suite:
 - Two merges in a row: each new source's parent-tree keys get a fresh
   offset (no re-use of earlier offsets, no overlap).
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.cos import (

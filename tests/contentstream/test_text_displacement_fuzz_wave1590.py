@@ -35,8 +35,6 @@ cumulative advance from an independent reference and asserts the tracked
 text-matrix translation matches.
 """
 
-from __future__ import annotations
-
 import random
 from typing import Any
 

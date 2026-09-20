@@ -7,8 +7,6 @@ do — empty/None defaults before a policy is attached, and round-tripping
 through the attached :class:`PublicKeyProtectionPolicy`.
 """
 
-from __future__ import annotations
-
 import hashlib
 
 from pypdfbox.pdmodel.encryption.public_key_protection_policy import (
@@ -93,7 +91,7 @@ def test_derive_file_key_matches_sha1_truncation_for_v4() -> None:
     handler = PublicKeySecurityHandler()
     seed = b"\x01" * 20
     blobs = [b"recipient-blob-a", b"recipient-blob-b"]
-    expected = hashlib.sha1(
+    expected = hashlib.sha1(  # non-security; mirrors PDF spec
         seed + blobs[0] + blobs[1], usedforsecurity=False
     ).digest()[:16]
     assert (

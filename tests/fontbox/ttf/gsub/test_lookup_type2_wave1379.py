@@ -21,8 +21,6 @@ files (``test_lookup_subtable.py`` and ``test_gsub_lookup_tail_wave786``):
   Coverage size mismatches Sequence count, matching upstream 3.0.
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.fontbox.ttf.gsub import (

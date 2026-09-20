@@ -3,8 +3,6 @@
 Creates a simple document with a Type 1 font (.pfb).
 """
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 

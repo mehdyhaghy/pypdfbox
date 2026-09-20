@@ -9,8 +9,6 @@ of the pypdfbox port lives in
 ``tests/pdmodel/interactive/digitalsignature/test_pd_seed_value_parity.py``.
 """
 
-from __future__ import annotations
-
 
 def test_no_upstream_tests_yet() -> None:
     """Sentinel — upstream has no test class for ``PDSeedValue``."""

@@ -6,8 +6,6 @@ walking past a default UVS entry whose selector OR code-point range
 doesn't match the request.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.cmap_subtable import CmapSubtable
 
 

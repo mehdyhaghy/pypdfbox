@@ -5,8 +5,6 @@ Implements the IAx integer decoding procedure (A.2) and the IAID symbol-ID
 decoding procedure (A.3).
 """
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.decoder.arithmetic.arithmetic_decoder import ArithmeticDecoder
 from pypdfbox.jbig2.decoder.arithmetic.cx import CX
 

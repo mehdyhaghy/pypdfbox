@@ -7,8 +7,6 @@ provided, and ``is_valid``/``get_result``/``get_exception`` always
 returning consistent tuples.
 """
 
-from __future__ import annotations
-
 from pypdfbox.examples.signature.cert.certificate_verification_result import (
     CertificateVerificationResult,
 )

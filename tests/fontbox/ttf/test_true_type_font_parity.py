@@ -8,8 +8,6 @@ a sensible value. Mirrors how upstream's
 / OS/2 lookups against a fixture font.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

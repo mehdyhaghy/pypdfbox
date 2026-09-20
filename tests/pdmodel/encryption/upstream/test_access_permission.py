@@ -9,8 +9,6 @@ read-only / per-bit toggle behaviour exercised throughout the upstream
 encryption tests.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.encryption.access_permission import AccessPermission
 
 

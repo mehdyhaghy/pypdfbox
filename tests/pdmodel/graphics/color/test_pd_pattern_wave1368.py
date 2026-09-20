@@ -17,8 +17,6 @@ Targets:
 - ``PDPattern`` initial color is empty
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSName

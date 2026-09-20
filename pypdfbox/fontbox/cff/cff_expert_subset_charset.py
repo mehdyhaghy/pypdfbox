@@ -8,8 +8,6 @@ The 87-entry table is supplied by fontTools
 (``cffExpertSubsetStrings`` + ``cffStandardStringMapping``).
 """
 
-from __future__ import annotations
-
 from fontTools.cffLib import cffExpertSubsetStrings, cffStandardStringMapping
 
 from .cff_charset_type1 import CFFCharsetType1

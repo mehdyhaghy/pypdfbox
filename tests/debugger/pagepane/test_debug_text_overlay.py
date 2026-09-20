@@ -10,8 +10,6 @@ from the PIL draw context so a headless run can inspect the rectangle
 list.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSStream
 from pypdfbox.debugger.pagepane.debug_text_overlay import (
     DebugRectangle,
@@ -339,7 +337,7 @@ def test_collect_text_stripper_rect_skips_on_type_error() -> None:
 
     stripper, _overlay, doc = _make_stripper(show_text_stripper=True)
     try:
-        stripper._collect_text_stripper_rect(_BadTp())
+        stripper._collect_text_stripper_rect(_BadTp())  # duck-typed
         assert stripper._collector.rectangles == []
     finally:
         doc.close()

@@ -22,8 +22,6 @@ methods — the parity-extraction regex misclassifies the multi-token
 keyword. Tracking these here keeps the intent explicit.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

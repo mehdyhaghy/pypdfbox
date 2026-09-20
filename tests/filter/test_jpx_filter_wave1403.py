@@ -6,8 +6,6 @@ the module via :func:`importlib.reload` re-runs the guard while ``JPXFilter``
 is *already* registered, so the registration is skipped and the block exits.
 """
 
-from __future__ import annotations
-
 import importlib
 
 from pypdfbox.filter import jpx_filter

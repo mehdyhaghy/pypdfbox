@@ -12,8 +12,6 @@ Targets the previously-untested branches in :class:`SoftMask` and
 * mask pixel tuple unpack — LA-mode masks (line 197)
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.rendering.soft_mask import SoftMask

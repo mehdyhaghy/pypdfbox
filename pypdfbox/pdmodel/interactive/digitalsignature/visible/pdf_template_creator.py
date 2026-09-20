@@ -9,8 +9,6 @@ step in the exact order upstream does, fanning the resulting
 intermediate objects through the shared :class:`PDFTemplateStructure`.
 """
 
-from __future__ import annotations
-
 import io
 import logging
 from typing import TYPE_CHECKING, BinaryIO

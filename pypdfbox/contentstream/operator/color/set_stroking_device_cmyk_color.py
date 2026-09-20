@@ -5,8 +5,6 @@ Mirrors ``org.apache.pdfbox.contentstream.operator.color.SetStrokingDeviceCMYKCo
 ``pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetStrokingDeviceCMYKColor.java``).
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import COSBase, COSName

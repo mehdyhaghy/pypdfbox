@@ -7,8 +7,6 @@ subnormal-flush edges. Pre-wave the module sat at 90.8 %; this lifts it
 above 98 %.
 """
 
-from __future__ import annotations
-
 import math
 
 from pypdfbox.cos import COSFloat

@@ -13,8 +13,6 @@ Closes the residual gaps after waves 1323 / 1332. Targets:
 * ``find_object_key`` outer-except path (lines 2237-2239).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

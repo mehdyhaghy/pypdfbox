@@ -5,8 +5,6 @@ methods (lines 78-118) — they raise ``NotImplementedError`` because the
 Swing-based debugger UI isn't ported. These tests pin that behaviour.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.filter.node import Node

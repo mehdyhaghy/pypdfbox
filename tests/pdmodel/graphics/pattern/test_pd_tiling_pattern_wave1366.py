@@ -8,8 +8,6 @@ Mirrors upstream
 ``pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/pattern/PDTilingPattern.java``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

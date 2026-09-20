@@ -12,8 +12,6 @@ Files touched:
 * pypdfbox/debugger/streampane/stream_pane.py — None-resources path.
 """
 
-from __future__ import annotations
-
 import contextlib
 import os
 import tkinter as tk
@@ -137,7 +135,7 @@ def test_searcher_update_navigation_buttons_out_of_valid_range(tk_root) -> None:
     # Set current_match > total_match - 1 → both elif False branches.
     s._current_match = 5
     s._total_match = 3
-    s._search_panel = None
+    s._search_panel = None  # skip the panel update block too
     s.update_navigation_buttons()
 
 

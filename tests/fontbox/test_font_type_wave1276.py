@@ -7,8 +7,6 @@ direct ``COSName`` constructor (L90-94), the no-subtype constructor
 (L106-113).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSName

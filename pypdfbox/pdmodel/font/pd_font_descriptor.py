@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle

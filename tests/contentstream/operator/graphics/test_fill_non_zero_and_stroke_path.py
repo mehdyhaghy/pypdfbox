@@ -5,8 +5,6 @@ real rendering; this test fixes the operator-name surface and the no-op /
 context-binding behaviour so the rendering cluster has a stable target.
 """
 
-from __future__ import annotations
-
 from pypdfbox.contentstream import Operator, PDFStreamEngine
 from pypdfbox.contentstream.operator.graphics.fill_non_zero_and_stroke_path import (
     FillNonZeroAndStrokePath,

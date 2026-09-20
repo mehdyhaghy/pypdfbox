@@ -6,8 +6,6 @@ upstream's ``PDPage.getAnnotations(AnnotationFilter)`` — the filter callable
 is invoked on every dispatched annotation; only annotations for which the
 callable returns truthy are kept.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.pdmodel import ResourceCacheCreateFunction
 from pypdfbox.pdmodel.pd_resource_cache import DefaultResourceCache
 

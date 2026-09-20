@@ -7,8 +7,6 @@ pypdfbox port already had ``get_groups()``; this verifies the
 upstream-spelled alias resolves to the same list of wrappers.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_group import (
     PDOptionalContentGroup,
 )

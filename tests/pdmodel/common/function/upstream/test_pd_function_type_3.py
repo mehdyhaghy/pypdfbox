@@ -11,8 +11,6 @@ requested layout; the canonical hand-written eval coverage lives in
 ``test_pd_function_type_3.py`` (accessor + boundary cases).
 """
 
-from __future__ import annotations
-
 
 def test_no_upstream_pd_function_type_3_test_to_port() -> None:
     """Sentinel: documents the absence of an upstream JUnit class for Type 3."""

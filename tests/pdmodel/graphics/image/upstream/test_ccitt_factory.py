@@ -21,8 +21,6 @@ The synthetic ``testCreateFromBufferedChessImage`` ports cleanly: a
 non-multiple-of-8 width is the only thing the test cares about and we
 can build that with Pillow alone.
 """
-from __future__ import annotations
-
 import io
 
 from PIL import Image

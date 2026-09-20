@@ -9,8 +9,6 @@ Edge cases that the existing wave-281 tests miss:
 * ``create_view`` provides an independent file mapping.
 """
 
-from __future__ import annotations
-
 import os
 import tempfile
 from pathlib import Path

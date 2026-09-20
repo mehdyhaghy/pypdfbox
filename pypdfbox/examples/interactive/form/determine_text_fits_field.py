@@ -5,8 +5,6 @@ Loads a form, reads the field's default appearance, then asks the
 backing font how wide a given test string would render.
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.cos import COSName

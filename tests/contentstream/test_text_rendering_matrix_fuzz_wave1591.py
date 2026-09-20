@@ -35,8 +35,6 @@ multiply order, a dropped Tz factor, a mis-slotted rise, or a Tz leaking onto
 the Y axis would all fail here.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

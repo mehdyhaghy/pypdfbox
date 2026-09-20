@@ -2,8 +2,6 @@
 ``fontbox/src/test/java/org/apache/fontbox/afm/CompositePartTest.java``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.afm import CompositePart
 
 

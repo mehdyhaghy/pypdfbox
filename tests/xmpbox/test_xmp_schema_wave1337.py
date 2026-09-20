@@ -5,8 +5,6 @@ Targets the typed-property cache-eviction branches, the ArrayProperty arm of
 ``instanciate_simple`` factory, and the standalone ``merge_complex_property``
 helper.
 """
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 import pytest

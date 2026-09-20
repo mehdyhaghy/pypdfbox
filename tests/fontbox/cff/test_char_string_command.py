@@ -1,7 +1,5 @@
 """Hand-written tests for ``CharStringCommand`` and the keyword tables."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff import (
     CharStringCommand,
     Key,

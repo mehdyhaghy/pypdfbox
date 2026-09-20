@@ -37,8 +37,6 @@ differs between POSIX and Windows wheels.
 upstream: PDFBox 3.0.7 ``filter/CCITTFaxFilter.java`` (``decode``, K==0 arm).
 """
 
-from __future__ import annotations
-
 import contextlib
 import io
 import os

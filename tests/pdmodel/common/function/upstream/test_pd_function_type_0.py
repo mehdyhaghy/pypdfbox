@@ -17,8 +17,6 @@ lives in:
   invalidation, and 1-in/1-out + 2-in/3-out eval parity.
 """
 
-from __future__ import annotations
-
 
 def test_no_upstream_pd_function_type_0_test_to_port() -> None:
     """Sentinel: documents the absence of an upstream test class so this

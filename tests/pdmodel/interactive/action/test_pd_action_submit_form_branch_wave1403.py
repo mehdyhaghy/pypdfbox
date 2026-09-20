@@ -9,8 +9,6 @@ Closes the True-branch arrow in
   the loop ``continue``s, dropping that entry from the typed result.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSName, COSString
 from pypdfbox.pdmodel.interactive.action.pd_action_submit_form import (
     PDActionSubmitForm,

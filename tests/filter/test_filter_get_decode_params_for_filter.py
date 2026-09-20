@@ -3,8 +3,6 @@ the strict, ``/Filter``-aware variant that mirrors upstream's
 ``protected COSDictionary getDecodeParams(COSDictionary, int)``.
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.cos import COSArray, COSBoolean, COSDictionary, COSName

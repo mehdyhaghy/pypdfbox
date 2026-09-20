@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.contentstream import PDFStreamEngine
 from pypdfbox.contentstream.operator import Operator
 from pypdfbox.contentstream.operator.operator_processor import (

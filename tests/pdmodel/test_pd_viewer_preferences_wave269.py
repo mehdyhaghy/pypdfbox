@@ -9,8 +9,6 @@ clear-entry helpers (``clear_enforce``, ``clear_print_page_range``,
 structural validator, and the bulk ``add_enforce_names`` mutator.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSInteger, COSName
 from pypdfbox.pdmodel import PDViewerPreferences
 

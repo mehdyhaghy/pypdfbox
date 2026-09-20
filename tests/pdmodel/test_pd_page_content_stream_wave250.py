@@ -22,8 +22,6 @@ Mirrors the per-operator ``inTextMode`` guards that
   ``IllegalStateException`` "Error: must call beginText() before <op>").
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle

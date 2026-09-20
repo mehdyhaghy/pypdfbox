@@ -5,8 +5,6 @@ Mirrors the surface exercised by upstream
 predicates documented in PDF 32000-1 §9.8.2 Table 123.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream, COSString

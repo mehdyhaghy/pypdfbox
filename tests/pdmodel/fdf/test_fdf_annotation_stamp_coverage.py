@@ -5,8 +5,6 @@ Targets the XFDF appearance-XML helpers (``parse_*_element`` /
 module does not exercise.
 """
 
-from __future__ import annotations
-
 import base64
 from xml.etree.ElementTree import Element, SubElement
 

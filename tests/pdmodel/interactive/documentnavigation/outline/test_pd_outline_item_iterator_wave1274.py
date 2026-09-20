@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.interactive.documentnavigation.outline.pd_document_outline import (

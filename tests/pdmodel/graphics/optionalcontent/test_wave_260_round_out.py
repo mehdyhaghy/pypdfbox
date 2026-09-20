@@ -19,8 +19,6 @@ sister classes (e.g. :class:`PDOptionalContentMembershipDictionary`).
 These additions are pypdfbox enrichment — Apache PDFBox 3.0 leaves
 callers to walk the underlying COSDictionary themselves.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSName

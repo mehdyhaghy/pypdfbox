@@ -14,8 +14,6 @@ widget annotations on the page. The no-arg ``get_acro_form()`` must:
 4. leave ``ZaDb`` injected into ``/DR`` by the defaults processor.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.cos import COSName

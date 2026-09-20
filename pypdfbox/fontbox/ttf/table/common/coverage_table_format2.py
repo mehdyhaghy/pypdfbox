@@ -4,8 +4,6 @@ Mirrors ``org.apache.fontbox.ttf.table.common.CoverageTableFormat2``
 (upstream ``CoverageTableFormat2.java`` L31-73).
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 
 from .coverage_table_format1 import CoverageTableFormat1

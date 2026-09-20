@@ -7,8 +7,6 @@ Upstream extends TestCOSNumber/TestCOSBase. The looped pseudorandom
 ``testAccept`` is translated to a recording-visitor dispatch check.
 """
 
-from __future__ import annotations
-
 import io
 import math
 import struct

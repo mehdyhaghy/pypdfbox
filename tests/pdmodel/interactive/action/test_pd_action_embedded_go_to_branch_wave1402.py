@@ -13,8 +13,6 @@ Closes False-branch arrows in
   False.
 """
 
-from __future__ import annotations
-
 import contextlib
 
 from pypdfbox.cos import COSDictionary, COSName

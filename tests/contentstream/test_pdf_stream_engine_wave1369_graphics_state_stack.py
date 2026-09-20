@@ -15,8 +15,6 @@ Exercises:
   swap a frame without re-implementing the dispatch surface.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.contentstream import (

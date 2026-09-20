@@ -3,8 +3,6 @@
 Mirrors PDFBox ``org.apache.pdfbox.pdmodel.graphics.shading.AxialShadingPaint``.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from .axial_shading_context import AxialShadingContext

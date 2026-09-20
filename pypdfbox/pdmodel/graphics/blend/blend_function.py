@@ -6,8 +6,6 @@ Mirrors ``BlendMode.BlendFunction`` from upstream ``BlendMode`` (PDFBox
 result in place.
 """
 
-from __future__ import annotations
-
 from collections.abc import Callable, Sequence
 
 

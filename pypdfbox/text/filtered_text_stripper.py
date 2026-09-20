@@ -36,8 +36,6 @@ Upright (TrueType-default) font matrices have shape
 atan2(b, d)`` and the font matrix can be skipped without loss for the
 fonts the lite stripper exposes today.
 """
-from __future__ import annotations
-
 import math
 from collections.abc import Iterator
 from typing import Any, cast

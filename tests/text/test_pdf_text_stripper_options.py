@@ -15,8 +15,6 @@ tests on top of the round-trip checks:
     out-of-order content stream still emits in geometric reading order.
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.cos import COSStream

@@ -5,8 +5,6 @@ recipient is the pairing of an X.509 certificate with the
 :class:`AccessPermission` granted to the holder of its private key.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

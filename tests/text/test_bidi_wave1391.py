@@ -1,7 +1,5 @@
 """Wave 1391 — coverage round-out for :mod:`pypdfbox.text.bidi`."""
 
-from __future__ import annotations
-
 from pypdfbox.text.bidi import (
     BidiResolver,
     get_paragraph_direction,

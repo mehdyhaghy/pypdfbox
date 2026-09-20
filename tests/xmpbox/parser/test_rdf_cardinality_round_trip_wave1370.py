@@ -6,8 +6,6 @@ Mirrors the upstream behaviour that ``<rdf:Bag>`` / ``<rdf:Seq>`` /
 ``set_unqualified_*`` schema helpers.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.xmpbox.dom_xmp_parser import DomXmpParser

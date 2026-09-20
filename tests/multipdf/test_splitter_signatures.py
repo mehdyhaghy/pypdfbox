@@ -4,8 +4,6 @@ any signature carried into a chunk would be invalid; the splitter must
 drop signature widgets and clear ``/SigFlags`` from any inherited
 ``/AcroForm``.
 """
-from __future__ import annotations
-
 import io
 
 from pypdfbox import PDDocument, PDPage

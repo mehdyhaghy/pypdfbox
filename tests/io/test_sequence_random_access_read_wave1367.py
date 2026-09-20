@@ -5,8 +5,6 @@ Targets cross-boundary read patterns, seek-direction heuristic
 the joined view.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer

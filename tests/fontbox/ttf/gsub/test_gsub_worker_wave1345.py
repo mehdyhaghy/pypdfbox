@@ -13,8 +13,6 @@ Covers the residual branches of
 * line 187 — :func:`_iterable_to_list` defensive copy helper.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.ttf.gsub.gsub_worker import (

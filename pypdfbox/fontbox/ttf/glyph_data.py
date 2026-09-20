@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from .glyf_descript import GlyfDescript
@@ -429,9 +427,9 @@ class GlyphData:
     def init_data(
         self,
         glyph_table: Any,
-        data: Any,
-        left_side_bearing: int,
-        level: int,
+        data: Any,  # upstream signature parity
+        left_side_bearing: int,  # upstream signature parity
+        level: int,  # upstream signature parity
     ) -> None:
         """Bind this record to a parent ``glyf`` table and re-resolve.
 

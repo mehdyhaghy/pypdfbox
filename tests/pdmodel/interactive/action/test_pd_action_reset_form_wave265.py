@@ -2,8 +2,6 @@
 predicate, has-* / is-empty / is-valid helpers, and clear-* surface
 complementing the existing include/exclude flag accessors."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.interactive.action import PDActionResetForm
 

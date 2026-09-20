@@ -31,8 +31,6 @@ Bit convention: codes are MSB-first within each byte, matching the little-endian
 two-level lookup tables; trailing bits are zero-padded to the byte boundary.
 """
 
-from __future__ import annotations
-
 import subprocess
 
 import pytest

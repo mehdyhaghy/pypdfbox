@@ -4,8 +4,6 @@ out alongside the new parser / util modules: ``get_notice``,
 ``get_char_strings_dict``, and ``get_type1_mappings``.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.fontbox.type1.type1_font import Type1Font

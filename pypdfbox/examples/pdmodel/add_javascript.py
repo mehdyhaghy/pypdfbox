@@ -3,8 +3,6 @@
 Adds a JavaScript open-action to a PDF document.
 """
 
-from __future__ import annotations
-
 import sys
 
 

@@ -4,8 +4,6 @@ Removes an AcroForm field by fully-qualified name and strips its widget
 annotations from any pages that referenced them.
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.cos import COSName

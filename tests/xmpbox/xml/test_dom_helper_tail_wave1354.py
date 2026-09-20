@@ -11,8 +11,6 @@ Covers four short branches the existing suite skips:
 * ``get_q_name`` alias matching upstream's snake-case (line 63).
 """
 
-from __future__ import annotations
-
 from xml.dom.minidom import parseString
 
 from pypdfbox.xmpbox.xml.dom_helper import DomHelper

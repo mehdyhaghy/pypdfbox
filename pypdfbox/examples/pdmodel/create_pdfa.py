@@ -16,8 +16,6 @@ to ``ImageCms.createProfile('sRGB').tobytes()`` and registers the same
 PDF/A validators see an indistinguishable profile.
 """
 
-from __future__ import annotations
-
 import io
 import sys
 from pathlib import Path

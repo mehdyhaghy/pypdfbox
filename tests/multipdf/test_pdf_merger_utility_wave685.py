@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.multipdf.pdf_merger_utility import PDFMergerUtility

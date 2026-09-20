@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSBase, COSName
 from pypdfbox.fontbox.encoding.win_ansi_encoding import _TABLE
 

@@ -15,8 +15,6 @@ but cap at the level upstream actually reaches (``131_072``) — the
 final iteration is the one that crashed the old recursion.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdfwriter.compress.compress_parameters import CompressParameters
 from pypdfbox.pdfwriter.compress.cos_writer_compression_pool import (
     COSWriterCompressionPool,

@@ -10,8 +10,6 @@ Closes the remaining uncovered public 1:1 upstream-named delegates:
 * line 763 — ``create_overlay_stream`` → ``_create_overlay_stream``
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSName, COSStream
 from pypdfbox.multipdf import Overlay
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle

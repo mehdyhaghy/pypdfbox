@@ -8,8 +8,6 @@ The Java implementation relies on JAXP. We use stdlib ``xml.etree`` for
 the pretty-print; the behaviour is debug-only, so a small impedance is
 acceptable.
 """
-from __future__ import annotations
-
 import logging
 from typing import Any
 from xml.dom.minidom import parseString

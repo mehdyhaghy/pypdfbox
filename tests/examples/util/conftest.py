@@ -1,7 +1,5 @@
 """Shared fixtures for util example smoke tests."""
 
-from __future__ import annotations
-
 from collections.abc import Callable, Iterator
 from pathlib import Path
 

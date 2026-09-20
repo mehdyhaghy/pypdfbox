@@ -24,8 +24,6 @@ payload is the deterministic fixture shared with the other jbig2 fixtures.
 Bit convention: pypdfbox's ``Bitmap`` packs MSB-first, 1 == set.
 """
 
-from __future__ import annotations
-
 import math
 import struct
 

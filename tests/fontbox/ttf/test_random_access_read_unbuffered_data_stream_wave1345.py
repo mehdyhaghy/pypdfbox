@@ -8,8 +8,6 @@ Targets:
   - the ``OSError → None`` fallback inside ``create_sub_view``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.random_access_read_non_closing_input_stream import (
     RandomAccessReadNonClosingInputStream,
 )

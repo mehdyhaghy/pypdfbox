@@ -23,8 +23,6 @@ Targets the remaining uncovered branches:
 * ``prepare_encryption_dict_rev6`` empty-owner-password promotion.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption

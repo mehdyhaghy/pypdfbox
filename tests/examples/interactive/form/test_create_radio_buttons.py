@@ -1,7 +1,5 @@
 """Smoke + coverage tests for :class:`CreateRadioButtons`."""
 
-from __future__ import annotations
-
 from pathlib import Path
 from unittest import mock
 

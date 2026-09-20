@@ -8,8 +8,6 @@ Unicode names survive dictionary storage, and parsed raw name bytes are
 written back with PDFBox's ``#XX`` escaping rules.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import COSDictionary, COSName

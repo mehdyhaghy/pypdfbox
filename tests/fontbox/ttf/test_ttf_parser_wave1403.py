@@ -6,8 +6,6 @@ buffer is shorter than four bytes, the scaler/version decode is skipped
 and control falls straight through to the reader-projection step.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.fontbox.ttf import TTFParser

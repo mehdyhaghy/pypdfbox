@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 # Windows Glyph List 4 (WGL4) names for Mac glyphs.
 # Mirrors org.apache.fontbox.ttf.WGL4Names. Used by `post` table (formats 1 and 2).
 

@@ -4,8 +4,6 @@ Superimposes a page from a source PDF onto a fresh page in a new PDF using
 ``LayerUtility``.
 """
 
-from __future__ import annotations
-
 import math
 import sys
 

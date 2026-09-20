@@ -8,8 +8,6 @@ each guard's missing arm via a fake-catalog scope so we can return
 arbitrary objects without going through the typed setter wrappers.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName

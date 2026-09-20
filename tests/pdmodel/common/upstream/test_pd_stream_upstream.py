@@ -15,8 +15,6 @@ so the bytes always round-trip verbatim. pypdfbox has no ``DCT_DECODE``
 COSName constant — the equivalent name strings are used directly.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox import PDDocument

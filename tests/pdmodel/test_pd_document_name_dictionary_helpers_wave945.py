@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from tests.pdmodel import test_pd_document_name_dictionary_parity as names_mod
 

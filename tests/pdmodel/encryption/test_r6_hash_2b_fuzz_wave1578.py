@@ -21,8 +21,6 @@ key/iv split, the K1 repetition count, or the user-key concatenation, these
 cases diverge from the independent reference.
 """
 
-from __future__ import annotations
-
 import hashlib
 
 import pytest

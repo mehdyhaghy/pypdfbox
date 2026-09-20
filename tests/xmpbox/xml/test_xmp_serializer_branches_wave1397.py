@@ -10,8 +10,6 @@ walk an unusual schema / array shape:
   array nor complex/structured
 """
 
-from __future__ import annotations
-
 from xml.dom.minidom import Document
 
 from pypdfbox.xmpbox import XMPMetadata

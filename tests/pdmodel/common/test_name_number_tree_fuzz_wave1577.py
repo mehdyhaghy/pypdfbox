@@ -24,8 +24,6 @@ live oracle ``test_name_number_tree_fuzz_wave1549.py`` and CHANGES.md):
   sibling holding the key IS reached on both sides.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

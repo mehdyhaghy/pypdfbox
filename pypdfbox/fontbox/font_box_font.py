@@ -23,8 +23,6 @@ as a 4-tuple ``(xmin, ymin, xmax, ymax)`` — the existing fontbox font
 classes already return that shape.
 """
 
-from __future__ import annotations
-
 from typing import Any, Protocol, runtime_checkable
 
 

@@ -4,8 +4,6 @@ Each test exercises the entry point with a tiny inline fixture, asserting
 that the wired-up port reaches the expected output without raising.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

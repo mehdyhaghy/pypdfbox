@@ -4,8 +4,6 @@ Mirror of ``org.apache.xmpbox.xml.XmpSerializationException`` (extends
 ``Exception`` upstream; message-only and message-plus-cause constructors).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import XmpSerializationException

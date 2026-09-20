@@ -1,8 +1,6 @@
 """Hand-written tests for Wave 1280 AcroForm helper classes ported from
 ``org.apache.pdfbox.pdmodel.interactive.form`` upstream sources."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSName, COSString

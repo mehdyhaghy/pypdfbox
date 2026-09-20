@@ -14,8 +14,6 @@ parity file pins the ratio constants directly so a refactor that
 silently moves to a 0.8 / -0.1 split (a common "for accessibility"
 mistake) is caught.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.text import TextMetrics, TextPosition

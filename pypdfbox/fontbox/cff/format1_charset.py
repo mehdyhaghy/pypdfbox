@@ -9,8 +9,6 @@ Format 1 is the 8-bit ``nLeft`` range-format charset; it extends
 walk for CID-keyed fonts.
 """
 
-from __future__ import annotations
-
 from .embedded_charset import EmbeddedCharset
 from .range_mapping import RangeMapping
 

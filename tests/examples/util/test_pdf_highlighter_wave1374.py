@@ -9,8 +9,6 @@ populated buffer. This wave pins that contract with an end-to-end
 test against a freshly-generated PDF.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

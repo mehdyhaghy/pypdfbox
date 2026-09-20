@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSInteger
 from tests.pdmodel.common.test_pd_number_tree_node_wave297 import _IntNumberTreeNode
 

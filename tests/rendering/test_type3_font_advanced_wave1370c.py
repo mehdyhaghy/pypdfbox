@@ -18,8 +18,6 @@ Covered here:
   in distinct colours.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

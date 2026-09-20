@@ -8,8 +8,6 @@ dedicated typed class and are accessed as raw ``COSDictionary`` instances on
 ``PDActionLaunch``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 
 _F: COSName = COSName.get_pdf_name("F")

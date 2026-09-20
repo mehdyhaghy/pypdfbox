@@ -7,8 +7,6 @@ constant, the size getter, the ``is_compress`` predicate, and the
 negative-size validation.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdfwriter import CompressParameters

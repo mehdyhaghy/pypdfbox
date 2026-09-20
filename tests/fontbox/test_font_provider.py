@@ -6,8 +6,6 @@ These tests pin the abstract contract so pluggable providers stay
 predictable.
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 
 import pytest

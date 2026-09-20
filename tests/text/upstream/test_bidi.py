@@ -22,8 +22,6 @@ lines as Java before the BiDi reorder runs, so sorted output now matches
 ``BidiSample.pdf-sorted.txt`` byte-for-byte (verified against the live
 ``TextSortInlineProbe`` oracle).
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

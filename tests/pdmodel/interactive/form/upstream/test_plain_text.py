@@ -9,8 +9,6 @@ pypdfbox the same class lives at
 divergence vs upstream is the package path; behaviour mirrors upstream.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.form.plain_text import PlainText
 
 

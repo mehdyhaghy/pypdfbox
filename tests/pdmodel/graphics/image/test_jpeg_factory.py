@@ -4,8 +4,6 @@ Covers the API surface as exercised in pypdfbox: the three factory
 methods, the ``/Filter /DCTDecode`` + raw-bytes contract, color-space
 dispatch by component count, and the CMYK ``/Decode`` array.
 """
-from __future__ import annotations
-
 import io
 
 import pytest

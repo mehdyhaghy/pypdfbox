@@ -5,8 +5,6 @@ calling ``_search_node`` directly with an :class:`XrefEntry` whose
 wrapped :class:`COSObject` resolves to a :class:`COSDictionary`.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSInteger, COSObject, COSObjectKey
 from pypdfbox.debugger.treestatus import TreeStatus
 from pypdfbox.debugger.ui.xref_entry import XrefEntry

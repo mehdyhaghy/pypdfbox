@@ -1,7 +1,5 @@
 """Hand-written tests for ``CIDKeyedType2CharString``."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff import CIDKeyedType2CharString, Type2CharString
 
 

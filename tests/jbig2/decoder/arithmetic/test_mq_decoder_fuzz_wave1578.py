@@ -29,8 +29,6 @@ These are behavioural-parity tests: the production decoder is a port of
 implements T.88 Annex E.
 """
 
-from __future__ import annotations
-
 import random
 
 import pytest

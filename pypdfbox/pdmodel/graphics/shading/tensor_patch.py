@@ -3,8 +3,6 @@
 Mirrors PDFBox ``org.apache.pdfbox.pdmodel.graphics.shading.TensorPatch``.
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 
 from .patch import Patch, _CoordinateColorPair

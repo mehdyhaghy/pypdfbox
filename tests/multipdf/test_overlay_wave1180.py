@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 import tests.multipdf.test_overlay_wave619 as wave619

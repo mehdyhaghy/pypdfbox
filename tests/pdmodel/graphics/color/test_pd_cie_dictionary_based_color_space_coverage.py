@@ -7,8 +7,6 @@ Targets the surface absent from ``test_pd_cie_is_white_point.py``:
 ``conv_xyz_to_rgb`` alias.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName

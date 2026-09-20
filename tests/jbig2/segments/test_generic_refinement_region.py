@@ -19,8 +19,6 @@ through a different code path; full bit-exact coverage of those lands when the
 pipeline is wired against a refactored-version jar).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.jbig2.bitmap import Bitmap

@@ -24,8 +24,6 @@ resources / colour-gate at the moment the charproc bytes are run, with
 the actual painting mocked) so the geometry / resource-stack / metric
 arithmetic is asserted exactly rather than read back from pixels.
 """
-from __future__ import annotations
-
 import math
 
 import pytest

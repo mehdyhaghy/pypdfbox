@@ -9,8 +9,6 @@ documented fallback contracts and the spec-required ``/BitsPerCoordinate``,
 ``/BitsPerComponent``, ``/BitsPerFlag``, and ``/Decode`` round-trip.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSStream

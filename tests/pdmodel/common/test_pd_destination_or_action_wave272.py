@@ -1,7 +1,5 @@
 """Wave 272 — PDDestinationOrAction predicate / factory round-out tests."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

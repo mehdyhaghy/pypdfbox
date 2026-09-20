@@ -9,8 +9,6 @@ Tests shell out via ``subprocess`` so they exercise the same path a
 caller would hit through the installed ``pdfbox`` console-script entry
 point: ``python -m pypdfbox.tools.pdf_box <subcommand> ...``.
 """
-from __future__ import annotations
-
 import subprocess
 import sys
 from pathlib import Path

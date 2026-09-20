@@ -17,8 +17,6 @@ handler into the root logger (or a named logger) for the lifetime of a
 debugger session, matching the upstream ``setupCustomLogger`` behaviour.
 """
 
-from __future__ import annotations
-
 import logging
 from collections import deque
 from collections.abc import Iterable
@@ -135,7 +133,7 @@ class DebugLogAppender(logging.Handler):
     def create_appender(
         cls,
         name: str = "DebugLogAppender",
-        filter: object | None = None,
+        filter: object | None = None,  # upstream parameter name
         layout: logging.Formatter | None = None,
         ignore_exceptions: bool = True,
         *,

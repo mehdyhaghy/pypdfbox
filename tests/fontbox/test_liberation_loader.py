@@ -19,8 +19,6 @@ Tests run entirely off the bundled wheel resources — no network, no
 filesystem mutation outside ``tmp_path``.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

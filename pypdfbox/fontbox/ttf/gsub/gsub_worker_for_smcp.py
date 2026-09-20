@@ -13,8 +13,6 @@ The upstream constructor takes a :class:`CmapLookup` even though
 identical so callers translating from Java can pass the same arguments.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING
 

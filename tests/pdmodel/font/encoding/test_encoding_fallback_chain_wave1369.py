@@ -8,8 +8,6 @@ symbolic default = built-in) -> /Differences overlay -> .notdef.
 Mirrors upstream PDSimpleFont.readEncoding's branch matrix.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.font.encoding import (
     BuiltInEncoding,

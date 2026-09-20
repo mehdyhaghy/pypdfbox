@@ -22,8 +22,6 @@ values — this is the part that matters for parity with PDF.js and
 Acrobat behaviour on legacy documents.
 """
 
-from __future__ import annotations
-
 import heapq
 import logging
 import threading

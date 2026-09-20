@@ -16,8 +16,6 @@ Pins behaviour added on top of the basic single-page extractor:
     the rotated reading-order traversal.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.interactive.pagenavigation import PDThreadBead

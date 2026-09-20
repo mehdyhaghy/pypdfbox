@@ -18,8 +18,6 @@ without needing Java, and the trailing ``@requires_oracle`` test re-checks the
 live differential when the jar + JDK are present.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.interactive.action.pd_action import PDAction
 from pypdfbox.pdmodel.interactive.action.pd_action_factory import PDActionFactory

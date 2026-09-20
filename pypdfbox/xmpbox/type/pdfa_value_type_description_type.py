@@ -14,8 +14,6 @@ new class is introduced here so structural identity (``isinstance`` checks
 against :class:`PDFATypeType`) keeps working unchanged.
 """
 
-from __future__ import annotations
-
 from .pdfa_type_type import PDFATypeType
 
 # Alias preserves the upstream class name; both spellings resolve to the

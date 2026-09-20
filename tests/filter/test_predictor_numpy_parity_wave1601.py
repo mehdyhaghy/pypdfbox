@@ -9,8 +9,6 @@ both decode surfaces (the one-shot ``unpredict`` bulk path and the row-by-row
 ``PredictorOutputStream`` used by FlateDecode/LZWDecode).
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

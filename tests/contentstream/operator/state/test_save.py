@@ -10,8 +10,6 @@ focuses on the upstream-named ``Save`` handler that the standalone
 with a bound context.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.contentstream import Operator, PDFStreamEngine

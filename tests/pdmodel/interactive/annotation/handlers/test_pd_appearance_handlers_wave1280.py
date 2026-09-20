@@ -10,8 +10,6 @@ Each handler is exercised through:
   well — we just verify they return ``None`` rather than raise)
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.annotation.handlers import (
     PDAbstractAppearanceHandler,
     PDCircleAppearanceHandler,

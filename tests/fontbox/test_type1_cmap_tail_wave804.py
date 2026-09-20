@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.fontbox.cmap import CMap

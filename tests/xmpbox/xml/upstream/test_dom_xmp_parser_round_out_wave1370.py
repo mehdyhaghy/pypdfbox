@@ -8,8 +8,6 @@ documented reason rather than translated to a slightly-different
 assertion that would mislead readers about behavioral parity.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox.dom_xmp_parser import DomXmpParser, XmpParsingException

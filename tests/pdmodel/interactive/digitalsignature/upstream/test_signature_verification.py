@@ -11,8 +11,6 @@ covering ``PDSignature.verify`` /
 ``tests/pdmodel/interactive/digitalsignature/test_signature_verification.py``.
 """
 
-from __future__ import annotations
-
 
 def test_no_upstream_tests_for_verify_pipeline() -> None:
     """Sentinel — upstream has no JUnit class for the verify path."""

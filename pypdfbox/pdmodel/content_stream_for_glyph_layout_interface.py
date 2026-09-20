@@ -11,8 +11,6 @@ implementation can emit positioned glyphs without depending on a concrete
 writer class.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import TYPE_CHECKING

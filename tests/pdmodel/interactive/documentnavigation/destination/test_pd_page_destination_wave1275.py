@@ -1,7 +1,5 @@
 """Wave 1275 parity test for PDPageDestination.index_of_page_tree."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (
     PDPageDestination,

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from tests.cos import test_cos_float_number_wave1227 as wave1227

@@ -7,8 +7,6 @@ get_boolean/get_delta semantics, plus ``Entry.get_delta`` running-sum
 behaviour for delta-encoded operand lists.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.dict_data import DictData, Entry, Key
 
 

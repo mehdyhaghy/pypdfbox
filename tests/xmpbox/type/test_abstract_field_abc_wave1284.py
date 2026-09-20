@@ -1,7 +1,5 @@
 """Wave 1284 — verify AbstractField / AbstractSimpleProperty are ABCs."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import XMPMetadata

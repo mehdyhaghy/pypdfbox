@@ -3,8 +3,6 @@
 Source: ``fontbox/src/test/java/org/apache/fontbox/cmap/TestCMap.java``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cmap import CMap
 
 

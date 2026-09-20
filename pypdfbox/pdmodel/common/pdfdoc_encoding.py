@@ -14,8 +14,6 @@ functions are the primary surface; the ``PDFDocEncoding`` class with
 classmethods is provided for upstream-name parity.
 """
 
-from __future__ import annotations
-
 from typing import Final
 
 _REPLACEMENT_CHARACTER: Final[str] = "�"
@@ -155,7 +153,7 @@ def get_char_code(character: str) -> int | None:
     return _UNI_TO_CODE.get(character)
 
 
-def set(code: int, unicode_char: str) -> None:
+def set(code: int, unicode_char: str) -> None:  # mirror upstream name
     """Register a code → Unicode mapping in the PDFDocEncoding tables.
 
     Mirrors upstream ``PDFDocEncoding.set(int code, char unicode)`` —
@@ -212,7 +210,7 @@ class PDFDocEncoding:
         return get_char_code(character)
 
     @staticmethod
-    def set(code: int, unicode_char: str) -> None:
+    def set(code: int, unicode_char: str) -> None:  # mirror upstream name
         """Register a code → Unicode mapping in the PDFDocEncoding tables.
 
         Mirrors upstream ``PDFDocEncoding.set(int, char)`` (private static

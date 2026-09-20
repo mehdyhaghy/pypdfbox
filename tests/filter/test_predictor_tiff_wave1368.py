@@ -15,8 +15,6 @@ Covered:
 * 1-bit (Bits=1): pathological narrow width.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import COSDictionary

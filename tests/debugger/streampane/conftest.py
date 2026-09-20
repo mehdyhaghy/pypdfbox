@@ -11,8 +11,6 @@ invocations concurrently on macOS without WindowServer contention
 (see ``tests/conftest.py``).
 """
 
-from __future__ import annotations
-
 import contextlib
 import os
 import tkinter as tk

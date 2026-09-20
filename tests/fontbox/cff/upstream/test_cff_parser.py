@@ -18,8 +18,6 @@ specific font (return type, list non-empty, ``CFFType1Font`` for
 name-keyed fonts).
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

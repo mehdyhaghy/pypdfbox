@@ -21,8 +21,6 @@ Targets the residual uncovered branches:
   via :class:`Type1Encoding` (lines 911-916).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.fontbox.type1.type1_font import Type1Font
 from pypdfbox.pdmodel.font import PDFontDescriptor, PDType1Font

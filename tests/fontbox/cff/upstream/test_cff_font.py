@@ -6,8 +6,6 @@ setters and the ``toString()`` mirror that pypdfbox exposes for parity
 with the upstream Java surface (see Java refs in each test).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.cff_font import CFFFont

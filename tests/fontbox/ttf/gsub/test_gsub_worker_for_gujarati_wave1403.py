@@ -12,8 +12,6 @@ Closes the partial arcs:
   :meth:`adjust_reph_position`.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.cmap_lookup import CmapLookup
 from pypdfbox.fontbox.ttf.gsub import GsubData, GsubWorkerForGujarati
 

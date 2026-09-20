@@ -9,8 +9,6 @@ from upstream ``StackOperators.java``. Companion JUnit cases live in
 testCopy / testDup / testExch / testIndex / testPop / testRoll cases).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.common.function.type4.stack_operators import (

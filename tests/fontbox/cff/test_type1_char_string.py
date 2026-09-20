@@ -10,8 +10,6 @@ We exercise:
   any embedded Type 1 font we can recover from the host system.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

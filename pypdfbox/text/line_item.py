@@ -5,8 +5,6 @@ Mirrors the private inner class ``PDFTextStripper.LineItem`` (PDFBox 3.0,
 2133-2163).
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:

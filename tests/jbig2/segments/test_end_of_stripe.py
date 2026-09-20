@@ -1,7 +1,5 @@
 """Hand-written tests for the JBIG2 EndOfStripe segment (7.4.9)."""
 
-from __future__ import annotations
-
 import struct
 
 from pypdfbox.jbig2.io.image_input_stream import ImageInputStream

@@ -1,6 +1,4 @@
 """Wave 276 coverage for ``PDOutlineNode`` linked-list edges."""
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSName, COSString

@@ -8,8 +8,6 @@ that exercises ``cos`` + ``pdfwriter`` + ``pdfparser`` + ``pdmodel`` +
 ``contentstream`` + ``text`` together belongs here.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

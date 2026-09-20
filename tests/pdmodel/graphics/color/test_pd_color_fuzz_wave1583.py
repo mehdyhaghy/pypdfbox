@@ -19,8 +19,6 @@ toCOSArray = setFloatArray + optional patternName, getPatternName,
 isPattern == patternName != null).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName

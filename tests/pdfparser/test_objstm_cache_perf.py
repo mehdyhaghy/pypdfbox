@@ -14,8 +14,6 @@ assert every member of a large ObjStm still resolves to the correct value
 and the cache is shaped as expected.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSInteger, COSObjectKey
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import PDFParser

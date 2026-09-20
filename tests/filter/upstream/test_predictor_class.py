@@ -6,8 +6,6 @@ on the apache/pdfbox 3.0 branch. Exercises the package-private
 the predictor decoder when ``BitsPerComponent`` is sub-byte.
 """
 
-from __future__ import annotations
-
 from pypdfbox.filter.predictor import Predictor
 
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 import re
 from contextlib import suppress
@@ -1227,7 +1225,7 @@ class PDAppearanceGenerator:
             return None
         try:
             return getter()
-        except Exception:
+        except Exception:  # defensive: any failure → /V fallback
             return None
 
     @staticmethod
@@ -1493,7 +1491,7 @@ class PDAppearanceGenerator:
         selected_indices: list[int] = []
         try:
             options = field.get_options_display_values() or field.get_options()
-        except Exception:
+        except Exception:  # defensive on lite-port surface
             options = []
         top_index = max(0, field.get_top_index())
         selected_indices = field.get_selected_options_indices()
@@ -2869,7 +2867,7 @@ class PDAppearanceGenerator:
         if callable(getter):
             try:
                 da = getter()
-            except Exception:
+            except Exception:  # defensive on lite-port surface
                 da = None
         if not da:
             da = self._default_appearance_override
@@ -2948,7 +2946,7 @@ class PDAppearanceGenerator:
             # 1) AcroForm /DR /Font — canonical location for /DA fonts.
             try:
                 acro_form = field.get_acro_form()
-            except Exception:
+            except Exception:  # defensive on lite-port surface
                 acro_form = None
             if acro_form is not None:
                 dr = acro_form.get_default_resources()
@@ -3044,7 +3042,7 @@ class PDAppearanceGenerator:
         if callable(getter):
             try:
                 page = getter()
-            except Exception:
+            except Exception:  # defensive on lite-port surface
                 page = None
         if not isinstance(page, COSDictionary):
             return None

@@ -10,8 +10,6 @@ underlying ``/BBox`` slot as ``get_b_box`` / ``set_b_box`` and that
 ``setItem(BBox, rectangle)`` which round-trips any ``COSObjectable``).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat, COSName
 from pypdfbox.pdmodel.interactive.measurement import PDViewportDictionary
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle

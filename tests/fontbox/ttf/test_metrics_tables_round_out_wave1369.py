@@ -15,8 +15,6 @@ Exercises:
 * ``num_glyphs == 0`` is legal — neither array is sized incorrectly.
 """
 
-from __future__ import annotations
-
 import struct
 from dataclasses import dataclass
 from typing import cast

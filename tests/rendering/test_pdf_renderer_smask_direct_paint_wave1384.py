@@ -21,8 +21,6 @@ Includes a real-world smoke test against the three bundled PDFs whose
 content carries ``/SMask`` references.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

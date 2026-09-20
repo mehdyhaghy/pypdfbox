@@ -4,8 +4,6 @@ PDF 32000-1 §11.6.5.3 (Soft-Mask Dictionaries) — Table 144 keys ``S`` /
 ``G`` / ``BC`` / ``TR`` round-trip through the lite typed wrapper.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

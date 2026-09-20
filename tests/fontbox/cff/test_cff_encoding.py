@@ -1,7 +1,5 @@
 """Hand-written tests for the abstract :class:`CFFEncoding` base class."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.cff_encoding import CFFEncoding
 
 

@@ -18,8 +18,6 @@ routes ``_paint_glyph_path`` through a mode-aware dispatcher
 (fill / stroke / fill+stroke / invisible / clip variants).
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import (

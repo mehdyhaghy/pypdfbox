@@ -18,8 +18,6 @@ dict by hand and call the decode method directly — cheaper than
 running ``parse()``.
 """
 
-from __future__ import annotations
-
 import struct
 import zlib
 

@@ -8,8 +8,6 @@ visual signature embedded into a signed PDF; the heavy rendering work
 modules.
 """
 
-from __future__ import annotations
-
 from .pd_visible_sig_builder import PDVisibleSigBuilder
 from .pd_visible_sig_properties import PDVisibleSigProperties
 from .pd_visible_sign_designer import PDVisibleSignDesigner

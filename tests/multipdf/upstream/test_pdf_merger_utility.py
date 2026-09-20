@@ -18,8 +18,6 @@ or that requires structure-tree merging, JPEG / CCITT image streams,
 PDFRenderer comparisons, or the FDF module — none of those are wired in
 pypdfbox yet. See ``CHANGES.md`` for the divergence list.
 """
-from __future__ import annotations
-
 import os
 from pathlib import Path
 

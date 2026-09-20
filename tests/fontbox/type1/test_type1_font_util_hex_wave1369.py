@@ -15,8 +15,6 @@ These tests:
 * cross-check the upstream-parity ``Type1Parser.hex_to_binary`` helper
   (which is the one called inline during PFA segment 2 parsing).
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.type1.type1_font_util import Type1FontUtil

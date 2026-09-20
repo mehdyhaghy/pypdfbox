@@ -14,8 +14,6 @@ it inside pypdfbox (callers should construct one of the two valid
 shapes — OTF-only or TTF-only — directly).
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from .font_box_font import FontBoxFont

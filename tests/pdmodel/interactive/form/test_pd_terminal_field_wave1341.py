@@ -16,8 +16,6 @@ Targets the residual ``_apply_fdf_value`` dispatch arms and the
   for an unsupported argument type (lines 295-297).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

@@ -10,8 +10,6 @@ Pages are hand-crafted from COS structures + content streams so the
 tests don't depend on the upstream PDF corpus.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

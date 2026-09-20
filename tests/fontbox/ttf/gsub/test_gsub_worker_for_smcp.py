@@ -7,8 +7,6 @@ test is itself platform-gated to ``c:/windows/fonts/calibri.ttf`` via
 through synthetic :class:`GsubData` inputs.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub.gsub_data import GsubData
 from pypdfbox.fontbox.ttf.gsub.gsub_worker_for_smcp import GsubWorkerForSMCP
 

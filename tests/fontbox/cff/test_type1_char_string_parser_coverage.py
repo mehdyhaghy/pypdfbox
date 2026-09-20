@@ -11,8 +11,6 @@ Each test name corresponds to the upstream branch being exercised so a
 coverage regression bisect maps straight back to the source operation.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.char_string_command import CharStringCommand

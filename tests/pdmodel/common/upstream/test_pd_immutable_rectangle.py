@@ -11,8 +11,6 @@ Python ``TypeError`` (the closest builtin) — see
 ``pypdfbox.pdmodel.common.pd_immutable_rectangle.PDImmutableRectangle``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.common.pd_immutable_rectangle import PDImmutableRectangle

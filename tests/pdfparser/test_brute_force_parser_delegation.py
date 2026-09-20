@@ -10,8 +10,6 @@ monkey-patching ``COSParser`` to attach the helpers, instantiating a
 delegated implementation receives the call.
 """
 
-from __future__ import annotations
-
 from collections.abc import Iterator
 
 import pytest

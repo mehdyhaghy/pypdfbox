@@ -12,8 +12,6 @@ pypdfbox's ``Bitmap`` packs MSB-first, 1 == set; for these G4 strips a Pillow
 "black" pixel decodes to a set bit.
 """
 
-from __future__ import annotations
-
 import io
 import struct
 

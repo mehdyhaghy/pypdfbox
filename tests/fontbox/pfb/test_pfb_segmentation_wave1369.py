@@ -15,8 +15,6 @@ These tests verify the segmenter's three-segment split, the
 length-field round-trip, and the cleartomark heuristic that excludes
 the trailing ASCII record from segment 1.
 """
-from __future__ import annotations
-
 import io
 
 import pytest

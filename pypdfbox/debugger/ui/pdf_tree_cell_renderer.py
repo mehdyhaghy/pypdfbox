@@ -16,8 +16,6 @@ appears in upstream public APIs of the debugger; the ``__call__`` operator
 mirrors the original ``getTreeCellRendererComponent`` shape.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 
@@ -88,7 +86,7 @@ class PDFTreeCellRenderer:
         self,
         tree: Any,
         node_value: Any,
-        selected: bool = False,
+        selected: bool = False,  # upstream signature passthrough
         expanded: bool = False,
         leaf: bool = False,
         row: int = 0,

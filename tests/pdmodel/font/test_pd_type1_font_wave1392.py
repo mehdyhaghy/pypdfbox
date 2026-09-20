@@ -13,8 +13,6 @@ family-default-encoding fall-through:
   (branch 824->828 — embedded program reports a malformed matrix).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName

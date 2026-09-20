@@ -13,8 +13,6 @@ invisible) and the upstream-fixture sanity check
 (AcroFormsBasicFields.pdf renders something non-blank now).
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.cos import (

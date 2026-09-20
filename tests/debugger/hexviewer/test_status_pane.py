@@ -1,7 +1,5 @@
 """Widget tests for ``StatusPane``."""
 
-from __future__ import annotations
-
 import tkinter as tk
 
 from pypdfbox.debugger.hexviewer.status_pane import StatusPane

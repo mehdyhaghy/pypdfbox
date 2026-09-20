@@ -7,8 +7,6 @@ plug into Pillow-based or platform-specific print backends. The shape of
 the API mirrors PDFBox so user-facing code stays familiar.
 """
 
-from __future__ import annotations
-
 from pypdfbox.printing.pdf_pageable import PDFPageable
 from pypdfbox.printing.pdf_printable import PDFPrintable
 

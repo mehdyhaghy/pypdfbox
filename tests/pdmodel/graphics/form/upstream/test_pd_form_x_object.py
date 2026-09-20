@@ -9,8 +9,6 @@ its own first-class coverage.
 Each test cites the upstream Java line(s) it mirrors.
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 from typing import BinaryIO
 

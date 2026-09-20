@@ -10,8 +10,6 @@ Closes residual partial branches in
 * ``parse_all_objects`` same set_direct guard (104 → 106).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

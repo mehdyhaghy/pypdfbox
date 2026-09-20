@@ -1,7 +1,5 @@
 """Hand-written tests for the ``pypdfbox.util`` cluster ported in Wave 1281."""
 
-from __future__ import annotations
-
 import io
 
 import pytest

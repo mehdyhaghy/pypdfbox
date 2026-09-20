@@ -5,8 +5,6 @@ Java path
 ``pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/Save.java``).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSBase
 
 from .. import Operator, OperatorName

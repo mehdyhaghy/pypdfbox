@@ -16,8 +16,6 @@ pipeline at a finer grain than the surface-level coverage already in
   (they remain free-standing indirect objects).
 """
 
-from __future__ import annotations
-
 import io
 import re
 import zlib

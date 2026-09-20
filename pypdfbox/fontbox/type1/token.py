@@ -4,8 +4,6 @@ Mirrors ``org.apache.fontbox.type1.Token`` (PDFBox 3.0,
 ``fontbox/src/main/java/org/apache/fontbox/type1/Token.java``).
 """
 
-from __future__ import annotations
-
 from enum import Enum
 
 

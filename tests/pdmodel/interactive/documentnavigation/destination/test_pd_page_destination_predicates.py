@@ -7,8 +7,6 @@ no-argument ``retrieve_page_number()`` that walks the page-dict's
 Mirrors upstream
 ``org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageDestination#retrievePageNumber()``.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSNull
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDPageFitDestination,

@@ -5,8 +5,6 @@ Covers :py:meth:`CSSeparation.state_changed` and
 upstream slot-listener entry points.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from pypdfbox.debugger.colorpane.cs_separation import CSSeparation
 

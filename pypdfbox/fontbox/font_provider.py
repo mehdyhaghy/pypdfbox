@@ -16,8 +16,6 @@ Java is an abstract class with two abstract methods. Python uses an
 :class:`~abc.ABC` for the same shape.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 

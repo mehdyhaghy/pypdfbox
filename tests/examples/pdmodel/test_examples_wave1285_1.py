@@ -5,8 +5,6 @@ and ``print_urls`` drive their public entry points end-to-end against
 in-memory PDFs without relying on external fixtures.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.examples.pdmodel.add_javascript import AddJavascript

@@ -37,8 +37,6 @@ Tests skipped (and why):
   software, so it stays out of our corpus.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

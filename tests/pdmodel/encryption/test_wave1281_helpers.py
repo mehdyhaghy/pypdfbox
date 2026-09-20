@@ -4,8 +4,6 @@ Covers ``MessageDigests``, ``RC4Cipher``, ``SaslPrep``,
 ``SecurityHandlerFactory``, ``SecurityProvider``.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

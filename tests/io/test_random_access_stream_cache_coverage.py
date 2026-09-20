@@ -3,8 +3,6 @@
 Specifically targets the context-manager methods (``__enter__`` /
 ``__exit__``) which the primary test file doesn't exercise.
 """
-from __future__ import annotations
-
 from pypdfbox.io import RandomAccessStreamCache, RandomAccessStreamCacheImpl
 
 

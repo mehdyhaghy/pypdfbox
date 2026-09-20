@@ -6,8 +6,6 @@ Translated from
 ``FDFUtils.escapeXML10()``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.fdf.fdf_utils import FDFUtils
 
 

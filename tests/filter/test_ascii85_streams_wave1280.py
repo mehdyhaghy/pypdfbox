@@ -1,7 +1,5 @@
 """Tests for :class:`ASCII85InputStream` and :class:`ASCII85OutputStream`."""
 
-from __future__ import annotations
-
 import io
 
 import pytest

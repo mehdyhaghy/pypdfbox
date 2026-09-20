@@ -5,8 +5,6 @@ than octal 040 fall back to the ``bullet`` glyph. These tests exercise
 that behavior plus the standard pdmodel surface.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.font.encoding import Encoding, WinAnsiEncoding
 

@@ -5,8 +5,6 @@ Holds the container frame whose body is swapped between a
 which filter view the user picks.
 """
 
-from __future__ import annotations
-
 import contextlib
 import tkinter as tk
 from collections.abc import Iterable, Sequence

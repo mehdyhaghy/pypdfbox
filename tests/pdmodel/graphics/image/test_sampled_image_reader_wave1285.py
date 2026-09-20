@@ -4,8 +4,6 @@ Covers ``get_rgb_image`` (arbitrary bpc / colour-key mask) and
 ``get_raw_raster`` — both previously returned an empty / null image.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

@@ -12,8 +12,6 @@ called out in the wave brief:
 - ``<table>`` deferred — walked transparently
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSFloat, COSName, COSStream

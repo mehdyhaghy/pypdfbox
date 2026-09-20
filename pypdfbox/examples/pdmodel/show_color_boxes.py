@@ -3,8 +3,6 @@
 Fills the page background with cyan, draws a red and a blue box.
 """
 
-from __future__ import annotations
-
 import math
 import sys
 

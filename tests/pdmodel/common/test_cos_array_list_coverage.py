@@ -6,8 +6,6 @@ helpers, ``COSArrayList.converter_to_cos_array``, and the dunder
 protocol surface.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

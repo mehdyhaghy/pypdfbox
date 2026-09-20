@@ -22,8 +22,6 @@ typed Locale wrapper); the ``language`` field is therefore exercised as a
 fields backed by ``ProperName`` accept either wrapper.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from typing import Any
 

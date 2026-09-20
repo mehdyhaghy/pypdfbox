@@ -14,8 +14,6 @@ the upstream ``Arrays.binarySearch`` over the sorted pair list, and the
 the ``cross-stream`` coverage flag.
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

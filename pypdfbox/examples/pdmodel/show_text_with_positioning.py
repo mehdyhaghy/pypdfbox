@@ -18,8 +18,6 @@ identically against any simple font. The trailing Type0/word-spacing-no-effect
 demonstration is therefore dropped.
 """
 
-from __future__ import annotations
-
 from pypdfbox.examples.pdmodel._font_helpers import make_standard14_type1_font
 from pypdfbox.pdmodel.font.standard14_fonts import FontName
 from pypdfbox.pdmodel.pd_document import PDDocument

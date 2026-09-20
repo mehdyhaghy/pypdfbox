@@ -14,8 +14,6 @@ COSDictionary must round-trip through the regenerated appearance stream
 preserved in the emitted ``Tf`` token).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream

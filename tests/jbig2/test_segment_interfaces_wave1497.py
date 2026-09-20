@@ -8,8 +8,6 @@ subclass delegating to ``super()`` hits the NotImplementedError body, matching
 the upstream "abstract / interface" contract.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.jbig2.dictionary import Dictionary

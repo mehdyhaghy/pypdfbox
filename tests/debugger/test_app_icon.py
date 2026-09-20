@@ -1,7 +1,5 @@
 """Icon wiring for the Tk debugger window (``pypdfbox.debugger.app_icon``)."""
 
-from __future__ import annotations
-
 import contextlib
 import os
 import struct

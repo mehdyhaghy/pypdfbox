@@ -6,8 +6,6 @@ behavioural contract: SUB_TYPE stamp, /T target accessor (dict / string /
 array), /H hide-flag accessor with documented default ``true``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.interactive.action.pd_action_hide import PDActionHide
 

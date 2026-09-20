@@ -1,7 +1,5 @@
 """Hand-written tests for ``PDPageFitDestination`` (``/Fit`` and ``/FitB``)."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSInteger, COSName, COSNull
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDPageDestination,

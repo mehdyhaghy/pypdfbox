@@ -7,8 +7,6 @@ without position-based sorting; the port follows the same shape and
 returns elapsed milliseconds rather than relying on JMH.
 """
 
-from __future__ import annotations
-
 import logging
 import time
 from typing import Any

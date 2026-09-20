@@ -8,8 +8,6 @@ aliased to the canonical :meth:`get_o_cgs` / :meth:`set_o_cgs` so
 either form resolves.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.graphics.optionalcontent import PDOptionalContentGroup
 from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_membership_dictionary import (
     PDOptionalContentMembershipDictionary,

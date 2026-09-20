@@ -8,8 +8,6 @@ end-to-end. The lite-surface ``to_paint`` / ``collect_triangles`` /
 cluster — assertions here pin the documented fallback contracts.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSFloat, COSStream

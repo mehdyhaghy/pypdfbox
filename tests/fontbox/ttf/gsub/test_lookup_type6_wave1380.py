@@ -7,8 +7,6 @@ formats — simple glyph contexts, class-based, full Coverage — mirror
 Type 5's structure.
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.fontbox.ttf.gsub import (

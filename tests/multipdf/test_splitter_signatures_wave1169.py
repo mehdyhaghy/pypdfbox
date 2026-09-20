@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary
 from pypdfbox.multipdf import Splitter
 from tests.multipdf import test_splitter_signatures as signatures

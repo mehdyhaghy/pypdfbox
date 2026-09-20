@@ -5,8 +5,6 @@ path accessors against well-known glyphs (``.notdef`` at gid 0 plus a
 couple of real outlines).
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

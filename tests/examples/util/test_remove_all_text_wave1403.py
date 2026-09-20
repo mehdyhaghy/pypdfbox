@@ -11,8 +11,6 @@ Closes two empty-token-list partials in ``create_tokens_without_text``:
   ``if new_tokens`` False arc.
 """
 
-from __future__ import annotations
-
 from pypdfbox.examples.util.remove_all_text import RemoveAllText
 from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer
 

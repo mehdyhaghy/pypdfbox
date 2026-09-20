@@ -1,7 +1,5 @@
 """Hand-written tests for the :class:`GlyphArraySplitter` interface."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.ttf.gsub import GlyphArraySplitter

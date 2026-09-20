@@ -9,8 +9,6 @@ runs the matching procedure, and rejects malformed inputs the same way
 upstream does.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.common.function.type4.conditional_operators import (

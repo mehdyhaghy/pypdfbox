@@ -19,8 +19,6 @@ contract via the ``tk_root`` fixture; the no-Tk fallbacks are driven
 through monkey-patching :mod:`tkinter` constructors to raise.
 """
 
-from __future__ import annotations
-
 import os
 import tkinter as tk
 from collections.abc import Iterator

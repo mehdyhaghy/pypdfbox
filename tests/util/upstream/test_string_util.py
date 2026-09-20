@@ -4,8 +4,6 @@ Source: ``pdfbox/src/test/java/org/apache/pdfbox/util/StringUtilTest.java``
 (PDFBox 3.0.x).
 """
 
-from __future__ import annotations
-
 from pypdfbox.util import StringUtil
 
 

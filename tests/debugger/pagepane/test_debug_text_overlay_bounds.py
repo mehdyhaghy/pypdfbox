@@ -9,8 +9,6 @@ returns) and a ``Shape`` as a list of ``(x, y)`` corner points (matching
 :meth:`PDRectangle.to_general_path`).
 """
 
-from __future__ import annotations
-
 import math
 from pathlib import Path
 

@@ -6,8 +6,6 @@ mirrors the Java contract and so tests can rebuild the widget on the same
 instance.
 """
 
-from __future__ import annotations
-
 import os
 
 import pytest

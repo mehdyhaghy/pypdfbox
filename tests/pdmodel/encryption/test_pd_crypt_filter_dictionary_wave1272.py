@@ -2,8 +2,6 @@
 upstream-spelled ``is_encrypt_meta_data`` / ``set_encrypt_meta_data``
 accessors (Encrypt / Meta / Data word boundary)."""
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.encryption.pd_crypt_filter_dictionary import (
     PDCryptFilterDictionary,
 )

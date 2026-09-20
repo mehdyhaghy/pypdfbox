@@ -21,8 +21,6 @@ These pins are literal-valued so they pass WITHOUT the oracle; a separate
 ``@requires_oracle`` differential test cross-checks against live PDFBox.
 """
 
-from __future__ import annotations
-
 import tempfile
 from pathlib import Path
 

@@ -26,8 +26,6 @@ isn't yet plumbed, so for now ``-keyStore`` returns exit code ``4`` with a
 clear error — but the CLI flag surface matches upstream so scripts port
 cleanly.
 """
-from __future__ import annotations
-
 import argparse
 import tempfile
 from pathlib import Path
@@ -166,7 +164,7 @@ def run(args: argparse.Namespace) -> int:
                 flush=True,
             )
             return 4
-        except Exception as exc:
+        except Exception as exc:  # surface as upstream IOException
             print(
                 f"decrypt: Error decrypting document [{type(exc).__name__}]: {exc}",
                 flush=True,

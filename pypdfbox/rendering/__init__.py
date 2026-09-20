@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .glyph_cache import GlyphCache
 from .group_graphics import GroupGraphics
 from .image_type import ImageType

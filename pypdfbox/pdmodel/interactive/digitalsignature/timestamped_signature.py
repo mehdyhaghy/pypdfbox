@@ -31,8 +31,6 @@ step (wave 1382) does the minimum-necessary DER walk in
 new dependency.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, BinaryIO
 
 from .cms_helpers import inject_timestamp_token

@@ -1,7 +1,5 @@
 """Smoke + coverage tests for :class:`ConnectedInputStream`."""
 
-from __future__ import annotations
-
 import io
 
 import pytest

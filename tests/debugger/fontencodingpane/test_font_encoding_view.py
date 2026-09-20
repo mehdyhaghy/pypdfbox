@@ -1,7 +1,5 @@
 """Tests for the :class:`FontEncodingView` Tkinter widget."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.debugger.fontencodingpane.font_encoding_view import (

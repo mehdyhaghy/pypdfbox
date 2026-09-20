@@ -16,8 +16,6 @@ Compared against Apache PDFBox 3.0.7 ``COSDictionary`` behavior:
   stored under the first key.
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 
 import pytest

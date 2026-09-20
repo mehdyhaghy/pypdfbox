@@ -8,8 +8,6 @@ and rewritten pages and compares the resulting PNGs via
 ``TestPDFToImage`` to confirm the rewrite is visually identical.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdfparser import PDFStreamParser
 from pypdfbox.pdfwriter import ContentStreamWriter

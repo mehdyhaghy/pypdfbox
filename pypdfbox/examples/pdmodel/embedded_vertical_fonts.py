@@ -16,8 +16,6 @@ how upstream's hard-coded ``new File("ipag.ttf")`` would surface a
 ``FileNotFoundException`` at runtime.
 """
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 

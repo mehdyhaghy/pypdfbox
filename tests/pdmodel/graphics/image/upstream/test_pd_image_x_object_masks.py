@@ -24,8 +24,6 @@ that is intentionally out of scope for this change):
   territory. PDImageXObject's job is to expose the typed mask handles;
   composing them onto the base image lives in the rendering cluster.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSInteger, COSName, COSStream

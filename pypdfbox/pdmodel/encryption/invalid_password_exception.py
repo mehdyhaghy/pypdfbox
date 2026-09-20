@@ -3,8 +3,6 @@
 Mirrors ``org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException``.
 """
 
-from __future__ import annotations
-
 
 class InvalidPasswordException(OSError):
     """Raised when neither owner nor user password validates."""

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from functools import cmp_to_key
 
 from pypdfbox.text import TextPosition, TextPositionComparator

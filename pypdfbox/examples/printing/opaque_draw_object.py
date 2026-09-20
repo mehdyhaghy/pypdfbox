@@ -9,8 +9,6 @@ calls ``showForm`` instead of ``showTransparencyGroup`` — useful for
 printers that handle flat artwork much faster than transparency.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import Any
 

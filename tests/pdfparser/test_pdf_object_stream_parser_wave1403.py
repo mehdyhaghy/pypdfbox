@@ -16,8 +16,6 @@ attempts used ``/First == 4``; the cursor then sat at 3 < 4 and took the
 coverage run surfaced.)
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDocument, COSInteger, COSName, COSStream
 from pypdfbox.pdfparser import PDFObjectStreamParser
 

@@ -8,8 +8,6 @@ sink is replaced by an attribute on the instance so the JIT/optimizer
 cannot dead-code-eliminate the loaded document.
 """
 
-from __future__ import annotations
-
 import time
 from typing import Any
 

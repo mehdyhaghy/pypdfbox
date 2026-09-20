@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.fontbox.ttf import test_cmap_lookup as cmap_mod
 
 

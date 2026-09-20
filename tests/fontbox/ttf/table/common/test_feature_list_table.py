@@ -1,7 +1,5 @@
 """Tests for :class:`FeatureListTable`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub.feature_record import FeatureRecord
 from pypdfbox.fontbox.ttf.gsub.feature_table import FeatureTable
 from pypdfbox.fontbox.ttf.table.common.feature_list_table import FeatureListTable

@@ -12,8 +12,6 @@ Targets:
 - malformed dict raises TypeError eagerly
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

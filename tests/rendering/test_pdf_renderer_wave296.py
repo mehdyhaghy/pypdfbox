@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.rendering import ImageType, RenderDestination
 
 

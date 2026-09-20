@@ -9,8 +9,6 @@ Behavioural targets mirror upstream
 and ``PDOutlineItem`` from PDFBox 3.0.7.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName

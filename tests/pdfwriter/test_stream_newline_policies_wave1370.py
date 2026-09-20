@@ -14,8 +14,6 @@ LF when the previous byte already was an EOL — avoiding accidental
 ``\\r\\n\\n`` triples.
 """
 
-from __future__ import annotations
-
 import io
 import re
 

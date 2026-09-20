@@ -16,8 +16,6 @@ that pattern here so the accessor surface is exercised against a
 realistic font dict shape without depending on a binary fixture.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.fontbox.encoding.standard_encoding import StandardEncoding

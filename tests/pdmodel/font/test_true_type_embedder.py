@@ -5,8 +5,6 @@ permission probes and the tag generator) that are pure functions of
 their inputs.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.pdmodel.font.true_type_embedder import TrueTypeEmbedder

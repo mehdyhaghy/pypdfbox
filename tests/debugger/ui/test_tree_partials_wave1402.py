@@ -13,8 +13,6 @@ Targets the residual partial branches in
   ``get_filters`` returns neither a COSName nor a COSArray.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 from typing import Any
 

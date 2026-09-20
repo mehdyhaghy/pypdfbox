@@ -7,8 +7,6 @@ tables for 10 locales) + ``pypdfbox/util/date_util.py``
 (``parse_with_locale`` tokeniser).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.util.date_util import parse_with_locale

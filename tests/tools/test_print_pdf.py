@@ -3,8 +3,6 @@
 Mocks ``subprocess.run`` / ``os.startfile`` / ``shutil.which`` so the
 host's print spooler is never invoked.
 """
-from __future__ import annotations
-
 import subprocess
 import sys
 from pathlib import Path

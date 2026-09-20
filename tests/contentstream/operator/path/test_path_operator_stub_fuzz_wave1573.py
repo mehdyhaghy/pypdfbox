@@ -16,8 +16,6 @@ Verified against upstream graphics operators:
 CurveToReplicateFinalPoint,AppendRectangleToPath,LineTo,MoveTo}.java``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream.operator import (

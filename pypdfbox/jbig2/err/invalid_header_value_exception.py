@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.jbig2.err.jbig2_exception import JBIG2Exception
 
 

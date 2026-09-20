@@ -1,7 +1,5 @@
 """Hand-written tests for ``TreeViewMenu.create_tree_view_menu``."""
 
-from __future__ import annotations
-
 import tkinter as tk
 from collections.abc import Iterator
 
@@ -37,5 +35,5 @@ def test_create_tree_view_menu_entries_match_labels(tk_root: tk.Tk) -> None:
 
 def test_create_tree_view_menu_private_alias_still_works(tk_root: tk.Tk) -> None:
     menu = TreeViewMenu.get_instance(master=tk_root)
-    rebuilt = menu._create_tree_view_menu()
+    rebuilt = menu._create_tree_view_menu()  # back-compat alias
     assert isinstance(rebuilt, tk.Menu)

@@ -4,8 +4,6 @@
 (typed :class:`PDField` list), ``get_flags``/``set_flags``, and the
 Table 237 per-bit predicates (PDF 32000-1 §12.7.5.2)."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (
     PDComplexFileSpecification,

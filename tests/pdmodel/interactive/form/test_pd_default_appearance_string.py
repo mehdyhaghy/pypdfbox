@@ -5,8 +5,6 @@ Exercises the parser (Tf / g / rg / k operators), the accessor surface
 ``copy_needed_resources_to``).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream, COSString

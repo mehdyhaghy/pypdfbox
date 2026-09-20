@@ -8,8 +8,6 @@ We can't easily round-trip a real PFB without a fixture, so we cover:
 * The Type1Encoding adapter for list-based encoding arrays.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.font.pd_type1_font_embedder import (
     PDType1FontEmbedder,
     _parse_pfb_segments,

@@ -14,8 +14,6 @@ Focus areas the earlier waves did not cover:
   promote because the field is never read.
 """
 
-from __future__ import annotations
-
 import struct
 
 from pypdfbox.fontbox.ttf.maximum_profile_table import MaximumProfileTable

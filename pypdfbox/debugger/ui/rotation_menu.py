@@ -15,8 +15,6 @@ Behavior preserved verbatim from upstream:
   overloads.
 """
 
-from __future__ import annotations
-
 from typing import ClassVar
 
 from .menu_base import MenuBase

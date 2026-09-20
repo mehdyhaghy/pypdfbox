@@ -4,8 +4,6 @@ Dumps signature metadata + verifies the embedded PKCS#7 content. We rely
 on ``cryptography``'s PKCS#7 parsing for the signed-data graph.
 """
 
-from __future__ import annotations
-
 import logging
 from pathlib import Path
 from typing import Any

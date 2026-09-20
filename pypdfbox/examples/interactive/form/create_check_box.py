@@ -10,8 +10,6 @@ appearance streams are wired in alongside the rendering cluster. The port
 keeps the checkbox creation visible and documents the missing step.
 """
 
-from __future__ import annotations
-
 import contextlib
 import sys
 

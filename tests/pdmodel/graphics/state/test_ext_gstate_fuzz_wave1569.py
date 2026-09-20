@@ -24,8 +24,6 @@ expected values are the documented upstream semantics. The oracle-gated
 companion lives in ``test_ext_gstate_copy_edge_oracle.py``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

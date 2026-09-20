@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .k_cloner import KCloner
 from .layer_utility import LayerUtility
 from .overlay import Overlay, Position

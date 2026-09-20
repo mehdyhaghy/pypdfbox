@@ -1,7 +1,5 @@
 """Widget tests for ``ASCIIPane``."""
 
-from __future__ import annotations
-
 import tkinter as tk
 
 from pypdfbox.debugger.hexviewer.ascii_pane import ASCIIPane

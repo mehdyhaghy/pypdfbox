@@ -27,8 +27,6 @@ pinned here:
   store time.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream import PDFStreamEngine

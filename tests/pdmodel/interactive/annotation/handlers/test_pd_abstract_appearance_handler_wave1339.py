@@ -8,8 +8,6 @@ Targets the remaining miss lines:
 - ``generate_rollover_appearance`` / ``generate_down_appearance`` default no-ops
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.annotation.handlers.pd_abstract_appearance_handler import (
     PDAbstractAppearanceHandler,
 )

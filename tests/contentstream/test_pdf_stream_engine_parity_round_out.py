@@ -1,8 +1,6 @@
 """Parity round-out for :class:`PDFStreamEngine` accessors and
 marked-content hooks added to track upstream's surface."""
 
-from __future__ import annotations
-
 from pypdfbox.contentstream import PDFStreamEngine
 from pypdfbox.cos import COSDictionary, COSName
 

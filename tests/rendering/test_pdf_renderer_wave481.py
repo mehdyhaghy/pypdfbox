@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from PIL import Image
 
 from pypdfbox.cos import COSArray, COSFloat, COSName

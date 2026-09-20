@@ -5,8 +5,6 @@ Custom :class:`PDFTextStripper` that emits each ``TextPosition``'s
 coordinates and styling to stdout.
 """
 
-from __future__ import annotations
-
 import io
 import sys
 

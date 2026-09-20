@@ -10,8 +10,6 @@ The ``sups`` feature points to a single-substitution lookup that maps
 the input unchanged.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

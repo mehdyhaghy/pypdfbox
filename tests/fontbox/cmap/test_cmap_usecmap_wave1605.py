@@ -14,8 +14,6 @@ pypdfbox-side tests for the same behaviour, including the parser path
 and answers purely through ``usecmap``).
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.fontbox.cmap import CMap, CMapParser

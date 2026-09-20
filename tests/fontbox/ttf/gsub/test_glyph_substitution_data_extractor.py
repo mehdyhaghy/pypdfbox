@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`GlyphSubstitutionDataExtractor`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub import (
     AlternateSetTable,
     FeatureRecord,

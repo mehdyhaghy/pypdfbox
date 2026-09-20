@@ -1,7 +1,5 @@
 """Tests for :class:`PairData0Format0` and the :class:`PairData` ABC."""
 
-from __future__ import annotations
-
 import struct
 
 import pytest

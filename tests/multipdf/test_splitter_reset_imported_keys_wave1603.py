@@ -14,8 +14,6 @@ dictionary deterministically carries a high object number (50) in a
 five-object document.
 """
 
-from __future__ import annotations
-
 import io
 import shutil
 import subprocess

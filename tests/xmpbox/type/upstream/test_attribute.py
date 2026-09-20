@@ -3,8 +3,6 @@ Ported from Apache PDFBox 3.0:
   xmpbox/src/test/java/org/apache/xmpbox/type/AttributeTest.java
 """
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox import Attribute
 
 

@@ -4,8 +4,6 @@ Targets the peek-based + read+seek code paths, unbuffered ``_wrap``, and
 the empty-stream OSError raises.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

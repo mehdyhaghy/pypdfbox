@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from tests.tools.test_encrypt_wave630 import _fail_encrypt_pdf

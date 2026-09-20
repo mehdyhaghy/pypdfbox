@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdmodel.encryption.test_encryption_remaining_wave755 import _BareHandler
 
 

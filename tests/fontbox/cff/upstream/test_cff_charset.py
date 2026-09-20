@@ -18,8 +18,6 @@ analogue documented across the cff module), so the ``pytest.raises``
 calls below use that.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.cff_charset_cid import CFFCharsetCID

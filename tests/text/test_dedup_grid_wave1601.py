@@ -8,8 +8,6 @@ and tolerance-boundary layouts, and confirm the ``has_contents()`` page gate
 extracts identically to the old ``get_contents()`` truthiness check.
 """
 
-from __future__ import annotations
-
 import io
 import math
 import random

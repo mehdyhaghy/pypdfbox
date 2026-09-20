@@ -10,8 +10,6 @@ test would perform: shading-type identity, default ``/Domain`` shape, and
 ``/Function`` factory dispatch.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat
 from pypdfbox.pdmodel.common.function import PDFunctionType2
 from pypdfbox.pdmodel.graphics.shading import PDShading, PDShadingType1

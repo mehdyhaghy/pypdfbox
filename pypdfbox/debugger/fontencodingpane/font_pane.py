@@ -11,8 +11,6 @@ shared across every glyph path so the rendering scale lines up between
 rows.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
@@ -95,7 +93,7 @@ def _path_y_bounds(path: Any) -> tuple[float, float] | None:
             try:
                 rect = getattr(path, attr)
                 rect = rect() if callable(rect) else rect
-            except Exception:
+            except Exception:  # defensive: any failure ⇒ fall through
                 rect = None
             if rect is not None:
                 lo = _maybe_float(getattr(rect, "min_y", None))

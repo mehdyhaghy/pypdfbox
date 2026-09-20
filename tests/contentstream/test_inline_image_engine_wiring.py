@@ -7,8 +7,6 @@ operator and forward it to the :meth:`show_inline_image` hook, with
 need only model one paint path.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.contentstream.pdf_graphics_stream_engine import (
@@ -127,7 +125,7 @@ def test_bi_id_ei_invokes_show_inline_image_with_pdinlineimage() -> None:
     width / height / colour-space / bytes, and forwards it to
     :meth:`show_inline_image`."""
     engine = _RecordingEngine()
-    engine._process_bytes(_INLINE_STREAM)
+    engine._process_bytes(_INLINE_STREAM)  # test introspection
     assert len(engine.inline_images) == 1
     image = engine.inline_images[0]
     assert isinstance(image, PDInlineImage)
@@ -146,7 +144,7 @@ def test_bi_id_ei_drives_draw_image_through_graphics_engine() -> None:
     delegating to :meth:`draw_image` — verify the subclass receives
     exactly one image with the expected geometry."""
     engine = _RecordingGraphicsEngine()
-    engine._process_bytes(_INLINE_STREAM)
+    engine._process_bytes(_INLINE_STREAM)  # test introspection
     assert len(engine.drawn) == 1
     image = engine.drawn[0]
     assert isinstance(image, PDInlineImage)
@@ -164,8 +162,8 @@ def test_inline_image_dispatch_passes_engine_resources() -> None:
 
     engine = _RecordingEngine()
     resources = PDResources()
-    engine._resources = resources
-    engine._process_bytes(_INLINE_STREAM)
+    engine._resources = resources  # test introspection
+    engine._process_bytes(_INLINE_STREAM)  # test introspection
     assert len(engine.inline_images) == 1
     # PDInlineImage stores resources in a private slot; access via the
     # public surface is deliberately limited, so peek under the hood.

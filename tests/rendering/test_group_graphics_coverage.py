@@ -7,8 +7,6 @@ accumulation via the alpha buffer, soft-mask compositing through
 bbox clipping, and the AWT-style state mutators (clip, paint, transform).
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

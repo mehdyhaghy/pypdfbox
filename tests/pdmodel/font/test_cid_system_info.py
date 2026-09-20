@@ -5,8 +5,6 @@ exercised only via ``FontInfo`` integration tests. We cover the three
 field accessors plus ``toString()`` / ``__eq__`` / ``__hash__``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.font.cid_system_info import CIDSystemInfo
 
 

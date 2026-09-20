@@ -12,8 +12,6 @@ decrypted bytes and just forwards them. These tests pin the filter's
 contract: identity → pass through, unknown name → ``OSError``.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

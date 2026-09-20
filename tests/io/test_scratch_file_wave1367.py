@@ -12,8 +12,6 @@ Targets branches that existing waves (299/680/720/1275) leave uncovered:
 * ``remove_buffer`` idempotent vs unknown buffer.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.io.memory_usage_setting import (

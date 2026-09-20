@@ -25,8 +25,6 @@ shared-baseline pair left-to-right by X and a vertically-disjoint pair
 top-to-bottom; the lite stripper carries Y in the PDF user-space (y-up)
 frame, so "top first" means *larger* Y first.
 """
-from __future__ import annotations
-
 from functools import cmp_to_key
 
 import pytest

@@ -12,8 +12,6 @@ Covers the new surface added to ``pypdfbox.multipdf.Splitter``:
   chained.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox import PDDocument, PDPage

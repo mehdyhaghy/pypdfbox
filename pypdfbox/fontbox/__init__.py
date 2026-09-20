@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .cid_font_mapping import CIDFontMapping
 from .encoded_font import EncodedFont
 from .encoding import (

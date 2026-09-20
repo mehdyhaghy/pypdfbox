@@ -9,8 +9,6 @@ defines the value-to-name mapping; these tests pin both the constant
 values and the setter round-trips.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.font.pd_font_descriptor import PDPanoseClassification

@@ -39,8 +39,6 @@ cmap arms, and minimal fake objects only for the abstract-method
 hooks (``PDFont`` subclasses).
 """
 
-from __future__ import annotations
-
 import io
 import struct
 from pathlib import Path

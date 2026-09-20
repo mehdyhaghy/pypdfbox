@@ -5154,6 +5154,10 @@ than "False arm missing".
   upstream: PDFBox 3.0 branch `org.apache.pdfbox.contentstream.operator.state.Concatenate#process` (PDFBOX-6255, commit `88a0c56d`) + `org.apache.pdfbox.util.Matrix#checkFloatValues`
   reason: wave 1605 ported the fix onto the parity-surface `Concatenate` class only; the renderer and the generic-engine handler have their own `cm`.
 
+- **`xmpbox.type.Types` really has all 38 members.** The enum declared 38 but Python folds equal-valued members into aliases, and two pairs carried identical metadata tuples, so only 36 existed: `Types.DefinedType` *was* `Types.Structured` and `Types.LangAlt` *was* `Types.GPSCoordinate` — which made `Types.Structured.is_defined()` return `True` and `Types.LangAlt.name` return `"GPSCoordinate"`. Member values now lead with the member's own name so all 38 constants are distinct, as Java enum constants always are. Consequence for callers: `Types.<member>.value` is a 4-tuple `(name, simple, basic, impl_class_name)` rather than a 3-tuple; the `is_simple` / `is_basic` / `is_structured` / `get_basic` / `get_implementing_class_name` accessors are unchanged.
+  upstream: PDFBox 3.0 `org.apache.xmpbox.type.Types` (a Java enum, whose constants are distinct by identity regardless of constructor arguments)
+  reason: pypdfbox-side defect, not an upstream divergence — found by ruff's PIE796 when the rule set was widened in 2.0.0.
+
 ## See also
 
 - [`PROVENANCE.md`](PROVENANCE.md) — per-file upstream porting provenance (Apache 2.0 §4(b)).

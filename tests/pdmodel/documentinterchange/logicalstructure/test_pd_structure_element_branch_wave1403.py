@@ -10,8 +10,6 @@ Closes the False-branch arrow in
   are False and the loop simply advances to the next entry, skipping it.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSInteger, COSName
 from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_element import (
     PDStructureElement,

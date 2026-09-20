@@ -16,8 +16,6 @@ Pre-wave 1345 the existing happy-path smoke tests at
 * squiggly zero-length quad ``continue``
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat
 from pypdfbox.pdmodel.interactive.annotation.handlers import (
     PDHighlightAppearanceHandler,

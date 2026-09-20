@@ -15,8 +15,6 @@ The malformed-input tests (``testWithNoXPacketStart`` etc.) translate
 constants (``XPACKET_BAD_START`` etc.).
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.xmpbox import (

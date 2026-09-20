@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`pypdfbox.fontbox.ttf.model.ScriptFeature`."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.ttf.model import ScriptFeature

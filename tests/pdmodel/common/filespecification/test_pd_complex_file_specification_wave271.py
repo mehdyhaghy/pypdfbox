@@ -12,8 +12,6 @@ Targets enrichment surface added on top of upstream PDFBox 3.0
   and the ``/EF`` sub-dictionary
 - ``is_empty`` structural-emptiness predicate
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.common.filespecification import (
     PDComplexFileSpecification,

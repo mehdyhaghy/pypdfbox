@@ -11,8 +11,6 @@ Closes the last residual lines in 0.9.0rc1:
   forced back to 0 before raising ``ValueError``.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

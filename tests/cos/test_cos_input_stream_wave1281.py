@@ -1,7 +1,5 @@
 """Wave 1281: COSInputStream port."""
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import COSDictionary, COSInputStream

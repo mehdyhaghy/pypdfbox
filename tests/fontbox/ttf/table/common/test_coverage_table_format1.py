@@ -1,7 +1,5 @@
 """Tests for :class:`CoverageTableFormat1`."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.ttf.table.common.coverage_table_format1 import (

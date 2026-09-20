@@ -5,8 +5,6 @@ Mirrors ``org.apache.pdfbox.pdmodel.interactive.digitalsignature.SigningSupport`
 ``pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/SigningSupport.java``).
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, BinaryIO
 
 if TYPE_CHECKING:

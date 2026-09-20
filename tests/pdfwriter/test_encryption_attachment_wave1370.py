@@ -6,8 +6,6 @@ already derived). This file verifies the staging order and the
 ``/Encrypt`` entry in the on-the-wire trailer.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import COSDictionary, COSDocument, COSName, COSObject

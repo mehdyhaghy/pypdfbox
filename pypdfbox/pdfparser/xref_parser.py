@@ -19,8 +19,6 @@ ported callers that say::
 work without modification. It is a thin façade — no new behaviour.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSDictionary, COSObjectKey
@@ -102,7 +100,7 @@ class XrefParser:
         Returns the merged trailer dictionary, or ``None`` when the
         chain is empty."""
         # Upstream's parseXref takes the document fresh — match that.
-        self._parser._document = document
+        self._parser._document = document  # façade boundary
         return self._parser.parse_xref(start_x_ref_offset)
 
     # ------------------------------------------------------------------

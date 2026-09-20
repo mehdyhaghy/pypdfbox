@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .fdf_annotation import FDFAnnotation
 from .fdf_annotation_caret import FDFAnnotationCaret
 from .fdf_annotation_circle import FDFAnnotationCircle

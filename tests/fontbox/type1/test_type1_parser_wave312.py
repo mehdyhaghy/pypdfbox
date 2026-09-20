@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.fontbox.type1.type1_font_util import Type1FontUtil
 from pypdfbox.fontbox.type1.type1_parser import TOKEN_STRING, Type1Lexer, Type1Parser
 

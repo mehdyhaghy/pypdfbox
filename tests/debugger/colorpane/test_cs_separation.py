@@ -1,7 +1,5 @@
 """Tests for :class:`CSSeparation`."""
 
-from __future__ import annotations
-
 from tkinter import ttk
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
@@ -83,7 +81,7 @@ def test_cs_separation_slider_callback_updates_tint(tk_root) -> None:
 
 def test_cs_separation_slider_ignores_invalid_value(tk_root) -> None:
     pane = CSSeparation(_separation_array(), master=tk_root)
-    pane._on_slider("garbage")
+    pane._on_slider("garbage")  # must not raise
     assert pane.tint_value == 1.0  # unchanged
 
 
@@ -91,7 +89,7 @@ def test_cs_separation_slider_no_op_while_syncing(tk_root) -> None:
     pane = CSSeparation(_separation_array(), master=tk_root)
     pane._syncing = True
     try:
-        pane._on_slider("50")
+        pane._on_slider("50")  # should early-out
     finally:
         pane._syncing = False
     assert pane.tint_value == 1.0  # unchanged

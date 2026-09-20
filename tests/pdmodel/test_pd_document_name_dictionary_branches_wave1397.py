@@ -8,8 +8,6 @@ legacy ``/Dests`` entry exists on the catalog but isn't a
 * ``get_dests`` 195->197 — same shape
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.pd_document_name_dictionary import (
     PDDocumentNameDictionary,

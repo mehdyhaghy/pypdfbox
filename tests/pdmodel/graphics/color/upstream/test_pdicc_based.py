@@ -10,8 +10,6 @@ created locally and attached when the color space is wired into a resource
 dictionary). The test's surface contract — ``get_name() == "ICCBased"`` and
 the underlying ``PDStream`` exists — holds for both.
 """
-from __future__ import annotations
-
 from pypdfbox.pdmodel.graphics.color import PDICCBased
 
 

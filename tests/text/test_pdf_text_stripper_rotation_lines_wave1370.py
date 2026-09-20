@@ -14,8 +14,6 @@ The separate ``set_should_flip_axes(True)`` toggle is a lite-only manual
 X/Y transpose with no upstream counterpart (it is NOT driven by ``/Rotate``).
 These tests pin both contracts end-to-end through ``get_text``.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.text import PDFTextStripper, TextPosition

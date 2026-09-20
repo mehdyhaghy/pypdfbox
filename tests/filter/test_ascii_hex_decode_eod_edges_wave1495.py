@@ -10,8 +10,6 @@ doesn't reach:
 All four mirror upstream ``org.apache.pdfbox.filter.ASCIIHexFilter.decode``.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.filter.ascii_hex_decode import ASCIIHexDecode

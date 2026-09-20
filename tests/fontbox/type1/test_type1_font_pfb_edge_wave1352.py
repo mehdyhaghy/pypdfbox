@@ -18,8 +18,6 @@ Targets the under-covered framing branches in
   / ``PfbParser.java`` L295-L310).
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

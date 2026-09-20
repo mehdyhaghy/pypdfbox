@@ -10,8 +10,6 @@ Targets the uncovered branches in ``GlyphCache.get_path_for_character_code``:
 - ``_empty_path()`` helper returns an empty list
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.rendering.glyph_cache import GlyphCache, _empty_path

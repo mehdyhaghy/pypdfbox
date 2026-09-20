@@ -7,8 +7,6 @@ does not bundle the ``FoglihtenNo07.otf`` font upstream uses
 many-glyph pass-through) through synthetic :class:`GsubData` inputs.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub.gsub_data import GsubData
 from pypdfbox.fontbox.ttf.gsub.gsub_worker_for_aalt import GsubWorkerForAALT
 

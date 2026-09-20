@@ -10,8 +10,6 @@ The existing ``pypdfbox.tools.extracttext`` module is a function-style
 CLI; this module re-implements the Java class shape (``call`` / static
 helpers) for parity coverage.
 """
-from __future__ import annotations
-
 import argparse
 import contextlib
 import math

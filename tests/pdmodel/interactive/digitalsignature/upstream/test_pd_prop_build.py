@@ -10,8 +10,6 @@ pypdfbox surface lives in
 ``tests/pdmodel/interactive/digitalsignature/test_pd_prop_build.py``.
 """
 
-from __future__ import annotations
-
 
 def test_no_upstream_tests_for_pd_prop_build() -> None:
     """Sentinel — upstream has no test class for ``PDPropBuild``."""

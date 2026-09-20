@@ -8,8 +8,6 @@ mirrors the public/protected method surface of
 have a parity scaffold already in place.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSInteger, COSString
 from pypdfbox.pdmodel.documentinterchange.taggedpdf import (
     PDUserAttributeObject,

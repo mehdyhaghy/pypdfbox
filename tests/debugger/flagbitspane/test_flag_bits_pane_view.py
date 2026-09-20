@@ -1,7 +1,5 @@
 """Tests for the :class:`FlagBitsPaneView` Tkinter widget."""
 
-from __future__ import annotations
-
 from pypdfbox.debugger.flagbitspane.flag_bits_pane_view import FlagBitsPaneView
 
 

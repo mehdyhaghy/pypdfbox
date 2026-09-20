@@ -9,8 +9,6 @@ follows the "dest wins on conflict" rule, and that ``/IDTree`` collisions
 are dropped (with a warning) rather than silently overwritten.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.cos import (

@@ -25,8 +25,6 @@ Java name is ``set_need_to_be_updated`` (singular "need"), which the
 parity tooling counts independently. Both forms are wired here.
 """
 
-from __future__ import annotations
-
 from .cos_dictionary import UnmodifiableCOSDictionary as _BaseUnmodifiableCOSDictionary
 
 

@@ -16,8 +16,6 @@ Skipped (one-line reason each):
   (cache is owned by the parser, not the factory).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName

@@ -9,8 +9,6 @@ Each test exercises the public spelling and confirms it threads
 through to the underlying private one with the right arguments.
 """
 
-from __future__ import annotations
-
 import contextlib
 import os
 import tkinter as tk

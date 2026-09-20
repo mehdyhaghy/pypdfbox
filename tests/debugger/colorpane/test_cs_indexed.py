@@ -1,7 +1,5 @@
 """Tests for :class:`CSIndexed`."""
 
-from __future__ import annotations
-
 from tkinter import ttk
 
 from pypdfbox.cos import COSArray, COSInteger, COSName, COSString

@@ -11,8 +11,6 @@ square-glyph fonts. This module exercises:
 * parity sanity for plain TTF rendering after the text-show refactor that
   added Type0 awareness (regression guard for simple fonts).
 """
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import (

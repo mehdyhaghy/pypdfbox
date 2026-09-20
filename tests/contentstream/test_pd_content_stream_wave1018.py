@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.pdmodel import PDRectangle, PDResources
 from tests.contentstream.test_pd_content_stream import (
     _FakeStream,

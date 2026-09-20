@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .filtered_text_stripper import (
     AngleCollector,
     FilteredTextStripper,

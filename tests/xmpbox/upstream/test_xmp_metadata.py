@@ -13,8 +13,6 @@ depends on the DOM XMP parser and lives in
 ``test_dom_xmp_parser.py`` already; it is not duplicated here.
 """
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox import XMPMetadata, XMPSchema
 
 

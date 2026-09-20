@@ -9,8 +9,6 @@ the font is CID-keyed); the storage shape of the range list is
 identical, only the on-disk ``nLeft`` width differs.
 """
 
-from __future__ import annotations
-
 from .embedded_charset import EmbeddedCharset
 from .range_mapping import RangeMapping
 

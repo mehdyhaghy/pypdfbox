@@ -1,7 +1,5 @@
 """Tests for ``AnnotationFilter`` and ``PDExternalDataDictionary``."""
 
-from __future__ import annotations
-
 from pypdfbox.cos.cos_name import COSName
 from pypdfbox.pdmodel.interactive.annotation.annotation_filter import AnnotationFilter
 from pypdfbox.pdmodel.interactive.annotation.pd_external_data_dictionary import (

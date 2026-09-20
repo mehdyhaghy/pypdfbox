@@ -7,8 +7,6 @@ the port preserves that behaviour by writing to ``sys.stdout`` so the
 example reads identically to a PDFBox user.
 """
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 from typing import Any

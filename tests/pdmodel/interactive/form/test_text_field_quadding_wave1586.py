@@ -26,8 +26,6 @@ right alignment, not byte-identical output (the lite port uses a
 height-based auto-size heuristic, a documented divergence).
 """
 
-from __future__ import annotations
-
 import re
 
 import pytest

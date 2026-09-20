@@ -1,6 +1,4 @@
 """Tests for ``pypdfbox listbookmarks`` and the ``list_bookmarks`` helper."""
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

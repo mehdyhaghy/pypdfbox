@@ -1,7 +1,5 @@
 """Wave 1273 round-out: ``PDDeviceNProcess.to_string()`` explicit method."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.graphics.color.pd_device_n import PDDeviceNProcess
 

@@ -12,8 +12,6 @@ already handles ``PIL.Image`` instances natively, so the rest of the
 pipeline is unchanged.
 """
 
-from __future__ import annotations
-
 import contextlib
 import logging
 import tkinter as tk

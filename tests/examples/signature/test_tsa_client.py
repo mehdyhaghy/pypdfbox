@@ -1,7 +1,5 @@
 """Tests for ``TSAClient``."""
 
-from __future__ import annotations
-
 import hashlib
 from io import BytesIO
 

@@ -5,8 +5,6 @@ PDType0Font: Identity-H, Identity-V, and predefined Adobe CMaps. Also
 covers the predefined-UCS2 fallback via :meth:`get_cmap_ucs2`.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName

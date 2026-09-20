@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from types import CodeType, FunctionType, SimpleNamespace
 
 from tests.contentstream import test_pdf_stream_engine_wave684 as wave684

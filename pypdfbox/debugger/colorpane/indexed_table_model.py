@@ -7,8 +7,6 @@ Same pattern as :class:`DeviceNTableModel` — exposes upstream's
 Tkinter view.
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 
 from pypdfbox.debugger.colorpane.indexed_colorant import IndexedColorant

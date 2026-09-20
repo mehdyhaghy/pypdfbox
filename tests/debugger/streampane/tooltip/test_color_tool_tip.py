@@ -1,7 +1,5 @@
 """Hand-written tests for ``ColorToolTip`` helpers."""
 
-from __future__ import annotations
-
 from pypdfbox.debugger.streampane.tooltip import ColorToolTip
 
 

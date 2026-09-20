@@ -6,8 +6,6 @@ a DSIG-bearing TTF on the fly via ``fontTools`` to exercise both the
 present-table and absent-table paths. No new fixtures are committed.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 
@@ -184,7 +182,7 @@ def test_get_dsig_caches_negative_result() -> None:
     assert font.get_dsig() is None
     # Second call must not re-probe; the cache flag should stay set.
     assert font.get_dsig() is None
-    assert font._dsig_resolved is True
+    assert font._dsig_resolved is True  # cache invariant
 
 
 def test_get_dsig_reads_synthetic_table() -> None:

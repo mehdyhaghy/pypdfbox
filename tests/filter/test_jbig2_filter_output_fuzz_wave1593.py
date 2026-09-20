@@ -35,8 +35,6 @@ oracle-verified ``tests/jbig2/helpers/jb2_encoder`` + ``mq_encoder`` helpers.
 No real divergence is exercised — the filter output path is a faithful port.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

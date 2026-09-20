@@ -9,8 +9,6 @@ when they're absent:
 * ``close_template`` 319->exit — template with no ``close``
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.pdmodel.interactive.digitalsignature.visible.pd_visible_sig_builder import (

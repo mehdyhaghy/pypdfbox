@@ -1,7 +1,5 @@
 """Tests for the CIE/JPX/Gamma/Tristimulus colour classes (Wave 1281)."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSFloat, COSName

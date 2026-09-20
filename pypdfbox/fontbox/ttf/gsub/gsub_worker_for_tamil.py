@@ -14,8 +14,6 @@ between ``rphf`` and ``half``, and by dropping ``blwf`` / ``vatu`` /
 ``cjct`` / ``rkrf``.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING
 

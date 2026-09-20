@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any, ClassVar
 
 from .pd_color import PDColor

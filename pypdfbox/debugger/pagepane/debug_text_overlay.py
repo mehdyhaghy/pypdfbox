@@ -23,8 +23,6 @@ Behavioural notes:
   pixel space before calling ``draw.rectangle``.
 """
 
-from __future__ import annotations
-
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field

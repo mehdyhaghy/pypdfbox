@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from .pd_abstract_appearance_handler import PDAbstractAppearanceHandler

@@ -21,8 +21,6 @@ of pdfbox 3.0.7 PDOptionalContentProperties.java /
 PDOptionalContentMembershipDictionary.java rather than translated from a
 single JUnit file, so they live alongside (not under) the upstream/ tree.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName

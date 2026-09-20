@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import tests.multipdf.test_splitter_wave387 as wave387
 
 

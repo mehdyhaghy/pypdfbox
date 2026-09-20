@@ -6,8 +6,6 @@ suites. This file pins the inheritable-attribute walk, the QUADDING
 constants, and the new public ``get_string_or_stream`` helper (mirrors
 upstream ``protected final`` ``getStringOrStream``).
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream, COSString
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_text_field import PDTextField

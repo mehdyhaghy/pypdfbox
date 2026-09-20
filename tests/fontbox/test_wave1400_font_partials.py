@@ -6,8 +6,6 @@ arrows to a concrete behavioural scenario. Tests are organised
 per-module; the helpers at the top are shared.
 """
 
-from __future__ import annotations
-
 import contextlib
 import struct
 from pathlib import Path
@@ -162,7 +160,7 @@ def test_format8_empty_groups_skips_build_call() -> None:
     (line 221 → -193 = function exit)."""
     body = bytes(8192) + struct.pack(">I", 0)
     sub = CmapSubtable()
-    sub._glyph_id_to_character_code = [42]
+    sub._glyph_id_to_character_code = [42]  # sentinel
     sub.process_subtype8(MemoryTTFDataStream(body), num_glyphs=10)
     # Build was skipped; sentinel survives.
     assert sub._glyph_id_to_character_code == [42]
@@ -211,7 +209,7 @@ def test_format13_all_groups_invalid_leaves_empty_map() -> None:
     # glyph_id=99 but num_glyphs=10 → out of bounds (strict > break).
     body += struct.pack(">III", 100, 102, 99)
     sub = CmapSubtable()
-    sub._glyph_id_to_character_code = [77]
+    sub._glyph_id_to_character_code = [77]  # sentinel
     sub.process_subtype13(MemoryTTFDataStream(body), num_glyphs=10)
     # Array reset to all -1 up front (upstream parity); no code recorded.
     assert sub._glyph_id_to_character_code == [-1] * 10
@@ -690,14 +688,14 @@ def test_get_y_coordinate_missing_description_returns_zero() -> None:
 def test_get_point_count_uses_cached_value_when_already_resolved() -> None:
     """Branch [177, 191]: ``_point_count >= 0`` short-circuits computation."""
     desc = _build_composite_with_one_component()
-    desc._point_count = 42
+    desc._point_count = 42  # pre-cached
     assert desc.get_point_count() == 42  # uses cache
 
 
 def test_get_contour_count_uses_cached_value_when_already_resolved() -> None:
     """Branch [197, 212]: ``_contour_count_resolved >= 0`` skip recompute."""
     desc = _build_composite_with_one_component()
-    desc._contour_count_resolved = 17
+    desc._contour_count_resolved = 17  # pre-cached
     assert desc.get_contour_count() == 17
 
 
@@ -985,7 +983,7 @@ def test_encoding_overwrite_skips_reverse_when_old_code_mismatches() -> None:
     enc = Encoding()
     # Pre-build inconsistent state: code 65 → "A" forward; "A" → 99 reverse.
     enc._code_to_name[65] = "A"
-    enc._name_to_code["A"] = 99
+    enc._name_to_code["A"] = 99  # points to different code
     enc.overwrite(65, "B")
     # The reverse mapping for "A" should NOT have been popped (because
     # old_code == 99 != 65).

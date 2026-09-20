@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import contextlib
 import logging
 from collections.abc import Callable
@@ -606,7 +604,7 @@ class Splitter:
 
         try:
             self._prune_page_resources(imported)
-        except Exception:
+        except Exception:  # pruning must never break a split
             _LOG.exception(
                 "resource pruning failed for page %d; full resource "
                 "dictionary kept",
@@ -1456,7 +1454,7 @@ class Splitter:
             return False
         try:
             resolved = resolver(source_target_page_dict)
-        except Exception:
+        except Exception:  # defensive: resolver is caller code
             _LOG.exception(
                 "cross_chunk_destination_resolver raised for target page; "
                 "falling back to null-out"
@@ -1584,7 +1582,7 @@ class Splitter:
                     id(page.get_cos_object()): idx
                     for idx, page in enumerate(pages)
                 }
-            except Exception:
+            except Exception:  # foreign page object; use index_of
                 page_index_map = None
         if page_index_map is not None:
             self._page_index_by_id = page_index_map

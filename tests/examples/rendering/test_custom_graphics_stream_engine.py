@@ -1,6 +1,4 @@
 """Tests for ``pypdfbox.examples.rendering.custom_graphics_stream_engine``."""
-from __future__ import annotations
-
 from typing import Any
 
 import pytest
@@ -282,7 +280,7 @@ def test_main_closes_document_even_when_run_raises(
     closed: dict[str, bool] = {"value": False}
 
     class _BrokenPage:
-        def get_annotations(self) -> list:
+        def get_annotations(self) -> list:  # example stub
             raise RuntimeError("broken page")
 
     class _StubDoc:

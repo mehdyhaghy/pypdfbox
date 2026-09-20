@@ -8,8 +8,6 @@ parsing (no DTD/external-entity resolution), then convert to ``xml.dom``
 nodes so callers that introspect a DOM keep working.
 """
 
-from __future__ import annotations
-
 import re
 from typing import BinaryIO
 from xml.dom import minidom

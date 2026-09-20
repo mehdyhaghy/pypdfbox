@@ -9,8 +9,6 @@ workload tests stub :func:`Loader.load_pdf` and :class:`PDFRenderer` so
 the body still executes end-to-end and covers the loop.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

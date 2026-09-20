@@ -14,8 +14,6 @@ tolerates these variants. Tests probe the boundary:
 * Mixed-width but valid (offset < 10 digits, gen < 5 digits).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdfparser import PDFParseError

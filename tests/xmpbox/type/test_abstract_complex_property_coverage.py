@@ -10,8 +10,6 @@ Targets the previously-untested branches:
 * ``get_first_equivalent_property`` — delegation through the container.
 """
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox.type.abstract_complex_property import AbstractComplexProperty
 from pypdfbox.xmpbox.type.array_property import ArrayProperty, Cardinality
 from pypdfbox.xmpbox.type.complex_property_container import ComplexPropertyContainer

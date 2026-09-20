@@ -6,8 +6,6 @@ assertions on the produced PDF (AcroForm carries one text field;
 appearance characteristics carry both border and background colors).
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

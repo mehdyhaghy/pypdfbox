@@ -5,8 +5,6 @@ Mirrors upstream ``org.apache.pdfbox.rendering.RenderDestination`` and
 the ``PDFRenderer.setDefaultDestination(RenderDestination)`` setter.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle

@@ -6,8 +6,6 @@ exception/EOF paths in ``available`` and ``_read_into`` using small
 stub :class:`RandomAccessRead` implementations.
 """
 
-from __future__ import annotations
-
 from pypdfbox.io import RandomAccessInputStream, RandomAccessReadBuffer
 from pypdfbox.io.random_access_read import RandomAccessRead
 

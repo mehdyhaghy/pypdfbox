@@ -5,8 +5,6 @@ color but its RGB value is not red, ``if color.to_rgb_int() == _RED_RGB``
 takes its False arc and ``get_paint`` falls through to ``super().get_paint``.
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock
 
 from pypdfbox.examples.rendering.custom_page_drawer import (

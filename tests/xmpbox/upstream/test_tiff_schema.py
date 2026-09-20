@@ -13,8 +13,6 @@ and exercises the ``testInitializedToNull`` / ``testSettingValue`` /
 applied if Apache had wired one up.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import TiffSchema, XMPMetadata

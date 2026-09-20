@@ -4,8 +4,6 @@ parity tracker, which lists it as a sibling class of
 ``CertInformationCollector``.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing only

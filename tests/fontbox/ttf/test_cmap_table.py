@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import struct
 
 from pypdfbox.fontbox.ttf.cmap_subtable import CmapSubtable

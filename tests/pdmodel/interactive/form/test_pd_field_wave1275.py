@@ -1,7 +1,5 @@
 """Wave 1275 — PDField Java-named equality / hash / string helpers."""
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_text_field import PDTextField
 

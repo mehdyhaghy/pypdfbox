@@ -21,8 +21,6 @@ upstream-mirrored semantics that were not directly exercised:
   pattern is ``None``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.debugger.ui.textsearcher.search_engine import SearchEngine
 
 

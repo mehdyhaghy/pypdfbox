@@ -7,8 +7,6 @@ parameter pairs, /Win sub-dict, and the tri-state /NewWindow flag
 mapping to OpenMode.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.interactive.action.open_mode import OpenMode
 from pypdfbox.pdmodel.interactive.action.pd_action_launch import PDActionLaunch

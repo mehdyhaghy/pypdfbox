@@ -16,8 +16,6 @@ Pre-wave the module sat at 89.7 % (4 missing); this set takes it to
 100 %.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.pd_document import PDDocument
 from pypdfbox.pdmodel.pd_page import PDPage
 from pypdfbox.printing.pdf_pageable import Orientation, PDFPageable

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.fontbox.ttf import test_ttf_subsetter_remaining_wave754 as target
 
 

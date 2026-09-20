@@ -13,8 +13,6 @@ the index). See ``CHANGES.md`` for the Swing-to-Tkinter signature
 change.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING, Any
 

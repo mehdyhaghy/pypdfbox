@@ -6,8 +6,6 @@ Closes the ``99->113`` partial: a successfully-removed field that carries
 the save step.
 """
 
-from __future__ import annotations
-
 import contextlib
 import os
 import tempfile

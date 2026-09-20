@@ -9,8 +9,6 @@ Closes False-branch arrows in ``pypdfbox/pdfwriter/cos_writer.py``:
   trailer carries ``/Info`` but no ``/Root``.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import COSDictionary, COSDocument, COSName, COSObjectKey

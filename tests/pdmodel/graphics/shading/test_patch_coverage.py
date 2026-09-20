@@ -7,8 +7,6 @@ Drives the abstract ``get_flag*_edge`` accessors, the
 branches.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.graphics.shading.patch import Patch, _CoordinateColorPair

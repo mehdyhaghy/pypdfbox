@@ -1,7 +1,5 @@
 """Wave 1275 parity test for PDNameTreeNode.calculate_limits public alias."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSString
 from pypdfbox.pdmodel.common.pd_string_name_tree_node import PDStringNameTreeNode
 

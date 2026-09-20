@@ -10,8 +10,6 @@ operator handlers correctly invoke ``begin_marked_content_sequence`` /
 property-dict-or-name) are forwarded verbatim.
 """
 
-from __future__ import annotations
-
 import io
 from typing import IO, Any
 

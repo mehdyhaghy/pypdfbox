@@ -14,5 +14,3 @@ behavioural coverage of ``PDMetadata``'s constructors,
 ``import_xmp_metadata`` / ``export_xmp_metadata``, ``create_input_stream``
 and the inherited ``set_filters`` / ``get_cos_object`` surface.
 """
-
-from __future__ import annotations

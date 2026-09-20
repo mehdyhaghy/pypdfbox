@@ -12,8 +12,6 @@ follows that split: this package contains the interface and the wiring only,
 and everything keeps working with no processor registered.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 

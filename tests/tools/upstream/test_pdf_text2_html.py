@@ -10,8 +10,6 @@ Helvetica text run, then asserts that :class:`PDFText2HTML`:
 2. Wraps bold-styled text in ``<b>`` tags inside a ``<p>`` paragraph.
 """
 
-from __future__ import annotations
-
 import re
 
 from pypdfbox import PDDocument, PDPage

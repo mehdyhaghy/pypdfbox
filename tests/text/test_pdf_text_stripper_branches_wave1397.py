@@ -13,8 +13,6 @@ arabic-form normaliser:
 * ``begin_marked_content_sequence`` 2113->2120 — properties is None
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import COSInteger, COSName, COSString

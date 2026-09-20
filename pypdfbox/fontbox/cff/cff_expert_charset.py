@@ -10,8 +10,6 @@ transcribed by hand. The (SID, name) pairs match upstream's
 ``cffExpertCharsetTable`` and the CFF spec's predefined Expert charset.
 """
 
-from __future__ import annotations
-
 from fontTools.cffLib import cffIExpertStrings, cffStandardStringMapping
 
 from .cff_charset_type1 import CFFCharsetType1

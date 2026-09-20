@@ -15,8 +15,6 @@ Covers:
   key matches the signature's /Contents digest.
 """
 
-from __future__ import annotations
-
 import datetime
 import hashlib
 from pathlib import Path

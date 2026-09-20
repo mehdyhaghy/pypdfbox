@@ -14,8 +14,6 @@ that only exercise that plumbing are skipped with a one-line comment per
 the project's porting conventions.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream

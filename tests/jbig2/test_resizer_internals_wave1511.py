@@ -10,8 +10,6 @@ all faithful ports of ``org.apache.pdfbox.jbig2.image.Resizer`` and are
 exercised here directly with crafted inputs.
 """
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.bitmap import Bitmap
 from pypdfbox.jbig2.image.filter import Box, Point, Triangle
 from pypdfbox.jbig2.image.resizer import (

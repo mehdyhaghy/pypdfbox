@@ -6,8 +6,6 @@ the dialog is in save mode. Our port returns the validated path (or
 ``cancelSelection`` directly.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.debugger.ui.file_open_save_dialog import (

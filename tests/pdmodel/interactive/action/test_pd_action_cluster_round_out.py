@@ -3,8 +3,6 @@ relative to upstream PDFBox: ``PDActionGoTo#setDestination`` validation,
 ``PDActionURI#getURI`` UTF-8 fallback, and ``PDActionJavaScript`` string
 constructor."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSNull, COSString

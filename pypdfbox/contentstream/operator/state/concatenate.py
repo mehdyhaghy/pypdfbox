@@ -10,8 +10,6 @@ this class is the upstream-named parity surface that delegates to that
 handler so PDFBox developers can reach for the familiar identifier.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, cast
 
 from pypdfbox.cos import COSBase, COSNumber

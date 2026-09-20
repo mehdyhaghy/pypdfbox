@@ -3,8 +3,6 @@
 Creates a simple document with a TrueType font.
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.pdmodel.font.pd_type0_font import PDType0Font

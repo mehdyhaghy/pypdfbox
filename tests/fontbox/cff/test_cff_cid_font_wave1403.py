@@ -6,8 +6,6 @@ neither an ``int`` nor a ``str`` falls straight through to the ``-1``
 sentinel return.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.cff_cid_font import CFFCIDFont
 
 

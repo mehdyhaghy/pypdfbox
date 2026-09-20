@@ -8,8 +8,6 @@ class hands back), and the ``set_shading`` / ``set_extended_graphics_state``
 setter contract.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSInteger, COSName, COSStream

@@ -15,8 +15,6 @@ Targets the residual edge branches:
       - ``read_table_directory`` returns ``None``                  (line 527)
       - directory entry's ``offset+length`` walks past file size   (line 531)
 """
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 
@@ -151,7 +149,7 @@ def test_parse_table_headers_otf_is_post_script_attribute_error() -> None:
     from pypdfbox.fontbox.ttf.open_type_font import OpenTypeFont
 
     class _BadOTF(OpenTypeFont):
-        def __init__(self) -> None:
+        def __init__(self) -> None:  # minimal
             pass
 
         def get_naming(self):

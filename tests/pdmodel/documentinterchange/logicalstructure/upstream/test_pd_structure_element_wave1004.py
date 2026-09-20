@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
     PDAttributeObject,

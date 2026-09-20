@@ -13,8 +13,6 @@ Targets the residual branches of the helper internals:
   language.
 """
 
-from __future__ import annotations
-
 import sys
 from types import SimpleNamespace
 from typing import Any

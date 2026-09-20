@@ -17,8 +17,6 @@ against the behaviour of Apache PDFBox 3.0.7's ``TextPosition`` /
 - ``normalizeWord`` — NFKC of presentation forms (``PDFTextStripper.java``).
 """
 
-from __future__ import annotations
-
 import unicodedata
 
 import pytest

@@ -22,8 +22,6 @@ degrade gracefully on (matching upstream's ``IOException``-as-control-flow
 behaviour without forcing the exception).
 """
 
-from __future__ import annotations
-
 from threading import Lock
 
 from .cmap import CMap

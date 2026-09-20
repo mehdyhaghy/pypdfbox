@@ -6,8 +6,6 @@ construction patterns, end-to-end metric population, font program stream
 handoff, and the combinations that surface most often in real PDFs.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

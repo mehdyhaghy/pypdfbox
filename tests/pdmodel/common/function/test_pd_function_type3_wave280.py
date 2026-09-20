@@ -1,7 +1,5 @@
 """Wave 280 coverage for ``PDFunctionType3`` convenience and edge cases."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger

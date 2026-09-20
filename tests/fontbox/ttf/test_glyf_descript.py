@@ -1,7 +1,5 @@
 """Tests for :class:`pypdfbox.fontbox.ttf.glyf_descript.GlyfDescript`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.glyf_descript import GlyfDescript
 from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 

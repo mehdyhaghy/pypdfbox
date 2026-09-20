@@ -21,8 +21,6 @@ seeking back to ``after_adobe_pos`` before rescanning; the test below now
 covers the arc and guards against the loop regressing.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.filter.dct_filter import DCTFilter

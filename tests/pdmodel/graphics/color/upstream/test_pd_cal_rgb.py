@@ -6,8 +6,6 @@ tests assert the public behavior expressed directly by
 
 Each test ties to a specific Java method or constructor.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName

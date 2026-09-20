@@ -9,8 +9,6 @@ GID in that case (PDFBOX-2571 p11), so we pre-populate identity
 mappings up to ``num_char_strings``.
 """
 
-from __future__ import annotations
-
 from .cff_charset_cid import CFFCharsetCID
 
 

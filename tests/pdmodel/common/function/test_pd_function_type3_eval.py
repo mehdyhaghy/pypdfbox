@@ -6,8 +6,6 @@ output-clip behaviour mandated by PDF 32000-1 §7.10.4 and mirrored from
 ``org.apache.pdfbox.pdmodel.common.function.PDFunctionType3.eval``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat

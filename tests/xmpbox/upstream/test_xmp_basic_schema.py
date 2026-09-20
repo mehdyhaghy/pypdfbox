@@ -9,8 +9,6 @@ property declared on ``XMPBasicSchema``. Later Bag/XPath and typed-property
 waves make the parameter table map cleanly to pytest.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 import pytest

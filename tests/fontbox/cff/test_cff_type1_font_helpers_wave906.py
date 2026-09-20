@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from tests.fontbox.cff import test_cff_type1_font as type1_mod

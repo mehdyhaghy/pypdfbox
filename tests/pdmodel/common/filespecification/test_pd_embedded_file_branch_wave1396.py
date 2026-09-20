@@ -9,8 +9,6 @@ Closes False-branch arrows:
 * 491->493 — ``set_mac_resource_fork(None)`` when /Params/Mac is absent
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 
 from pypdfbox.cos import COSDictionary, COSName

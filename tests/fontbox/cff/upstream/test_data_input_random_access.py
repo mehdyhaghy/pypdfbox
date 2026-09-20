@@ -1,6 +1,4 @@
 """Port of org.apache.fontbox.cff.DataInputRandomAccessTest (PDFBox 3.0.x)."""
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.data_input_random_access_read import (

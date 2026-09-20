@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.fontbox.encoding.test_encoding_wave294 import _Wave294Encoding
 
 

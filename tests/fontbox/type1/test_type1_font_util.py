@@ -8,8 +8,6 @@ discards ``lenIV`` bytes) plus the hex helpers used by the parser when
 it normalises ASCII-form eexec.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.type1.type1_font_util import Type1FontUtil

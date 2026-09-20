@@ -9,8 +9,6 @@ headers, rebuild a usable trailer, and parse an xref-stream's
 ``/W`` + ``/Index`` shape into a per-entry offset map.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

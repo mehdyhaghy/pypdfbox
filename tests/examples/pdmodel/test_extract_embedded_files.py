@@ -7,8 +7,6 @@ the path-traversal guard, the ``main`` happy path, the annotation walk,
 and the recursive ``extract_files_from_ef_tree`` descent through ``kids``.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest
@@ -94,7 +92,7 @@ def test_main_extracts_payload_to_directory(tmp_path: Path) -> None:
 
 def test_extract_files_handles_none() -> None:
     # Branch coverage: ``extract_files(None, ...)`` is the upstream early-out.
-    ExtractEmbeddedFiles.extract_files(None, "/tmp")
+    ExtractEmbeddedFiles.extract_files(None, "/tmp")  # not used
 
 
 def test_extract_files_skips_specs_without_embedded_payload(

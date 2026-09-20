@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSName, COSString
 from pypdfbox.pdmodel.documentinterchange.taggedpdf import (
     PDExportFormatAttributeObject,

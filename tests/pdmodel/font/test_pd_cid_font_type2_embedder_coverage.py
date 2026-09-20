@@ -11,8 +11,6 @@ installs them so the embedder can be exercised end-to-end without
 mutating the package source.
 """
 
-from __future__ import annotations
-
 import contextlib
 import io
 from pathlib import Path
@@ -116,7 +114,7 @@ def test_constructor_full_embed_attaches_descendant_fonts_array(
     descendants = dict_.get_item(COSName.get_pdf_name("DescendantFonts"))
     assert isinstance(descendants, COSArray)
     assert len(descendants) == 1
-    assert descendants[0] is embedder._cid_font
+    assert descendants[0] is embedder._cid_font  # internal cross-check
 
 
 def test_constructor_full_embed_writes_to_unicode_cmap(sans_ttf: TTFont) -> None:
@@ -399,7 +397,7 @@ def test_create_cid_font_returns_fresh_dictionary(sans_ttf: TTFont) -> None:
     snapshot the original reference before the rebuild and compare.
     """
     embedder, _dict, _doc, _parent = _new_embedder(sans_ttf, embed_subset=True)
-    first = embedder._cid_font
+    first = embedder._cid_font  # snapshot before rebuild
     second = embedder.create_cid_font()
     assert isinstance(second, COSDictionary)
     # Each call builds a fresh dict; the public alias is not memoised.

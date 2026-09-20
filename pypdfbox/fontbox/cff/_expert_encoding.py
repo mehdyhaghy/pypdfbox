@@ -15,8 +15,6 @@ parsed font's STRING INDEX (which doesn't change the answer for
 predefined encodings).
 """
 
-from __future__ import annotations
-
 from fontTools.cffLib import cffStandardStrings  # type: ignore[import-untyped]
 
 # (charCode, charSID) — copied verbatim from CFFExpertEncoding.java.

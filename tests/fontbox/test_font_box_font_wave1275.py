@@ -1,7 +1,5 @@
 """Wave 1275 — FontBoxFont.get_font_b_box helper parity."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.font_box_font import FontBoxFont, get_font_b_box
 
 

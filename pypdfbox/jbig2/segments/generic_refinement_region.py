@@ -24,8 +24,6 @@ Usage modes:
   :meth:`get_region_bitmap`.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from pypdfbox.jbig2.decoder.arithmetic.arithmetic_decoder import ArithmeticDecoder

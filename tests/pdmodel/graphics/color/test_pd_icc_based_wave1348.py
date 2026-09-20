@@ -7,8 +7,6 @@ and the to_rgb()/N-based-alternate inference fallbacks (N=1 -> Gray,
 N=4 -> CMYK, N=2 -> None).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSFloat, COSName, COSStream

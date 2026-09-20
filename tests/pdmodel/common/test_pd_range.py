@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`pypdfbox.pdmodel.common.PDRange`."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSString

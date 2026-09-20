@@ -11,8 +11,6 @@ Covers the writer's ``_add_object_to_write`` dedup logic (and the
 * The /Size value in the trailer counts each shared body once.
 """
 
-from __future__ import annotations
-
 import io
 import re
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSInteger, COSObjectKey
 from pypdfbox.pdfparser import XrefEntry, XrefTrailerResolver, XrefType
 

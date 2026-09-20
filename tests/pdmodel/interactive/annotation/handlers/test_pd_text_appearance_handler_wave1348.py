@@ -6,8 +6,6 @@ private ``_draw_*`` painters) and the unsupported-name early-out branches
 that the existing wave-1280/1285 smoke tests don't reach.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.interactive.annotation.handlers.pd_text_appearance_handler import (

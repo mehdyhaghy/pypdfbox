@@ -6,8 +6,6 @@ that accepts ``PDICCBased``, and ICC header signature accessors
 ``get_pcs_signature``) per ICC.1:2010 §7.2.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSName, COSStream

@@ -1,6 +1,4 @@
 """Tests for ``pypdfbox.examples.lucene.index_pdf_files``."""
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.examples.lucene.index_pdf_files import IndexPDFFiles

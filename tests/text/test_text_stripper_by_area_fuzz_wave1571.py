@@ -20,8 +20,6 @@ region in HashMap order and suppressed (as a coincident duplicate) for
 the rest when ``suppressDuplicateOverlappingText`` is on.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSStream

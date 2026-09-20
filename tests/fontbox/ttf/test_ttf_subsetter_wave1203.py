@@ -9,8 +9,6 @@ Covers:
   (PostScript name); the wrapper used to also tag nameID 4 (full name).
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 from types import SimpleNamespace

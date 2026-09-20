@@ -5,8 +5,6 @@ Mirrors ``org.apache.pdfbox.pdmodel.interactive.action.PDActionFactory``
 action/PDActionFactory.java``).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos.cos_dictionary import COSDictionary
 from pypdfbox.cos.cos_name import COSName
 from pypdfbox.pdmodel.interactive.action.pd_action import PDAction

@@ -9,8 +9,7 @@ and that the underlying inlined behaviour still produces correct
 xref output.
 """
 
-from __future__ import annotations
-
+import annotationlib
 import inspect
 
 import pytest
@@ -40,7 +39,12 @@ def test_wave1389_xref_parser_exposes_upstream_public_surface() -> None:
     assert "get_xref_table" in members
     assert "parse_xref" in members
     # The constructor must accept a single COSParser positional argument.
-    sig = inspect.signature(XrefParser.__init__)
+    # FORWARDREF: PEP 649 evaluates annotations on signature access, and
+    # XrefParser.__init__ is annotated with a TYPE_CHECKING-only name. We
+    # assert on parameter names, so leaving them unresolved is correct.
+    sig = inspect.signature(
+        XrefParser.__init__, annotation_format=annotationlib.Format.FORWARDREF
+    )
     params = [p for p in sig.parameters.values() if p.name != "self"]
     assert len(params) == 1
     assert params[0].name == "cos_parser"

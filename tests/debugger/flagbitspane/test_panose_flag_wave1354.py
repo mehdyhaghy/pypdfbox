@@ -7,8 +7,6 @@ short-circuits before line 276, so this test exercises the static
 helper directly with a non-COSString entry.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName

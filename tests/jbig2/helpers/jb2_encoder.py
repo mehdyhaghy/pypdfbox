@@ -23,8 +23,6 @@ A constructed stream is validated against the bundled Java decoder
 oracle fixture.
 """
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.decoder.huffman.standard_tables import StandardTables
 
 # JBIG2 file header magic ID (D.4.1).
@@ -90,7 +88,7 @@ def _find_code(table_number: int, value: int):
             Code(sub[0], sub[1], sub[2], len(sub) > 3)
         )
     # Assign canonical codes exactly as HuffmanTable._preprocess_codes does.
-    table._preprocess_codes(lines)
+    table._preprocess_codes(lines)  # intentional reuse
 
     best = None
     for c in lines:

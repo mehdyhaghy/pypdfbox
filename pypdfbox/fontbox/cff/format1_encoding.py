@@ -20,8 +20,6 @@ ported in :mod:`pypdfbox.fontbox.cff.fd_select`); this ``Range3`` is
 the encoding-context counterpart with fields ``(first, n_left, sid)``.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from .cff_built_in_encoding import CFFBuiltInEncoding

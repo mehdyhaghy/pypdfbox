@@ -9,8 +9,6 @@ Pre-wave coverage was 88% with the 6 missing lines being:
 The tests below drive each path explicitly so the module reaches >=95%.
 """
 
-from __future__ import annotations
-
 import logging
 
 import pytest

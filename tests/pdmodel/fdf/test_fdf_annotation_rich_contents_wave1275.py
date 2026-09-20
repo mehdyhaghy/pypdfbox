@@ -1,7 +1,5 @@
 """Wave 1275 parity test: FDFAnnotation.rich_contents_to_string helper."""
 
-from __future__ import annotations
-
 from xml.dom.minidom import parseString
 
 from pypdfbox.pdmodel.fdf.fdf_annotation import FDFAnnotation

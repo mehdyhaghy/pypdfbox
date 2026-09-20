@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdmodel.font.test_font_tail_wave797 import _EmptyCharsetCFF
 
 

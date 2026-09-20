@@ -1,7 +1,5 @@
 """Wave 284 coverage for PDDocument trailer helpers and malformed COS values."""
 
-from __future__ import annotations
-
 from pypdfbox import PDDocument
 from pypdfbox.cos import COSDictionary, COSDocument, COSName
 

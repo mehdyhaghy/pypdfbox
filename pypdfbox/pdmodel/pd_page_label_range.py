@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSInteger, COSName, COSString
 
 # Page label dictionary keys (PDF 32000-1:2008 §12.4.2, Table 159).

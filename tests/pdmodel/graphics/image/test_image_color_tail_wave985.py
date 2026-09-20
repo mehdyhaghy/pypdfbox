@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdmodel.graphics.image.test_image_color_tail_wave794 import (
     _ArraylessDeviceColor,
 )

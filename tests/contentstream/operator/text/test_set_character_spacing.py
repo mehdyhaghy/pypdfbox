@@ -5,8 +5,6 @@ Targets ``pypdfbox/contentstream/operator/text/set_character_spacing.py``
 with the rendering cluster).
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.contentstream import Operator

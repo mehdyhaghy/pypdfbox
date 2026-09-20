@@ -11,8 +11,6 @@ and ``test_afm_loader_enriched.py`` (kern pairs / ligatures / headers)
 by pinning down the upstream-shaped ``FontMetrics``-style surface
 without re-routing through :meth:`AfmMetrics.get_font_metrics_object`.
 """
-from __future__ import annotations
-
 from pypdfbox.fontbox.afm import CharMetric
 from pypdfbox.fontbox.ttf.glyph_data import BoundingBox
 from pypdfbox.pdmodel.font.afm_loader import load_standard14

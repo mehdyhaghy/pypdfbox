@@ -8,8 +8,6 @@ The class subclasses ``PDFTextStripper`` to wrap stripped text in
 minimal HTML. The inner ``FontState`` tracks open ``<b>`` / ``<i>`` tags
 across writes so font transitions emit balanced open/close pairs.
 """
-from __future__ import annotations
-
 import contextlib
 from typing import Any
 

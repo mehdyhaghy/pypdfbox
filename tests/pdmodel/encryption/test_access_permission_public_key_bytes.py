@@ -15,8 +15,6 @@ the values WITHOUT requiring the oracle; an optional ``@requires_oracle``
 differential re-verifies them against the running jar.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.encryption.access_permission import AccessPermission

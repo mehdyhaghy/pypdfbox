@@ -4,8 +4,6 @@ Mirrors ``org.apache.pdfbox.pdmodel.fixup.AbstractFixup`` (Java path
 ``pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fixup/AbstractFixup.java``).
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from .pd_document_fixup import PDDocumentFixup

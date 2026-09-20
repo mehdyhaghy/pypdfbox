@@ -11,8 +11,6 @@ mirror it here.
 plus ``setAllSecurityToBeRemoved`` security flow that is not bundled.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

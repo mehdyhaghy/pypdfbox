@@ -43,8 +43,6 @@ Exit codes:
     0  every artifact scanned cleanly (or no venv found — nothing to scan).
     1  a non-allow-listed copyleft signature was found in a bundled artifact.
 """
-from __future__ import annotations
-
 import argparse
 import re
 import sys

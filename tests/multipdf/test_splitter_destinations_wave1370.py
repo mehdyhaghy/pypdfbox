@@ -14,8 +14,6 @@ Covers the splitter's link / destination fix-up post-pass:
 - Splitter does not propagate the source catalog's /Dest legacy flat
   dictionary into chunks.
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox import PDDocument, PDPage

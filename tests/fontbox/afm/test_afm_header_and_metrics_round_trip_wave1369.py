@@ -13,8 +13,6 @@ Covers the full top-to-bottom flow of a small AFM document:
   (``get_character_width``, ``get_average_character_width``,
   ``get_char_metric``) computed from the round-tripped data.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.afm import AFMParser, CharMetric, FontMetrics

@@ -12,8 +12,6 @@ Targets the 3 partial arrows surviving after wave 1396:
   ``get_encryption_key_length()`` returns a falsy value (e.g. 0) keeps
   the handler's default key length.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption

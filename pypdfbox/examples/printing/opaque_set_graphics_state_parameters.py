@@ -8,8 +8,6 @@ lines 176-217). Identical to the upstream
 ``CA`` to 1.0 before merging the ExtGState dict.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import Any
 

@@ -25,8 +25,6 @@ regardless of the host's default zone — the strict xmpbox parser attaches the
 default zone but the wall-clock fields are what these assertions check.
 """
 
-from __future__ import annotations
-
 from datetime import UTC
 
 import pytest

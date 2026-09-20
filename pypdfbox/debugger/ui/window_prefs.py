@@ -8,8 +8,6 @@ deliberately uses only the standard library to avoid pulling in
 ``platformdirs`` as a runtime dependency.
 """
 
-from __future__ import annotations
-
 import json
 import os
 import sys

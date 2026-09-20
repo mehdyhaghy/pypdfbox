@@ -15,8 +15,6 @@ Targets the residual branches:
   * :meth:`TypeMapping.get_associated_schema_object` — the
     ``create_and_add_default_schema_for_namespace`` branch.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import TypeMapping, XMPMetadata

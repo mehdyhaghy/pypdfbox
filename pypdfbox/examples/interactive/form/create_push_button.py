@@ -11,8 +11,6 @@ action, and appearance dictionary while leaving the appearance stream
 content empty. Documented in ``CHANGES.md``.
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.cos import COSDictionary

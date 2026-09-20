@@ -1,7 +1,5 @@
 """Hand-written tests for new ports under ``pypdfbox.text``."""
 
-from __future__ import annotations
-
 from pypdfbox.text.legacy_pdf_stream_engine import LegacyPDFStreamEngine
 from pypdfbox.text.line_item import LineItem
 

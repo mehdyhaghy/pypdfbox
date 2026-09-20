@@ -6,8 +6,6 @@ events fire ``SelectEvent`` and ``HexChangedEvent`` notifications via the
 listener lists exactly as upstream.
 """
 
-from __future__ import annotations
-
 import tkinter as tk
 from tkinter import font as tkfont
 

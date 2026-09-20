@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSBoolean, COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_movie import PDAnnotationMovie
 from pypdfbox.pdmodel.interactive.annotation.pd_movie_activation import PDMovieActivation

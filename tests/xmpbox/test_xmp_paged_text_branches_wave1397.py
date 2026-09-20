@@ -8,8 +8,6 @@ Closes False-branch arrows:
 * 223->225 — dict-form with no ``unit`` key
 """
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox import XMPMetadata
 from pypdfbox.xmpbox.type.dimensions_type import DimensionsType
 from pypdfbox.xmpbox.xmp_paged_text_schema import XMPageTextSchema

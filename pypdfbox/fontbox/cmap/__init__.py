@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .bf_char_entry import BFCharEntry
 from .bf_char_range import BFCharRange
 from .cid_range import CIDRange

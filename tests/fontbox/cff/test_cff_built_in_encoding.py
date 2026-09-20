@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`CFFBuiltInEncoding` and :class:`Supplement`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff.cff_built_in_encoding import (
     CFFBuiltInEncoding,
     Supplement,

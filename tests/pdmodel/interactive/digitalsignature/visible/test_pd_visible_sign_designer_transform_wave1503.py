@@ -14,8 +14,6 @@ These tests pin all three tiers plus the mutation-isolation contract that is
 the whole point of upstream's defensive copy.
 """
 
-from __future__ import annotations
-
 import copy
 
 import pytest

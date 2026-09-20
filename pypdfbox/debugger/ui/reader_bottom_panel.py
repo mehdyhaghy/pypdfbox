@@ -8,8 +8,6 @@ same structure using ``ttk.Frame`` + ``ttk.Label``; the log label is wired
 with a left-mouse-button binding to call ``LogDialog.instance().show()``.
 """
 
-from __future__ import annotations
-
 import contextlib
 import tkinter as tk
 from tkinter import ttk

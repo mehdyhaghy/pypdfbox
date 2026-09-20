@@ -1,7 +1,5 @@
 """Listener protocol for ``SelectEvent``."""
 
-from __future__ import annotations
-
 from typing import Protocol, runtime_checkable
 
 from pypdfbox.debugger.hexviewer.select_event import SelectEvent

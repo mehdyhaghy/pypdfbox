@@ -9,8 +9,6 @@ identity short-circuit, dictionary-based equality when both sides are
 ``PDDictionaryWrapper`` instances, otherwise unequal.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_attribute_object import (
     PDAttributeObject,

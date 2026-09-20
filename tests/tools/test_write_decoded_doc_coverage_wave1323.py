@@ -15,8 +15,6 @@ Targets the residual missing branches in
 * The ``__name__ == "__main__"`` block (line 113) via ``runpy``.
 """
 
-from __future__ import annotations
-
 import contextlib
 import subprocess
 import sys

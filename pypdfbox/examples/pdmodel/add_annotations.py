@@ -16,8 +16,6 @@ Deviation from upstream:
   appearance streams. Documented inline.
 """
 
-from __future__ import annotations
-
 import contextlib
 import sys
 

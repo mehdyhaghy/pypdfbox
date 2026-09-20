@@ -10,8 +10,6 @@ matrix via direct accessor calls — see :mod:`tests.xmpbox.upstream.
 test_xmp_basic_schema` for the typed-property round-trip pass.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 import pytest

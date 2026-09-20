@@ -18,8 +18,6 @@ These tests build small source docs and assert post-merge that:
   between two sources just because their COSObject numbers happen to
   collide).
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.cos import (

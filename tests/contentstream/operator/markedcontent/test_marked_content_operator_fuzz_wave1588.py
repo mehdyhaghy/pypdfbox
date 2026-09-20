@@ -20,8 +20,6 @@ Parity reference: PDFBox 3.x
 ``PDFStreamEngine.beginMarkedContentSequence``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream import Operator, PDFStreamEngine

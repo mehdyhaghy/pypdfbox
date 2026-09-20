@@ -7,8 +7,6 @@ Exercises the IOBase proxy methods (``readinto``, ``readable``,
 returns the last entry rather than the synthetic default.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import COSDictionary, COSInputStream

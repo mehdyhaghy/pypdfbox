@@ -6,8 +6,6 @@ entry must sort to the head of the array (parity with
 ``XMPSchema.reorganizeAltOrder``).
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.xmpbox.dom_xmp_parser import DomXmpParser

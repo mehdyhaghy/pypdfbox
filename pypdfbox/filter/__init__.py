@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .ascii85_decode import ASCII85Decode
 from .ascii85_filter import ASCII85Filter
 from .ascii85_input_stream import ASCII85InputStream

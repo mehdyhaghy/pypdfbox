@@ -16,8 +16,6 @@ pypdfbox-specific contract surface (logging strings, the
 ``resource_cache`` parity kwarg interaction).
 """
 
-from __future__ import annotations
-
 import logging
 
 import pytest

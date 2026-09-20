@@ -7,8 +7,6 @@ condition (``isinstance(stream, COSStream)`` AND ``/Type == /XObject``
 AND ``/Subtype == /Image``) was never exercised — the early ``return``
 on line 59 stayed grey.
 """
-from __future__ import annotations
-
 from pypdfbox.cos.cos_name import COSName
 from pypdfbox.cos.cos_stream import COSStream
 from pypdfbox.tools.write_decoded_doc import WriteDecodedDoc

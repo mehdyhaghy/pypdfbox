@@ -5,8 +5,6 @@ list, the ``if not lines`` guard takes its False arc and the bundled
 fallback sample is *not* substituted.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.examples.pdmodel.bengali_pdf_generation_hello_world import (

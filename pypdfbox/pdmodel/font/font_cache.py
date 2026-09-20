@@ -17,8 +17,6 @@ Implementation choice: hold strong references but expose
 upstream's contract — the cache is advisory, not authoritative.
 """
 
-from __future__ import annotations
-
 import threading
 import weakref
 from typing import TYPE_CHECKING

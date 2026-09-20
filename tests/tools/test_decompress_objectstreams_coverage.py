@@ -12,8 +12,6 @@ requires the PD-layer wrapper. The shim mirrors the
 ``_PDLoaderShim`` introduced in wave 1314 to bridge the two layers
 during testing.
 """
-from __future__ import annotations
-
 import contextlib
 import shutil
 from collections.abc import Iterator

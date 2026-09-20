@@ -16,8 +16,6 @@ Targets the residual missing branches in
 * ``render()`` happy path through fontTools.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.fontbox.cff.type1_char_string import (

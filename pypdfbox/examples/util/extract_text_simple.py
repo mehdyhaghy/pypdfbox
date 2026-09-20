@@ -4,8 +4,6 @@ lines 34-106).
 Streams the text of every page of a PDF to stdout, one page at a time.
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.pdmodel.pd_document import PDDocument

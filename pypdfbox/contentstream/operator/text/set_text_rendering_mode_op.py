@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSBase, COSNumber
 from pypdfbox.pdmodel.graphics.state import RenderingMode
 

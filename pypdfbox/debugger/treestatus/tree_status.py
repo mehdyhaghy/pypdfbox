@@ -9,8 +9,6 @@ representation of a path — so the class works equally well with Tkinter's
 with pure-logic call sites.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSObject

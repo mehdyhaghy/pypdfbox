@@ -13,8 +13,6 @@ into pure-data helpers (``build_menu_items(node, ...)`` returning a list of
 ``tk.Menu`` when shown.
 """
 
-from __future__ import annotations
-
 import os
 import tempfile
 import tkinter as tk
@@ -381,4 +379,4 @@ def _read_stream_partial(stream: COSStream, stop_index: int) -> bytes:
 
 
 # Backwards-compat sentinel referenced by COSObject.get_key in the renderer.
-_ = COSObject
+_ = COSObject  # keep the import alive for type checkers

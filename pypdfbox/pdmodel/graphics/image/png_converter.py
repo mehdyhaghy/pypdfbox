@@ -9,8 +9,6 @@ Pillow to read the PNG's dimensions / colour space and re-encode the
 samples on the way back into PDF.
 """
 
-from __future__ import annotations
-
 import logging
 import zlib
 from dataclasses import dataclass, field

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .begin_text import BeginText
 from .end_text import EndText
 from .move_text import MoveText

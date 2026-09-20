@@ -7,8 +7,6 @@ the contract the abstract base defines: bidirectional name <-> code lookup,
 ``overwrite`` semantics that mirror Java's ``Map.putIfAbsent``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.font.encoding import (
     Encoding,

@@ -15,8 +15,6 @@ branches directly with lightweight region stubs that supply a real
 * the get_segment / page-information / clear-page / get_height accessors.
 """
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.bitmap import Bitmap
 from pypdfbox.jbig2.jbig2_page import JBIG2Page
 from pypdfbox.jbig2.segments.generic_refinement_region import GenericRefinementRegion

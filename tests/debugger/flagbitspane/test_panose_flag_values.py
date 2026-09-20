@@ -7,8 +7,6 @@ indices raise ``IndexError`` (upstream Java raises ``ArrayIndexOutOfBounds``
 — the closest Python equivalent).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSString

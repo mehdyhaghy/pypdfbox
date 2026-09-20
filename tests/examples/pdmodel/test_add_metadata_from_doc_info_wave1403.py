@@ -5,8 +5,6 @@ Closes ``79->81``: when the document information carries no ``/Title``,
 title is left unset.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.examples.pdmodel.add_metadata_from_doc_info import (

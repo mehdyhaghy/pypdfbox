@@ -9,8 +9,6 @@ array, the all-zero dash-array drop, and the underline flag on
 ``STYLE_UNDERLINE``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName
 from pypdfbox.pdmodel.interactive.annotation.handlers.annotation_border import (
     AnnotationBorder,

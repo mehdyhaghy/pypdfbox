@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.pdmodel.font.pd_font_descriptor import (
     PDPanose,
     PDPanoseClassification,

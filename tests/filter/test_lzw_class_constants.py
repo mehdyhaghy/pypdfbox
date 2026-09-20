@@ -7,8 +7,6 @@ translating ``LZWFilter.CLEAR_TABLE`` / ``LZWFilter.EOD`` need them on
 the class itself, not just on the enclosing module.
 """
 
-from __future__ import annotations
-
 from pypdfbox.filter import LZWDecode, LZWFilter
 from pypdfbox.filter.lzw_decode import (
     CLEAR_TABLE as MODULE_CLEAR_TABLE,

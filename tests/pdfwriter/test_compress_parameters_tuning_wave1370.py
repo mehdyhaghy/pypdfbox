@@ -4,8 +4,6 @@ Centralizes coverage of the small but load-bearing ``CompressParameters``
 value object. Mirrors ``org.apache.pdfbox.pdfwriter.compress.CompressParameters``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdfwriter.compress.compress_parameters import CompressParameters

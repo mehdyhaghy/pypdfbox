@@ -17,8 +17,6 @@ problem in Python — ``pypdfbox.fontbox`` is allowed to import
 TYPE_CHECKING-only annotations.
 """
 
-from __future__ import annotations
-
 from .font_box_font import FontBoxFont
 
 

@@ -1,7 +1,5 @@
 """Tests for :class:`pypdfbox.fontbox.ttf.sub_header.SubHeader`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.sub_header import SubHeader
 
 

@@ -12,8 +12,6 @@ Targets the engine-coupled behaviours that exercise the shared
 * stroking vs non-stroking siblings are properly distinct.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

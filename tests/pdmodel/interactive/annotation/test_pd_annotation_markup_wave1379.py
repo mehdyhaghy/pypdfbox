@@ -11,8 +11,6 @@ specialised accessors on :class:`PDAnnotationLine`,
 to be exercised by their dedicated test modules.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName

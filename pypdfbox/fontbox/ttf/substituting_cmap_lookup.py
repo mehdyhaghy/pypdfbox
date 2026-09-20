@@ -4,8 +4,6 @@ Mirrors ``org.apache.fontbox.ttf.SubstitutingCmapLookup``
 (upstream ``SubstitutingCmapLookup.java`` L26-53).
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from .cmap_lookup import CmapLookup

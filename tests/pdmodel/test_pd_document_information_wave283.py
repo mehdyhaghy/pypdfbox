@@ -1,7 +1,5 @@
 """Wave 283 — PDDocumentInformation metadata accessor edge cases."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSInteger, COSName, COSString
 from pypdfbox.pdmodel import PDDocumentInformation
 

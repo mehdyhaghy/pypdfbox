@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSName
 from pypdfbox.pdmodel.interactive.annotation.handlers.annotation_border import (
     AnnotationBorder,

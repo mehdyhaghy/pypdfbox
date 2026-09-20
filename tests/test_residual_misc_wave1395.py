@@ -29,8 +29,6 @@ assertion targeting a specific missing line per the wave-1395 audit:
   short-circuits when ``to_cos_number_integer_list`` contains a ``None``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 # ---------- liberation_loader._resolve_key ----------

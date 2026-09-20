@@ -1,7 +1,5 @@
 """Wave 278 coverage for ``PDAnnotationLine`` convenience edges."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

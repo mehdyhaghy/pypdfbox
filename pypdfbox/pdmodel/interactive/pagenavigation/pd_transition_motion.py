@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 
 class PDTransitionMotion:
     """Direction of motion for a page transition.

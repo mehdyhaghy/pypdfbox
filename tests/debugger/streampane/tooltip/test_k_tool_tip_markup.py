@@ -1,7 +1,5 @@
 """Tests for the newly-promoted public surface of :class:`KToolTip`."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.debugger.streampane.tooltip import KToolTip

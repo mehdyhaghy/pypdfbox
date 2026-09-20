@@ -11,8 +11,6 @@ mirrors (``create_rdf_element``, ``fill_element_with_attributes``,
 ``normalize_attributes``, ``save``).
 """
 
-from __future__ import annotations
-
 import io
 from xml.dom.minidom import Document, parseString
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.rendering import test_pdf_renderer_shading_mesh as mesh_tests
 
 

@@ -9,8 +9,6 @@ same set of getters/setters and a ``render`` entry point that returns a
 Python analogue for sending a page to a Pillow-based printer backend.
 """
 
-from __future__ import annotations
-
 from enum import Enum
 from typing import TYPE_CHECKING
 

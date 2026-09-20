@@ -11,8 +11,6 @@ When upstream eventually adds a ``Type1LexerTest`` we should re-port
 the cases here and keep filenames upstream-identical.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.type1.type1_parser import (

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Callable
 from types import FrameType
 from typing import cast

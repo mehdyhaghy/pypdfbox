@@ -11,8 +11,6 @@ Closes the remaining uncovered branches:
 * line 1272 — missing ``endstream`` marker raise.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSObjectKey, COSStream

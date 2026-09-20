@@ -8,8 +8,6 @@ file exercises it via the upstream-equivalent path and asserts identity with
 the taggedpdf re-export so both import paths refer to the same class.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.documentinterchange.markedcontent import (
     PDArtifactMarkedContent,

@@ -15,8 +15,6 @@ This file focuses on the corner cases that aren't directly covered:
 * Transparency group with ``/I true`` and ``/K`` not present — the
   default (``False``) knockout behavior is followed.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSBoolean,

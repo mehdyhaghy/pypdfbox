@@ -1,7 +1,5 @@
 """Tests for the newly-promoted view helpers on :class:`SignaturePane`."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSString
 from pypdfbox.debugger.signaturepane.signature_pane import SignaturePane
 

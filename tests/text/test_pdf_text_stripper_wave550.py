@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName, COSStream, COSString
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.text import PDFTextStripper, TextPosition

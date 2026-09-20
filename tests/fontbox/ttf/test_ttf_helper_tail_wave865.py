@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from tests.fontbox.ttf import test_true_type_font as true_type_mod

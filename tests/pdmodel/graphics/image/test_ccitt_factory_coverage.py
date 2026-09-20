@@ -11,8 +11,6 @@ read, ``FillOrder=2`` bit-reversal, tile-offset (tags 324/325) parsing,
 ``Photometric=1`` BlackIs1 inference, and explicit Columns/Rows tags.
 """
 
-from __future__ import annotations
-
 import io
 import struct
 

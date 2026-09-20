@@ -5,8 +5,6 @@ Drives the fallback branches of ``get_number_of_components`` /
 helpers that the wave-1281 smoke tests skipped.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.graphics.color import PDJPXColorSpace

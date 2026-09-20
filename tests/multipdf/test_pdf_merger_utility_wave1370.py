@@ -15,8 +15,6 @@ Covers append-time invariants that are easy to assert structurally:
 - ``/AcroForm`` join-fields mode keeps the original name on both copies
   (concatenation, no rename).
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 from pypdfbox.cos import (

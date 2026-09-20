@@ -9,8 +9,6 @@ Image output uses Pillow (already a transitive dependency of
 :mod:`pypdfbox.rendering`).
 """
 
-from __future__ import annotations
-
 import contextlib
 from pathlib import Path
 from typing import Any

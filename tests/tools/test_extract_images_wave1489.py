@@ -16,8 +16,6 @@ Wave 1489 audited :meth:`ImageGraphicsEngine.write2file` against upstream
 These tests exercise the real :class:`PDImageXObject` produced by the JPEG and
 lossless factories so the actual write paths run end-to-end.
 """
-from __future__ import annotations
-
 import hashlib
 from pathlib import Path
 

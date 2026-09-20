@@ -22,8 +22,6 @@ checked against Apache PDFBox 3.0.7 semantics:
 * an empty filter list (passthrough).
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

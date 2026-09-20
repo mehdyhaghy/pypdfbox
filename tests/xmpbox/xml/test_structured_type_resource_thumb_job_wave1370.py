@@ -7,8 +7,6 @@ introspection, and basic XmpSerializer behaviour when a structured type
 sits as a property value.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.xmpbox.type.job_type import JobType

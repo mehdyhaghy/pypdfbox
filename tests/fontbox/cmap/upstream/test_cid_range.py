@@ -3,8 +3,6 @@
 Source: ``fontbox/src/test/java/org/apache/fontbox/cmap/CIDRangeTest.java``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cmap import CIDRange
 
 

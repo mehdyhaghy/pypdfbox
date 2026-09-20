@@ -6,8 +6,6 @@ the public surface mirrored from
 constructor, getters, and ``toString`` formatting.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub import LangSysTable
 
 

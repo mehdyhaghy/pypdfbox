@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from fontTools.cffLib import cffStandardStrings  # type: ignore[import-untyped]
 
 # Number of CFF Standard Strings per Adobe Technote #5176 §10:

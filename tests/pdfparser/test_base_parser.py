@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.io import RandomAccessReadBuffer
@@ -451,10 +449,10 @@ def test_get_object_key_reuses_xref_table_instance() -> None:
 
     doc = COSDocument()
     cached = COSObjectKey(7, 0)
-    doc._xref_table[cached] = 100
+    doc._xref_table[cached] = 100  # populate xref directly for the test
 
     p = parser(b"")
-    p._document = doc
+    p._document = doc  # BaseParser exposes only the property publicly
     found = p.get_object_key(7, 0)
     assert found is cached
 
@@ -524,7 +522,7 @@ def test_get_object_from_pool_returns_pool_object() -> None:
 
     doc = COSDocument()
     p = parser(b"")
-    p._document = doc
+    p._document = doc  # set protected field directly for the test
     obj = p.get_object_from_pool(COSObjectKey(3, 0))
     # Same key returns the same placeholder.
     assert p.get_object_from_pool(COSObjectKey(3, 0)) is obj

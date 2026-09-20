@@ -11,8 +11,6 @@ The predicates inspect only the COS layer via ``contains_key`` —
 they never materialise a wrapper.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSString

@@ -15,8 +15,6 @@ Targets the residual partial branches in
   default-throwable fallback.
 """
 
-from __future__ import annotations
-
 import contextlib
 import os
 import tkinter as tk

@@ -5,8 +5,6 @@ a type 2 (exponential) function, plus a type 4 (Gouraud) free-form
 triangle-mesh shading whose vertex stream is built by hand.
 """
 
-from __future__ import annotations
-
 import io
 import struct
 import sys

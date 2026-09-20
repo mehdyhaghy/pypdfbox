@@ -8,8 +8,6 @@ and ``to_hex_string``.
 Mirrors the public-API shape of ``org.apache.pdfbox.pdfwriter.COSWriter``.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

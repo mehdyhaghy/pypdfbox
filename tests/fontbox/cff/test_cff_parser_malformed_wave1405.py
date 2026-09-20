@@ -12,8 +12,6 @@ upstream ``CFFParser``, which throws ``IOException``). Found by the wave-1405
 fuzz harness.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.cff_parser import CFFParser

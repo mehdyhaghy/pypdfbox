@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import tests.multipdf.test_splitter_wave503 as wave503
 from pypdfbox.cos import COSDictionary, COSName
 

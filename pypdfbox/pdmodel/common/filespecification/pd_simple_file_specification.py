@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSString
 
 from .pd_file_specification import PDFileSpecification

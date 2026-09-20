@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 
 class COSDocumentState:
     """Lifecycle marker that distinguishes a document still being parsed

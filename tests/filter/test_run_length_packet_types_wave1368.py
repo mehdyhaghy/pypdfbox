@@ -11,8 +11,6 @@ ISO 32000-1 §7.4.5 packet grammar:
 Tests pin every band of the length-byte alphabet and the EOD handling.
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import COSDictionary

@@ -10,8 +10,6 @@ Pillow's JPEG-2000 codec is required for both encode and decode. When
 are skipped (Pillow itself reports this via ``PIL.features.check``).
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

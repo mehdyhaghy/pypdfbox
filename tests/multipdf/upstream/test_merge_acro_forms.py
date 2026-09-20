@@ -16,8 +16,6 @@ We additionally port the trivial AcroFormMergeMode setter contract that
 upstream's ``testLegacyModeMerge`` exercises before the file-IO portion.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.multipdf import AcroFormMergeMode, PDFMergerUtility

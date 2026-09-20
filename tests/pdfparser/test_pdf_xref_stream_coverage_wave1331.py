@@ -11,8 +11,6 @@ Targets uncovered lines 46-48, 106, 108, 121, 146, 168-172, 182, 203 in
 * the multi-range gap branch in ``_get_index_entry``
 """
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import (

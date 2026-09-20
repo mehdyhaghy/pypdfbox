@@ -15,8 +15,6 @@ behaviour and multi-region routing:
   - ``setLineSeparator("")`` flows through to region text (upstream's
     parity behaviour from ``PDFTextStripperByAreaTest.testSomeMethod``).
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSStream

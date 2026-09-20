@@ -17,8 +17,6 @@ cloudy-border branch. This file closes the remaining gaps:
   ``set_matrix`` wiring on the appearance stream.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSFloat, COSInteger
 from pypdfbox.pdmodel.interactive.annotation.handlers.pd_square_appearance_handler import (
     PDSquareAppearanceHandler,

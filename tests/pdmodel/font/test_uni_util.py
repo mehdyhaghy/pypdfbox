@@ -5,8 +5,6 @@ exercised only through font-name generation. We cover all four
 length-branches of the upstream switch ladder.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.font.uni_util import UniUtil, get_uni_name_of_code_point

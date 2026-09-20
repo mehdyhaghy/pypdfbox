@@ -1,7 +1,5 @@
 """Widget tests for ``UpperPane``."""
 
-from __future__ import annotations
-
 import tkinter as tk
 
 from pypdfbox.debugger.hexviewer.upper_pane import UpperPane

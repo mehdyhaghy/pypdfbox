@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`CFFISOAdobeCharset`."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.cff import CFFISOAdobeCharset
 
 

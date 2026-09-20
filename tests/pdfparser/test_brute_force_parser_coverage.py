@@ -5,8 +5,6 @@ xref rebuild, catalog/info heuristics, nearest-value helper, and the
 ``getattr``-based fallbacks for delegators that have no specialized
 implementation in the inherited ``COSParser`` yet."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDocument
 from pypdfbox.cos.cos_array import COSArray
 from pypdfbox.cos.cos_dictionary import COSDictionary

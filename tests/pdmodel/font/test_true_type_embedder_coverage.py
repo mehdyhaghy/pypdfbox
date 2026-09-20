@@ -14,8 +14,6 @@ fixture we exercise:
 * ``_compute_gid_to_cid`` numGlyphs path.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 from typing import Any

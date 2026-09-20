@@ -18,8 +18,6 @@ PDFBOX-4453 is the one upstream test that constructs its own input
 document in-line — we port that one here.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.contentstream.operator import Operator
 from pypdfbox.contentstream.operator.path import CloseAndStrokePath
 from pypdfbox.contentstream.operator.path.close_and_stroke_path import (

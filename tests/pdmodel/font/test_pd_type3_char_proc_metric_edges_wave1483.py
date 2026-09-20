@@ -22,8 +22,6 @@ Those leniency cases are pinned in the existing char-proc tests and are NOT
 re-asserted differentially here (the probe omits them).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSStream
 from pypdfbox.pdmodel.font.pd_type3_char_proc import PDType3CharProc
 from pypdfbox.pdmodel.font.pd_type3_font import PDType3Font

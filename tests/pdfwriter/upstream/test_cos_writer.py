@@ -24,8 +24,6 @@ broader writer surface; this file holds the strictly-ported upstream
 checks.
 """
 
-from __future__ import annotations
-
 import io
 import sys
 from pathlib import Path

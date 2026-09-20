@@ -9,8 +9,6 @@ record stays purely a data class — Tkinter rendering converts the tuple
 to ``#RRGGBB`` at draw time.
 """
 
-from __future__ import annotations
-
 
 class DeviceNColorant:
     """One colorant in a ``/DeviceN`` color space.

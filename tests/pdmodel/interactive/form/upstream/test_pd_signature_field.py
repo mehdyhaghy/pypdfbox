@@ -12,8 +12,6 @@ Skipped upstream cases:
   ``get_signed_data(document_bytes)`` for the byte-range slice — the
   upstream test belongs in the digital-signature test cluster, not here.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSName

@@ -44,8 +44,6 @@ Both bugs are exercised by ``test_otf_cff_*`` below: before the fix the
 OTF-CFF normalized path came back ``[]``.
 """
 
-from __future__ import annotations
-
 import io
 from typing import Any
 

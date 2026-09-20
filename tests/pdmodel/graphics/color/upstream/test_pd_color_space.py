@@ -8,8 +8,6 @@ the base class itself per ``PDColorSpace.java``: ``create`` dispatch,
 contract, the protected AWT helpers, and ``getCOSObject``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSName

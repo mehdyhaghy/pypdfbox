@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.fontbox.font_format import FontFormat
 from tests.fontbox.test_font_info import _StubFontInfo
 from tests.fontbox.test_font_provider import _ListProvider, _StubInfo

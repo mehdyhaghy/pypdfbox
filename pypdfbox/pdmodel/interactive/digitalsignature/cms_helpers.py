@@ -37,8 +37,6 @@ This module intentionally exposes only the smallest possible surface
 to keep the DER plumbing auditable.
 """
 
-from __future__ import annotations
-
 # OID 1.2.840.113549.1.9.16.2.14  (id-aa-timeStampToken, RFC 3161 §3.3.2).
 # Encoded as a DER OID: 06 0B 2A 86 48 86 F7 0D 01 09 10 02 0E.
 _ID_AA_TIME_STAMP_TOKEN_OID_DER: bytes = bytes(

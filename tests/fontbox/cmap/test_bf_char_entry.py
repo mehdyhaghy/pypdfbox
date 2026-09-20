@@ -1,7 +1,5 @@
 """Hand-written tests for ``BFCharEntry`` (pypdfbox addition)."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cmap import BFCharEntry

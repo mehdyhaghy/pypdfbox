@@ -9,8 +9,6 @@ When no OTF is available the module skips — same convention as
 ``test_cff_font_parity``.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

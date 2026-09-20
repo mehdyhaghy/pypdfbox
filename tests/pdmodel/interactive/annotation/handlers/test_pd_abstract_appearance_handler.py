@@ -5,8 +5,6 @@ base falls out of subclass tests in PDFBox. We exercise the base directly
 via a concrete no-op subclass.
 """
 
-from __future__ import annotations
-
 import math
 
 from pypdfbox.cos import COSArray, COSFloat, COSName

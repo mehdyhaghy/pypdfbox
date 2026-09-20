@@ -1,7 +1,5 @@
 """Wave 1275 parity tests for RandomAccessReadBufferedFile."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

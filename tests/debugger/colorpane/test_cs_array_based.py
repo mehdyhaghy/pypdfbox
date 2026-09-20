@@ -10,8 +10,6 @@ skips on headless. Tests cover three branches of the upstream
   renders the error message.
 """
 
-from __future__ import annotations
-
 from tkinter import ttk
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName

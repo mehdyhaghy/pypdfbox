@@ -33,8 +33,6 @@ int objectStart, int count)`` — they take a parallel sequence of objects
 and reorder them in place to match the visual order implied by the
 embedding levels.
 """
-from __future__ import annotations
-
 import unicodedata
 from typing import Any
 

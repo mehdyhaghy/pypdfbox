@@ -1,7 +1,5 @@
 """Wave 1281: RandomAccessOutputStream adapter port."""
 
-from __future__ import annotations
-
 from pypdfbox.io import RandomAccessOutputStream, RandomAccessReadWriteBuffer
 
 

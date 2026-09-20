@@ -9,8 +9,6 @@ above 10,000,000 bytes and exposes
 high-resolution documents.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

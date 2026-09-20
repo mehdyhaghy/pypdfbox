@@ -1,7 +1,5 @@
 """Tests for ``SigUtils``."""
 
-from __future__ import annotations
-
 import datetime as _dt
 
 import pytest

@@ -4,8 +4,6 @@ Each test exercises ``main()`` of one example against a temporary output
 path and verifies the resulting PDF is non-empty and starts with ``%PDF``.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

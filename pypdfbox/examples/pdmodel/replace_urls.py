@@ -3,8 +3,6 @@
 Replaces every URL link in a PDF with ``http://pdfbox.apache.org``.
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.pdmodel.interactive.action.pd_action_uri import PDActionURI

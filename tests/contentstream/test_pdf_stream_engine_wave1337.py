@@ -17,8 +17,6 @@ Targets the residual branches:
   * ``transformed_point`` — ctm + transform_point edge cases              (1210, 1213, 1216-1217)
   * ``_require_min_operands`` — too few operands raise                    (1238-1239)
 """
-from __future__ import annotations
-
 import io
 from typing import Any
 

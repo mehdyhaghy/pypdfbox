@@ -15,8 +15,6 @@ Each test name corresponds to the upstream branch being exercised so a
 coverage regression bisect maps straight back to the source operation.
 """
 
-from __future__ import annotations
-
 import struct
 from typing import Any
 from unittest.mock import patch

@@ -1,7 +1,5 @@
 """Wave 372 synthetic GSUB coverage for PDType0Font."""
 
-from __future__ import annotations
-
 from types import SimpleNamespace
 
 import pytest

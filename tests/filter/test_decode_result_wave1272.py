@@ -1,8 +1,6 @@
 """Wave 1272: parity coverage for ``DecodeResult.get_jpxs_mask`` /
 ``set_jpxs_mask`` snake-case spelling aliases."""
 
-from __future__ import annotations
-
 from pypdfbox.filter.decode_result import DecodeResult
 
 

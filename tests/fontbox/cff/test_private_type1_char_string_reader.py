@@ -1,7 +1,5 @@
 """Hand-written tests for ``PrivateType1CharStringReader``."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.private_type1_char_string_reader import (

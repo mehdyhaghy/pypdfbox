@@ -4,8 +4,6 @@ The pre-existing ``test_standard14_afm.py`` covers width / font-descriptor
 behaviour. This file exercises the new accessors added when the loader was
 ported to the in-tree :class:`pypdfbox.fontbox.afm.AFMParser`.
 """
-from __future__ import annotations
-
 from importlib import resources
 
 from pypdfbox.fontbox.afm import AFMParser, CharMetric, FontMetrics, KernPair, Ligature

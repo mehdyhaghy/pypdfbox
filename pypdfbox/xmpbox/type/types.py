@@ -18,8 +18,6 @@ equal-valued members into aliases. Without the discriminator
 ``GPSCoordinate``, losing two of upstream's 38 constants.
 """
 
-from __future__ import annotations
-
 from enum import Enum
 
 

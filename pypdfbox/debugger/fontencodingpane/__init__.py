@@ -5,8 +5,6 @@ Type3) and renders glyph thumbnails next to their PostScript name and
 Unicode mapping. Mirrors the upstream Swing widget set 1:1.
 """
 
-from __future__ import annotations
-
 from pypdfbox.debugger.fontencodingpane.font_encoding_pane_controller import (
     FontEncodingPaneController,
 )

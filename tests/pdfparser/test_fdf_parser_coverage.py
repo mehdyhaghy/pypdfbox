@@ -5,8 +5,6 @@ post-header missing-root branches and exercises the
 ``initial_parse`` public mirror plus ``parse_fdf_header`` delegation.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSDocument, COSName

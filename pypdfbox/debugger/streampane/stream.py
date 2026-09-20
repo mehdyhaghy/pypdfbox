@@ -17,8 +17,6 @@ Each entry maps to the list of ``stop_filters`` accepted by
 or raw views, handled by the dispatcher in :meth:`get_stream`.
 """
 
-from __future__ import annotations
-
 import logging
 from collections import OrderedDict
 from typing import BinaryIO
@@ -123,7 +121,7 @@ class Stream:
             return image_x_object.get_image()
         except OSError as exc:
             _LOG.error("%s", exc)
-        except Exception as exc:
+        except Exception as exc:  # surface unexpected decode failures
             _LOG.error("image decode failed: %s", exc)
         return None
 

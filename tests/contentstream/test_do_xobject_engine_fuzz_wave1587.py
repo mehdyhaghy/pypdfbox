@@ -23,8 +23,6 @@ and ``PDFStreamEngine.processStream`` (pushes the stream's ``/Resources``,
 restores the parent's afterwards).
 """
 
-from __future__ import annotations
-
 import contextlib
 from typing import Any
 
@@ -47,7 +45,7 @@ from pypdfbox.pdmodel.missing_resource_exception import MissingResourceException
 # Fake XObject types — the engine dispatches on ``type(obj).__name__`` so the
 # class names must match the upstream PDXObject subclasses exactly.
 # --------------------------------------------------------------------------
-class PDImageXObject:
+class PDImageXObject:  # mirrors upstream class name for dispatch
     def __init__(self, stencil: bool = False) -> None:
         self._stencil = stencil
 
@@ -55,11 +53,11 @@ class PDImageXObject:
         return self._stencil
 
 
-class PDFormXObject:
+class PDFormXObject:  # mirrors upstream class name for dispatch
     is_form_xobject = True
 
 
-class PDTransparencyGroup:
+class PDTransparencyGroup:  # mirrors upstream class name
     is_form_xobject = True
 
 

@@ -12,8 +12,6 @@ directly. This module exposes the same surface for parity tooling and
 delegates the COSObject-backed accessors to ``PDShading``.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos.cos_dictionary import COSDictionary

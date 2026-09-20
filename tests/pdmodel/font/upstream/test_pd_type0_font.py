@@ -10,8 +10,6 @@ files. Subset / load round-trips driven by Liberation Sans live in the
 hand-written ``test_pd_type0_font.py`` and ``test_pd_type0_font_subset.py``.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

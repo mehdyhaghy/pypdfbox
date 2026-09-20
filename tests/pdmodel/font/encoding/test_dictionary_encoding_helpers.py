@@ -5,8 +5,6 @@ Covers ``is_type3``, ``has_base_encoding``, ``get_base_encoding_name``, and
 ``get_base_encoding`` / ``get_differences`` surface.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.font.encoding import (
     BuiltInEncoding,

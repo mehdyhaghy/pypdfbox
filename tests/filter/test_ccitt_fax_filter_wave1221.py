@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.filter.test_ccitt_fax_filter import _decode_params
 
 

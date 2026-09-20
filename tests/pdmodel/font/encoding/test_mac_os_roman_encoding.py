@@ -5,8 +5,6 @@ glyph-name differences (high-bit math symbols, Apple logo, Euro sign).
 Mirrors ``org.apache.pdfbox.pdmodel.font.encoding.MacOSRomanEncoding``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.font.encoding import (
     Encoding,
     MacOSRomanEncoding,

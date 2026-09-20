@@ -9,8 +9,6 @@ Setters use the unprefixed name (e.g. ``signer_name`` instead of
 upstream fluent shape.
 """
 
-from __future__ import annotations
-
 import copy
 import struct
 from pathlib import Path

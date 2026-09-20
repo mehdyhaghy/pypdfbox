@@ -11,8 +11,6 @@ tests. Each match is returned as a :class:`Highlight` record carrying the
 render it.
 """
 
-from __future__ import annotations
-
 import logging
 import re
 from collections.abc import Callable

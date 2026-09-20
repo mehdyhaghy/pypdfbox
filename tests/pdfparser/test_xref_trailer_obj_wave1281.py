@@ -1,7 +1,5 @@
 """Wave 1281: XrefTrailerObj data class port."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSObjectKey
 from pypdfbox.pdfparser import XrefTrailerObj, XrefType
 

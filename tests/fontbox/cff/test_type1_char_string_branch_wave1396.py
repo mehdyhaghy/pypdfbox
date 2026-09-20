@@ -8,8 +8,6 @@ these tests drive each arm with too-few operands to close the False
 branches reported at 451->521, 457->521, ..., 508->521.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.type1_char_string import (

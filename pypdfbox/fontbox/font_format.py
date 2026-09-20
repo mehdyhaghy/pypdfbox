@@ -17,8 +17,6 @@ Upstream Java is a plain ``enum`` with no methods; we keep parity with
 or string equality (``str(FontFormat.TTF) == "FontFormat.TTF"``).
 """
 
-from __future__ import annotations
-
 from enum import Enum
 
 

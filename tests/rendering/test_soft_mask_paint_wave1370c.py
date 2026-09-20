@@ -12,8 +12,6 @@ treated the return as a packed ARGB int), the transfer-function
 short-circuit, and the per-pixel mixing behaviour in
 ``SoftPaintContext.get_raster``.
 """
-from __future__ import annotations
-
 from typing import Any
 
 from PIL import Image

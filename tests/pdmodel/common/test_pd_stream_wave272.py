@@ -1,7 +1,5 @@
 """Wave 272 — PDStream parity round-out tests."""
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.cos import COSName, COSStream

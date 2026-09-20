@@ -14,8 +14,6 @@ control flow is in error paths that aren't otherwise exercised:
 * :meth:`close` is idempotent — calling it twice is a no-op.
 """
 
-from __future__ import annotations
-
 from io import BytesIO
 
 import pytest

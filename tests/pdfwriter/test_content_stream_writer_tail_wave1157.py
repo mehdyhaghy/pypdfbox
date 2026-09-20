@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from tests.pdfwriter import test_content_stream_writer_tail_wave782 as wave782

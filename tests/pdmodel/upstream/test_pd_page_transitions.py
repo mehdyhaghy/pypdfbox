@@ -9,8 +9,6 @@ the same value is exposed via :meth:`PDTransition.get_direction_cos` —
 :meth:`get_direction` itself returns a plain Python ``int`` for ergonomics.
 We test both ways so the parity is unambiguous.
 """
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

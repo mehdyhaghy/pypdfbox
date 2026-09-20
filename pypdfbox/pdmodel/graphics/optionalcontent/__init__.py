@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .pd_optional_content_configuration import PDOptionalContentConfiguration
 from .pd_optional_content_group import PDOptionalContentGroup, RenderState
 from .pd_optional_content_group_usage import (

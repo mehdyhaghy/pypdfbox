@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 from .cff_font import CFFFont
@@ -394,7 +392,7 @@ class CFFCIDFont(CFFFont):
                 return gid
         return 0
 
-    def is_cid_font(self) -> bool:
+    def is_cid_font(self) -> bool:  # overrides base
         """A :class:`CFFCIDFont` is, by definition, a CIDKeyed font."""
         return True
 

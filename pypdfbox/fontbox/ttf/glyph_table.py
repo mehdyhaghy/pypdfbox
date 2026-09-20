@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from .glyph_data import GlyphData
@@ -69,7 +67,7 @@ class GlyphTable(TTFTable):
         # each :class:`GlyphData`, mirroring upstream ``getGlyphData``.
         try:
             self._hmtx = ttf.get_horizontal_metrics()
-        except Exception:
+        except Exception:  # hmtx is optional/defensive
             self._hmtx = None
         if self._num_glyphs < self.MAX_CACHE_SIZE:
             self._glyphs = [None] * self._num_glyphs
@@ -103,7 +101,7 @@ class GlyphTable(TTFTable):
         if self._hmtx is not None:
             try:
                 left_side_bearing = self._hmtx.get_left_side_bearing(gid)
-            except Exception:
+            except Exception:  # defensive, mirror "no shift"
                 left_side_bearing = None
         glyph = GlyphData(
             glyf_table=self._glyf_table,

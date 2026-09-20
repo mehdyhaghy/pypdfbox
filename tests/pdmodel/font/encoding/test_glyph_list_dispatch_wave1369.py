@@ -10,8 +10,6 @@ This is the canonical fallback when no /ToUnicode CMap is present
 (the most common case for the Standard14 Type 1 fonts).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.encoding.glyph_list import GlyphList

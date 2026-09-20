@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import io
 import logging
 from collections.abc import Iterable, Sequence
@@ -439,7 +437,7 @@ class COSStream(COSDictionary):
         ):
             try:
                 head = bytes(self.get_raw_data()[:9])
-            except Exception:
+            except Exception:  # defensive; fall through to decrypt
                 head = b""
             if head == b"<?xpacket":
                 _LOG.warning(

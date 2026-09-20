@@ -17,8 +17,6 @@ shape as a structural surrogate: add a page with a content stream,
 save, reload, verify the new page is present.
 """
 
-from __future__ import annotations
-
 from io import BytesIO
 from pathlib import Path
 

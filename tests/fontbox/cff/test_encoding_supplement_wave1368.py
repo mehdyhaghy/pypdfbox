@@ -12,8 +12,6 @@ Exercises both formats with and without the supplement bit + boundary
 cases (zero codes, zero ranges, single-byte ranges).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.cff_built_in_encoding import Supplement

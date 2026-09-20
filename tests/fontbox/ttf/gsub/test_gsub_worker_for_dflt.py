@@ -5,8 +5,6 @@ real Lohit-Devanagari font, which we don't ship. We instead drive the
 worker with synthetic :class:`GsubData` carrying small feature tables.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub import GsubData, GsubWorkerForDflt
 
 

@@ -17,8 +17,6 @@ also exposed for callers that *do* want to embed the dialog as a real
 inert otherwise.
 """
 
-from __future__ import annotations
-
 import contextlib
 import tkinter as tk
 import traceback

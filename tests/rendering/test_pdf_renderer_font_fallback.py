@@ -14,8 +14,6 @@ and no ``/Widths`` would otherwise advance by the renderer's 500.0 / 0.0
 fallback — but with the chain in place the AFM (Standard 14) width
 flows through and produces a different text-matrix advance per glyph.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.fontbox.font_mappers import FontMappers
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle

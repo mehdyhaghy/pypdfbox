@@ -17,8 +17,6 @@ PDFBox-port roadmap:
   smoke test — the chosen mode must be the one exercised at merge time.
 """
 
-from __future__ import annotations
-
 import logging
 from pathlib import Path
 

@@ -7,8 +7,6 @@ the PDF-encoded form are translated through pypdfbox's ``COSWriter``
 string helpers.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

@@ -12,8 +12,6 @@ namespace declarations. We exercise:
 * The constructor raise (utility-class guard).
 """
 
-from __future__ import annotations
-
 from xml.dom.minidom import parseString
 
 import pytest

@@ -23,8 +23,6 @@ Covered here:
   dereferencing — both mirror upstream's null-key handling.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos.cos_array import COSArray
 from pypdfbox.cos.cos_dictionary import COSDictionary
 from pypdfbox.cos.cos_name import COSName

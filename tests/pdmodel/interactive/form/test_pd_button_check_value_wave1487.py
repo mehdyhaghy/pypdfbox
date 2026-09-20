@@ -17,8 +17,6 @@ Behaviour pinned against the live oracle in
 ``oracle/test_button_check_value_oracle.py``; these are the hand-written API
 exercises.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream

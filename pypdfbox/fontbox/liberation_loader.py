@@ -39,8 +39,6 @@ fall back to :data:`DEJAVU_PATH` (DejaVu Sans), which carries broader
 Unicode coverage than Liberation.
 """
 
-from __future__ import annotations
-
 import functools
 from importlib import resources
 from pathlib import Path

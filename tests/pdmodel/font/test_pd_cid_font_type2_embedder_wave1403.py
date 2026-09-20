@@ -10,8 +10,6 @@ width compressor in :mod:`pypdfbox.pdmodel.font.pd_cid_font_type2_embedder`.
   falls through to the ``return outer`` at 617.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSInteger
 from pypdfbox.pdmodel.font.pd_cid_font_type2_embedder import _encode_widths
 

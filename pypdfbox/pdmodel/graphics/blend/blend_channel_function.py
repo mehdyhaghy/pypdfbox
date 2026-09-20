@@ -7,8 +7,6 @@ Python we expose a ``Protocol`` + ``__call__`` and a tiny adapter so
 callers can wrap a plain function.
 """
 
-from __future__ import annotations
-
 from collections.abc import Callable
 
 

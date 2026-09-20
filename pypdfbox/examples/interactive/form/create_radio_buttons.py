@@ -9,8 +9,6 @@ up the radio button structure and skips the per-widget appearance stream
 hand-painting — that lands with the rendering / appearance cluster.
 """
 
-from __future__ import annotations
-
 import contextlib
 import sys
 

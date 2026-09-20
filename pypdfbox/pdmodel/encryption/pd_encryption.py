@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 
 from .pd_crypt_filter_dictionary import PDCryptFilterDictionary

@@ -17,8 +17,6 @@ public method names that we are required to expose when extending
 ``BasePen``.
 """
 
-from __future__ import annotations
-
 from typing import Any, Protocol
 
 

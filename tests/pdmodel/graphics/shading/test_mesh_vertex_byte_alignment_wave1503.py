@@ -18,8 +18,6 @@ companion test confirms the patch decoder leaves the cross-patch bit cursor
 untouched.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSFloat, COSName, COSStream

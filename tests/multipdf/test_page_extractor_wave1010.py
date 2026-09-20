@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.multipdf.test_page_extractor_wave369 import _InfoSource
 
 

@@ -8,8 +8,6 @@ to avoid duplication; we re-export it from here so callers can still
 reach ``Key`` through ``CharStringCommand``-style lookups.
 """
 
-from __future__ import annotations
-
 from typing import ClassVar
 
 from .type1_keyword import Key

@@ -10,8 +10,6 @@ fail the test. Pypdfbox's lite port keeps the field-population half
 and drops the rendering compare half.
 """
 
-from __future__ import annotations
-
 import pathlib
 
 from pypdfbox.pdmodel import PDDocument

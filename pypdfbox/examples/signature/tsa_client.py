@@ -6,8 +6,6 @@ keep the public surface identical and provide a pluggable transport so
 tests don't need a real TSA server (pass ``transport=`` to inject a fake).
 """
 
-from __future__ import annotations
-
 import base64
 import logging
 import secrets
@@ -39,7 +37,7 @@ class TSAClient:
         url: str,
         username: str | None,
         password: str | None,
-        digest,
+        digest,  # hashlib-style
         transport: Callable[[bytes, str, dict[str, str]], bytes] | None = None,
     ) -> None:
         self._url = url
@@ -102,11 +100,11 @@ class TSAClient:
             return self._transport(request, self._url, headers)
 
         req = Request(self._url, data=request, headers=headers, method="POST")
-        with urlopen(req, timeout=30) as resp:
+        with urlopen(req, timeout=30) as resp:  # URL comes from user config
             return resp.read()
 
 
-def _reset(digest):
+def _reset(digest):  # hashlib doesn't have reset()
     import hashlib
 
     return hashlib.new(getattr(digest, "name", "sha256"))

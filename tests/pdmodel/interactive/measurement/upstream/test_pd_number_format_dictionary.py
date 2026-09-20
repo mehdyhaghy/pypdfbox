@@ -11,8 +11,6 @@ contract — defaults, validation, and round-tripping through the wrapped
 file in the future, this module should be replaced with a direct port.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName

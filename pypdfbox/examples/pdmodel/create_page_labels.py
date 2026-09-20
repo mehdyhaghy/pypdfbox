@@ -3,8 +3,6 @@
 Create a 3-page PDF with page labels "RO III", "RO IV", "1".
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.pd_document import PDDocument
 from pypdfbox.pdmodel.pd_page import PDPage
 from pypdfbox.pdmodel.pd_page_label_range import PDPageLabelRange

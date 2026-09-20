@@ -37,8 +37,6 @@ FD's Private DICT (defaultWidthX / nominalWidthX / local subrs) is selected
 per-GID through /FDSelect.
 """
 
-from __future__ import annotations
-
 import struct
 from pathlib import Path
 

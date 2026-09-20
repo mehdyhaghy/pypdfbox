@@ -1,7 +1,5 @@
 """Widget tests for ``HexPane``."""
 
-from __future__ import annotations
-
 import tkinter as tk
 
 from pypdfbox.debugger.hexviewer.hex_change_listener import HexChangeListener  # noqa: F401

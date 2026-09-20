@@ -5,8 +5,6 @@ Ported from ``org.apache.fontbox.cff.CFFCharsetCID``
 lines 27-101).
 """
 
-from __future__ import annotations
-
 from .cff_charset import CFFCharset
 
 _EXCEPTION_MESSAGE = "Not a Type 1-equivalent font"

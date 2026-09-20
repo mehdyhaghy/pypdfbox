@@ -14,8 +14,6 @@ ship every fixture needed by the upstream class, so:
   against the COSName API, matching the upstream assertions' target.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

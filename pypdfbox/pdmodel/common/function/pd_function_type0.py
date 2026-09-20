@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.cos import COSArray, COSBase, COSInteger, COSNumber, COSStream
@@ -567,7 +565,7 @@ class PDFunctionType0(PDFunction):
             result.append(corners[0])
         return result
 
-    def eval(self, input: list[float]) -> list[float]:
+    def eval(self, input: list[float]) -> list[float]:  # upstream parameter name
         """N-dimensional interpolation over the sample table per §7.10.2.
 
         ``/Order = 1`` (linear, default) folds 2^n surrounding samples per

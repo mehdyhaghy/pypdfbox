@@ -19,8 +19,6 @@ Behavioral notes vs upstream (PDFBox 3.0.x ``org.apache.xmpbox``):
     kind on round-trip even for unknown-schema arrays (wave 1567 fix).
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from io import BytesIO
 

@@ -1,8 +1,6 @@
 """Wave 265 round-out tests for :class:`PDActionJavaScript` — predicate
 helpers, payload-form classification, and clear-action surface."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.interactive.action import PDActionJavaScript
 

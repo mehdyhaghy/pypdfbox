@@ -6,8 +6,6 @@ the PDFBox version; we additionally surface the Python interpreter version
 and the (currently empty) third-party dependency list to make bug reports
 self-describing.
 """
-from __future__ import annotations
-
 import argparse
 import platform
 import sys

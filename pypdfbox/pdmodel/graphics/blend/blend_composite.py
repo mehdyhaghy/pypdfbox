@@ -9,8 +9,6 @@ PDFBox can find the API in the expected location; the actual pixel
 mixing is done lazily and operates on plain float arrays (no AWT).
 """
 
-from __future__ import annotations
-
 import logging
 from collections.abc import Sequence
 from typing import Any

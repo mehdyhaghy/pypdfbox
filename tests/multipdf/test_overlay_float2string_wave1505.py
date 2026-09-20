@@ -28,8 +28,6 @@ the wave 1505 report):
    therefore keeps no trailing ``.0`` — e.g. ``1e8`` → ``100000000``
    (the old code produced ``100000000.0``).
 """
-from __future__ import annotations
-
 import struct
 
 import pytest

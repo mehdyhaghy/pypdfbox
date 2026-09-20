@@ -1,6 +1,4 @@
 """Wave 315 pdfdebugger CLI validation coverage."""
-from __future__ import annotations
-
 from collections.abc import Callable
 from pathlib import Path
 

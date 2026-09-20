@@ -17,8 +17,6 @@ Targets the 7 partial-arrow + 1 missing-line entries left after wave 1396:
 * 608 — ``_decrypt_array`` array with no ``set`` setter uses
   ``arr[i] = replaced`` fallback.
 """
-from __future__ import annotations
-
 from pypdfbox.cos.cos_array import COSArray
 from pypdfbox.cos.cos_name import COSName
 from pypdfbox.cos.cos_string import COSString

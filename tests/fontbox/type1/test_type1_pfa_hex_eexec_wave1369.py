@@ -20,8 +20,6 @@ PostScript-level encoding (filter) but is NOT used for Type 1 eexec —
 the spec only sanctions hex + binary, so the "ASCII85 vs Hex" lookout
 in the wave brief reduces here to "ASCII-hex vs raw binary".
 """
-from __future__ import annotations
-
 from pypdfbox.fontbox.type1.type1_font_util import Type1FontUtil
 from pypdfbox.fontbox.type1.type1_parser import Type1Parser
 

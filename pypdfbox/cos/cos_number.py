@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .cos_base import COSBase
 
 _LONG_MIN = -(2**63)

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSBoolean, COSDictionary, COSName
 
 from .fdf_field import FDFField, FDFNamedPageReference

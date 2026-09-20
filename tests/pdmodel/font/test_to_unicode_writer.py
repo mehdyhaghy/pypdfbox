@@ -6,8 +6,6 @@ to pytest, plus a small set of hand-written tests for behaviour
 upstream covers indirectly.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

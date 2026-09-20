@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import tests.pdmodel.test_pd_document_resources_wave507 as wave507
 
 

@@ -1,7 +1,5 @@
 """Tests for :class:`Predictor`, :class:`PredictorOutputStream`."""
 
-from __future__ import annotations
-
 import io
 
 import pytest

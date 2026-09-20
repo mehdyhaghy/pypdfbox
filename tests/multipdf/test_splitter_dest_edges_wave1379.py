@@ -12,8 +12,6 @@ Closes the DEFERRED entry "Splitter destination edge-case rewrites (full
   :meth:`Splitter.set_cross_chunk_destination_resolver` into ``/A GoToR``
   actions pointing at the sibling chunk file.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox import PDDocument, PDPage

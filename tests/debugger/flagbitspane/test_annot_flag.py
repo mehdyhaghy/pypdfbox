@@ -1,7 +1,5 @@
 """Tests for :class:`AnnotFlag`."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSInteger, COSName
 from pypdfbox.debugger.flagbitspane.annot_flag import AnnotFlag
 

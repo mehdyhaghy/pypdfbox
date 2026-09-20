@@ -1,6 +1,4 @@
 """Port of org.apache.fontbox.cff.DataInputTest (PDFBox 3.0.x)."""
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.data_input_byte_array import DataInputByteArray

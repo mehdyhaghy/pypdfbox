@@ -23,8 +23,6 @@ covers the broader inherited surface; this file pins the contract that
 *would* be ported one-to-one if upstream ever adds a dedicated test.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.font.pd_mm_type1_font import PDMMType1Font
 from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font

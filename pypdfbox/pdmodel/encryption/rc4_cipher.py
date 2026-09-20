@@ -11,8 +11,6 @@ loop directly here; it matches the Java source byte-for-byte and is
 small / audited / has no algorithmic novelty.
 """
 
-from __future__ import annotations
-
 from typing import BinaryIO
 
 

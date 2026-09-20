@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import struct
 
 from pypdfbox.fontbox.ttf.horizontal_header_table import HorizontalHeaderTable

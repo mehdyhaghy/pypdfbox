@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import tests.contentstream.test_inline_image_engine_wiring as inline_helpers
 import tests.contentstream.test_stream_engine_wave742 as stream_helpers
 import tests.pdmodel.test_pd_resource_cache as resource_helpers

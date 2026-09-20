@@ -6,8 +6,6 @@ fall-through plus the writer-side /Differences write-back round-trip via
 ``set_differences``/``clear_differences``/``set_base_encoding``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName

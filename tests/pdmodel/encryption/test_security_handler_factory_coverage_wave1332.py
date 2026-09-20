@@ -9,8 +9,6 @@ Targets:
   registered handler.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.encryption.public_key_protection_policy import (
     PublicKeyProtectionPolicy,
 )

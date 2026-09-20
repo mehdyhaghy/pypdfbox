@@ -26,8 +26,6 @@ Hammers the AES-CBC string/stream cipher surface of ``SecurityHandler`` /
 * The /Identity crypt-filter is a pure pass-through.
 """
 
-from __future__ import annotations
-
 import hashlib
 
 import pytest
@@ -357,7 +355,7 @@ class _FakeDoc:
         arr.add(COSString(self._id))
         return arr
 
-    def get_document(self):
+    def get_document(self):  # duck-typed stand-in
         return self
 
     def set_encryption_dictionary(self, enc: PDEncryption) -> None:

@@ -20,8 +20,6 @@ All are pure state wiring (no arithmetic-stream output), so they are driven
 directly and asserted structurally.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.jbig2.bitmap import Bitmap

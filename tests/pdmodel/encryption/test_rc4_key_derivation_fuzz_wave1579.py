@@ -12,8 +12,6 @@ production code surfaces as a byte mismatch rather than both sides sharing a bug
 Wave 1579 (Agent D).
 """
 
-from __future__ import annotations
-
 import hashlib
 import struct
 

@@ -12,8 +12,6 @@ and ``COSName.write_pdf`` (upstream ``COSName.writePDF``) against the PDFBox
 * round-trip identity: parse(write(name)) preserves the raw bytes.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

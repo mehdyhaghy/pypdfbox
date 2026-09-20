@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`pypdfbox.debugger.ui.ViewMenu`."""
 
-from __future__ import annotations
-
 import tkinter as tk
 from collections.abc import Iterator
 

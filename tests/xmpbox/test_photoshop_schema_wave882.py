@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.xmpbox.upstream import test_photoshop_schema as upstream_photoshop
 
 

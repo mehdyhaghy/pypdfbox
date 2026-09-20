@@ -16,8 +16,6 @@ state. This module exposes ``LegacyPDFStreamEngine`` as a thin
 ``LegacyPDFStreamEngine`` keeps compiling.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from pypdfbox.contentstream.pdf_stream_engine import PDFStreamEngine

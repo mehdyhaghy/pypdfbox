@@ -12,8 +12,6 @@ classes live in their own modules
 enums but Python prefers flat modules.
 """
 
-from __future__ import annotations
-
 from typing import ClassVar
 
 from .type1_keyword import Key, Type1KeyWord

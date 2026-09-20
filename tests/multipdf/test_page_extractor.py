@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import io
 
 from pypdfbox import PDDocument, PDPage

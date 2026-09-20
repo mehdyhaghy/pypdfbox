@@ -9,8 +9,6 @@ pins the Lab raster decode branch of ``decode_pdimage_to_pil`` (the colour
 space performs its own L*a*b* scaling, so no /Decode pre-pass is applied).
 """
 
-from __future__ import annotations
-
 from PIL import Image
 
 from pypdfbox.cos import (

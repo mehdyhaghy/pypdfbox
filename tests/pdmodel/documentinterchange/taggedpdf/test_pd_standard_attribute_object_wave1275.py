@@ -1,7 +1,5 @@
 """Wave 1275 — PDStandardAttributeObject.set_four_colors public helper."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary
 from pypdfbox.pdmodel.documentinterchange.taggedpdf.pd_four_colours import (
     PDFourColours,

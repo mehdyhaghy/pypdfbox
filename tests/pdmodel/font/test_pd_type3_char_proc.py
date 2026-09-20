@@ -1,7 +1,5 @@
 """Hand-written tests for :class:`PDType3CharProc`."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream

@@ -5,8 +5,6 @@ companion to ``set_manager_variant_property``). The setter is exercised
 in existing tests but the matching getter was never called.
 """
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox import XMPMediaManagementSchema, XMPMetadata
 from pypdfbox.xmpbox.type.text_type import TextType
 

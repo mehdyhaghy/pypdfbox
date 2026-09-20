@@ -15,8 +15,6 @@ without information loss — we compare ``get_string()`` results instead
 of raw equals, which matches what upstream's equals actually evaluates.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSString
 
 # All deviations (based on the table in ISO 32000-1:2008).

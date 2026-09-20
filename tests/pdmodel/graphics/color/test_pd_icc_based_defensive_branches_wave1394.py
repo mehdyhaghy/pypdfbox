@@ -11,8 +11,6 @@ branch the test wants to hit. For the exception paths we feed the
 methods a profile that ``ImageCms`` rejects.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

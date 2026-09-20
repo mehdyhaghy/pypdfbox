@@ -5,8 +5,6 @@ clamping behaviour, ``skip`` past EOF, ``readinto(memoryview)`` round-trip,
 and the EOF logging path.
 """
 
-from __future__ import annotations
-
 import io
 import logging
 

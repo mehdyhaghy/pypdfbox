@@ -19,8 +19,6 @@ Targets the eleven residual gaps reported by coverage:
 * the ``PublicKeyProtectionPolicy`` arm of ``_stage_encryption``.
 """
 
-from __future__ import annotations
-
 import io
 from typing import Any
 

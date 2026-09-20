@@ -14,8 +14,6 @@ Translation notes:
 - ``Float.NaN`` / ``Float.POSITIVE_INFINITY`` etc → ``math.nan`` / ``math.inf``.
 """
 
-from __future__ import annotations
-
 import math
 import re
 import struct

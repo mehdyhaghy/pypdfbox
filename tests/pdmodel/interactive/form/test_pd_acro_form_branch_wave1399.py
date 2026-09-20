@@ -18,8 +18,6 @@ Targets the 7 partial arrows surviving after wave 1396:
 * 951->958 — ``_select_appearance_stream`` when /AP/N is neither
   COSStream nor COSDictionary.
 """
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream
 from pypdfbox.pdmodel.interactive.form import PDAcroForm, PDNonTerminalField
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from . import test_xref_stream_output_wave887 as wave887

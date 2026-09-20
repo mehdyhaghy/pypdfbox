@@ -21,8 +21,6 @@ invoking the missing callable. The handlers must remain silent — they
 may not raise ``AttributeError`` nor mutate any state.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

@@ -7,8 +7,6 @@ slipped through and left the prefix glued to the value type. It now lower-cases
 the value type once and tests a single lower-case constant.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox.xml import pdfa_extension_helper as helper_mod

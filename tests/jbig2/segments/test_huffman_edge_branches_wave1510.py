@@ -20,8 +20,6 @@ exercised here directly — these are deterministic guards (not oracle-driven):
   configuration does not match the referred-to dictionary.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.jbig2.bitmap import Bitmap

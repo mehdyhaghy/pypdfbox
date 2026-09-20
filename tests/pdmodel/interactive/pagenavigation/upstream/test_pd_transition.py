@@ -11,8 +11,6 @@ are Java enums; pypdfbox surfaces them as classes with string constants — so
 rather than per-enum-member.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.interactive.pagenavigation import (
     PDTransition,

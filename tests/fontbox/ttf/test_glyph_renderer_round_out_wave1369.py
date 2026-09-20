@@ -20,8 +20,6 @@ Covers ground the prior tests didn't reach:
   is fed in).
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.glyf_descript import GlyfDescript
 from pypdfbox.fontbox.ttf.glyf_simple_descript import GlyfSimpleDescript
 from pypdfbox.fontbox.ttf.glyph_renderer import GlyphRenderer, _mid_int

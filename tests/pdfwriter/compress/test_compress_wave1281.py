@@ -1,7 +1,5 @@
 """Hand-written tests for the new ``pdfwriter.compress`` ports."""
 
-from __future__ import annotations
-
 from pypdfbox.cos.cos_dictionary import COSDictionary
 from pypdfbox.cos.cos_integer import COSInteger
 from pypdfbox.cos.cos_object_key import COSObjectKey

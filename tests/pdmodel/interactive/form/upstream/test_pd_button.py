@@ -20,8 +20,6 @@ Additional coverage for the upstream private helpers
 to package-visible methods on ``PDButton`` for parity bookkeeping is
 included below — these validate the behaviour rather than test access.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream

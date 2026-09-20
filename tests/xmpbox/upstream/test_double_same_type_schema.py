@@ -8,8 +8,6 @@ prefix-aware getter ``getSchema(prefix, namespace)`` must dispatch to
 the correct one, and ``getAllSchemas()`` must return both.
 """
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox import DublinCoreSchema, XMPMetadata
 
 

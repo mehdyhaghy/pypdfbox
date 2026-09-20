@@ -8,8 +8,6 @@ were never exercised:
   * ``_new_glyph_id_to_character_code`` (line 471).
   * ``_get_char_code`` (line 533).
 """
-from __future__ import annotations
-
 import struct
 
 from pypdfbox.fontbox.ttf.cmap_subtable import CmapSubtable
@@ -22,7 +20,7 @@ def test_process_subtype_0_alias_delegates_to_public_form() -> None:
     sub = CmapSubtable()
     # 256 byte mapping table.
     data = MemoryTTFDataStream(bytes(range(256)))
-    sub._process_subtype_0(data)
+    sub._process_subtype_0(data)  # alias under test
     assert sub.get_glyph_id(0) == 0
     assert sub.get_glyph_id(1) == 1
     assert sub.get_glyph_id(255) == 255

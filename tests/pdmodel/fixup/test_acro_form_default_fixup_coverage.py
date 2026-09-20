@@ -5,8 +5,6 @@ single-argument ``get_acro_form`` fallback (TypeError path), and the
 ``/NeedAppearances=True`` branch with and without orphan widgets.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.pdmodel.fixup.acro_form_default_fixup import AcroFormDefaultFixup

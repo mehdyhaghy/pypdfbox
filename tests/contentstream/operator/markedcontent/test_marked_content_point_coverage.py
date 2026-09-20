@@ -7,8 +7,6 @@ when the first operand is not a ``COSName``, the no-context early
 return, the no-hook silent return, and the ``get_name()`` accessor.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream import Operator, PDFStreamEngine

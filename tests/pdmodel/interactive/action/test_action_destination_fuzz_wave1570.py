@@ -25,8 +25,6 @@ choice is established and tested elsewhere; these tests assert the pypdfbox
 (``None``) contract.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

@@ -29,8 +29,6 @@ Parity scope (matching the wave-1493 oracle rationale):
   wave-1493 note), so this too is Python-deterministic.
 """
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.bitmap import Bitmap
 from pypdfbox.jbig2.decoder.arithmetic.arithmetic_decoder import ArithmeticDecoder
 from pypdfbox.jbig2.decoder.arithmetic.cx import CX

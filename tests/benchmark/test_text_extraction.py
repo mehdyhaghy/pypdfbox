@@ -9,8 +9,6 @@ stub :class:`Loader` + :class:`PDFTextStripper` so the loop body still
 executes end-to-end and covers the timer / consume / try / finally
 branches without exercising the broken wiring.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.benchmark.text_extraction import TextExtraction

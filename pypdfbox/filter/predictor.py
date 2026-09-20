@@ -13,8 +13,6 @@ not "generic concerns" any third-party library offers, so they stay in
 ``_predictor`` and are re-exported here.
 """
 
-from __future__ import annotations
-
 from typing import BinaryIO
 
 from pypdfbox.cos import COSDictionary, COSName

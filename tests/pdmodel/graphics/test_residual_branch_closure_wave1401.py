@@ -23,8 +23,6 @@ Targets:
   short-array path.
 """
 
-from __future__ import annotations
-
 import contextlib
 import struct
 from typing import Any

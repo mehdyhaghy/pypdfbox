@@ -12,8 +12,6 @@ port from PDFBox source can write::
 and resolve the symbol without disturbing the existing registry wiring.
 """
 
-from __future__ import annotations
-
 from typing import BinaryIO
 
 from .ccitt_fax_decode import CCITTFaxDecode

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 
 class PDTransitionDirection:
     """Direction in which a page transition effect shall move.

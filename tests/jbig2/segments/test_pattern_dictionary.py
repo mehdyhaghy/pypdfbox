@@ -19,8 +19,6 @@ differential lives in
 Bit convention: pypdfbox's ``Bitmap`` packs MSB-first, 1 == set.
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

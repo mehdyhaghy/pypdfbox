@@ -1,7 +1,5 @@
 """Wave 1273 round-out: ``DimensionsType.to_string()`` explicit method."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import XMPMetadata

@@ -1,7 +1,5 @@
 """Wave 1275 parity test for COSWriter.set_output / set_standard_output."""
 
-from __future__ import annotations
-
 import io
 
 from pypdfbox.pdfwriter.cos_standard_output_stream import COSStandardOutputStream

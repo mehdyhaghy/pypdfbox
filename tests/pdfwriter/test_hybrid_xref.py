@@ -16,8 +16,6 @@ Three layers of coverage:
 4. regression: without the flag, no /XRefStm appears.
 """
 
-from __future__ import annotations
-
 import io
 import re
 

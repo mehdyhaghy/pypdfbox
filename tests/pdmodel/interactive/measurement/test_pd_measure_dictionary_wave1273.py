@@ -1,7 +1,5 @@
 """Wave 1273 round-out: ``PDMeasureDictionary.set_subtype()`` public hook."""
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.interactive.measurement.pd_measure_dictionary import (
     PDMeasureDictionary,
 )

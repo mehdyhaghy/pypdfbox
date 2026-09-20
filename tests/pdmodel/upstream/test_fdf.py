@@ -14,8 +14,6 @@ rebuild treats an ``/FDF``-bearing dictionary as a catalog
 a build-time JIRA download the repo does not bundle.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

@@ -15,8 +15,6 @@ inspecting the actual script tags here we now route on the script tags
 the font *carries*, falling back to the explicit hint when both match.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING
 

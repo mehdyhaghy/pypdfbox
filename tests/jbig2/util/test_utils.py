@@ -11,8 +11,6 @@ Wave 1510 added the ``round_`` case (the only helper not reached by the resize
 pipeline tests) plus the negative-input arms of ``floor`` / ``ceil``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.jbig2.util.utils import ceil, clamp, floor, round_

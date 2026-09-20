@@ -24,8 +24,6 @@ dropped and the CTM keeps its previous, finite value. These tests pin
 both halves: the operator raises, and the page render survives.
 """
 
-from __future__ import annotations
-
 import logging
 import math
 from typing import Any

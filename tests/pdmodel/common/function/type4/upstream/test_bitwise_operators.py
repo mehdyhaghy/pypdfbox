@@ -12,8 +12,6 @@ directly through the operator classes; the assertions match the Java pop order
 ``testOr``). We add explicit one-line cases below for completeness.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.common.function.type4.bitwise_operators import (
     And,
     Bitshift,

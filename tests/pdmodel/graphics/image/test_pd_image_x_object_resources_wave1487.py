@@ -15,8 +15,6 @@ full-region renders are cached preferring the lowest subsampling seen, and
 invalidation happens via ``setColorSpace``, Java line 950).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSName, COSStream
 from pypdfbox.pdmodel.graphics.color import PDDeviceRGB
 from pypdfbox.pdmodel.graphics.color.pd_icc_based import PDICCBased

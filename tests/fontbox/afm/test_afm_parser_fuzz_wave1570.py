@@ -22,8 +22,6 @@ notable upstream behaviours captured here:
   are a documented intentional leniency (CHANGES.md wave 1570); the
   canonical resolution of every name upstream *does* know is identical.
 """
-from __future__ import annotations
-
 import io
 
 import pytest

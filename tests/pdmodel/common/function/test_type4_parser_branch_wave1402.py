@@ -9,8 +9,6 @@ Closes False-branch arrows in
   inner ``while has_more`` is False from the start.
 """
 
-from __future__ import annotations
-
 import contextlib
 
 from pypdfbox.pdmodel.common.function.type4.parser import Parser

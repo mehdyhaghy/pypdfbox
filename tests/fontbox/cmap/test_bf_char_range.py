@@ -1,7 +1,5 @@
 """Hand-written tests for ``BFCharRange`` (pypdfbox addition)."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cmap import BFCharEntry, BFCharRange

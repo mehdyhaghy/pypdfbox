@@ -5,8 +5,6 @@ the inherited generic name-tree behaviour as exercised through the
 JavaScript-action subclass.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString

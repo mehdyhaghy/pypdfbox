@@ -25,8 +25,6 @@ Validated by round-trip against the production decoder (see
 ``tests/jbig2/helpers/test_mq_encoder.py``).
 """
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.decoder.arithmetic.arithmetic_decoder import QE
 
 # Java ``Long.MAX_VALUE`` sentinel for the OOB integer value (mirror of the

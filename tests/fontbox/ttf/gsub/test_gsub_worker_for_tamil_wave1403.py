@@ -6,8 +6,6 @@ cluster whose index+3 trailing glyph is NOT a before-reph glyph, so only
 the basic 3-glyph reorder runs and the loop continues.
 """
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.cmap_lookup import CmapLookup
 from pypdfbox.fontbox.ttf.gsub import GsubData, GsubWorkerForTamil
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Iterator
 from typing import Any, cast
 
@@ -562,7 +560,7 @@ class PDStructureTreeRoot(PDStructureNode):
 
     # ---------- /K append ----------
 
-    def append_kid(self, kid: Any) -> None:
+    def append_kid(self, kid: Any) -> None:  # mirrors upstream
         """Append ``kid`` to the root's ``/K``. Wires ``/P`` for
         :class:`PDStructureElement` kids so they back-reference this root,
         mirroring upstream's ``appendKid(PDStructureElement)`` plumbing.

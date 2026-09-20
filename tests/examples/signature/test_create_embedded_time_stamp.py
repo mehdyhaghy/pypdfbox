@@ -1,7 +1,5 @@
 """Tests for ``CreateEmbeddedTimeStamp``."""
 
-from __future__ import annotations
-
 import binascii
 import io
 

@@ -7,8 +7,6 @@ Covers:
 * :meth:`is_post_script` and :meth:`is_supported_otf` predicates.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

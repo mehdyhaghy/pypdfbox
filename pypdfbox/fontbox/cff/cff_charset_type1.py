@@ -5,8 +5,6 @@ Ported from ``org.apache.fontbox.cff.CFFCharsetType1``
 lines 27-109).
 """
 
-from __future__ import annotations
-
 from .cff_charset import CFFCharset
 
 _EXCEPTION_MESSAGE = "Not a CIDFont"

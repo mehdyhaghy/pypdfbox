@@ -4,8 +4,6 @@ Sets the open-action of a document so that opening it jumps to the second
 top-level bookmark.
 """
 
-from __future__ import annotations
-
 import sys
 
 from pypdfbox.pdmodel.interactive.action.pd_action_go_to import PDActionGoTo

@@ -7,8 +7,6 @@ bundled with this build. Mirrors the lookup contract of upstream
 ``CMapManager.getPredefinedCMap``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cmap import CMap

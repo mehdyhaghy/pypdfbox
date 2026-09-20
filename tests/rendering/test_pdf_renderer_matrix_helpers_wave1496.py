@@ -14,8 +14,6 @@ rendering integration tests reach only indirectly:
 These assert the transform's algebraic contract, not bare execution.
 """
 
-from __future__ import annotations
-
 import math
 
 from pypdfbox.rendering.pdf_renderer import (

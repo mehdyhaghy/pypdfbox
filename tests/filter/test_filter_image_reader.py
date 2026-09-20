@@ -4,8 +4,6 @@ upstream PDFBox's static ``Filter#findImageReader`` and
 ``Filter#findRasterReader`` (which delegate to ``javax.imageio.ImageIO``).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.filter import Filter, MissingImageReaderException

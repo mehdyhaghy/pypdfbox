@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.xmpbox import JobType, PhotoshopSchema, XMPBasicJobTicketSchema, XMPMetadata
 from pypdfbox.xmpbox.type.job_type import JobType as TypedJobType
 

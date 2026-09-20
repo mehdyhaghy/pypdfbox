@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from types import CodeType, FunctionType
 
 import pytest

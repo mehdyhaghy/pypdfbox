@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 
 class EmptyGraphicsStackException(OSError):
     """Raised when the ``Q`` (restore) operator is executed on an empty

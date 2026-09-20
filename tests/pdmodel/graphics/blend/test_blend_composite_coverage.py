@@ -5,8 +5,6 @@ uncovered) for both separable and non-separable blend modes, plus the
 RGBA / RGB pixel paths and zero-area degenerate inputs.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.graphics.blend.blend_composite import (

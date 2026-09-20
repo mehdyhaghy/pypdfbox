@@ -11,8 +11,6 @@ Ported parity intent from
 plus PDF 32000-1 Annex D Tables D.1-D.5.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.encoding import (

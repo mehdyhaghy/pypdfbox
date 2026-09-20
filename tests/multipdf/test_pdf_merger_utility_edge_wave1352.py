@@ -22,8 +22,6 @@ Targets the under-covered branches in
   swallowed via the broad-except path.
 """
 
-from __future__ import annotations
-
 import hashlib
 from pathlib import Path
 

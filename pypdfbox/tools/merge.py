@@ -24,8 +24,6 @@ duplicates ride in the flat ``/Names`` array. We follow upstream now so
 ``pypdfbox merge`` and the public ``PDFMergerUtility`` API produce the
 same output.
 """
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
 

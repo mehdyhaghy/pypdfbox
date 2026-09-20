@@ -8,8 +8,6 @@ store/recall accessors except ``is_group_enabled``, which consults the
 catalog's ``/OCProperties``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.graphics.optionalcontent import (

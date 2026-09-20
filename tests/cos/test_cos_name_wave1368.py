@@ -18,8 +18,6 @@ Round-out tests for paths not yet covered:
 * ``to_string`` mirrors ``COSName{<text>}``.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest
@@ -53,7 +51,7 @@ def test_static_constants_survive_clear_resources() -> None:
     # ``COSName`` at import time (e.g. ``PDResources.FONT``) would lose
     # ``is``-equality with fresh lookups. Snapshot and restore the
     # registry around the assertions so unrelated tests stay green.
-    snapshot = dict(COSName._name_map)
+    snapshot = dict(COSName._name_map)  # intentional registry snapshot
     try:
         type_constant = COSName.TYPE
         dynamic = COSName.get_pdf_name("RegisteredForThisTest1368")

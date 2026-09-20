@@ -13,8 +13,6 @@ so callers can write::
 This file pins the re-export contract.
 """
 
-from __future__ import annotations
-
 from pypdfbox.contentstream.operator.graphics.concatenate_matrix import (
     ConcatenateMatrix,
 )

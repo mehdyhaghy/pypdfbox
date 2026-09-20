@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Iterator
 
 from pypdfbox.pdmodel.pd_page_label_range import PDPageLabelRange

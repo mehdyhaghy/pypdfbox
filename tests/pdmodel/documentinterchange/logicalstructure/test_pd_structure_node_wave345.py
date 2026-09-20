@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_element import (
     PDStructureElement,
 )

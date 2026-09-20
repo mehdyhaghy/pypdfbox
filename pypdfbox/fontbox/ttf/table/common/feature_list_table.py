@@ -6,8 +6,6 @@ Mirrors ``org.apache.fontbox.ttf.table.common.FeatureListTable``
 that the existing GSUB feature-record port stays single-sourced.
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 
 from ...gsub.feature_record import FeatureRecord

@@ -13,8 +13,6 @@ Tests targeting the last uncovered branches in six modules:
   embedded ``_check_tables`` early-return + no-CFF lenient tail)
 """
 
-from __future__ import annotations
-
 import runpy
 import sys
 from pathlib import Path

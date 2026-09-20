@@ -6,8 +6,6 @@ porting Java code recognize the API verbatim — see the project's
 compatibility-preservation rules.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest

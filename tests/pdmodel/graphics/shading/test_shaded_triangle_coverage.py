@@ -8,8 +8,6 @@ degree-1, degree-2 (line) and degree-3 (full triangle) cases,
 fallback, and the ``to_string`` / ``__repr__`` formatting.
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.graphics.shading.line import Line
 from pypdfbox.pdmodel.graphics.shading.shaded_triangle import ShadedTriangle
 

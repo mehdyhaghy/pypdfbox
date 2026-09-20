@@ -2,8 +2,6 @@
 
 Upstream baseline: PDFBox 3.0.x.
 """
-from __future__ import annotations
-
 from pypdfbox.pdmodel.graphics.state import RenderingIntent
 from pypdfbox.pdmodel.graphics.state.rendering_mode import RenderingMode
 

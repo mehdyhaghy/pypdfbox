@@ -10,8 +10,6 @@ source ``pdfbox/src/main/java/org/apache/pdfbox/pdfparser/PDFStreamParser.java``
 (the token-sequence semantics the live ``StreamParserFuzzProbe`` oracle pins).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

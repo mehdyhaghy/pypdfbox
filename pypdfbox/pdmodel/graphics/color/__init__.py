@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .pd_cal_gray import PDCalGray
 from .pd_cal_rgb import PDCalRGB
 from .pd_cie_based_color_space import PDCIEBasedColorSpace

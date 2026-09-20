@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 import tests.multipdf.test_pdf_merger_utility_struct_tree as struct_tree_tests

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import io
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta

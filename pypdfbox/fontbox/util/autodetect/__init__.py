@@ -1,7 +1,5 @@
 """Font autodetection — locate native operating-system font files."""
 
-from __future__ import annotations
-
 from pypdfbox.fontbox.util.autodetect.font_dir_finder import FontDirFinder
 from pypdfbox.fontbox.util.autodetect.font_file_finder import FontFileFinder
 from pypdfbox.fontbox.util.autodetect.mac_font_dir_finder import MacFontDirFinder

@@ -21,8 +21,6 @@ Round-out tests for paths not yet covered:
   missing.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

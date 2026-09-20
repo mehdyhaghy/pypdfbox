@@ -10,8 +10,6 @@ covers the public/protected API surface directly; this file documents
 the absence of a standalone upstream test and pins a small set of
 behaviour-mirroring smoke tests that complement the round-trip suite.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream import PDFStreamEngine

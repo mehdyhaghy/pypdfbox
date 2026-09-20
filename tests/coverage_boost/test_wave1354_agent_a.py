@@ -18,8 +18,6 @@ Truly defensive / unreachable lines were ``# pragma: no cover``-d at the
 source rather than faked here (see ``CHANGES.md`` wave 1354 entry).
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from unittest import mock
 

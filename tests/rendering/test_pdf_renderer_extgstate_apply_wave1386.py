@@ -20,8 +20,6 @@ adaptively); they are still carried on the GS for parity bookkeeping.
 ``/TK`` (text knockout) wiring is a deferred follow-up.
 """
 
-from __future__ import annotations
-
 from PIL import Image
 
 from pypdfbox.pdmodel.graphics.state.pd_extended_graphics_state import (

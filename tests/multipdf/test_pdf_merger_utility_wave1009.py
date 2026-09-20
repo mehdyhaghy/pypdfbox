@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary
 from tests.multipdf.test_pdf_merger_utility_wave489 import _Root
 

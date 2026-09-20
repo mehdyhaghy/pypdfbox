@@ -1,7 +1,5 @@
 """Hand-written tests for ``RGToolTip``."""
 
-from __future__ import annotations
-
 from pypdfbox.debugger.streampane.tooltip import RGToolTip
 
 

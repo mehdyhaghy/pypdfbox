@@ -19,8 +19,6 @@ Pre-wave the module sat at 63%. Uncovered surface was:
   * ``close`` not propagating to the underlying read.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

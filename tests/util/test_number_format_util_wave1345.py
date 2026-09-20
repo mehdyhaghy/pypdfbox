@@ -10,8 +10,6 @@ Targets:
     (lines 111, 122) that mirror the upstream private helpers.
 """
 
-from __future__ import annotations
-
 from pypdfbox.util.number_format_util import (
     NumberFormatUtil,
     _format_positive_number,

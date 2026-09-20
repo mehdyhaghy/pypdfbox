@@ -7,8 +7,6 @@ visibility model; users should treat this as an implementation detail of
 :mod:`pypdfbox.filter.ccitt_fax_decoder_stream`.
 """
 
-from __future__ import annotations
-
 from .node import Node
 
 

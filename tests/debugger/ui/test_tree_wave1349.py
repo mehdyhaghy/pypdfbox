@@ -14,8 +14,6 @@ Pre-wave: 96.3% line coverage (191 stmts, 7 missing). Missing lines map to:
 The new tests use minimal duck-typed fakes — no Pillow / no display.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import COSArray, COSName, COSStream

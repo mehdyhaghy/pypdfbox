@@ -10,8 +10,6 @@ the sibling module so a jar upgrade that shifts upstream behaviour is
 flagged even before the pypdfbox side diverges.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from tests.oracle.harness import requires_oracle, run_probe_text

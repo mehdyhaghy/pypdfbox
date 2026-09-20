@@ -4,8 +4,6 @@ Mirrors ``org.apache.pdfbox.util.Vector`` (PDFBox 3.0,
 ``pdfbox/src/main/java/org/apache/pdfbox/util/Vector.java``).
 """
 
-from __future__ import annotations
-
 from pypdfbox.util.matrix import f32
 
 

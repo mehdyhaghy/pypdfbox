@@ -15,8 +15,6 @@ JUnit 5 → pytest mapping per the project's "Test Porting Conventions":
 The empty upstream ``openNodeAndAppend`` test (``// TODO``) is skipped
 with a one-line comment, in line with the project's skip guidance.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.interactive.documentnavigation.outline import (

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .built_in_encoding import BuiltInEncoding
 from .dictionary_encoding import DictionaryEncoding
 from .encoding import Encoding

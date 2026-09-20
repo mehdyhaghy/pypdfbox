@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .access_permission import AccessPermission
 from .protection_policy import ProtectionPolicy
 

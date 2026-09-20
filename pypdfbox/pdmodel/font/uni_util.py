@@ -16,8 +16,6 @@ an ``UniUtil`` namespace class for callers that prefer the Java-style
 spelling.
 """
 
-from __future__ import annotations
-
 
 def get_uni_name_of_code_point(code_point: int) -> str:
     """Return ``"uniXXXX"`` glyph name for *code_point*.

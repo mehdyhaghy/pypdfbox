@@ -23,8 +23,6 @@ The page writer (``PDPageContentStream``) keeps its 5-digit default — pinned
 here too so the thread-through did not regress it.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSStream

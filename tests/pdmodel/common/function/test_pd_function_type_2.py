@@ -9,8 +9,6 @@ contract (output dimension follows ``/C0``, ``/Range`` clipping when
 present, exponent semantics for negative bases).
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

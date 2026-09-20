@@ -8,8 +8,6 @@ counts them and so callers can use the upstream spelling
 ``DebugTextStripper.transform(...)``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.debugger.pagepane import debug_text_overlay
 from pypdfbox.debugger.pagepane.debug_text_overlay import DebugTextStripper
 

@@ -30,8 +30,6 @@ serialises the MAX_VALUE digit string instead. The *string* path
 ``COSFloat("1e40")`` matches Java exactly (both emit the MAX_VALUE digits).
 """
 
-from __future__ import annotations
-
 import io
 import math
 

@@ -6,8 +6,6 @@ Closes the residual partial-branch gaps at lines 1141->1143 and
 resolution chain.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

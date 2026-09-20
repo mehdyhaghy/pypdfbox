@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.contentstream.operator import Operator
 from pypdfbox.contentstream.operator.path import FillThenStrokeEvenOdd
 from pypdfbox.contentstream.operator.path.fill_then_stroke_even_odd import (

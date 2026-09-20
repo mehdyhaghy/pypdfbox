@@ -8,8 +8,6 @@ Covers the four short-vector / dual-flag combinations of
 positive-value branch of ``_to_signed_short``.
 """
 
-from __future__ import annotations
-
 from types import SimpleNamespace
 
 from pypdfbox.fontbox.ttf.glyf_descript import GlyfDescript

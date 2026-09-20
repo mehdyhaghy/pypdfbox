@@ -12,8 +12,6 @@ introspection (none for PhotoshopSchema in upstream — the schema has no
 array-cardinality entries) are left as no-op skips with a one-line marker.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox import (

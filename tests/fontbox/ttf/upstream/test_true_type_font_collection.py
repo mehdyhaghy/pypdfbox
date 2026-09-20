@@ -7,8 +7,6 @@ the [1, 1024] bound. We mirror it here so future re-syncs are
 diffable.
 """
 
-from __future__ import annotations
-
 import io
 
 import pytest

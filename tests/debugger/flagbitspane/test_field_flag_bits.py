@@ -5,8 +5,6 @@ Row counts and labels are checked against upstream
 ``FieldFlag.java`` (PDFBox 3.0.x).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary

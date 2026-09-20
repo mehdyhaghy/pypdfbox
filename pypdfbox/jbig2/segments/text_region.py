@@ -25,8 +25,6 @@ subtracting ``0x20`` when ``> 0x0f``); the region/Huffman flag fields are masked
 to mirror the upstream ``(short)`` casts.
 """
 
-from __future__ import annotations
-
 import math
 from typing import TYPE_CHECKING
 

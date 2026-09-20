@@ -4,8 +4,6 @@ Covers the new ``get_anchor_rect`` / ``get_image`` / ``create_context``
 implementations: the TODO stubs previously returned ``None``.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

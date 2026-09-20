@@ -24,8 +24,6 @@ Exit codes follow the rest of the suite:
   1  wrong password
   4  IO error (raised as ``OSError`` and caught by ``cli.run_cli``)
 """
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
 from typing import IO

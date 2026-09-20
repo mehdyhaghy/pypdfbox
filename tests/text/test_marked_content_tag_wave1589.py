@@ -21,8 +21,6 @@ cross-check the tag it records on ``_marked_content_stack`` against the
 tag the registered operator path (``extract_tag`` / ``operands[0]``)
 would select.
 """
-from __future__ import annotations
-
 from pypdfbox.contentstream.operator.markedcontent._props import (
     extract_tag,
     resolve_property_dict,

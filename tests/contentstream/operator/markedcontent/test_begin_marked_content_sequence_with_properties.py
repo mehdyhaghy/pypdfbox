@@ -6,8 +6,6 @@ non-name tags / unresolved property references. The lenient sibling
 ``BeginMarkedContentWithProps`` is exercised elsewhere.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.contentstream import Operator, PDFStreamEngine

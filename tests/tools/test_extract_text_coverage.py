@@ -16,8 +16,6 @@ raw ``COSDocument`` returned by ``Loader.load_pdf`` to a ``PDDocument``
 context manager.
 """
 
-from __future__ import annotations
-
 import contextlib
 import math
 import sys

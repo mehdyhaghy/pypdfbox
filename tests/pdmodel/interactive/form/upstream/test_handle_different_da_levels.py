@@ -12,8 +12,6 @@ regeneration. The assertion is therefore relaxed to "size and Tf
 operator are present", which is the load-bearing parity guarantee.
 """
 
-from __future__ import annotations
-
 import pathlib
 import re
 

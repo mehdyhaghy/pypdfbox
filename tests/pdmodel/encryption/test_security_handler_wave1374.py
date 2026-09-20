@@ -19,8 +19,6 @@ These tests pin the contract:
    vs full upstream form).
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.encryption.public_key_security_handler import (

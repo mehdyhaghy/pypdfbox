@@ -15,8 +15,6 @@ surface; the cases below pin:
     base class only.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

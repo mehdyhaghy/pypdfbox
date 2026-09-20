@@ -11,8 +11,6 @@ Covers:
 - ``PDAnnotationInk.path_count``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_file_attachment import (
     PDAnnotationFileAttachment,

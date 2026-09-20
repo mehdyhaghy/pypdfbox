@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .cos_array import COSArray
 from .cos_base import COSBase
 from .cos_boolean import COSBoolean

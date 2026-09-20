@@ -20,8 +20,6 @@ These tests pass WITHOUT the oracle (values are pinned); the optional
 ``@requires_oracle`` test re-derives them live.
 """
 
-from __future__ import annotations
-
 import hashlib
 import io
 

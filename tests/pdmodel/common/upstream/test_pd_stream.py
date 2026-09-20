@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 # Apache PDFBox 3.0.x ships no focused JUnit class for ``PDStream`` —
 # upstream coverage is exercised indirectly through ``PDImageXObjectTest``
 # and the parser/writer round-trip suites, both of which depend on image

@@ -8,8 +8,6 @@ value, English description). Lookup tables for each byte are reproduced
 verbatim from upstream.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pypdfbox.cos import COSDictionary, COSName, COSString

@@ -12,8 +12,6 @@ ports the public surface (validation entry points + closed/open choice
 prefix stripping) and leaves the deeper population logic for a future wave.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 from xml.dom.minidom import Element
 

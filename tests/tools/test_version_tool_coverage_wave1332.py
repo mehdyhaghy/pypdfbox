@@ -4,8 +4,6 @@ Targets the ``__version__`` fallback branch (returns ``"unknown"``) and the
 ``main`` static entry point so the module reaches >=95%.
 """
 
-from __future__ import annotations
-
 import runpy
 import sys
 

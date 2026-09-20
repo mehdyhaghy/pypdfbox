@@ -14,8 +14,6 @@ shipped under ``tests/fixtures/fontbox/ttf/``) — no new fixtures are
 introduced.
 """
 
-from __future__ import annotations
-
 import io
 import os
 from pathlib import Path

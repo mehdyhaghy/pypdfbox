@@ -20,8 +20,6 @@ Skipped:
   subcommand" — is preserved by exercising it as a valid subcommand
   via ``cli.run_cli``.
 """
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.tools import cli

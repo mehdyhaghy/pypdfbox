@@ -6,8 +6,6 @@ Covers PDFBOX-3913 (UTF-8 / UTF-16 BE / UTF-16 LE encoded ``/URI`` entries)
 and PDFBOX-3946 (no NPE when ``/URI`` missing).
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSName, COSString
 from pypdfbox.pdmodel.interactive.action import PDActionURI
 

@@ -21,8 +21,6 @@ The PDF ``/JBIG2Decode`` filter does NOT route through this reader; it lives for
 ``javax.imageio``-surface parity.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from pypdfbox.jbig2.image.bitmaps import Bitmaps

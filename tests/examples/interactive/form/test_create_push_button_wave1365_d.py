@@ -6,8 +6,6 @@ the trivial ``__init__`` body, and the ``create`` helper's structural
 output (one push-button field with one widget on page 0).
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

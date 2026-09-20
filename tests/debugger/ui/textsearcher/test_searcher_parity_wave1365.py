@@ -16,8 +16,6 @@ existing wave-1345/1349/1354 suites do not exercise directly:
   re-emit a fresh :class:`Highlight` so the recorded painter is in sync.
 """
 
-from __future__ import annotations
-
 from pypdfbox.debugger.ui.textsearcher.searcher import (
     PAINTER,
     SELECTION_PAINTER,

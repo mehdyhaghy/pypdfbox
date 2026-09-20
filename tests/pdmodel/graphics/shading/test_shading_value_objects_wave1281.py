@@ -1,7 +1,5 @@
 """Tests for ``IntPoint`` / ``Vertex`` public-method additions (Wave 1281)."""
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.graphics.shading.int_point import IntPoint
 from pypdfbox.pdmodel.graphics.shading.vertex import Vertex
 

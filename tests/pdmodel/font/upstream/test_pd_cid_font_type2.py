@@ -21,8 +21,6 @@ fallback and the ``/CIDToGIDMap`` -> ``cid_to_gid`` round-trip,
 respectively.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

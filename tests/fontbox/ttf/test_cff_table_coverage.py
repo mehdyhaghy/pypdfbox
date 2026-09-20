@@ -9,8 +9,6 @@ approach used by ``tests/fontbox/cff/test_cff_parser_coverage.py``
 parser end-to-end gets exercised without a system-font fixture.
 """
 
-from __future__ import annotations
-
 import io
 import struct
 

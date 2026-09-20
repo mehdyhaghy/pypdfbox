@@ -12,8 +12,6 @@ No upstream JUnit counterpart — pypdfbox-specific hand-written suite
 covering the boundary that direct PDFBox ports compile against.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

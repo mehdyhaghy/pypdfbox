@@ -8,8 +8,6 @@ that as a black-box, asserting the upstream-compatible behaviour rather
 than peeking at internal table layout.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

@@ -18,8 +18,6 @@ against the live PDFBox 3.0.7 oracle. Notably:
     ``base64.a85encode`` which would frame the empty body).
 """
 
-from __future__ import annotations
-
 import contextlib
 import io
 from typing import BinaryIO

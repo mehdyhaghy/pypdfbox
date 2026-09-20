@@ -6,8 +6,6 @@ so we build a minimal concrete subclass implementing the two abstract
 hooks (``to_rgb`` and ``get_name``).
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.graphics.color.pd_cie_based_color_space import (
     PDCIEBasedColorSpace,
 )

@@ -9,8 +9,6 @@ internal name->metric map and the optional-field state. The tests pin
 the None-tolerance semantics that upstream's getter pattern leaves
 implicit.
 """
-from __future__ import annotations
-
 from pypdfbox.fontbox.afm import CharMetric, FontMetrics, KernPair
 from pypdfbox.fontbox.ttf.glyph_data import BoundingBox
 

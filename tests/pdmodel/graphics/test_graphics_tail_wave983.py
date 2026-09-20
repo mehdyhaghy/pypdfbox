@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.pdmodel.graphics.test_graphics_tail_wave793 import _ArraylessColorSpace
 
 

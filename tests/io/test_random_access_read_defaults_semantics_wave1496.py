@@ -31,8 +31,6 @@ upstream's guard-free ``seek`` delegation. The literal pins below pass WITHOUT
 the oracle; a ``@requires_oracle`` differential test cross-checks live PDFBox.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer

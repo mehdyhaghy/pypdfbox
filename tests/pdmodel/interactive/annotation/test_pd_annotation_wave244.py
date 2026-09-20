@@ -16,8 +16,6 @@ Covers:
   "non-URI action" from "URI action with empty ``/URI``".
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.action import PDActionGoTo, PDActionURI
 from pypdfbox.pdmodel.interactive.annotation import PDAnnotationLink

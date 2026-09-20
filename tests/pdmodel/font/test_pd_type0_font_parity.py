@@ -5,8 +5,6 @@ Covers ``get_descendant_font``, ``code_to_cid``, ``code_to_gid``,
 ``get_to_unicode_cmap``, ``to_unicode``, and ``is_embedded``.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 import tests.pdmodel.graphics.form.test_pd_form_x_object as form_tests

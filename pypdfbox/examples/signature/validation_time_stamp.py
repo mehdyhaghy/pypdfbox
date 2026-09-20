@@ -4,8 +4,6 @@ Wraps :class:`TSAClient` so callers can ask for a signed-timestamp token
 or extend an existing CMS ``SignedData`` blob with one.
 """
 
-from __future__ import annotations
-
 import hashlib
 from collections.abc import Callable
 from io import BytesIO

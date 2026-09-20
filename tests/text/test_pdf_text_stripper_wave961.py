@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.text import TextPosition
 from tests.text.test_pdf_text_stripper_wave540 import RecordingStripper
 

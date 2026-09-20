@@ -9,8 +9,6 @@ non-iterable, PDRectangle-like, empty), the ``get_current_clipping_path``
 text-matrix / text-line-matrix / matrices without ``clone``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.pdmodel.graphics.blend_mode import BlendMode

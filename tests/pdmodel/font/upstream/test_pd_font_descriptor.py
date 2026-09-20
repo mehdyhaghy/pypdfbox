@@ -20,8 +20,6 @@ caller-facing surface; this file pins the contract that *would* be
 ported one-to-one if upstream ever adds a dedicated test.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream, COSString

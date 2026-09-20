@@ -5,8 +5,6 @@ Mirrors ``org.apache.pdfbox.contentstream.operator.state.SetLineDashPattern``
 ``pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/SetLineDashPattern.java``).
 """
 
-from __future__ import annotations
-
 import logging
 
 from pypdfbox.cos import COSArray, COSBase, COSNumber

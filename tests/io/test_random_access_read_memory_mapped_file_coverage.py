@@ -6,8 +6,6 @@ class is the shim over :class:`RandomAccessReadMemoryMapped` already
 exercised in the wave-1281 tests.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

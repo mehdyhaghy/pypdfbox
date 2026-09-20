@@ -2,8 +2,6 @@
 ``ASCIIHexFilter.is_eod`` static helpers (promoted from the upstream
 private statics ``isWhitespace`` / ``isEOD``)."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.filter.ascii_hex_filter import ASCIIHexFilter

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from .random_access_read_memory_mapped import RandomAccessReadMemoryMapped

@@ -4,8 +4,6 @@ Exercises the small COS-surface contract around Table 144 entries without
 depending on renderer behavior.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

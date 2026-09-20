@@ -13,8 +13,6 @@ exercise:
 - ``/Outlines`` concatenation and ``/PageLabels`` index shift.
 - :meth:`PDFMergerUtility.set_ignore_acro_form_errors` toggle behaviour.
 """
-from __future__ import annotations
-
 import io
 from pathlib import Path
 from typing import Any

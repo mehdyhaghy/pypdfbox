@@ -13,8 +13,6 @@ re-implements the OpenType ``glyf`` composite spec
 same algorithm Apache fontbox's ``GlyfCompositeComp`` implements.
 """
 
-from __future__ import annotations
-
 import struct
 
 import pytest

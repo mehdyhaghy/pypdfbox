@@ -6,8 +6,6 @@ is large; here we provide the public entry point + the supporting bag
 classes so callers can drive the flow programmatically.
 """
 
-from __future__ import annotations
-
 import logging
 from pathlib import Path
 

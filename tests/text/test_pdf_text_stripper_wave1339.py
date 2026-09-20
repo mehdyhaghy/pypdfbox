@@ -9,8 +9,6 @@ paths, ``parse_bidi_file`` rejecting malformed hex tokens, the
 ``begin_marked_content_sequence`` defensive exception swallow.
 """
 
-from __future__ import annotations
-
 import io
 from types import SimpleNamespace
 from typing import Any, cast

@@ -7,8 +7,6 @@ class so concrete subclasses can share a marker type and so we can hang
 helpful error messages on the unimplemented methods.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 
 

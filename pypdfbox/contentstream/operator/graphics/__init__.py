@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from ..path.clip_even_odd import ClipEvenOdd
 from ..path.clip_non_zero_winding import ClipNonZeroWinding
 from ..path.close_path import ClosePath

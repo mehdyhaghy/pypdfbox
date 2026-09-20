@@ -31,8 +31,6 @@ table entry ``i`` is ``(c,c,c)`` with ``c = int(min(1,max(0,t))*255)`` —
 letting us assert the *exact* colour a given pixel resolves to.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

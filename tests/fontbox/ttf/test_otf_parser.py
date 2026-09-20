@@ -6,8 +6,6 @@ stream at runtime using fontTools — same library the parser delegates
 to internally — to keep the suite self-contained.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

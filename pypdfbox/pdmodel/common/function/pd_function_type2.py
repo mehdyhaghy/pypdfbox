@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import math
 
 from pypdfbox.cos import COSArray, COSBase, COSFloat, COSNumber
@@ -230,7 +228,7 @@ class PDFunctionType2(PDFunction):
             return self._strict_float_array(item)
         return [1.0]
 
-    def eval(self, input: list[float]) -> list[float]:
+    def eval(self, input: list[float]) -> list[float]:  # upstream parameter name
         """Exponential interpolation per PDF 32000-1 §7.10.3.
 
         ``y[j] = C0[j] + x**N * (C1[j] - C0[j])`` for each output ``j``.

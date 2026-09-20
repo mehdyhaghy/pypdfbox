@@ -10,8 +10,6 @@ Skips cleanly when the oracle jar / JDK is unavailable (developer-machine
 opt-in, not a hard CI gate).
 """
 
-from __future__ import annotations
-
 import struct
 
 try:

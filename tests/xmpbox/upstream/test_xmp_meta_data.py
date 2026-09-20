@@ -20,8 +20,6 @@ exercise ``XmpSerializationException`` — pypdfbox raises plain
 one-line comment.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 from pypdfbox.xmpbox import (

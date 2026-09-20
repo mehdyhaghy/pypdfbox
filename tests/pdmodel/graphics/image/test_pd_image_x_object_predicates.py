@@ -11,8 +11,6 @@
 - ``SUBTYPE_IMAGE`` module-level constant
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import (
     COSArray,
     COSFloat,

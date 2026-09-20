@@ -30,8 +30,6 @@ Coverage:
   and the ``ValueError`` on an out-of-spec value.
 """
 
-from __future__ import annotations
-
 import datetime as _dt
 
 import pytest

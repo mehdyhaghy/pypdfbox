@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.filter.test_lzw_decode import _png_up_encode
 
 

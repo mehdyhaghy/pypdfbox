@@ -6,8 +6,6 @@ their public entry points end-to-end against in-memory PDFs without
 requiring external fixtures.
 """
 
-from __future__ import annotations
-
 import io
 from pathlib import Path
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import io
 import re
 
@@ -292,7 +290,7 @@ def test_incremental_with_explicit_input_buffer() -> None:
         assert cat is not None
         cat.set_needs_to_be_updated(True)
         # Pretend the doc had no attached source.
-        parsed._source = None
+        parsed._source = None  # test reaches into sibling-package state
         out = _incremental_save(parsed, source=src)
     finally:
         parsed.close()

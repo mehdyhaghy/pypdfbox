@@ -3,8 +3,6 @@
 Mirrors ``org.apache.pdfbox.util.filetypedetector.FileType``.
 """
 
-from __future__ import annotations
-
 from enum import Enum
 
 

@@ -5,8 +5,6 @@ Generates an Adobe Highlight File Format XML payload for a set of
 search words against a PDF.
 """
 
-from __future__ import annotations
-
 import io
 import re
 import sys

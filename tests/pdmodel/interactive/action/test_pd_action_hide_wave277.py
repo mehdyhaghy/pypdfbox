@@ -6,8 +6,6 @@ target forms, default/set/clear hide semantics, factory round-tripping,
 and malformed target values that should be ignored rather than raising.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSBoolean, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.interactive.action.pd_action import PDAction
 from pypdfbox.pdmodel.interactive.action.pd_action_hide import PDActionHide

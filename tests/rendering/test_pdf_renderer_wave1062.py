@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from tests.rendering import test_pdf_renderer_wave551 as wave551

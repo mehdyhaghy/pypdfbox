@@ -4,8 +4,6 @@ the existing suites missed; truly-unreachable defensive branches were
 pragmaed at the source instead of being faked here.
 """
 
-from __future__ import annotations
-
 import io
 from typing import Any
 

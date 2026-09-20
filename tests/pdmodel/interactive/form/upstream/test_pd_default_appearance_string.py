@@ -8,8 +8,6 @@ Translation conventions follow the project's guidelines:
 - ``COSString::new`` → ``COSString(value)``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSName, COSString

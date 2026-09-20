@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.fontbox.ttf.gsub import FeatureRecord, FeatureTable
 
 

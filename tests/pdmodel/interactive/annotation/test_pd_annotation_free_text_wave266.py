@@ -10,8 +10,6 @@ Covers cold gaps surfaced by the upstream ``PDAnnotationFreeText`` API:
   trip, ``/BS`` and ``/BE`` typed accessors.
 """
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_free_text import (
     PDAnnotationFreeText,

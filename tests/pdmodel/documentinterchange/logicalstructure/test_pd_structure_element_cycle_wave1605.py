@@ -7,8 +7,6 @@ consumers reach the role map / class map through this walk, so a hand-crafted
 (or corrupt) structure tree that loops must degrade to "no root", not hang.
 """
 
-from __future__ import annotations
-
 import logging
 
 import pytest

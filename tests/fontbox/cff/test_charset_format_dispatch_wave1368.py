@@ -10,8 +10,6 @@ CID-keyed and Type 1-name-keyed paths plus single-glyph and wide-range
 edge cases.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.cff_parser import CFFParser

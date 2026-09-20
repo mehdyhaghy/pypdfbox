@@ -4,8 +4,6 @@ Mirrors ``org.apache.fontbox.ttf.table.common.RangeRecord`` (upstream
 ``RangeRecord.java`` L28-62).
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 

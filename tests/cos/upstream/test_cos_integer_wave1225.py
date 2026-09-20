@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.cos.upstream import test_cos_integer as cos_integer_tests
 
 

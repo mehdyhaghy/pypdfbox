@@ -14,8 +14,6 @@ The ones that can run today against the bundled
 ``LiberationSans-Regular.ttf`` are translated in full.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

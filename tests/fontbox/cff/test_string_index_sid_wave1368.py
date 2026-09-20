@@ -11,8 +11,6 @@ the per-font String INDEX. These tests pin down each branch of that
 dispatch.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cff.cff_parser import CFFParser

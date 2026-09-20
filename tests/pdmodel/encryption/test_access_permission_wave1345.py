@@ -6,8 +6,6 @@ mirrors of the upstream private helpers (used internally by
 applied).
 """
 
-from __future__ import annotations
-
 from pypdfbox.pdmodel.encryption.access_permission import AccessPermission
 
 

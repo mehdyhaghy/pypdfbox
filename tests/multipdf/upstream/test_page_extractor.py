@@ -8,8 +8,6 @@ asserts page counts after various extraction calls. We don't ship the
 the fly — the assertions translate verbatim.
 """
 
-from __future__ import annotations
-
 import contextlib
 
 from pypdfbox import PDDocument, PDPage

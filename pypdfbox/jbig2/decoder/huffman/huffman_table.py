@@ -5,8 +5,6 @@ inner ``Code`` line structure). Implements the standard prefix-code assignment
 of ISO/IEC 14492:2001 (ITU-T Rec. T.88) Annex B.3.
 """
 
-from __future__ import annotations
-
 from pypdfbox.jbig2.decoder.huffman.internal_node import InternalNode
 from pypdfbox.jbig2.decoder.huffman.value_node import bit_pattern
 from pypdfbox.jbig2.io.image_input_stream import ImageInputStream

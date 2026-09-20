@@ -6,8 +6,6 @@ small subset of the PostScript language but is no full PostScript
 interpreter.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from enum import Enum
 
@@ -208,7 +206,7 @@ class Parser:
         pass
 
     @staticmethod
-    def parse(input: str, handler: SyntaxHandler) -> None:
+    def parse(input: str, handler: SyntaxHandler) -> None:  # upstream parameter name
         """Parse a Type 4 function, dispatching syntactic elements to
         ``handler``.
 

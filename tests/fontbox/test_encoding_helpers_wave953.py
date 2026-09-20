@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import sys
 
 from tests.fontbox import test_encoding_helpers_wave893

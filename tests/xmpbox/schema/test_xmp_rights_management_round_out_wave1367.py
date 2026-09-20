@@ -5,8 +5,6 @@ parsing fallbacks, owner bag ArrayProperty removal, and UsageTerms
 LangAlt language-listing behavior.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.xmpbox.type import (

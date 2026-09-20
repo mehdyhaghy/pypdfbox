@@ -9,8 +9,6 @@ BMP / WBMP. We expose the same 3-arg / 4-arg / 5-arg overloads as
 upstream so callers can drop in ``ImageIOUtil.write_image(...)``
 unchanged.
 """
-from __future__ import annotations
-
 import io
 import logging
 from pathlib import Path

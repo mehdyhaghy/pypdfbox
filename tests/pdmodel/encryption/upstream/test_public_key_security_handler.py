@@ -19,8 +19,6 @@ Translation notes (per PRD §12.1):
   assertions are translated below.
 """
 
-from __future__ import annotations
-
 import datetime
 
 import pytest
@@ -91,7 +89,7 @@ def test_recipients_round_trip_preserves_key_and_permissions(
 ) -> None:
     try:
         cert, private_key = _build_self_signed_rsa()
-    except Exception:
+    except Exception:  # slow CI environments
         pytest.skip("cert generation too heavy in this environment")
 
     permissions = AccessPermission()

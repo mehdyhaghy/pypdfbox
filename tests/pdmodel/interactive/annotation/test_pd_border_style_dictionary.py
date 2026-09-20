@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.interactive.annotation.pd_border_style_dictionary import (
     PDBorderStyleDictionary,

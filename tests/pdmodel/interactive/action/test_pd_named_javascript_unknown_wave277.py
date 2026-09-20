@@ -1,7 +1,5 @@
 """Wave 277 coverage for Named, JavaScript, and unknown action edges."""
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream, COSString

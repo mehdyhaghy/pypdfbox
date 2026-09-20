@@ -9,8 +9,6 @@ a Python ``Generic`` because the runtime only needs the public ``shading``
 reference, not type-level distinguishing.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 

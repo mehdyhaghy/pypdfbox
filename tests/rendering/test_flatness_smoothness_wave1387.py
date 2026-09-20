@@ -26,8 +26,6 @@ no-op" deferred entry into a real behavioural application:
   cell count up so colour gradation samples on a finer grid.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

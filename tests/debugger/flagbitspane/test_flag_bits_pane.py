@@ -1,7 +1,5 @@
 """Tests for the :class:`FlagBitsPane` dispatcher."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSDictionary, COSInteger, COSName, COSString
 from pypdfbox.debugger.flagbitspane.flag_bits_pane import FlagBitsPane
 

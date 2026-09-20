@@ -1,8 +1,6 @@
 """Wave 1272: parity coverage for ``PDXFAResource`` upstream-named static
 helpers ``get_bytes_from_packet`` / ``get_bytes_from_stream``."""
 
-from __future__ import annotations
-
 from pypdfbox.cos import COSArray, COSStream, COSString
 from pypdfbox.pdmodel.interactive.form.pd_xfa_resource import PDXFAResource
 

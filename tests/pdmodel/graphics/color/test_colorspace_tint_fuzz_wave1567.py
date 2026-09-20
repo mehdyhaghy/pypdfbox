@@ -15,8 +15,6 @@ PDFBox 3.0.7 (``PDSeparation``/``PDDeviceN``/``PDICCBased``/``PDIndexed``):
   and ``get_initial_color`` defaults.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

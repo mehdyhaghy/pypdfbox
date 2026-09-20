@@ -32,8 +32,6 @@ branch and assert on observable output (pixel-fraction, error
 absence, expected colour). No new dependencies, no camelCase aliases.
 """
 
-from __future__ import annotations
-
 import contextlib
 from typing import Any
 
@@ -1263,7 +1261,7 @@ def test_commit_text_clip_no_image_or_paths_returns_early() -> None:
     r = _bare_renderer()
     r._image = None
     r._text_clip_paths = []
-    r._commit_text_clip()
+    r._commit_text_clip()  # no crash
 
 
 def test_commit_text_clip_zero_bounds_returns_early() -> None:
@@ -2581,7 +2579,7 @@ def test_paint_stencil_mask_zero_dimensions_returns_early() -> None:
         def get_height(self) -> int:
             return 0
 
-    r._paint_stencil_mask(_ZeroSizeImage())
+    r._paint_stencil_mask(_ZeroSizeImage())  # no crash
 
 
 def test_paint_stencil_mask_truncated_data_returns_early() -> None:
@@ -2599,7 +2597,7 @@ def test_paint_stencil_mask_truncated_data_returns_early() -> None:
     r._image = Image.new("RGB", (20, 20), (255, 255, 255))
     import pypdfbox.rendering._aggdraw_compat as agg
     r._draw = agg.Draw(r._image)
-    r._paint_stencil_mask(img_xobj)
+    r._paint_stencil_mask(img_xobj)  # no crash
 
 
 def test_paint_stencil_mask_non_1bpc_returns_early() -> None:

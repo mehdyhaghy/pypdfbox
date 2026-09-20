@@ -23,8 +23,6 @@ Targets the last few missing lines in five modules so each reaches
   not a ``COSString``.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos import (

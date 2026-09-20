@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 
 class PDTransitionDimension:
     """Dimension in which a page transition shall occur.

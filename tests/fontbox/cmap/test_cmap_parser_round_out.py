@@ -5,8 +5,6 @@ directive so regressions in tokenizer / dispatch logic surface against
 a single operator, not the whole pipeline.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.fontbox.cmap import CMap, CMapParser

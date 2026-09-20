@@ -15,8 +15,6 @@ Covers the packet-envelope toggles that callers of XmpSerializer rely on:
   declaration.
 """
 
-from __future__ import annotations
-
 import io
 from xml.dom.minidom import Document
 

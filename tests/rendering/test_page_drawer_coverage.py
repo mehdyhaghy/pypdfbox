@@ -9,8 +9,6 @@ remains covered by the higher-level renderer fixtures; this module
 focuses on the surface area of ``PageDrawer`` itself.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

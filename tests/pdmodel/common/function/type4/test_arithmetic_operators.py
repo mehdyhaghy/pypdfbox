@@ -6,8 +6,6 @@ Each test pre-loads an :class:`ExecutionContext` stack with operands,
 runs the operator's ``execute`` method, and checks the resulting stack.
 """
 
-from __future__ import annotations
-
 import math
 
 import pytest

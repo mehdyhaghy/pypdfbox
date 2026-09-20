@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import io
 
 from pypdfbox.pdmodel.interactive.action.pd_action_go_to import PDActionGoTo

@@ -18,8 +18,6 @@ These are hand-written API tests (synthetic font dictionaries); the
 upstream behaviour they pin is documented inline per case.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from pypdfbox.cos.cos_array import COSArray

@@ -5,8 +5,6 @@ Targets the residual branches in :func:`is_correct_method` —
 and non-string annotation mismatch path.
 """
 
-from __future__ import annotations
-
 import inspect
 from typing import Any
 

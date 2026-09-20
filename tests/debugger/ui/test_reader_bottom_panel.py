@@ -1,7 +1,5 @@
 """Hand-written tests for ``pypdfbox.debugger.ui.ReaderBottomPanel``."""
 
-from __future__ import annotations
-
 import tkinter as tk
 
 from pypdfbox.debugger.ui import ReaderBottomPanel

@@ -15,8 +15,6 @@ version paths. This file exercises:
   (``cls.main(rest)`` — ``rest`` must be the slice after the command
   name).
 """
-from __future__ import annotations
-
 import sys
 
 import pytest

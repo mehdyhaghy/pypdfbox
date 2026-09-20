@@ -1,7 +1,5 @@
 """Parity tests for upstream-named ``XMPMetadata`` accessors."""
 
-from __future__ import annotations
-
 from pypdfbox.xmpbox import (
     DublinCoreSchema,
     PDFAIdentificationSchema,
