@@ -19,10 +19,16 @@ You are welcome to try them, but please flag bugs as
 ## Install from PyPI
 
 ```sh
+uv add pypdfbox
+```
+
+Or, if you are not using uv:
+
+```sh
 pip install pypdfbox
 ```
 
-That installs the runtime dependencies (all permissively licensed):
+Either one installs the runtime dependencies (all permissively licensed):
 
 - [`cryptography`](https://pypi.org/project/cryptography/) (Apache-2.0
   / BSD) — replaces upstream PDFBox's Java Cryptography Architecture

@@ -21,7 +21,7 @@
 ---
 
 ```sh
-pip install pypdfbox
+uv add pypdfbox          # or: pip install pypdfbox
 ```
 
 ```python
