@@ -31,6 +31,19 @@ from pypdfbox.jbig2.image.filter import Filter, FilterType
 from pypdfbox.jbig2.image.resizer import Resizer, _Raster
 from pypdfbox.jbig2.util.combination_operator import CombinationOperator
 
+
+def _ceil_div(numerator: int, denominator: int) -> int:
+    """``ceil(numerator / denominator)`` in exact integer arithmetic.
+
+    PDFBox 3.0.8 changed the subsampled-bitmap dimensions from integer
+    division to ``Math.ceil((double) (extent - offset) / sampling)`` -- 3.0.7
+    truncated, which silently dropped the final partial row/column of every
+    subsampled raster. This mirrors the 3.0.8 shape without going through a
+    float, and matches Java's ``Math.ceil`` on negatives too (both round
+    toward zero there: ``ceil(-1.5) == -1``).
+    """
+    return -(-numerator // denominator)
+
 if TYPE_CHECKING:
     from pypdfbox.jbig2.jbig2_read_param import JBIG2ReadParam
 
@@ -189,8 +202,8 @@ class Bitmaps:
         x_offset = param.get_subsampling_x_offset()
         y_offset = param.get_subsampling_y_offset()
 
-        dst_width = (bitmap.get_width() - x_offset) // x_subsampling
-        dst_height = (bitmap.get_height() - y_offset) // y_subsampling
+        dst_width = _ceil_div(bitmap.get_width() - x_offset, x_subsampling)
+        dst_height = _ceil_div(bitmap.get_height() - y_offset, y_subsampling)
 
         dst = Bitmap(dst_width, dst_height)
 
@@ -216,17 +229,17 @@ class Bitmaps:
     ) -> Bitmap:
         """Apply horizontal subsampling only. Mirrors ``subsampleX``.
 
-        NOTE: upstream (3.0.7) has a latent bug here — it derives the
-        destination *height* from the width and offset (``(width - offset) //
-        sampling``) and keeps the source width, so an X-only subsampling whose
-        derived height exceeds the source height throws (mirrored as
-        :class:`IndexError`). The port reproduces this exactly so the output
-        matches the bundled jar byte-for-byte.
+        NOTE: upstream has a latent bug here — it derives the destination
+        *height* from the WIDTH and offset (``ceil((width - offset) /
+        sampling)``) and keeps the source width, so an X-only subsampling
+        whose derived height exceeds the source height throws (mirrored as
+        :class:`IndexError`). Still present in 3.0.8; the port reproduces it
+        exactly so the output matches the bundled jar byte-for-byte.
         """
         if bitmap is None:
             raise ValueError("src must not be null")
 
-        dst_height = (bitmap.get_width() - x_subsampling_offset) // x_subsampling
+        dst_height = _ceil_div(bitmap.get_width() - x_subsampling_offset, x_subsampling)
         dst = Bitmap(bitmap.get_width(), dst_height)
 
         for y_dst in range(dst.get_height()):
@@ -253,7 +266,7 @@ class Bitmaps:
         if bitmap is None:
             raise ValueError("src must not be null")
 
-        dst_width = (bitmap.get_width() - y_subsampling_offset) // y_subsampling
+        dst_width = _ceil_div(bitmap.get_width() - y_subsampling_offset, y_subsampling)
         dst = Bitmap(dst_width, bitmap.get_height())
 
         y_dst = 0

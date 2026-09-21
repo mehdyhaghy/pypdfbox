@@ -420,13 +420,12 @@ def test_increment_object_set_matches_pdfbox(
     finally:
         doc.close()
 
-    # NOTE (PDFBOX-6176): the live oracle jars are still 3.0.7, whose xref
-    # stream omits its own self-entry, while pypdfbox now follows 3.0.8 and
-    # includes it. Both `_index_data_numbers` (Python side) and the probe
+    # NOTE (PDFBOX-6176): the xref stream carries its own self-entry from
+    # 3.0.8 on (3.0.7 omitted it); pypdfbox follows 3.0.8. Both
+    # `_index_data_numbers` (Python side) and the probe
     # (`used.remove(xrefOwn)`, Java side) strip the xref stream's own number,
-    # so this application-object comparison holds under either jar version;
-    # the self-entry itself is pinned by
-    # tests/pdfwriter/test_xref_stream_self_entry_wave1602.py.
+    # so this compares application objects only. The self-entry itself is
+    # pinned by tests/pdfwriter/test_xref_stream_self_entry_wave1602.py.
     assert _index_data_numbers(_appended(py_out, src)) == pdfbox_objs
     # Both engines emit an xref stream increment for this xref-stream source.
     assert fields["incr_xref_stream"] == "true"

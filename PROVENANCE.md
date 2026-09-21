@@ -15,6 +15,19 @@ This file tracks every source file in `pypdfbox/` that is **ported from Apache P
 - Upstream repository: https://github.com/apache/pdfbox
 - **Last upstream sync (trunk):** `a71c5679d69bc3fd3ab15e248b69441ee91dca6c`. Previous sync point: `6b9b255eb471b384bac3d2d55c4e47f24fac6dac`.
 
+### Differential-oracle baseline
+
+The per-row "upstream PDFBox version" below records the release a file was
+**derived from**, which is historical and does not move. Separately, the live
+differential oracle (`archive/oracle/`) runs the port against a real PDFBox
+jar; that jar was moved **3.0.7 → 3.0.8** on 2026-09-20, and the full
+differential suite passes against it (1140 tests, `pytest -m live_oracle`).
+
+Rows still reading 3.0.7 therefore mean "ported from 3.0.7", not "only ever
+verified against 3.0.7" — they are covered by the 3.0.8 differential run
+wherever an oracle test exists for them. The swap surfaced one genuine
+forward-port gap, `Bitmaps.subsample*` (see `CHANGES.md`), which is fixed.
+
 ## Ported files
 
 ### `pypdfbox/io/`

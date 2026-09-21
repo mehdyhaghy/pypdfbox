@@ -5158,6 +5158,10 @@ than "False arm missing".
   upstream: PDFBox 3.0 `org.apache.xmpbox.type.Types` (a Java enum, whose constants are distinct by identity regardless of constructor arguments)
   reason: pypdfbox-side defect, not an upstream divergence — found by ruff's PIE796 when the rule set was widened in 2.0.0.
 
+- **Subsampled JBIG2 rasters no longer drop their final partial row/column.** `Bitmaps.subsample` / `subsample_x` / `subsample_y` sized the destination bitmap with integer division, so a 2550x3305 image read at 2x2 subsampling produced 1652 rows where it should produce 1653 — the last row was silently discarded, and likewise for the trailing column. PDFBox 3.0.8 changed these three computations from integer division to `Math.ceil((double) (extent - offset) / sampling)`; the port now mirrors that with exact integer ceiling arithmetic (which also matches Java's `Math.ceil` on negatives, both rounding toward zero). pypdfbox 1.x matched 3.0.7 here, so this is a behavioural change: subsampled rasters gain their final row/column. The upstream quirk whereby `subsample_x` derives the destination *height* from the source *width* (and `subsample_y` its *width* likewise) is unchanged — still present in 3.0.8 and still reproduced.
+  upstream: PDFBox 3.0.8 `org.apache.pdfbox.jbig2.image.Bitmaps#subsample` / `#subsampleX` / `#subsampleY` (verified by disassembling both jars: 3.0.7 emits `idiv`, 3.0.8 emits `Math.ceil`)
+  reason: forward-port surfaced by swapping the differential oracle jar from 3.0.7 to 3.0.8.
+
 ## See also
 
 - [`PROVENANCE.md`](PROVENANCE.md) — per-file upstream porting provenance (Apache 2.0 §4(b)).
