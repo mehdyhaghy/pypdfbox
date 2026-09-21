@@ -3,7 +3,6 @@ from .axial_shading_paint import AxialShadingPaint
 from .coons_patch import CoonsPatch
 from .cubic_bezier_curve import CubicBezierCurve
 from .gouraud_shading_context import GouraudShadingContext
-from .int_point import IntPoint
 from .line import Line
 from .patch import Patch
 from .patch_meshes_shading_context import PatchMeshesShadingContext
@@ -38,7 +37,6 @@ __all__ = [
     "CoonsPatch",
     "CubicBezierCurve",
     "GouraudShadingContext",
-    "IntPoint",
     "Line",
     "PDMeshBasedShadingType",
     "PDShading",

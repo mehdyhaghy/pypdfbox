@@ -22,7 +22,6 @@ from pypdfbox.pdmodel.graphics.shading.cubic_bezier_curve import CubicBezierCurv
 from pypdfbox.pdmodel.graphics.shading.gouraud_shading_context import (
     GouraudShadingContext,
 )
-from pypdfbox.pdmodel.graphics.shading.int_point import IntPoint
 from pypdfbox.pdmodel.graphics.shading.pd_shading_type4 import PDShadingType4
 from pypdfbox.pdmodel.graphics.shading.pd_shading_type5 import PDShadingType5
 from pypdfbox.pdmodel.graphics.shading.radial_shading_context import (
@@ -336,24 +335,6 @@ def test_gouraud_shading_context_dispose_clears_triangle_list() -> None:
     ctx.dispose()
     assert ctx.is_data_empty()
     assert ctx._triangle_list == []
-
-
-# ---------------------------------------------------------------------------
-# shading/int_point.py — lines 33 (equals self short-circuit), 45 (__repr__)
-# ---------------------------------------------------------------------------
-
-
-def test_int_point_equals_self_short_circuits_true() -> None:
-    """``equals(self)`` returns True via the identity check (line 33)."""
-    p = IntPoint(3, 4)
-    assert p.equals(p) is True
-    # __eq__ delegates to equals, so the identity path also covers __eq__.
-    assert p == p
-
-
-def test_int_point_repr_includes_coords() -> None:
-    """``__repr__`` renders the two coords (line 45)."""
-    assert repr(IntPoint(7, -2)) == "IntPoint(7, -2)"
 
 
 # ---------------------------------------------------------------------------

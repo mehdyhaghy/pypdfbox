@@ -2,7 +2,7 @@
 
 Covers the new low-level rasterisation primitives:
 
-* :class:`IntPoint`, :class:`Vertex`, :class:`Line`, :class:`CubicBezierCurve`,
+* :class:`Vertex`, :class:`Line`, :class:`CubicBezierCurve`,
   :class:`ShadedTriangle`, :class:`Patch`, :class:`CoonsPatch`,
   :class:`TensorPatch`.
 * The abstract :class:`ShadingContext` / :class:`ShadingPaint` surface plus
@@ -20,7 +20,6 @@ from pypdfbox.pdmodel.graphics.shading import (
     CoonsPatch,
     CubicBezierCurve,
     GouraudShadingContext,
-    IntPoint,
     Line,
     Patch,
     PatchMeshesShadingContext,
@@ -40,24 +39,6 @@ from pypdfbox.pdmodel.graphics.shading import (
     Type7ShadingPaint,
     Vertex,
 )
-
-
-# ----------------------------------------------------------------------
-# IntPoint
-# ----------------------------------------------------------------------
-def test_int_point_equality_and_hash() -> None:
-    a = IntPoint(3, 4)
-    b = IntPoint(3, 4)
-    c = IntPoint(4, 3)
-    assert a == b
-    assert hash(a) == hash(b)
-    assert a != c
-    assert a != (3, 4)
-
-
-def test_int_point_hash_formula_matches_upstream() -> None:
-    assert hash(IntPoint(0, 0)) == 89 * 623
-    assert hash(IntPoint(1, 2)) == 89 * 624 + 2
 
 
 # ----------------------------------------------------------------------

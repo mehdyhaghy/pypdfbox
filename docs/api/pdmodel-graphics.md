@@ -58,7 +58,7 @@ Coons/tensor patch `calcLevel` algorithm.
 | `ShadingContext`, `Type1ShadingContext`, `AxialShadingContext`, `RadialShadingContext`, `GouraudShadingContext`, `TriangleBasedShadingContext`, `PatchMeshesShadingContext` | Per-type rendering contexts. |
 | `ShadingPaint`, `Type1ShadingPaint`, `AxialShadingPaint`, `RadialShadingPaint`, `Type4ShadingPaint`, `Type5ShadingPaint`, `Type6ShadingPaint`, `Type7ShadingPaint` | Per-type Skia paints. |
 | `Patch`, `CoonsPatch`, `TensorPatch` | Patch geometry. `Patch.calc_level(...)` returns the subdivision level. |
-| `CubicBezierCurve`, `Line`, `Vertex`, `IntPoint`, `ShadedTriangle` | Mesh primitives. |
+| `CubicBezierCurve`, `Line`, `Vertex`, `ShadedTriangle` | Mesh primitives. |
 
 ## Blend (`pypdfbox.pdmodel.graphics.blend`)
 

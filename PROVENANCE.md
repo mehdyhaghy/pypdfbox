@@ -1858,7 +1858,7 @@ New `type4` subpackage ported from upstream `org.apache.pdfbox.pdmodel.common.fu
 
 Six subsystem clusters ported in 92 new modules. Library-first throughout (Pillow / fontTools / stdlib). Upstream PDFBox 3.0.x. Modules grouped by package; upstream Java paths are the obvious mirror of the snake_case Python paths (e.g. `pypdfbox/pdmodel/graphics/shading/axial_shading_context.py` ← `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/AxialShadingContext.java`). See `.parity/parity.json` for the full method-by-method audit.
 
-**`pdmodel.graphics.shading/` (25):** axial_shading_context, axial_shading_paint, coons_patch, cubic_bezier_curve, gouraud_shading_context, int_point, line, patch, patch_meshes_shading_context, pd_mesh_based_shading_type, pd_triangle_based_shading_type, radial_shading_context, radial_shading_paint, shaded_triangle, shading_context, shading_paint, tensor_patch, triangle_based_shading_context, type1_shading_context, type1_shading_paint, type4_shading_paint, type5_shading_paint, type6_shading_paint, type7_shading_paint, vertex.
+**`pdmodel.graphics.shading/` (24):** axial_shading_context, axial_shading_paint, coons_patch, cubic_bezier_curve, gouraud_shading_context, line, patch, patch_meshes_shading_context, pd_mesh_based_shading_type, pd_triangle_based_shading_type, radial_shading_context, radial_shading_paint, shaded_triangle, shading_context, shading_paint, tensor_patch, triangle_based_shading_context, type1_shading_context, type1_shading_paint, type4_shading_paint, type5_shading_paint, type6_shading_paint, type7_shading_paint, vertex.
 
 **`pdmodel/interactive/annotation/handlers/` (17):** cloudy_border, pd_caret_appearance_handler, pd_circle_appearance_handler, pd_file_attachment_appearance_handler, pd_free_text_appearance_handler, pd_highlight_appearance_handler, pd_ink_appearance_handler, pd_line_appearance_handler, pd_link_appearance_handler, pd_polygon_appearance_handler, pd_polyline_appearance_handler, pd_sound_appearance_handler, pd_square_appearance_handler, pd_squiggly_appearance_handler, pd_strikeout_appearance_handler, pd_text_appearance_handler, pd_underline_appearance_handler.
 
@@ -1889,7 +1889,7 @@ Five subsystem clusters ported in 166 new modules. Library-first throughout (Pil
 - **`pypdfbox/pdmodel/interactive/digitalsignature/`** + **`visible/`**: 8 new sig/template modules.
 - **`pypdfbox/pdmodel/fixup/`** + **`processor/`**: 6 new fixup classes.
 - **`pypdfbox/contentstream/operator/{color,markedcontent,state,text}/`**: 18 new operator classes.
-- **`pypdfbox/util/`**: hex, iterative_merge_sort, matrix, vector, string_util, number_format_util, small_map, xml_util.
+- **`pypdfbox/util/`**: hex, iterative_merge_sort, matrix, vector, string_util, number_format_util, xml_util.
 - **`pypdfbox/util/filetypedetector/`**: byte_trie, file_type, file_type_detector.
 - **`pypdfbox/fontbox/util/autodetect/`**: 7 OS-dependent font-discovery modules.
 - **`pypdfbox/pdfwriter/compress/`**: 4 compress-pool / object-stream modules.
@@ -2446,7 +2446,6 @@ Backfill of upstream Java paths for source files added in earlier waves (mostly 
 | `pypdfbox/pdmodel/graphics/shading/coons_patch.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/CoonsPatch.java` |
 | `pypdfbox/pdmodel/graphics/shading/cubic_bezier_curve.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/CubicBezierCurve.java` |
 | `pypdfbox/pdmodel/graphics/shading/gouraud_shading_context.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/GouraudShadingContext.java` |
-| `pypdfbox/pdmodel/graphics/shading/int_point.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/IntPoint.java` |
 | `pypdfbox/pdmodel/graphics/shading/line.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/Line.java` |
 | `pypdfbox/pdmodel/graphics/shading/patch.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/Patch.java` |
 | `pypdfbox/pdmodel/graphics/shading/patch_meshes_shading_context.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/PatchMeshesShadingContext.java` |
@@ -2634,7 +2633,6 @@ Backfill of upstream Java paths for source files added in earlier waves (mostly 
 | `pypdfbox/util/iterative_merge_sort.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/util/IterativeMergeSort.java` |
 | `pypdfbox/util/matrix.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/util/Matrix.java` |
 | `pypdfbox/util/number_format_util.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/util/NumberFormatUtil.java` |
-| `pypdfbox/util/small_map.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/util/SmallMap.java` |
 | `pypdfbox/util/string_util.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/util/StringUtil.java` |
 | `pypdfbox/util/vector.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/util/Vector.java` |
 | `pypdfbox/util/xml_util.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/util/XmlUtil.java` |

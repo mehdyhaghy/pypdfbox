@@ -5162,6 +5162,10 @@ than "False arm missing".
   upstream: PDFBox 3.0.8 `org.apache.pdfbox.jbig2.image.Bitmaps#subsample` / `#subsampleX` / `#subsampleY` (verified by disassembling both jars: 3.0.7 emits `idiv`, 3.0.8 emits `Math.ceil`)
   reason: forward-port surfaced by swapping the differential oracle jar from 3.0.7 to 3.0.8.
 
+- **BREAKING: `pypdfbox.util.SmallMap` / `SmallMapEntry` and `pypdfbox.pdmodel.graphics.shading.IntPoint` are removed.** Both were faithful ports of upstream classes that PDFBox 4.0 deletes: the shading contexts moved their pixel table from `Map<Point,Integer>` to `int[][]`, which leaves `IntPoint` with no caller, and `SmallMap` was a small-map allocation optimisation with no counterpart in Python (a `dict` already is one). Neither was reachable from any pypdfbox code path before this change — each was referenced only by its own module, its package re-export and its tests — so nothing in the library changes behaviour. Removed from the `pypdfbox.util` and `pypdfbox.pdmodel.graphics.shading` re-exports and from `__all__`.
+  upstream: PDFBox 4.0.0-SNAPSHOT — `org.apache.pdfbox.util.SmallMap` and `org.apache.pdfbox.pdmodel.graphics.shading.IntPoint` are both absent from trunk (verified against build `4.0.0-20260920.155750-1612`)
+  reason: PDFBox 4.0 convergence, dead-code tier — see `archive/migration-docs/PDFBOX_4.0_CONVERGENCE.md`.
+
 ## See also
 
 - [`PROVENANCE.md`](PROVENANCE.md) — per-file upstream porting provenance (Apache 2.0 §4(b)).

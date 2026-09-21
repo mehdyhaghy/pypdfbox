@@ -1,23 +1,6 @@
-"""Tests for ``IntPoint`` / ``Vertex`` public-method additions (Wave 1281)."""
+"""Tests for ``Vertex`` public-method additions (Wave 1281)."""
 
-from pypdfbox.pdmodel.graphics.shading.int_point import IntPoint
 from pypdfbox.pdmodel.graphics.shading.vertex import Vertex
-
-
-def test_int_point_hash_code_matches_upstream_formula():
-    p = IntPoint(3, 4)
-    assert p.hash_code() == 89 * (623 + 3) + 4
-
-
-def test_int_point_equals_compares_components():
-    a = IntPoint(3, 4)
-    b = IntPoint(3, 4)
-    c = IntPoint(5, 6)
-    assert a.equals(b) is True
-    assert a.equals(c) is False
-    assert a.equals(None) is False
-    assert a == b
-    assert a != c
 
 
 def test_vertex_to_string_format():

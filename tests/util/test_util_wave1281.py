@@ -2,15 +2,11 @@
 
 import io
 
-import pytest
-
 from pypdfbox.util import (
     Hex,
     IterativeMergeSort,
     Matrix,
     NumberFormatUtil,
-    SmallMap,
-    SmallMapEntry,
     StringUtil,
     Vector,
     XMLUtil,
@@ -111,38 +107,6 @@ def test_number_format_util_negative_value() -> None:
 def test_number_format_util_rejects_nan() -> None:
     buf = bytearray(32)
     assert NumberFormatUtil.format_float_fast(float("nan"), 2, buf) == -1
-
-
-def test_small_map_put_get_remove() -> None:
-    m = SmallMap()
-    assert m.is_empty()
-    m.put("a", 1)
-    m.put("b", 2)
-    assert m.size() == 2
-    assert m["a"] == 1
-    assert m.get("b") == 2
-    old = m.put("a", 10)
-    assert old == 1
-    assert m["a"] == 10
-    removed = m.remove("a")
-    assert removed == 10
-    assert "a" not in m
-    assert m.contains_key("b")
-
-
-def test_small_map_rejects_null() -> None:
-    m = SmallMap()
-    with pytest.raises(TypeError):
-        m.put(None, 1)
-    with pytest.raises(TypeError):
-        m.put("k", None)
-
-
-def test_small_map_entry_set() -> None:
-    m = SmallMap({"a": 1, "b": 2})
-    entries = m.entry_set()
-    assert {(e.get_key(), e.get_value()) for e in entries} == {("a", 1), ("b", 2)}
-    assert isinstance(entries[0], SmallMapEntry)
 
 
 def test_xml_util_parses_simple_xml() -> None:
