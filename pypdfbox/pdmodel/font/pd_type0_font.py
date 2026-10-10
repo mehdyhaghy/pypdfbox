@@ -881,18 +881,19 @@ class PDType0Font(PDFont):
         """Return the glyph outline for ``code`` in *font units*.
 
         Mirrors upstream ``PDType0Font.getPath(int code)`` which forwards
-        to the descendant CIDFont after resolving ``code -> CID``. The
-        descendant's ``getGlyphPath(cid)`` consults the embedded program
-        (TrueType ``glyf`` for :class:`PDCIDFontType2`, CFF ``CharString``
-        for :class:`PDCIDFontType0`) and returns an empty list when no
-        program is available.
+        the raw code to the descendant CIDFont's ``getPath(code)``. The
+        descendant consults its program (TrueType ``glyf`` for
+        :class:`PDCIDFontType2`, CFF ``CharString`` for
+        :class:`PDCIDFontType0`, or the substitute of a non-embedded font)
+        and returns an empty list when no program is available.
         """
+        from .pd_cid_font_type0 import PDCIDFontType0
         from .pd_cid_font_type2 import PDCIDFontType2
 
         descendant = self.get_descendant_font()
         if descendant is None:
             return []
-        if isinstance(descendant, PDCIDFontType2):
+        if isinstance(descendant, (PDCIDFontType0, PDCIDFontType2)):
             # upstream: descendantFont.getPath(code), raw code (the
             # descendant resolves it, including the substitute-font path)
             return list(descendant.get_path(code))
@@ -913,9 +914,10 @@ class PDType0Font(PDFont):
         descendant = self.get_descendant_font()
         if descendant is None:
             return []
+        from .pd_cid_font_type0 import PDCIDFontType0
         from .pd_cid_font_type2 import PDCIDFontType2
 
-        if isinstance(descendant, PDCIDFontType2):
+        if isinstance(descendant, (PDCIDFontType0, PDCIDFontType2)):
             return list(descendant.get_normalized_path(code))
         get_normalized = getattr(descendant, "get_normalized_path", None)
         if not callable(get_normalized):
@@ -1104,10 +1106,11 @@ class PDType0Font(PDFont):
         descendant = self.get_descendant_font()
         if descendant is None:
             return False
+        from .pd_cid_font_type0 import PDCIDFontType0
         from .pd_cid_font_type2 import PDCIDFontType2
 
-        if isinstance(descendant, PDCIDFontType2):
-            # upstream PDCIDFontType2.hasGlyph takes the raw code
+        if isinstance(descendant, (PDCIDFontType0, PDCIDFontType2)):
+            # upstream PDCIDFontType0/2.hasGlyph take the raw code
             return descendant.has_glyph(code)
         return descendant.has_glyph(self.code_to_cid(code))
 
@@ -1127,10 +1130,11 @@ class PDType0Font(PDFont):
         get_wff = getattr(descendant, "get_width_from_font", None)
         if not callable(get_wff):
             return 0.0
+        from .pd_cid_font_type0 import PDCIDFontType0
         from .pd_cid_font_type2 import PDCIDFontType2
 
-        if isinstance(descendant, PDCIDFontType2):
-            # upstream PDCIDFontType2.getWidthFromFont takes the raw code
+        if isinstance(descendant, (PDCIDFontType0, PDCIDFontType2)):
+            # upstream PDCIDFontType0/2.getWidthFromFont take the raw code
             return float(get_wff(code))
         return float(get_wff(self.code_to_cid(code)))
 

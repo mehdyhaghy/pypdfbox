@@ -641,7 +641,9 @@ def test_score_weight_handles_attribute_error() -> None:
     info = _FakeFontInfo("Foo", FontFormat.TTF, object(), weight=400)
     match = FontMatch(info)
     FontMapperImpl._score_weight(match, _NoWeight(), info)  # type: ignore[arg-type]
-    assert match.score == 0.0
+    # A descriptor without weight information takes the PDFBOX-6249
+    # "prefer a regular weight" branch: usWeightClass 400 scores +1.0.
+    assert match.score == pytest.approx(1.0)
 
 
 def test_score_weight_adds_positive_when_weights_close() -> None:

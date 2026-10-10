@@ -145,8 +145,21 @@ def test_type0_glyph_width_prefers_w_then_cff_then_default_width() -> None:
 
     assert font.get_glyph_width(1) == 333.0
     assert font.get_glyph_width(2) == 777.0
-    assert font.get_width_from_font(1) == 500.0
+    # get_width_from_font now takes the character code and, as upstream, reads
+    # an embedded name-keyed CFF program's width from the Type 2 charstring of
+    # the CID (CID as GID), mapped through the font matrix ([0.002 ...] * 1000)
+    widths = {1: 1000.0, 2: 0.0}
+    font.get_type2_char_string = lambda cid: _FakeCharString(widths[cid])  # type: ignore[method-assign]
+    assert font.get_width_from_font(1) == pytest.approx(2000.0)
     assert font.get_width_from_font(2) == 0.0
+
+
+class _FakeCharString:
+    def __init__(self, width: float) -> None:
+        self._width = width
+
+    def get_width(self) -> float:
+        return self._width
 
 
 def test_type0_program_metrics_matrix_bbox_paths_and_charstrings() -> None:
@@ -160,7 +173,9 @@ def test_type0_program_metrics_matrix_bbox_paths_and_charstrings() -> None:
     assert bbox.get_upper_right_y() == 900.0
     assert font.get_height(1) == 1000.0
     assert font.get_height(1) == 1000.0
-    assert font.get_glyph_path(1) == font.get_normalized_path(1)
+    # get_normalized_path now takes the character code and, as upstream, is
+    # get_path(code) (Type 2 charstring outline), not get_glyph_path(cid)
+    assert font.get_normalized_path(1) == font.get_path(1)
     assert font.get_type2_char_string(4) == ("charstring", 4)
 
 

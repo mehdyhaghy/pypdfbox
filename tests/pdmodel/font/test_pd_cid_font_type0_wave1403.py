@@ -59,5 +59,8 @@ def test_get_path_skips_remap_when_cid_out_of_map_range() -> None:
     font.is_embedded = lambda: True  # type: ignore[assignment,method-assign,return-value]
     font.code_to_cid = lambda _code: 7  # type: ignore[assignment,method-assign,return-value]
     font.get_cff_font = lambda: None  # type: ignore[assignment,method-assign,return-value]
+    # No substitute either (a non-embedded font now resolves one through the
+    # font mapper, like upstream; pin the "no program at all" case).
+    font._get_substitute = lambda: (None, None, None)  # type: ignore[method-assign]
     # CID 7 is out of the 1-entry map -> 614 false -> 616; no program -> [].
     assert font.get_path(7) == []

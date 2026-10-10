@@ -1,10 +1,11 @@
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.fontbox.cff.cff_cid_font import CFFCIDFont
 from pypdfbox.fontbox.cff.cff_font import CFFFont
 from pypdfbox.fontbox.cff.cff_type1_font import CFFType1Font
+from pypdfbox.fontbox.ttf.true_type_font import TrueTypeFont
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 from .pd_cid_font import PDCIDFont
@@ -43,6 +44,45 @@ def _uni_name_of_code_point(code_point: int) -> str:
     return "uni" + hex_str
 
 
+def _safe_font_name(font: Any) -> str | None:
+    """``font.getName()`` that never raises."""
+    try:
+        return font.get_name()
+    except Exception:
+        return None
+
+
+# (substitute name, base font) pairs already reported, so the fresh
+# descendant wrapper PDType0Font builds per call doesn't log per glyph.
+_WARNED_FALLBACKS: set[tuple[str | None, str | None]] = set()
+
+
+def _warn_fallback(font: Any, base_font: str | None) -> None:
+    key = (_safe_font_name(font), base_font)
+    if key in _WARNED_FALLBACKS:
+        return
+    _WARNED_FALLBACKS.add(key)
+    _LOG.warning("Using fallback %s for CID-keyed font %s", key[0], base_font)
+
+
+def _font_box_font_path(font: Any, name: str) -> list[tuple]:
+    """``t1Font.getPath(name)`` for a substitute FontBox font, in the shared
+    path-command format and in font units. A TrueType (``glyf``) substitute
+    is drawn by GID, so a name that resolves to ``.notdef`` draws the
+    ``.notdef`` glyph as upstream ``TrueTypeFont.getPath(String)`` does."""
+    if isinstance(font, TrueTypeFont):
+        is_post_script = getattr(font, "is_post_script", None)
+        if not (callable(is_post_script) and is_post_script()):
+            from .pd_cid_font_type2 import PDCIDFontType2
+
+            return PDCIDFontType2._draw_glyph(font, font.name_to_gid(name))
+    try:
+        path = font.get_path(name)
+    except Exception:
+        return []
+    return list(path) if path else []
+
+
 class PDCIDFontType0(PDCIDFont):
     """CIDFontType0 — CFF-based CIDFont. Mirrors PDFBox ``PDCIDFontType0``.
 
@@ -78,6 +118,13 @@ class PDCIDFontType0(PDCIDFont):
         # ``fontBBox`` instance field; resolved by
         # :meth:`generate_bounding_box`).
         self._font_bbox: PDRectangle | None = None
+        # Substitute for a NON-embedded (or damaged) font, resolved lazily
+        # through the FontMappers registry: ``None`` = not yet attempted,
+        # else a ``(cid_font, t1_font, substitute_unicode_cmap)`` triple
+        # mirroring upstream's ``cidFont`` / ``t1Font`` /
+        # ``substituteUnicodeCmap`` fields of the non-embedded branch of
+        # the constructor.
+        self._substitute: tuple[CFFCIDFont | None, Any | None, Any | None] | None = None
 
     def get_subtype(self) -> str | None:
         return self.SUB_TYPE
@@ -105,52 +152,213 @@ class PDCIDFontType0(PDCIDFont):
     # ---------- code -> GID ----------
 
     def code_to_gid(self, code: int) -> int:
-        """Resolve a character code (already CMap-decoded into a CID by
-        the parent :class:`PDType0Font`) to a CFF glyph index (GID).
+        """Return the GID for the character ``code``.
 
-        Mirrors upstream ``PDCIDFontType0.codeToGID``:
+        Mirrors upstream ``PDCIDFontType0.codeToGID`` (3.0 branch, including
+        PDFBOX-6249):
 
-        * For a CIDKeyed CFF program we look up ``cidNNNNN`` in the
-          charset (which lists glyph names in CharStrings order, so
-          index = GID).
-        * For a name-keyed (Type 1-flavoured) CFF embedded under a
-          CIDFontType0 wrapper, the CID is treated as a GID directly.
-        * When the font has no embedded program, the CID is the GID —
-          matches the renderer-fallback path PDFBox follows.
+        * A non-embedded font whose substitute is a CID-keyed font of a
+          different character collection with an ``Identity`` ordering
+          resolves the glyph via Unicode: code -> ``toUnicode`` -> the
+          substitute's Unicode ``cmap`` (an unmapped code yields GID 0).
+        * A CID-keyed CFF program (embedded, or the substitute) maps the
+          CID through its charset (CID 40 may well be GID 10).
+        * Otherwise the CID is used directly as the GID.
         """
-        program = self.get_cff_font()
-        if program is None:
-            return int(code)
         cid = self.code_to_cid(code)
-        if isinstance(program, CFFCIDFont):
+        if self._get_substitute_unicode_cmap() is not None:
+            return max(self._code_to_substitute_gid(code), 0)
+        cid_font = self._get_cid_font()
+        if cid_font is not None:
+            # The CIDs shall be used to determine the GID value for the
+            # glyph procedure using the charset table in the CFF program
             target = self._cff_glyph_name(cid)
-            charset = program.get_charset()
+            charset = cid_font.get_charset()
             if not charset:
                 return 0
             try:
                 return charset.index(target)
             except ValueError:
                 return 0
-        # Name-keyed CFF: CID is GID.
+        # The CIDs shall be used directly as GID values
         return int(cid)
+
+    # ---------- substitute font (non-embedded branch) ----------
+
+    def _get_substitute(
+        self,
+    ) -> tuple[CFFCIDFont | None, Any | None, Any | None]:
+        """Resolve the substitute for a non-embedded (or damaged) font.
+
+        Mirrors the ``else`` (not embedded) branch of upstream's
+        constructor: ``FontMappers.instance().getCIDFont(baseFont,
+        fontDescriptor, cidSystemInfo)`` and then
+
+        * a CID mapping (an OpenType font with CFF outlines) supplies its
+          CFF program: a CID-keyed one becomes ``cidFont``; a name-keyed
+          one (PDFBOX-3515: OpenType fonts load as ``CFFType1Font``)
+          becomes ``t1Font``;
+        * otherwise the TrueType substitute becomes ``t1Font``.
+
+        PDFBOX-6249 (3.0 branch): when the CID-keyed substitute belongs
+        to another character collection and has an ``Identity`` ordering
+        (modern CJK fonts are Adobe-Identity-0), this font's CIDs are
+        meaningless in it, so the substitute's Unicode cmap is kept and
+        glyphs are resolved via Unicode.
+
+        The default pypdfbox mapper has no CID font scanner and answers
+        ``None``; upstream's mapper always ends with a last-resort font,
+        so the bundled last-resort font is used then (as for
+        :class:`PDCIDFontType2`). A bare descendant (no parent Type 0
+        font) gets no substitute. Returns ``(cid_font, t1_font,
+        unicode_cmap)`` with every slot ``None`` for an embedded font or
+        when nothing could be found. Never raises.
+        """
+        if self._substitute is not None:
+            return self._substitute
+        cid_font: CFFCIDFont | None = None
+        t1_font: Any | None = None
+        unicode_cmap: Any | None = None
+        if self.get_cff_font() is None and self.get_parent() is not None:
+            mapping = self._find_cid_font_mapping()
+            font: Any | None = None
+            if mapping is not None:
+                if mapping.is_cid_font():
+                    cff_font = self._mapping_cff(mapping)
+                    if isinstance(cff_font, CFFCIDFont):
+                        cid_font = cff_font
+                        font = cid_font
+                    elif cff_font is not None:
+                        # PDFBOX-3515: OpenType fonts are loaded as
+                        # CFFType1Font
+                        t1_font = cff_font
+                        font = t1_font
+                else:
+                    t1_font = mapping.get_true_type_font()
+                    font = t1_font
+                if font is not None and mapping.is_fallback():
+                    _warn_fallback(font, self.get_base_font())
+                if (
+                    cid_font is not None
+                    and not self._is_character_collection_match(cid_font)
+                    and cid_font.get_ordering() == "Identity"
+                ):
+                    try:
+                        unicode_cmap = mapping.get_font().get_unicode_cmap_lookup()
+                    except Exception:
+                        _LOG.warning(
+                            "Could not read cmap of the substitute for font %s",
+                            self.get_base_font(),
+                            exc_info=True,
+                        )
+            if font is None:
+                # pypdfbox: the mapper had nothing (upstream's always ends
+                # with its last-resort font)
+                from .pd_cid_font_type2 import _bundled_last_resort
+
+                t1_font = _bundled_last_resort(self.get_font_descriptor())
+                if t1_font is not None:
+                    _warn_fallback(t1_font, self.get_base_font())
+        self._substitute = (cid_font, t1_font, unicode_cmap)
+        return self._substitute
+
+    def _find_cid_font_mapping(self) -> Any | None:
+        """``FontMappers.instance().getCIDFont(...)``; ``None`` on failure."""
+        from pypdfbox.fontbox.font_mappers import FontMappers
+
+        try:
+            mapper = FontMappers.instance()
+            get_cid_font = getattr(mapper, "get_cid_font", None)
+            if not callable(get_cid_font):
+                return None
+            return get_cid_font(
+                self.get_base_font() or self.get_name() or "",
+                self.get_font_descriptor(),
+                self.get_cid_system_info(),
+            )
+        except Exception:
+            _LOG.debug("CID font mapping failed", exc_info=True)
+            return None
+
+    @staticmethod
+    def _mapping_cff(mapping: Any) -> CFFFont | None:
+        """``mapping.getFont().getCFF().getFont()``; ``None`` when the
+        mapped OpenType font carries no CFF program."""
+        try:
+            cff = mapping.get_font().get_cff()
+        except Exception:
+            return None
+        # pypdfbox's ``OpenTypeFont.get_cff`` returns the CFF font itself;
+        # tolerate an upstream-shaped wrapper exposing ``get_font``.
+        if cff is not None and not isinstance(cff, CFFFont):
+            get_font = getattr(cff, "get_font", None)
+            cff = get_font() if callable(get_font) else None
+        return cff if isinstance(cff, CFFFont) else None
+
+    def _get_cid_font(self) -> CFFCIDFont | None:
+        """Upstream's ``cidFont`` field: the CID-keyed CFF program, embedded
+        or substitute."""
+        program = self.get_cff_font()
+        if program is not None:
+            return program if isinstance(program, CFFCIDFont) else None
+        return self._get_substitute()[0]
+
+    def _get_t1_font(self) -> Any | None:
+        """Upstream's ``t1Font`` field: an embedded name-keyed CFF program,
+        or the non-CID substitute (``CFFType1Font`` or a TrueType font)."""
+        program = self.get_cff_font()
+        if program is not None:
+            return None if isinstance(program, CFFCIDFont) else program
+        return self._get_substitute()[1]
+
+    def _get_substitute_unicode_cmap(self) -> Any | None:
+        """Upstream's ``substituteUnicodeCmap`` field (PDFBOX-6249)."""
+        if self.get_cff_font() is not None:
+            return None
+        return self._get_substitute()[2]
+
+    def _is_character_collection_match(self, substitute: CFFCIDFont) -> bool:
+        """Mirrors upstream private ``isCharacterCollectionMatch``
+        (PDFBOX-6249): the substitute has this font's Registry and
+        Ordering."""
+        ros = self.get_cid_system_info()
+        return (
+            ros is not None
+            and ros.get_registry() == substitute.get_registry()
+            and ros.get_ordering() == substitute.get_ordering()
+        )
+
+    def _code_to_substitute_gid(self, code: int) -> int:
+        """GID in the substitute for the given code, via Unicode; -1 if
+        unmapped. The substitute's Identity charset makes GIDs address its
+        charstrings directly. Mirrors upstream private
+        ``codeToSubstituteGID`` (PDFBOX-6249)."""
+        parent = self.get_parent()
+        unicodes = parent.to_unicode(code) if parent is not None else None
+        if not unicodes:
+            return -1
+        lookup = self._get_substitute_unicode_cmap()
+        if lookup is None:
+            return -1
+        try:
+            return int(lookup.get_glyph_id(ord(unicodes[0])))
+        except Exception:
+            return -1
 
     # ---------- /FontFile3 + /Subtype /CIDFontType0C wiring ----------
 
     def is_embedded(self) -> bool:  # type: ignore[override]
-        """``True`` when the descriptor carries an embedded font program.
+        """``True`` when the font carries a usable embedded CFF program.
 
-        Returns ``True`` when any of ``/FontFile``, ``/FontFile2``, or
-        ``/FontFile3`` is present — matching :meth:`PDCIDFont.is_embedded`
-        for descriptor-level liveness — *or* when a ``/FontFile3`` with
-        ``/Subtype /CIDFontType0C`` (or ``/OpenType``) is present, which
-        is the canonical embedded form for a CIDFontType0 per
-        PDF 32000-1 §9.6.2.2 and §9.7.4.2. The combined check keeps
-        legacy descriptor inputs working while still surfacing the
-        CID-keyed CFF case explicitly through :meth:`is_cff_embedded`.
+        Mirrors upstream ``PDCIDFontType0.isEmbedded``: the font counts as
+        embedded only when ``/FontFile3`` parses into a CFF font (or a
+        program was injected through :meth:`set_cff_font`). A missing or
+        damaged program, or a ``/FontFile`` / ``/FontFile2`` stream (not a
+        valid program location for a CIDFontType0), is not embedded: the
+        substitute font is used instead. :meth:`is_cff_embedded` keeps the
+        descriptor-only ``/FontFile3`` subtype check.
         """
-        if super().is_embedded():
-            return True
-        return self.is_cff_embedded()
+        return self.get_cff_font() is not None
 
     def is_cff_embedded(self) -> bool:
         """``True`` when the descriptor carries a ``/FontFile3`` whose
@@ -310,18 +518,49 @@ class PDCIDFontType0(PDCIDFont):
             return program_width
         return self.get_default_width()
 
-    def get_width_from_font(self, cid: int) -> float:
-        """Width of ``cid`` taken *only* from the embedded font program
-        (in 1/1000 em). Returns ``0.0`` when the font has no embedded
-        CFF program or the CID is unmapped.
+    def get_width_from_font(self, code: int) -> float:
+        """Width of the glyph for the character ``code`` taken *only* from
+        the font program (embedded, or the substitute for a non-embedded
+        font), in 1/1000 em. Returns ``0.0`` when no program is available.
 
-        Mirrors upstream ``PDCIDFontType0.getWidthFromFont`` — the
-        renderer uses this for scale-correction when ``/W`` is missing
-        but a font program is embedded. Distinct from
-        :meth:`get_glyph_width` which prefers ``/W`` first.
+        Mirrors upstream ``PDCIDFontType0.getWidthFromFont`` (3.0 branch,
+        including PDFBOX-6249):
+
+        * Unicode-resolved Identity substitute: the advance of the
+          substitute glyph found via ``toUnicode``;
+        * CID-keyed CFF: the advance of the CID's Type 2 charstring;
+        * embedded name-keyed CFF: the CID is used as the GID;
+        * otherwise (a TrueType or name-keyed CFF substitute) the advance
+          of the ``uniXXXX`` glyph named after the code's Unicode value.
+
+        The advance is mapped through the font matrix (scaled by 1000).
+        Distinct from :meth:`get_glyph_width`, which prefers ``/W``.
         """
-        program_width = self._cff_program_width(cid)
-        return program_width if program_width is not None else 0.0
+        cid = self.code_to_cid(code)
+        try:
+            cid_font = self._get_cid_font()
+            if self._get_substitute_unicode_cmap() is not None and cid_font is not None:
+                # the Identity charset makes the GID address the charstring
+                gid = max(self._code_to_substitute_gid(code), 0)
+                width = float(cid_font.get_width(gid))
+            elif cid_font is not None:
+                # ``CFFCIDFont.get_width(cid)`` is the width of the CID's
+                # Type 2 charstring (``getType2CharString(cid).getWidth()``)
+                width = float(cid_font.get_width(cid))
+            elif self.is_embedded():
+                # embedded name-keyed CFF: the CID is the GID
+                width = float(self.get_type2_char_string(cid).get_width())
+            else:
+                t1_font = self._get_t1_font()
+                if t1_font is None:
+                    return 0.0
+                width = float(t1_font.get_width(self.get_glyph_name(code)))
+        except Exception:
+            _LOG.debug("width lookup failed for code %d", code, exc_info=True)
+            return 0.0
+        matrix = self.get_font_matrix()
+        # fontMatrixTransform = fontMatrix.createAffineTransform().scale(1000, 1000)
+        return matrix[0] * width * 1000.0 + matrix[4]
 
     def get_average_font_width(self) -> float:  # type: ignore[override]
         """Mean glyph advance for this CID font in 1/1000 em.
@@ -382,11 +621,28 @@ class PDCIDFontType0(PDCIDFont):
         :meth:`PDCIDFont.get_height` (which reads ``/W2``) when no
         program is present.
 
+        A non-embedded font with a CFF substitute measures the substitute's
+        Type 2 charstring for the CID, as upstream does; with no CFF program
+        at all (no substitute, or a TrueType one, where upstream would fail
+        on the missing charstring) the parent ``/W2`` answer is returned.
+
         Result is cached per-CID.
         """
         program = self.get_cff_font()
         if program is None:
-            return super().get_height(cid)
+            cs = self.get_type2_char_string(cid)
+            if cs is None:
+                return super().get_height(cid)
+            cached = self._glyph_heights.get(cid)
+            if cached is not None:
+                return cached
+            try:
+                bounds = cs.get_bounds()
+            except Exception:
+                bounds = None
+            height = float(bounds[3] - bounds[1]) if bounds else 0.0
+            self._glyph_heights[cid] = height
+            return height
         cached = self._glyph_heights.get(cid)
         if cached is not None:
             return cached
@@ -419,15 +675,26 @@ class PDCIDFontType0(PDCIDFont):
 
         Mirrors upstream ``PDCIDFontType0.getFontMatrix``: when an
         embedded CFF program is present, return its ``FontMatrix``
-        (CFF Top DICT, default ``[0.001 0 0 0.001 0 0]``); otherwise
-        fall back to the CFF default. Returned as an immutable tuple to
+        (CFF Top DICT, default ``[0.001 0 0 0.001 0 0]``); for a
+        non-embedded font, the substitute's matrix; otherwise the CFF
+        default. Returned as an immutable tuple to
         prevent accidental in-place mutation by callers.
         """
-        program = self.get_cff_font()
-        if program is None:
-            return _CFF_DEFAULT_FONT_MATRIX
         try:
-            matrix = program.font_matrix
+            program: Any = self.get_cff_font()
+            if program is not None:
+                matrix = program.font_matrix
+            else:
+                # non-embedded: the substitute's matrix (upstream
+                # ``cidFont`` / ``t1Font.getFontMatrix()``), e.g.
+                # 1/unitsPerEm for a TrueType substitute
+                program = self._get_substitute_program()
+                if program is None:
+                    return _CFF_DEFAULT_FONT_MATRIX
+                if isinstance(program, CFFFont):
+                    matrix = program.font_matrix
+                else:
+                    matrix = program.get_font_matrix()
         except Exception:
             return _CFF_DEFAULT_FONT_MATRIX
         if not matrix or len(matrix) < 6:
@@ -463,7 +730,8 @@ class PDCIDFontType0(PDCIDFont):
            four corners is non-zero (an all-zero box is the spec-default
            sentinel and means "ask the font program instead").
         2. Otherwise read the embedded CFF program's Top DICT
-           ``/FontBBox``.
+           ``/FontBBox``, or the substitute's bounding box for a
+           non-embedded font.
 
         Exposed under the upstream name (without an underscore prefix)
         because PDFBox treats it as a protected method that subclasses
@@ -488,6 +756,16 @@ class PDCIDFontType0(PDCIDFont):
             cff_bbox = program.get_property("FontBBox")
             if cff_bbox is not None:
                 rect = self._coerce_bbox(cff_bbox)
+                if rect is not None:
+                    return rect
+        else:
+            # non-embedded: the substitute's bounding box
+            substitute = self._get_substitute_program()
+            if substitute is not None:
+                try:
+                    rect = self._coerce_bbox(substitute.get_font_b_box())
+                except Exception:
+                    rect = None
                 if rect is not None:
                     return rect
         return super().get_bounding_box()
@@ -534,62 +812,57 @@ class PDCIDFontType0(PDCIDFont):
             return []
         return program.get_path(name)
 
-    def get_normalized_path(self, cid: int) -> list[tuple]:
-        """Normalized glyph outline for ``cid`` in 1/1000 em.
-
-        Mirrors upstream ``PDCIDFontType0.getNormalizedPath`` which on
-        the CFF-backed CIDFontType0 path is a thin alias of
-        :meth:`get_glyph_path`: the embedded CFF program already
-        expresses outlines in its own font units (1000 upem by default
-        for a CFF font matrix of ``[0.001 0 0 0.001 0 0]``), so no
-        coordinate transform is applied here. Distinct from the
-        :class:`PDCIDFontType2` override, which has to scale TTF
-        outlines from a non-1000 upem.
-        """
-        return self.get_glyph_path(cid)
-
     # ---------- font-box accessors ----------
 
-    def get_font_box_font(self) -> CFFFont | None:
-        """Return the underlying embedded CFF font program, or ``None``
-        when the font is not embedded / cannot be parsed.
+    def get_font_box_font(self) -> Any | None:
+        """Return the embedded or substituted font, or ``None`` when there
+        is neither.
 
-        Mirrors upstream ``PDCIDFontType0.getFontBoxFont``. Upstream
-        keeps two private slots — ``cidFont`` (a :class:`CFFCIDFont`)
-        and ``t1Font`` (a name-keyed :class:`CFFType1Font` or a
-        substitute :class:`TrueTypeFont`) — and surfaces whichever is
-        non-null. For our CFF-only embedding path the two slots collapse
-        into one return value, which matches the Java getter when the
-        font *is* embedded. Substitute / fallback fonts are out of scope
-        — the renderer never reaches this path without a real
-        ``/FontFile3`` stream.
+        Mirrors upstream ``PDCIDFontType0.getFontBoxFont``: ``cidFont``
+        when set, else ``t1Font``. For an embedded font that is the parsed
+        ``/FontFile3`` program (:meth:`get_cff_font`); for a non-embedded
+        one, the substitute located through :class:`FontMappers` (a
+        :class:`CFFCIDFont`, a :class:`CFFType1Font` or a TrueType font).
         """
-        return self.get_cff_font()
+        cid_font = self._get_cid_font()
+        if cid_font is not None:
+            return cid_font
+        return self._get_t1_font()
+
+    def _get_substitute_program(self) -> Any | None:
+        """The substitute program of a non-embedded font (``None`` when
+        embedded or when there is none)."""
+        if self.get_cff_font() is not None:
+            return None
+        return self.get_font_box_font()
 
     def get_type2_char_string(self, cid: int) -> object | None:
-        """Return the Type 2 charstring wrapper for ``cid``, or ``None``
-        when the font has no embedded CFF program.
+        """Return the Type 2 charstring for ``cid``, or ``None`` when the
+        font (embedded or substituted) does not contain Type 2 charstrings.
 
         Mirrors upstream ``PDCIDFontType0.getType2CharString(int cid)``.
-        For a CID-keyed CFF the charset maps CIDs into the CharStrings
-        INDEX directly, so the wrapper indexes by GID == charset index
-        of ``cidNNNNN``. For a name-keyed (Type 1 -flavoured) CFF
-        embedded under a CIDFontType0 wrapper the CID is treated as
-        the GID, which mirrors upstream's
-        ``CFFType1Font.getType2CharString`` fall-through.
+        A CID-keyed CFF resolves the CID through its charset; a name-keyed
+        CFF (an embedded program under a CIDFontType0 wrapper, or a
+        CFF-based OpenType substitute) treats the CID as the GID. A
+        TrueType substitute has no charstrings.
         """
         program = self.get_cff_font()
-        if program is None:
-            return None
-        if isinstance(program, CFFCIDFont):
+        if program is not None and not isinstance(program, CFFCIDFont):
+            # Embedded name-keyed CFF: CID is GID.
+            return program.get_type2_char_string(int(cid))
+        cid_font = self._get_cid_font()
+        if cid_font is not None:
             # Pass the CID straight through: ``CFFCIDFont.get_type2_char_string``
             # does the CID→GID resolution itself (mirroring upstream
             # ``cidFont.getType2CharString(cid)``). Pre-resolving the GID here
             # and passing *that* would trigger a second CID→GID lookup inside
             # the CFFCIDFont accessor, corrupting the returned wrapper's GID.
-            return program.get_type2_char_string(int(cid))
-        # Name-keyed CFF: CID is GID.
-        return program.get_type2_char_string(int(cid))
+            return cid_font.get_type2_char_string(int(cid))
+        t1_font = self._get_t1_font()
+        if isinstance(t1_font, CFFType1Font):
+            # Name-keyed CFF: CID is GID.
+            return t1_font.get_type2_char_string(int(cid))
+        return None
 
     # ---------- glyph name / path / hasGlyph (upstream-named) ----------
 
@@ -619,66 +892,88 @@ class PDCIDFontType0(PDCIDFont):
         return _uni_name_of_code_point(ord(unicodes[0]))
 
     def get_path(self, code: int) -> list[tuple]:
-        """Glyph outline for ``code`` in *font units*.
+        """Glyph outline for the character ``code`` in *font units*.
 
-        Mirrors upstream ``PDCIDFontType0.getPath(int)``. Resolution
-        order:
+        Mirrors upstream ``PDCIDFontType0.getPath(int)`` (3.0 branch,
+        including PDFBOX-6249). Resolution order:
 
-        1. Resolve ``code -> CID`` via :meth:`code_to_cid`.
-        2. If the descendant carries a ``/CIDToGIDMap`` stream and the
-           font is embedded (PDFBOX-4093: a CIDFontType0 may carry an
-           explicit CID→GID map despite the spec saying otherwise),
-           remap ``cid`` through it.
-        3. Ask the embedded CFF program for the Type 2 charstring's
-           outline (CIDFontType0C) or fall back to the CFFType1Font
-           branch when the embedded program is name-keyed.
-        4. Final fallback: ``.notdef`` empty path — matches upstream's
-           ``new GeneralPath()`` empty fallback.
+        1. A non-embedded font with a Unicode-resolved Identity substitute
+           draws the substitute glyph found via ``toUnicode`` (``.notdef``
+           when unmapped).
+        2. Resolve ``code -> CID``; an embedded font with a
+           ``/CIDToGIDMap`` stream (PDFBOX-4093: a CIDFontType0 may carry
+           one despite the spec) remaps the CID through it.
+        3. The CID's Type 2 charstring from the CFF program (embedded or
+           substitute).
+        4. Otherwise (a TrueType substitute) the ``uniXXXX`` glyph named
+           after the code's Unicode value.
+
+        Returns ``[]`` when no program is available or the glyph cannot be
+        drawn, matching upstream's ``new GeneralPath()`` empty fallback.
         """
         cid = self.code_to_cid(code)
-        if self.is_embedded() and self.has_cid_to_gid_map_stream():
-            cid_to_gid = self.read_cid_to_gid_map()
-            if cid_to_gid is not None and 0 <= cid < len(cid_to_gid):
-                cid = cid_to_gid[cid]
-        program = self.get_cff_font()
-        if program is None:
-            return []
-        cs = self.get_type2_char_string(cid)
-        if cs is not None:
-            try:
-                return cs.get_path()
-            except Exception:
+        try:
+            if self._get_substitute_unicode_cmap() is not None:
+                gid = max(self._code_to_substitute_gid(code), 0)
+                cs = self.get_type2_char_string(gid)
+                return list(cs.get_path()) if cs is not None else []
+            if self.is_embedded() and self.has_cid_to_gid_map_stream():
+                # PDFBOX-4093: despite being a type 0 font, there is a
+                # CIDToGIDMap
+                cid_to_gid = self.read_cid_to_gid_map()
+                if cid_to_gid is not None and 0 <= cid < len(cid_to_gid):
+                    cid = cid_to_gid[cid]
+            cs = self.get_type2_char_string(cid)
+            if cs is not None:
+                return list(cs.get_path())
+            t1_font = self._get_t1_font()
+            if t1_font is None:
                 return []
-        return []
+            if self.is_embedded() and isinstance(t1_font, CFFType1Font):
+                return list(t1_font.get_type2_char_string(cid).get_path())
+            return _font_box_font_path(t1_font, self.get_glyph_name(code))
+        except Exception:
+            _LOG.debug("glyph path failed for code %d", code, exc_info=True)
+            return []
+
+    def get_normalized_path(self, code: int) -> list[tuple]:
+        """Glyph outline for the character ``code``.
+
+        Mirrors upstream ``PDCIDFontType0.getNormalizedPath``, which simply
+        returns :meth:`get_path`: no coordinate transform is applied (a
+        CFF program already uses a 1000-unit em by default). Distinct from
+        the :class:`PDCIDFontType2` override, which scales TTF outlines.
+        """
+        return self.get_path(code)
 
     def has_glyph(self, code: int) -> bool:  # type: ignore[override]
-        """``True`` when ``code`` resolves to a non-``.notdef`` glyph.
+        """``True`` when the character ``code`` resolves to a
+        non-``.notdef`` glyph.
 
-        Mirrors upstream ``PDCIDFontType0.hasGlyph(int)`` — when an
-        embedded CFF program is available we check that the CID's
-        Type 2 charstring resolves to a non-zero GID (upstream's
-        ``charstring.getGID() != 0``). For a name-keyed CFF embedded
-        under a CIDFontType0 wrapper the upstream implementation goes
-        through ``CFFType1Font`` directly; we collapse that branch into
-        the same charstring lookup since :meth:`get_type2_char_string`
-        already routes both polymorphic cases.
+        Mirrors upstream ``PDCIDFontType0.hasGlyph(int)`` (3.0 branch,
+        including PDFBOX-6249): a Unicode-resolved Identity substitute
+        must map the code's Unicode value to a GID above 0; a CFF program
+        (embedded or substitute) must resolve the CID's Type 2 charstring
+        to a GID other than 0; a TrueType substitute must have the
+        ``uniXXXX`` glyph named after the code's Unicode value.
 
-        When no embedded program is present we fall back to the parent
-        :meth:`PDCIDFont.has_glyph` ``/W``/``/DW`` heuristic — upstream
-        always reaches a substitute font program in that branch
-        (``t1Font.hasGlyph(getGlyphName(code))``) but the Python port
-        deliberately stops at the metric-table answer rather than
-        synthesising a substitute.
+        With no font program at all (a bare descendant without an
+        embedded program), the parent :meth:`PDCIDFont.has_glyph`
+        ``/W``/``/DW`` heuristic answers instead.
         """
-        program = self.get_cff_font()
-        if program is None:
-            return super().has_glyph(self.code_to_cid(code))
         cid = self.code_to_cid(code)
-        cs = self.get_type2_char_string(cid)
-        if cs is None:
-            return False
         try:
-            return cs.get_gid() != 0
+            if self._get_substitute_unicode_cmap() is not None:
+                return self._code_to_substitute_gid(code) > 0
+            cs = self.get_type2_char_string(cid)
+            if cs is not None:
+                return cs.get_gid() != 0
+            t1_font = self._get_t1_font()
+            if t1_font is None:
+                return super().has_glyph(cid)
+            if self.is_embedded() and isinstance(t1_font, CFFType1Font):
+                return t1_font.get_type2_char_string(cid).get_gid() != 0
+            return bool(t1_font.has_glyph(self.get_glyph_name(code)))
         except Exception:
             return False
 

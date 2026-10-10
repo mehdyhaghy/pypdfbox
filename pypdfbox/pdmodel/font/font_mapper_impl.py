@@ -196,6 +196,30 @@ _STANDARD14_ALIAS_NAMES: tuple[str, ...] = (
 )
 
 
+def _descriptor_attr(font_descriptor: Any, name: str) -> Any | None:
+    """Call the zero-arg accessor *name* on *font_descriptor*, tolerating
+    descriptor stand-ins that lack it (returns ``None``)."""
+    getter = getattr(font_descriptor, name, None)
+    if not callable(getter):
+        return None
+    return getter()
+
+
+def _descriptor_panose(font_descriptor: Any) -> Any | None:
+    """Return the descriptor's ``PDPanoseClassification`` or ``None``.
+
+    Mirrors upstream ``fontDescriptor.getPanose().getPanose()`` guarded
+    by the ``getPanose() != null`` check.
+    """
+    pd_panose = _descriptor_attr(font_descriptor, "get_panose")
+    if pd_panose is None:
+        return None
+    try:
+        return pd_panose.get_panose()
+    except (AttributeError, IndexError):
+        return None
+
+
 class FontMapperImpl(FontMapper):
     """Default FontMapper backed by a pluggable :class:`FontProvider`.
 
@@ -669,21 +693,99 @@ class FontMapperImpl(FontMapper):
     ) -> list[FontMatch]:
         """Return scored matches as a heap (highest score first).
 
-        Mirrors upstream ``getFontMatches`` (Java line 557-651). pypdfbox
-        uses a Python list managed via :mod:`heapq`; :class:`FontMatch`
-        defines ``__lt__`` so the heap pops the highest score first.
+        Mirrors upstream ``getFontMatches`` (3.0 branch). pypdfbox uses a
+        Python list managed via :mod:`heapq`; :class:`FontMatch` defines
+        ``__lt__`` so the heap pops the highest score first. Positive
+        scores indicate matches for certain attributes, negative scores
+        indicate mismatches, zero is neutral.
         """
         self.get_provider()
         queue: list[FontMatch] = []
         for info in self._font_info_by_name.values():
+            # filter by CIDSystemInfo, if given
             if cid_system_info is not None and not self._is_charset_match(
                 cid_system_info, info
             ):
                 continue
             match = FontMatch(info)
-            self._score_weight(match, font_descriptor, info)
+            # PDFBOX-6251 (committed under PDFBOX-6249): avoid
+            # DroidSansFallback unless requested, because latin glyphs are
+            # not properly supported.
+            if info.get_post_script_name() == "DroidSansFallback" and not (
+                _descriptor_attr(font_descriptor, "get_font_family")
+                == "DroidSansFallback"
+                or _descriptor_attr(font_descriptor, "get_font_name")
+                == "DroidSansFallback"
+            ):
+                continue
+            # Panose is the most reliable
+            fd_panose = _descriptor_panose(font_descriptor)
+            info_panose = info.get_panose()
+            if fd_panose is not None and info_panose is not None:
+                if not self._score_panose(
+                    match, font_descriptor, fd_panose, info, info_panose
+                ):
+                    continue
+            else:
+                self._score_weight(match, font_descriptor, info)
             heapq.heappush(queue, match)
         return queue
+
+    @staticmethod
+    def _score_panose(
+        match: FontMatch,
+        font_descriptor: PDFontDescriptor,
+        panose: Any,
+        info: FontInfo,
+        info_panose: Any,
+    ) -> bool:
+        """Score *match* by comparing the descriptor's Panose with the font's.
+
+        Mirrors the Panose branch of upstream ``getFontMatches``. Returns
+        ``False`` when the candidate must be skipped (PDFBOX-4268: a
+        barcode font while not searching for one), ``True`` otherwise.
+        """
+        if panose.get_family_kind() != info_panose.get_family_kind():
+            return True
+        post_script_name = info.get_post_script_name() or ""
+        if (
+            panose.get_family_kind() == 0
+            and (
+                "barcode" in post_script_name.lower()
+                or post_script_name.startswith("Code")
+            )
+            and not FontMapperImpl.probably_barcode_font(font_descriptor)
+        ):
+            # PDFBOX-4268: ignore barcode font if we aren't searching for one.
+            return False
+        # serifs
+        serif = panose.get_serif_style()
+        info_serif = info_panose.get_serif_style()
+        if serif == info_serif:
+            # exact match
+            match.score += 2
+        elif 2 <= serif <= 5 and 2 <= info_serif <= 5:
+            # cove (serif)
+            match.score += 1
+        elif 11 <= serif <= 13 and 11 <= info_serif <= 13:
+            # sans-serif
+            match.score += 1
+        elif serif != 0 and info_serif != 0:
+            # mismatch
+            match.score -= 1
+        # weight
+        weight = info_panose.get_weight()
+        weight_class = info.get_weight_class_as_panose()
+        if abs(weight - weight_class) > 2:
+            # inconsistent data in system font, usWeightClass wins
+            weight = weight_class
+        if panose.get_weight() == weight:
+            # exact match
+            match.score += 2
+        elif panose.get_weight() > 1 and weight > 1:
+            dist = abs(panose.get_weight() - weight)
+            match.score += 1 - dist * 0.5
+        return True
 
     @staticmethod
     def _score_weight(
@@ -693,11 +795,10 @@ class FontMapperImpl(FontMapper):
     ) -> None:
         """Score *match* by descriptor weight vs ``OS/2.usWeightClass``.
 
-        Trimmed-down port of the upstream Panose-aware scoring (Java line
-        575-651). Full Panose support requires the FontInfo to expose a
-        Panose record; pypdfbox's port currently scores weight only. The
-        scoring deltas (``1``, ``2``, ``-1``) match upstream so the
-        relative ordering is preserved when Panose support is added.
+        Mirrors the non-Panose weight branches of upstream
+        ``getFontMatches`` (used when either side lacks a Panose
+        classification). PDFBOX-6249: when the descriptor carries no
+        weight information, a regular weight (400) is preferred.
         """
         try:
             fd_weight = float(font_descriptor.get_font_weight() or 0)
@@ -705,8 +806,12 @@ class FontMapperImpl(FontMapper):
             fd_weight = 0.0
         info_weight = info.get_weight_class()
         if fd_weight > 0 and info_weight > 0:
+            # usWeightClass is pretty reliable
             dist = abs(fd_weight - info_weight)
             match.score += 1 - (dist / 100) * 0.5
+        elif info_weight > 0:
+            # no weight information in the descriptor: prefer a regular weight
+            match.score += 1 - (abs(info_weight - 400) / 100) * 0.5
 
     @staticmethod
     def _is_charset_match(
@@ -715,25 +820,49 @@ class FontMapperImpl(FontMapper):
     ) -> bool:
         """Return ``True`` if *info*'s character set matches *cid_system_info*.
 
-        Mirrors upstream ``isCharSetMatch`` (Java line 673-722).
+        Mirrors upstream ``isCharSetMatch`` (3.0 branch). Only applies to
+        Adobe-GB1, Adobe-CNS1, Adobe-Japan1 and Adobe-Korea1, as per the
+        PDF spec.
         """
         ordering = cid_system_info.get_ordering()
         if not ordering:
             return False
         info_cid = info.get_cid_system_info()
         if info_cid is not None:
-            return (
+            if (
                 info_cid.get_registry() == cid_system_info.get_registry()
                 and info_cid.get_ordering() == ordering
-            )
+            ):
+                return True
+            if info_cid.get_ordering() != "Identity":
+                return False
+            # PDFBOX-6249: Adobe-Identity-0 fonts (Noto CJK, Source Han)
+            # never match a ROS by name; fall through to the code page bits
         code_page_range = info.get_code_page_range()
         jis_japan = 1 << 17
         chinese_simplified = 1 << 18
         korean_wansung = 1 << 19
         chinese_traditional = 1 << 20
         korean_johab = 1 << 21
-        if info.get_post_script_name() == "MalgunGothic-Semilight":
-            code_page_range &= ~(jis_japan | chinese_simplified | chinese_traditional)
+        post_script_name = info.get_post_script_name()
+        if post_script_name is not None:
+            if post_script_name == "MalgunGothic-Semilight":
+                # PDFBOX-4793 and PDF.js 10699: This font has only Korean,
+                # but has bits 17-21 set.
+                code_page_range &= ~(
+                    jis_japan | chinese_simplified | chinese_traditional
+                )
+            if post_script_name.startswith("NotoSans"):
+                suffix = post_script_name[8:]
+                if suffix.startswith(
+                    ("HK", "TC", "CJKsc", "CJKtc", "CJKhk", "KR", "CJKkr")
+                ):
+                    # PDFBOX-6249: These fonts have bit 17 set.
+                    code_page_range &= ~jis_japan
+                if suffix.startswith(("JP", "CJKjp", "KR", "CJKkr")):
+                    # PDFBOX-6249: These fonts have at least one chinese
+                    # bit set.
+                    code_page_range &= ~(chinese_simplified | chinese_traditional)
         if ordering == "GB1":
             return (code_page_range & chinese_simplified) == chinese_simplified
         if ordering == "CNS1":

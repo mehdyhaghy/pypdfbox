@@ -1052,6 +1052,10 @@ class PDFRenderer(PDFStreamEngine):
       Form-XObject dispatch (see :meth:`_render_type3_charproc`).
     """
 
+    # Class-level default so helpers driven on a bare instance (tests that
+    # bypass ``__init__``) still see the page-level initial matrix.
+    _pattern_base_ctm: _Matrix = _IDENTITY
+
     def __init__(self, document: PDDocument) -> None:
         super().__init__()
         self._document = document
@@ -1061,6 +1065,13 @@ class PDFRenderer(PDFStreamEngine):
         self._scale: float = 1.0
         self._page_height_px: float = 0.0
         self._device_ctm: _Matrix = _IDENTITY
+        # User-space CTM a pattern's ``/Matrix`` is relative to (upstream
+        # ``PDFStreamEngine.initialMatrix``): identity at page level, the
+        # form's CTM (after concatenating its ``/Matrix``) inside a form or
+        # transparency group (PDFBOX-5250), the appearance matrix inside an
+        # annotation, and identity again inside a tiling-pattern cell (whose
+        # device CTM already carries the pattern matrix).
+        self._pattern_base_ctm: _Matrix = _IDENTITY
         # Page ``/Rotate`` (0/90/180/270) for the page currently being
         # rasterised — consulted by ``_render_annotation`` to counter-rotate
         # a NoRotate annotation around its rect's upper-left corner
@@ -1526,6 +1537,7 @@ class PDFRenderer(PDFStreamEngine):
 
         # Fresh graphics-state stack with one identity entry.
         self._gs_stack = [_GState()]
+        self._pattern_base_ctm = _IDENTITY
         self._subpaths = []
         self._current_subpath = None
         self._current_point = (0.0, 0.0)
@@ -4366,16 +4378,22 @@ class PDFRenderer(PDFStreamEngine):
         # In this renderer the device CTM already maps page default space to
         # device pixels (the gs CTM stack starts at identity for a top-level
         # page), so the full pattern-space -> device-pixel transform is
-        # ``patternMatrix * deviceCtm``. We deliberately do *not* fold in
-        # ``self._gs.ctm`` here — that would re-apply the user-space CTM the
-        # pattern matrix is defined to ignore.
+        # ``patternMatrix * initialMatrix * deviceCtm``, where the initial
+        # matrix (``_pattern_base_ctm``) is identity on the page and the
+        # form CTM inside a form XObject or transparency group (PDFBOX-5250).
+        # We deliberately do *not* fold in the current ``self._gs.ctm`` here:
+        # that would re-apply the user-space CTM the pattern matrix is
+        # defined to ignore.
         try:
             pattern_matrix = tuple(pattern.get_matrix())
             if len(pattern_matrix) != 6:
                 pattern_matrix = _IDENTITY
         except Exception:
             pattern_matrix = _IDENTITY
-        pattern_device_ctm = _matmul(pattern_matrix, self._device_ctm)  # type: ignore[arg-type]
+        pattern_device_ctm = _matmul(
+            _matmul(pattern_matrix, self._pattern_base_ctm),  # type: ignore[arg-type]
+            self._device_ctm,
+        )
         # Tile bounding-box dimensions in pattern space.
         bbox_w = bbox.get_width()
         bbox_h = bbox.get_height()
@@ -4592,6 +4610,7 @@ class PDFRenderer(PDFStreamEngine):
         prev_image = self._image
         prev_draw = self._draw
         prev_device_ctm = self._device_ctm
+        prev_pattern_base = self._pattern_base_ctm
         prev_page_height = self._page_height_px
         prev_gs_stack = self._gs_stack
         prev_subpaths = self._subpaths
@@ -4604,6 +4623,10 @@ class PDFRenderer(PDFStreamEngine):
         self._draw = aggdraw.Draw(tile_image)
         self._draw.setantialias(True)
         self._device_ctm = tile_device_ctm
+        # The cell's device CTM already carries the pattern matrix, so the
+        # cell's own initial matrix (upstream ``initialMatrix x
+        # patternMatrix``) is identity in this frame.
+        self._pattern_base_ctm = _IDENTITY
         # Use the tile height for the page-height clip baseline so the y-flip
         # in operators that consult ``_page_height_px`` matches the
         # device-CTM we just installed (the cell is bottom-aligned within a
@@ -4639,6 +4662,7 @@ class PDFRenderer(PDFStreamEngine):
             self._image = prev_image
             self._draw = prev_draw
             self._device_ctm = prev_device_ctm
+            self._pattern_base_ctm = prev_pattern_base
             self._page_height_px = prev_page_height
             self._gs_stack = prev_gs_stack
             self._subpaths = prev_subpaths
@@ -4676,7 +4700,9 @@ class PDFRenderer(PDFStreamEngine):
 
         if pattern_matrix is not None:
             saved_ctm = self._gs.ctm
-            self._gs.ctm = pattern_matrix
+            # Relative to the stream's initial matrix (identity on the page,
+            # the form CTM inside a form / transparency group, PDFBOX-5250).
+            self._gs.ctm = _matmul(pattern_matrix, self._pattern_base_ctm)
             try:
                 self._paint_shading(shading, region_mask=region_mask)
             finally:
@@ -6629,8 +6655,12 @@ class PDFRenderer(PDFStreamEngine):
         # walk the appearance stream's bytes.
         self._push_gs()
         prev_resources = self._resources
+        prev_pattern_base = self._pattern_base_ctm
         try:
             self._gs.ctm = _matmul(aa, self._gs.ctm)
+            # Needed for patterns in appearance streams (upstream
+            # ``initialMatrix = aa.clone()``, PDFBOX-2182).
+            self._pattern_base_ctm = self._gs.ctm
             # Clip to the appearance's /BBox in pre-transform space.
             self._subpaths = []
             self._current_subpath = None
@@ -6667,6 +6697,7 @@ class PDFRenderer(PDFStreamEngine):
                     self._process_form_bytes(data)
         finally:
             self._resources = prev_resources
+            self._pattern_base_ctm = prev_pattern_base
             self._pop_gs()
 
     def _render_form_xobject(self, form: Any) -> None:
@@ -6682,6 +6713,7 @@ class PDFRenderer(PDFStreamEngine):
         """
         # Save GS for matrix + clip + resources scoping.
         self._push_gs()
+        prev_pattern_base = self._pattern_base_ctm
         try:
             matrix = form.get_matrix()  # 6-float list, defaults to identity
             if matrix and len(matrix) >= 6:
@@ -6694,6 +6726,13 @@ class PDFRenderer(PDFStreamEngine):
                     float(matrix[5]),
                 )
                 self._gs.ctm = _matmul(m, self._gs.ctm)
+
+            # The stream's initial matrix includes the parent CTM *and* the
+            # form's own /Matrix, so patterns painted inside the form (plain
+            # form or transparency group alike) are positioned relative to
+            # the form space (upstream ``PDFStreamEngine.processStream`` and,
+            # since PDFBOX-5250, ``processTransparencyGroup``).
+            self._pattern_base_ctm = self._gs.ctm
 
             bbox = form.get_bbox()
             if bbox is not None:
@@ -6729,6 +6768,7 @@ class PDFRenderer(PDFStreamEngine):
             finally:
                 self._resources = prev_resources
         finally:
+            self._pattern_base_ctm = prev_pattern_base
             self._pop_gs()
 
     @staticmethod
@@ -8089,12 +8129,6 @@ class PDFRenderer(PDFStreamEngine):
         for i, s in enumerate(samples):
             alpha_bytes[i] = 255 if s == opaque_sample else 0
         alpha = Image.frombytes("L", (width, height), bytes(alpha_bytes))
-        # Tint every pixel with the active non-stroking colour and
-        # apply the matte as the alpha channel; the paste path then
-        # alpha-composites onto the page canvas.
-        r, g, b = self._gs.fill_rgb
-        rgba = Image.new("RGBA", (width, height), (r, g, b, 0))
-        rgba.putalpha(alpha)
         # PDF 32000-1 §8.9.5.3: a stencil mask honours the image XObject's
         # /Interpolate flag exactly like a colour image (PDFBox routes both
         # through the same ``drawBufferedImage`` interpolation hint). When
@@ -8106,7 +8140,181 @@ class PDFRenderer(PDFStreamEngine):
             interpolate = bool(image.get_interpolate())
         except Exception:
             interpolate = False
+        if self._gs.fill_pattern is not None:
+            # Upstream ``PageDrawer.drawImage``: a stencil whose non-stroking
+            # colour space is a Pattern paints the pattern through the mask.
+            self._paint_stencil_mask_with_pattern(alpha, interpolate=interpolate)
+            return
+        # Tint every pixel with the active non-stroking colour and
+        # apply the matte as the alpha channel; the paste path then
+        # alpha-composites onto the page canvas.
+        r, g, b = self._gs.fill_rgb
+        rgba = Image.new("RGBA", (width, height), (r, g, b, 0))
+        rgba.putalpha(alpha)
         self._paste_image(rgba, interpolate=interpolate)
+
+    def _unit_square_device_bounds(self) -> tuple[int, int, int, int]:
+        """Device-pixel bounds ``(x0, y0, width, height)`` of the image unit
+        square under the current CTM, rounded the way :meth:`_paste_image`
+        places an image (each extent at least 1 pixel)."""
+        ctm = self._full_ctm()
+        corners = [
+            self._apply((0.0, 0.0), ctm),
+            self._apply((1.0, 0.0), ctm),
+            self._apply((1.0, 1.0), ctm),
+            self._apply((0.0, 1.0), ctm),
+        ]
+        xs = [c[0] for c in corners]
+        ys = [c[1] for c in corners]
+        x0 = int(round(min(xs)))
+        y0 = int(round(min(ys)))
+        x1 = int(round(max(xs)))
+        y1 = int(round(max(ys)))
+        return x0, y0, max(1, x1 - x0), max(1, y1 - y0)
+
+    @staticmethod
+    def _dilate_alpha(alpha: Any) -> Any:
+        """Widen each alpha sample to the maximum of itself and its four
+        neighbors. Mirrors upstream ``PageDrawer.dilateAlpha``
+        (PDFBOX-6077): absorbs hairline, fully transparent seams in a
+        paint's own rendering (e.g. sub-pixel rounding between adjacent
+        tiles of a tiling pattern) so they are not mistaken for genuine gaps
+        the paint never painted into. ``alpha`` is a 2-D ``uint8`` array."""
+        import numpy as np
+
+        widened = alpha.copy()
+        np.maximum(widened[:, 1:], alpha[:, :-1], out=widened[:, 1:])
+        np.maximum(widened[:, :-1], alpha[:, 1:], out=widened[:, :-1])
+        np.maximum(widened[1:, :], alpha[:-1, :], out=widened[1:, :])
+        np.maximum(widened[:-1, :], alpha[1:, :], out=widened[:-1, :])
+        return widened
+
+    def _paint_stencil_mask_with_pattern(
+        self, stencil_alpha: Image.Image, *, interpolate: bool
+    ) -> None:
+        """Paint a stencil mask whose fill is a tiling or shading pattern.
+
+        Mirrors the ``isStencil()`` + ``PDPattern`` branch of upstream
+        ``PageDrawer.drawImage`` at the PDFBox 3.0 branch head
+        (PDFBOX-6077): the pattern paint and the mask are rendered
+        separately over the image's device bounds, then combined.
+
+        1. The pattern is painted (without the soft mask) over the device
+           bounds of the image unit square onto a transparent scratch layer.
+        2. The paint's alpha is dilated to its 4-neighbor maximum
+           (:meth:`_dilate_alpha`).
+        3. An active ExtGState soft mask is applied by assigning its alpha,
+           but only to pixels the paint actually covers (upstream
+           ``applySoftMaskAlpha``).
+        4. The stencil alpha is *assigned* (not combined) to every pixel
+           whose paint alpha is non-zero, so gaps the paint never drew into
+           (e.g. between the cells of a tiling pattern with
+           ``/XStep`` > ``/BBox``) stay transparent instead of turning into
+           opaque black.
+
+        The result is composited through the usual clip / constant-alpha /
+        blend pipeline of :meth:`_paste_image`.
+        """
+        import numpy as np
+
+        from pypdfbox.pdmodel.graphics.pattern import (
+            PDShadingPattern,
+            PDTilingPattern,
+        )
+
+        if self._image is None or self._draw is None:
+            return
+        pattern = self._gs.fill_pattern
+        self._draw.flush()
+        x0, y0, w, h = self._unit_square_device_bounds()
+        canvas_size = self._image.size
+        region = Image.new("L", canvas_size, 0)
+        region.paste(255, (x0, y0, x0 + w, y0 + h))
+        layer = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
+
+        # Step 1: draw the plain pattern paint onto the scratch layer. The
+        # clip is applied when the combined result is composited below.
+        prev_image = self._image
+        prev_draw = self._draw
+        prev_clip = self._gs.clip_mask
+        self._image = layer
+        self._draw = aggdraw.Draw(layer)
+        self._draw.setantialias(True)
+        self._gs.clip_mask = None
+        try:
+            if isinstance(pattern, PDTilingPattern):
+                self._paint_tiling_pattern(pattern, region_mask=region)
+            elif isinstance(pattern, PDShadingPattern):
+                shading = pattern.get_shading()
+                if shading is not None:
+                    self._paint_shading(
+                        shading,
+                        region_mask=region,
+                        pattern_matrix=self._pattern_matrix(pattern),
+                    )
+            else:
+                self._fill_mask_with_rgb(region, self._gs.fill_rgb)
+            current = self._draw
+            if current is not None:
+                current.flush()
+            layer = self._image
+        finally:
+            self._image = prev_image
+            self._draw = prev_draw
+            self._gs.clip_mask = prev_clip
+
+        paint = np.array(layer.convert("RGBA").crop((x0, y0, x0 + w, y0 + h)))
+        paint_alpha = paint[:, :, 3]
+        # The pattern painters paste through a mask onto the transparent
+        # layer, which leaves premultiplied color; restore straight color.
+        covered = paint_alpha > 0
+        if covered.any():
+            scale = 255.0 / paint_alpha[covered].astype(np.float64)
+            for channel in range(3):
+                values = paint[:, :, channel][covered].astype(np.float64)
+                paint[:, :, channel][covered] = np.clip(
+                    np.rint(values * scale), 0, 255
+                ).astype(np.uint8)
+
+        # Step 2: absorb hairline seams in the paint's own alpha.
+        paint_alpha = self._dilate_alpha(paint_alpha)
+
+        # Step 3: soft mask (only for direct paints, as elsewhere in this
+        # renderer; inside a transparency group it applies at composite time).
+        soft_mask = (
+            self._gs.soft_mask if self._transparency_group_depth == 0 else None
+        )
+        if soft_mask is not None:
+            try:
+                mask_alpha = self._render_soft_mask_alpha(soft_mask, canvas_size)
+            except Exception as exc:
+                _log.debug("rendering: soft-mask stencil paint failed: %s", exc)
+                mask_alpha = None
+            if mask_alpha is not None:
+                smask = np.array(mask_alpha.crop((x0, y0, x0 + w, y0 + h)))
+                paint_alpha = np.where(paint_alpha != 0, smask, paint_alpha)
+
+        # Step 4: assign the stencil alpha wherever the paint is not
+        # transparent.
+        mask_w, mask_h = stencil_alpha.size
+        if mask_w <= 8 and mask_h <= 8 and not (mask_w == 1 and mask_h == 1):
+            # Upstream's ``smallMask`` branch (PDFBOX-5403 / PDFBOX-2171,
+            # with the PDFBOX-5802 1x1 exception) draws the decoded mask
+            # samples without the inversion it applies to larger masks, so
+            # for these tiny masks the alpha is the decoded sample value
+            # itself: the polarity is the reverse of the solid-color stencil.
+            stencil_alpha = ImageChops.invert(stencil_alpha)
+        resample = (
+            Image.Resampling.BICUBIC if interpolate else Image.Resampling.NEAREST
+        )
+        stencil = np.array(stencil_alpha.resize((w, h), resample))
+        paint[:, :, 3] = np.where(paint_alpha != 0, stencil, 0).astype(np.uint8)
+
+        self._paste_image(
+            Image.fromarray(paint, "RGBA"),
+            interpolate=interpolate,
+            apply_transfer=False,
+        )
 
     @staticmethod
     def _apply_image_constant_alpha(
@@ -8143,7 +8351,11 @@ class PDFRenderer(PDFStreamEngine):
         return alpha.point(lambda v, _a=ca: round(v * _a))
 
     def _paste_image(
-        self, pil_image: Image.Image, interpolate: bool = True
+        self,
+        pil_image: Image.Image,
+        interpolate: bool = True,
+        *,
+        apply_transfer: bool = True,
     ) -> None:
         """Paste ``pil_image`` onto the canvas honouring the current CTM.
 
@@ -8172,24 +8384,13 @@ class PDFRenderer(PDFStreamEngine):
         # function per-pixel before pasting (mirrors upstream
         # ``PageDrawer.applyTransferFunctionToImage``). No-op when no
         # transfer is active.
-        pil_image = self._apply_transfer_to_pil_image(pil_image)
+        # A stencil painted with a pattern skips this (upstream draws that
+        # combined raster directly, not through ``drawBufferedImage``).
+        if apply_transfer:
+            pil_image = self._apply_transfer_to_pil_image(pil_image)
 
-        ctm = self._full_ctm()
-        # The four corners of the unit square mapped to device space:
-        corners = [
-            self._apply((0.0, 0.0), ctm),
-            self._apply((1.0, 0.0), ctm),
-            self._apply((1.0, 1.0), ctm),
-            self._apply((0.0, 1.0), ctm),
-        ]
-        xs = [c[0] for c in corners]
-        ys = [c[1] for c in corners]
-        x0 = int(round(min(xs)))
-        y0 = int(round(min(ys)))
-        x1 = int(round(max(xs)))
-        y1 = int(round(max(ys)))
-        target_w = max(1, x1 - x0)
-        target_h = max(1, y1 - y0)
+        # The unit square mapped to device space:
+        x0, y0, target_w, target_h = self._unit_square_device_bounds()
         # PDF images live in a flipped-y unit square (origin top-left in
         # image space, bottom-left in user space). The page-level device
         # CTM already bakes in the user-space y-flip (``set_page_size`` puts

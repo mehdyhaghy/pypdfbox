@@ -41,12 +41,15 @@ def test_is_embedded_false_when_descriptor_has_no_font_files() -> None:
     assert font.is_embedded() is False
 
 
-def test_is_embedded_true_for_font_file() -> None:
+def test_is_embedded_false_for_font_file() -> None:
+    # Upstream PDCIDFontType0.isEmbedded is true only when /FontFile3 parses
+    # into a CFF program; /FontFile is not a CIDFontType0 program location,
+    # so the substitute is used (was True before the non-embedded port).
     font = PDCIDFontType0()
     fd = PDFontDescriptor()
     fd.set_font_file(COSStream())
     font.set_font_descriptor(fd)
-    assert font.is_embedded() is True
+    assert font.is_embedded() is False
 
 
 def test_is_embedded_false_for_unparsable_font_file2() -> None:
@@ -60,12 +63,15 @@ def test_is_embedded_false_for_unparsable_font_file2() -> None:
     assert font.is_damaged() is True
 
 
-def test_is_embedded_true_for_font_file3() -> None:
+def test_is_embedded_false_for_unparsable_font_file3() -> None:
+    # Upstream PDCIDFontType0.isEmbedded is true only when the CFF parses;
+    # an empty /FontFile3 is damaged and the substitute is used.
     font = PDCIDFontType0()
     fd = PDFontDescriptor()
     fd.set_font_file3(COSStream())
     font.set_font_descriptor(fd)
-    assert font.is_embedded() is True
+    assert font.is_embedded() is False
+    assert font.is_damaged() is True
 
 
 # ---------- get_program ----------

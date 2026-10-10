@@ -106,7 +106,9 @@ def test_type0_invalid_font_file3_is_cached_as_damaged() -> None:
     font = PDCIDFontType0()
     font.set_font_descriptor(_descriptor_with_file3(b"not a cff"))
 
-    assert font.is_embedded() is True
+    # upstream: a /FontFile3 that does not parse is damaged, not embedded
+    # (the substitute is used); was True before the non-embedded port
+    assert font.is_embedded() is False
     assert font.get_cff_font() is None
     assert font.get_cff_font() is None
     assert font.is_damaged() is True

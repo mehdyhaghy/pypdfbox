@@ -21,6 +21,7 @@ from pypdfbox.cos import (
     COSName,
     COSStream,
 )
+from pypdfbox.fontbox.cff.cff_type1_font import CFFType1Font
 from pypdfbox.pdmodel.font.pd_cid_font_type0 import (
     PDCIDFontType0,
     _uni_name_of_code_point,
@@ -197,14 +198,20 @@ def test_get_path_swallows_charstring_exception(monkeypatch: pytest.MonkeyPatch)
     assert font.get_path(1) == []
 
 
-def test_get_path_returns_empty_when_program_present_but_charstring_none(
+def test_get_path_uses_program_charstring_when_lookup_returns_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Program is present but the charstring lookup returns None ->
-    trailing ``return []`` (covers line 625)."""
+    """Program is present but the charstring lookup returns None: as
+    upstream, an embedded name-keyed CFF program then answers from its own
+    Type 2 charstring (CID as GID). Was ``[]`` before the non-embedded
+    port."""
     font = _make_font_with_embedded_cff()
+    program = font.get_cff_font()
     monkeypatch.setattr(font, "get_type2_char_string", lambda _cid: None)
-    assert font.get_path(1) == []
+    # FontBuilder emits no /ROS, so the "CID-keyed" fixture is name-keyed
+    assert isinstance(program, CFFType1Font)
+    assert font.get_path(1)
+    assert font.get_path(1) == program.get_type2_char_string(1).get_path()
 
 
 # ----------------------------------------------------------------------
@@ -212,13 +219,18 @@ def test_get_path_returns_empty_when_program_present_but_charstring_none(
 # ----------------------------------------------------------------------
 
 
-def test_has_glyph_returns_false_when_charstring_is_none(
+def test_has_glyph_uses_program_charstring_when_lookup_returns_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``get_type2_char_string`` returns None -> False (line 652)."""
+    """``get_type2_char_string`` returns None: as upstream, an embedded
+    name-keyed CFF program then answers from its own Type 2 charstring's GID
+    (was False before the non-embedded port)."""
     font = _make_font_with_embedded_cff()
+    program = font.get_cff_font()
     monkeypatch.setattr(font, "get_type2_char_string", lambda _cid: None)
-    assert font.has_glyph(1) is False
+    assert isinstance(program, CFFType1Font)
+    assert font.has_glyph(1) is True
+    assert font.has_glyph(0) is False
 
 
 def test_has_glyph_returns_false_when_get_gid_raises(
