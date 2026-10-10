@@ -1,5 +1,9 @@
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 
+from .pd_cie_dictionary_based_color_space import (
+    PCS_WHITE_D65,
+    xyz_to_srgb_adapted,
+)
 from .pd_color import PDColor
 from .pd_color_space import PDColorSpace
 
@@ -27,20 +31,7 @@ def _xyz_to_srgb(x: float, y: float, z: float) -> tuple[float, float, float]:
     Uses the IEC 61966-2-1 sRGB matrix and gamma encoding. No chromatic
     adaptation; assumes the source XYZ is already on a D65 white point.
     """
-    r_lin = 3.2404542 * x - 1.5371385 * y - 0.4985314 * z
-    g_lin = -0.9692660 * x + 1.8760108 * y + 0.0415560 * z
-    b_lin = 0.0556434 * x - 0.2040259 * y + 1.0572252 * z
-
-    def _srgb_encode(u: float) -> float:
-        if u <= 0.0:
-            return 0.0
-        if u >= 1.0:
-            return 1.0
-        if u <= 0.0031308:
-            return 12.92 * u
-        return float(1.055 * (u ** (1.0 / 2.4)) - 0.055)
-
-    return (_srgb_encode(r_lin), _srgb_encode(g_lin), _srgb_encode(b_lin))
+    return xyz_to_srgb_adapted(PCS_WHITE_D65, x, y, z)
 
 
 class PDCalGray(PDColorSpace):
@@ -129,6 +120,9 @@ class PDCalGray(PDColorSpace):
         Java; promoted to public here so callers can detect the
         no-calibration shortcut path used by upstream's ``toRGB``).
 
+        Deprecated upstream (PDFBOX-6260, "will be removed in 4.0"):
+        :meth:`to_rgb` no longer special-cases this whitepoint.
+
         Float comparison uses exact equality on the three components —
         upstream uses ``Float.compare(...) == 0`` which is the same
         semantics for non-NaN values; pypdfbox stores Python ``float``
@@ -145,29 +139,23 @@ class PDCalGray(PDColorSpace):
     def to_rgb(self, values: list[float]) -> tuple[float, float, float]:
         """Convert a single-component CalGray sample to clamped sRGB.
 
-        Mirrors upstream ``PDCalGray.toRGB`` (PDFBox 3.0.x): when
-        ``isWhitePoint()`` is ``True`` (the ``/WhitePoint`` is the unit
-        tristimulus ``(1, 1, 1)``) the calibrated CIE pipeline runs:
+        Mirrors upstream ``PDCalGray.toRGB`` on the 3.0 branch (PDFBOX-6260,
+        unreleased 3.0.9): ``A' = A ** Gamma``, then
+        ``X, Y, Z = WhitePoint * A'`` (the whitepoint scaled by the
+        gamma-corrected value), then ``convXYZtoRGB``, which chromatically
+        adapts the declared whitepoint (Bradford) before the conversion.
+        A neutral gray therefore only depends on the gamma, not on the
+        whitepoint. The former PDFBOX-2971 shortcut (calibrate only for
+        whitepoint ``(1, 1, 1)``, return ``(A, A, A)`` otherwise, ignoring
+        the gamma) is gone.
 
-        ``A' = A ** Gamma``; then ``convXYZtoRGB(A', A', A')`` — the
-        gamma-decoded value is fed to the CMM as all three of X, Y and Z
-        (upstream does NOT multiply by the white point; with the unit
-        white point that multiply would be a no-op anyway).
-
-        For any other white point upstream skips CIE calibration and
-        returns ``(A, A, A)`` verbatim — a documented PDFBOX-2553 hack
-        that only behaves correctly for whitepoint D65; we follow it so
-        CalGray ``toRGB`` is byte-parity with PDFBox.
-
-        ``values`` must contain exactly one component in ``[0, 1]``.
+        ``values`` must contain exactly one component in ``[0, 1]``
+        (out-of-range input is clamped so that a negative base can't reach
+        ``pow``).
         """
         if not values:
             raise ValueError("CalGray.to_rgb requires one component, got 0")
         a = float(values[0])
-        if not self.is_white_point():
-            # Upstream PDFBox shortcut (PDFBOX-2553): skip CIE
-            # calibration, return the component verbatim as grey.
-            return (a, a, a)
         if a < 0.0:
             a = 0.0
         elif a > 1.0:
@@ -175,9 +163,13 @@ class PDCalGray(PDColorSpace):
         gamma = float(self.get_gamma())
         # 0 ** non-positive blows up; guard.
         a_g = (a ** gamma) if a > 0.0 else 0.0
-        # Upstream feeds the gamma-decoded value to the CMM as X = Y = Z;
-        # the white point is NOT applied (it is the unit tristimulus here).
-        return _xyz_to_srgb(a_g, a_g, a_g)
+        wp = self.get_white_point()
+        wp_x = float(wp[0]) if len(wp) >= 1 else 1.0
+        wp_y = float(wp[1]) if len(wp) >= 2 else 1.0
+        wp_z = float(wp[2]) if len(wp) >= 3 else 1.0
+        return xyz_to_srgb_adapted(
+            (wp_x, wp_y, wp_z), wp_x * a_g, wp_y * a_g, wp_z * a_g
+        )
 
 
 __all__ = ["PDCalGray"]

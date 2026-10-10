@@ -136,7 +136,8 @@ def test_type2_invalid_embedded_program_fallback_is_damaged() -> None:
     descriptor.set_font_file(stream)
     font.set_font_descriptor(descriptor)
 
-    assert font.is_embedded() is True
+    # upstream: an unparsable program is damaged, not embedded
+    assert font.is_embedded() is False
     assert font.get_true_type_font() is None
     assert font.is_damaged() is True
     assert font._ttf is False

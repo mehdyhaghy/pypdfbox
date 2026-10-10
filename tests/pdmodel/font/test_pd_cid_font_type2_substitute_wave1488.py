@@ -10,8 +10,10 @@ embedded font program:
 * ``get_true_type_font()`` / ``get_open_type_font()`` return ``None``,
 * ``is_damaged()`` is ``False`` (nothing to parse, nothing damaged),
 * width / metric lookups fall back to the ``/W`` + ``/DW`` parent path,
-* ``cid_to_gid`` falls through to the identity ``cid`` (the substitute GID is
-  the renderer's responsibility — documented divergence from upstream).
+* ``cid_to_gid`` (a pypdfbox CID-level helper) falls through to the identity
+  ``cid``, while ``code_to_gid`` follows upstream's substitute branch: code ->
+  ``/ToUnicode`` -> the substitute font's cmap (forward-port of the 3.0
+  branch non-embedded path, see CHANGES.md).
 """
 
 import struct
@@ -106,16 +108,35 @@ def test_no_embedded_program_accessors_return_none(tmp_path: Path) -> None:
 
 
 def test_cid_to_gid_falls_through_to_identity(tmp_path: Path) -> None:
-    """Documented divergence: with no embedded program the model-layer GID is
-    the identity ``cid`` (the substitute-font GID resolution lives in the
-    renderer). Negative CIDs are still clamped to 0."""
+    """With no embedded program the CID-level helper ``cid_to_gid`` is the
+    identity ``cid``. Negative CIDs are still clamped to 0."""
     fixture = _build_non_embedded(tmp_path / "sub.pdf")
     doc, _font, descendant = _reload(fixture)
     try:
         for cid in (0, 3, 5, 7, 9, 60000, 65535):
             assert descendant.cid_to_gid(cid) == cid
-            assert descendant.code_to_gid(cid) == cid
         assert descendant.cid_to_gid(-1) == 0
+    finally:
+        doc.close()
+
+
+def test_code_to_gid_resolves_through_substitute(tmp_path: Path) -> None:
+    """Upstream ``codeToGID`` for a non-embedded font: the code goes through
+    ``/ToUnicode`` and the Unicode value is looked up in the substitute
+    font's cmap."""
+    fixture = _build_non_embedded(tmp_path / "sub.pdf")
+    doc, font, descendant = _reload(fixture)
+    try:
+        substitute = descendant._resolve_program()
+        assert substitute is not None
+        lookup = substitute.get_unicode_cmap_lookup(False)
+        for code in _CONTENT_CIDS:
+            unicode = font.to_unicode(code)
+            assert unicode is not None
+            assert descendant.code_to_gid(code) == lookup.get_glyph_id(
+                ord(unicode[0])
+            )
+            assert font.code_to_gid(code) == descendant.code_to_gid(code)
     finally:
         doc.close()
 
@@ -134,8 +155,9 @@ def test_width_lookup_uses_w_and_dw(tmp_path: Path) -> None:
         assert font.get_width(65535) == pytest.approx(
             descendant.get_default_width()
         )
-        # get_width_from_font has no embedded program to read -> 0.0.
-        assert descendant.get_width_from_font(3) == 0.0
+        # get_width_from_font reads the substitute program (upstream ttf
+        # field), so it is no longer 0.0.
+        assert descendant.get_width_from_font(3) > 0.0
     finally:
         doc.close()
 

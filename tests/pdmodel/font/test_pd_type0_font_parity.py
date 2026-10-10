@@ -5,6 +5,8 @@ Covers ``get_descendant_font``, ``code_to_cid``, ``code_to_gid``,
 ``get_to_unicode_cmap``, ``to_unicode``, and ``is_embedded``.
 """
 
+from pathlib import Path
+
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,
@@ -22,6 +24,13 @@ _ENCODING: COSName = COSName.get_pdf_name("Encoding")
 _TO_UNICODE: COSName = COSName.get_pdf_name("ToUnicode")
 _DW: COSName = COSName.get_pdf_name("DW")
 _W: COSName = COSName.get_pdf_name("W")
+_TTF_FIXTURE = (
+    Path(__file__).resolve().parents[2]
+    / "fixtures"
+    / "fontbox"
+    / "ttf"
+    / "DejaVuSansMono.ttf"
+)
 
 
 # ---------- shared fixtures ----------
@@ -40,7 +49,11 @@ def _build_type2_descendant(
         raw.set_int(_DW, dw)
     if with_font_file:
         fd = PDFontDescriptor()
-        fd.set_font_file2(COSStream())
+        # a real program: upstream counts the font as embedded only when the
+        # /FontFile2 program parses
+        program = COSStream()
+        program.set_data(_TTF_FIXTURE.read_bytes())
+        fd.set_font_file2(program)
         raw.set_item(COSName.get_pdf_name("FontDescriptor"), fd.get_cos_object())
     return raw
 
@@ -163,7 +176,9 @@ def test_code_to_gid_identity_for_type2_without_cidtogid_map() -> None:
 
 
 def test_code_to_gid_uses_cidtogid_stream() -> None:
-    desc = _build_type2_descendant()
+    # /CIDToGIDMap drives the GID of an EMBEDDED program (a non-embedded
+    # font resolves through its substitute instead, as upstream does).
+    desc = _build_type2_descendant(with_font_file=True)
     # CID 0 -> GID 0, CID 1 -> GID 5, CID 2 -> GID 9 (big-endian shorts).
     cid_to_gid_stream = COSStream()
     with cid_to_gid_stream.create_output_stream() as out:

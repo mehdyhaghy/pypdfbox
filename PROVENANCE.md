@@ -341,7 +341,7 @@ Cluster #7 partial (outlines + destinations + actions).
 | `pypdfbox/pdmodel/interactive/annotation/pd_annotation_movie.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationMovie.java` (lite — `/Movie` returns raw `COSDictionary`, `/A` returns raw `COSBase`; typed `PDMovie` and `PDMovieActivation` deferred) |
 | `pypdfbox/pdmodel/common/pd_metadata.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDMetadata.java` (lite — multi-arg `__init__` dispatch; no XMPMetadata-returning accessor) |
 | `pypdfbox/pdmodel/graphics/color/pd_color.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDColor.java` (lite — `to_rgb` rendering conversion deferred) |
-| `pypdfbox/pdmodel/graphics/color/pd_color_space.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDColorSpace.java` (lite — `create()` factory deferred) |
+| `pypdfbox/pdmodel/graphics/color/pd_color_space.py` | 3.0.x + PDFBOX-6258 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDColorSpace.java` (lite — `create()` factory deferred) |
 | `pypdfbox/pdmodel/graphics/color/pd_device_color_space.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDDeviceColorSpace.java` |
 | `pypdfbox/pdmodel/graphics/color/pd_device_gray.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDDeviceGray.java` |
 | `pypdfbox/pdmodel/graphics/color/pd_device_rgb.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDDeviceRGB.java` |
@@ -381,16 +381,16 @@ Cluster #7 foundations (file specifications, generic name tree, optional content
 | `pypdfbox/pdmodel/graphics/color/pd_indexed.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDIndexed.java` (lite — lookup table raw filtered bytes) |
 | `pypdfbox/pdmodel/graphics/color/pd_special_color_space.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDSpecialColorSpace.java` |
 | `pypdfbox/pdmodel/graphics/color/pd_separation.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDSeparation.java` |
-| `pypdfbox/pdmodel/graphics/color/pd_device_n.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDDeviceN.java` |
+| `pypdfbox/pdmodel/graphics/color/pd_device_n.py` | 3.0.x + PDFBOX-5074 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDDeviceN.java` |
 | `pypdfbox/pdmodel/graphics/color/pd_icc_based.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDICCBased.java` (lite — ICC profile parsing deferred) |
-| `pypdfbox/pdmodel/graphics/color/pd_cal_gray.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDCalGray.java` |
-| `pypdfbox/pdmodel/graphics/color/pd_cal_rgb.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDCalRGB.java` |
-| `pypdfbox/pdmodel/graphics/color/pd_lab.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDLab.java` |
+| `pypdfbox/pdmodel/graphics/color/pd_cal_gray.py` | 3.0.x + PDFBOX-6260 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDCalGray.java` |
+| `pypdfbox/pdmodel/graphics/color/pd_cal_rgb.py` | 3.0.x + PDFBOX-5079 + PDFBOX-6260 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDCalRGB.java` |
+| `pypdfbox/pdmodel/graphics/color/pd_lab.py` | 3.0.x + PDFBOX-6258 + PDFBOX-6260 + PDFBOX-6264 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDLab.java` |
 | `pypdfbox/pdmodel/font/pd_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDFont.java` (scaffold) |
 | `pypdfbox/pdmodel/font/pd_simple_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDSimpleFont.java` (scaffold) |
 | `pypdfbox/pdmodel/font/pd_type1_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType1Font.java` (scaffold) |
-| `pypdfbox/pdmodel/font/pd_true_type_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDTrueTypeFont.java` (scaffold + `get_glyph_width(code)` backed by `/Widths` first, then embedded `/FontFile2` hmtx scaled by `1000 / unitsPerEm`; full Type1 fallbacks / CIDToGIDMap deferred) |
-| `pypdfbox/pdmodel/font/pd_type0_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType0Font.java` (scaffold) |
+| `pypdfbox/pdmodel/font/pd_true_type_font.py` | 3.0.x + PDFBOX-5960 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDTrueTypeFont.java` (scaffold + `get_glyph_width(code)` backed by `/Widths` first, then embedded `/FontFile2` hmtx scaled by `1000 / unitsPerEm`; full Type1 fallbacks / CIDToGIDMap deferred) |
+| `pypdfbox/pdmodel/font/pd_type0_font.py` | 3.0.x + PDFBOX-5953 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType0Font.java` (scaffold) |
 | `pypdfbox/pdmodel/font/pd_font_descriptor.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDFontDescriptor.java` + `PDPanose.java` + `PDPanoseClassification.java` (full surface — flag bits, all Table 122 entries, /FontFile/FontFile2/FontFile3, /CharSet, /MissingWidth, /CIDSet, /Style→Panose 12-byte block) |
 | `pypdfbox/pdmodel/font/pd_font_factory.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDFontFactory.java` (Type1/TrueType/Type0 only; PDCIDFont/PDType3Font deferred) |
 | `pypdfbox/pdmodel/font/pd_font_like.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDFontLike.java` (Java interface modelled as runtime-checkable `typing.Protocol`; method names snake_case per project rules) |
@@ -418,7 +418,7 @@ Cluster #7 foundations (file specifications, generic name tree, optional content
 | `pypdfbox/pdmodel/graphics/pattern/pd_abstract_pattern.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/pattern/PDAbstractPattern.java` |
 | `pypdfbox/pdmodel/graphics/pattern/pd_tiling_pattern.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/pattern/PDTilingPattern.java` (incl. `PDContentStream` mixin: `get_contents` / `get_contents_for_random_access`) |
 | `pypdfbox/pdmodel/graphics/pattern/pd_shading_pattern.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/pattern/PDShadingPattern.java` |
-| `pypdfbox/pdmodel/graphics/shading/pd_shading.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/PDShading.java` |
+| `pypdfbox/pdmodel/graphics/shading/pd_shading.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/PDShading.java` + PDFBOX-6258 (3.0 branch, unreleased 3.0.9) |
 | `pypdfbox/pdmodel/graphics/shading/pd_shading_type1.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/PDShadingType1.java` (function-based; lite) |
 | `pypdfbox/pdmodel/graphics/shading/pd_shading_type2.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/PDShadingType2.java` (axial; lite) |
 | `pypdfbox/pdmodel/graphics/shading/pd_shading_type3.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/PDShadingType3.java` (radial; lite) |
@@ -891,7 +891,7 @@ Upstream PDFBox 3.0 ships **no** test classes for `Operator`, `OperatorName`, or
 |---|---|---|
 | `pypdfbox/pdmodel/font/pd_cid_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDCIDFont.java` (scaffold) |
 | `pypdfbox/pdmodel/font/pd_cid_font_type0.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDCIDFontType0.java` (scaffold) |
-| `pypdfbox/pdmodel/font/pd_cid_font_type2.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDCIDFontType2.java` (scaffold) |
+| `pypdfbox/pdmodel/font/pd_cid_font_type2.py` | 3.0.x + PDFBOX-6251 + PDFBOX-5953 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDCIDFontType2.java` (scaffold) |
 | `pypdfbox/pdmodel/font/pd_cid_system_info.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDCIDSystemInfo.java` |
 | `pypdfbox/pdmodel/font/pd_type3_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType3Font.java` (lite — typed PDCharProc deferred) |
 | `pypdfbox/pdmodel/font/pd_mm_type1_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDMMType1Font.java` (marker subclass) |
@@ -1217,9 +1217,9 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/fontbox/cff/cff_type1_font.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/cff/CFFType1Font.java` |
 | `pypdfbox/fontbox/cff/fd_select.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/cff/CFFParser.java` (FDSelect / Format0FDSelect / Format3FDSelect inner classes) |
 | `pypdfbox/fontbox/cff/fd_array.py` | 3.0.x | derived from `CFFParser.parseFDArray()` shape (no upstream class file) |
-| `pypdfbox/pdmodel/graphics/color/pd_device_n.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDDeviceN.java` |
+| `pypdfbox/pdmodel/graphics/color/pd_device_n.py` | 3.0.x + PDFBOX-5074 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDDeviceN.java` |
 | `pypdfbox/pdmodel/graphics/color/pd_device_n_process.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDDeviceNProcess.java` |
-| `pypdfbox/pdmodel/graphics/color/pd_lab.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDLab.java` |
+| `pypdfbox/pdmodel/graphics/color/pd_lab.py` | 3.0.x + PDFBOX-6258 + PDFBOX-6260 + PDFBOX-6264 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDLab.java` |
 | `pypdfbox/pdmodel/graphics/color/pd_pattern.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDPattern.java` |
 | `pypdfbox/pdmodel/documentinterchange/markedcontent/pd_artifact_marked_content.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/markedcontent/PDArtifactMarkedContent.java` (re-export shim; canonical impl at `taggedpdf/pd_artifact_marked_content.py`) |
 | `pypdfbox/xmpbox/type/pdfa_field_description_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/PDFAFieldType.java` |
@@ -1273,6 +1273,9 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `tests/pdmodel/font/upstream/test_pd_type0_font.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/PDType0FontTest.java` |
 | `tests/pdmodel/font/upstream/test_pd_cid_font_type0.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/PDCIDFontType0Test.java` |
 | `tests/pdmodel/font/upstream/test_pd_cid_font_type2.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/PDCIDFontType2Test.java` |
+| `tests/pdmodel/font/upstream/test_pd_cid_font_type2_substitute.py` | 3.0 branch (unreleased 3.0.9) | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/PDCIDFontType2SubstituteTest.java` (PDFBOX-5953, commit 5a329b3772; the 2 MB JIRA fixture `PDFBOX-5953-test.pdf` is replaced by an in-memory non-embedded UniGB-UTF16-H font with a test FontMapper substitute) + PDFBOX-6251 non-embedded CFF substitute case (commit 6dfa7d3aa4) |
+| `tests/fixtures/pdmodel/font/PDFBOX-5960-reduced1.pdf` | 3.0 branch (unreleased 3.0.9) | JIRA attachment 13074906 `PDFJS-19527-reduced1.pdf`, downloaded by `pdfbox/pom.xml` execution `PDFBOX-5960` to `target/pdfs/PDFBOX-5960-reduced1.pdf` (byte-identical, sha512 verified) |
+| `tests/pdmodel/font/test_pd_true_type_font_contradictory_flags_5960.py` | 3.0 branch (unreleased 3.0.9) | hand-written pins for the PDFBOX-5960 helpers in `PDTrueTypeFont.java` |
 | `pypdfbox/pdmodel/font/pd_type3_char_proc.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType3CharProc.java` |
 | `tests/pdmodel/font/upstream/test_pd_type3_font.py` | 3.0.x | combined `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/PDType3FontTest.java` + `PDType3CharProcTest.java` |
 | `tests/pdmodel/font/upstream/test_pd_font_factory.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/PDFontTest.java` (factory subset) |
@@ -1381,7 +1384,11 @@ Original work (no PROVENANCE row needed; listed here for clarity):
 | `tests/pdmodel/interactive/documentnavigation/outline/upstream/test_pd_outline_node.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/documentnavigation/outline/PDOutlineNodeTest.java` |
 | `tests/pdmodel/documentinterchange/logicalstructure/upstream/test_pd_structure_node.py` | 3.0.x | derived from `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDStructureElementTest.java` (kid-management subset of `testSimple`, plus synthetic `createObject` dispatch tests — no dedicated `PDStructureNodeTest.java` exists upstream) |
 | `tests/fontbox/ttf/upstream/test_open_type_font.py` | 3.0.x | placeholder — upstream has no dedicated `OpenTypeFontTest.java`; surface inferred from `OpenTypeFont.java` (PDFBox 3.0.x) |
-| `tests/pdmodel/graphics/color/upstream/test_pd_lab.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/color/PDLabTest.java` |
+| `tests/pdmodel/graphics/color/upstream/test_pd_lab.py` | 3.0.x + PDFBOX-6258 + PDFBOX-6264 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/color/PDLabTest.java` |
+| `tests/pdmodel/graphics/color/upstream/test_pd_device_n_test.py` | 3.0 branch, PDFBOX-5074 (unreleased 3.0.9) | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/color/PDDeviceNTest.java` |
+| `tests/pdmodel/graphics/color/upstream/test_pd_cal_gray.py` | 3.0 branch, PDFBOX-6260 (unreleased 3.0.9) | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/color/PDCalGrayTest.java` |
+| `tests/pdmodel/graphics/color/test_pd_cie_color_fixes_309.py` | 3.0 branch (unreleased 3.0.9) | hand-written tests for the PDFBOX-5074 / 5079 / 6258 / 6260 / 6264 color-space forward-ports (Bradford adaptation matrix values, CalGray/CalRGB/Lab whitepoint independence, CalRGB D65 tolerance, Lab clamp range cache, DeviceN white threshold) |
+| `tests/pdmodel/graphics/shading/test_pd_shading_clamp_pdfbox_6258.py` | 3.0 branch (unreleased 3.0.9) | hand-written tests for the PDFBOX-6258 `PDShading.eval_function` color-space clamp (Lab ranges, DeviceRGB, missing color space) |
 | `tests/pdmodel/font/upstream/test_pd_cid_font.py` | 3.0.x | placeholder — upstream has no dedicated `PDCIDFontTest.java`; surface inferred from `PDCIDFont.java` (PDFBox 3.0.x) |
 | `tests/xmpbox/upstream/test_xmp_media_management_schema.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/schema/XMPMediaManagementTest.java` |
 | `tests/fontbox/encoding/upstream/test_glyph_list.py` | 3.0.x | placeholder — upstream has no dedicated `GlyphListTest.java` in PDFBox 3.0.x; surface ports the documented `GlyphList.java` contract |
@@ -1395,7 +1402,7 @@ Original work (no PROVENANCE row needed; listed here for clarity):
 | `tests/fontbox/cff/upstream/test_cff_font.py` | 3.0.x | placeholder — upstream has no dedicated `CFFFontTest.java`; covers package-private setters (Java lines 59 / 128 / 146 / 178) + `toString` (205) |
 | `tests/rendering/upstream/test_pdf_renderer.py` | 3.0.x | derived from `pdfbox/src/test/java/org/apache/pdfbox/rendering/TestRendering.java` (rendering-comparison parts skipped — fixtures not yet ported) |
 | `tests/pdmodel/interactive/form/upstream/test_pd_terminal_field.py` | 3.0.x | derived from `PDTerminalField.java` + `PDField.java` `importFDF`/`exportFDF` — no dedicated `PDTerminalFieldTest.java` upstream |
-| `tests/pdmodel/font/upstream/test_pd_font.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/PDFontTest.java` (base-class parity subset; + PDFBOX-6211 (3.0.8 branch) `testPDFBox6172` tracked as a skip placeholder — upstream test body + fixture unavailable offline, port at 3.0.8 re-sync) |
+| `tests/pdmodel/font/upstream/test_pd_font.py` | 3.0.x + PDFBOX-5960 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/PDFontTest.java` (base-class parity subset; + `testPDFBox5960`; + PDFBOX-6211 (3.0.8 branch) `testPDFBox6172` tracked as a skip placeholder — upstream test body + fixture unavailable offline, port at 3.0.8 re-sync) |
 | `tests/pdmodel/font/upstream/test_pd_font_extended.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/PDFontTest.java` (per-PDFBOX-issue regression slice — `testPDFBOX5486` (PDTrueTypeFont.load + has_glyph + get_path against bundled LiberationSans), `PDFBOX5920Type0` / `PDFBOX5920TrueType` (space-width + pangram invariants — switched from upstream's exact 20064/278 equality to monotonic-positive invariants because pypdfbox's bundled Liberation revision differs slightly), plus `testHelveticaBoldAfmRoundTrip` AFM smoke-test. 11 upstream methods skipped with one-line reasons each (need ipag.ttf / calibri.ttf / Lohit / Noto / PDFTextStripper / PDFRenderer / network / `target/pdfs` corpus)) |
 | `tests/pdmodel/font/upstream/test_test_font_encoding.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/TestFontEncoding.java` (2 active tests + 1 skip — `testAdd` PDFBOX-3332 WinAnsi/MacRoman name→code round-trip, `testOverwrite` PDFBOX-3332 DictionaryEncoding /Differences shadowing; `testPDFBox3884` skipped (needs PDFTextStripper round-trip)) |
 | `tests/pdmodel/font/upstream/test_test_font_embedding.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/TestFontEmbedding.java` (5 active tests + 12 skips — `testCIDFontType2` / `testCIDFontType2Subset` parameterised LiberationSans embed, `testIsEmbeddingPermittedMultipleVersions` 8-row fsType truth-table, plus `is_embedding_permitted` no-OS/2 + BITMAP_EMBEDDING_ONLY edge cases. Skipped tests need ipag.ttf / Lohit / Noto / PDFTextStripper or assert Java exception message wording (out of scope)) |
@@ -2433,7 +2440,7 @@ Backfill of upstream Java paths for source files added in earlier waves (mostly 
 | pypdfbox path | upstream PDFBox version | upstream Java path |
 |---|---|---|
 | `pypdfbox/pdmodel/graphics/color/pd_cie_based_color_space.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PdCieBasedColorSpace.java` |
-| `pypdfbox/pdmodel/graphics/color/pd_cie_dictionary_based_color_space.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PdCieDictionaryBasedColorSpace.java` |
+| `pypdfbox/pdmodel/graphics/color/pd_cie_dictionary_based_color_space.py` | 3.0.x + PDFBOX-6260 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PdCieDictionaryBasedColorSpace.java` |
 | `pypdfbox/pdmodel/graphics/color/pd_gamma.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PdGamma.java` |
 | `pypdfbox/pdmodel/graphics/color/pd_jpx_color_space.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PdJpxColorSpace.java` |
 | `pypdfbox/pdmodel/graphics/color/pd_tristimulus.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PdTristimulus.java` |

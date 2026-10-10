@@ -390,17 +390,20 @@ def test_generate_bounding_box_skips_all_zero_descriptor() -> None:
 # ---------- embedded program stream fallbacks ----------
 
 
-def test_is_embedded_true_for_font_file3_open_type() -> None:
+def test_is_embedded_false_for_unparsable_font_file3_open_type() -> None:
     font = PDCIDFontType2()
     fd = PDFontDescriptor()
     stream = COSStream()
     stream.set_name(COSName.SUBTYPE, "OpenType")  # type: ignore[attr-defined]
     fd.set_font_file3(stream)
     font.set_font_descriptor(fd)
-    assert font.is_embedded() is True
+    # Upstream probes the slot, but an empty (unparsable) program is
+    # damaged, not embedded: isEmbedded = (parsed program != null).
+    assert font.is_embedded() is False
+    assert font.is_damaged() is True
 
 
-def test_is_embedded_true_for_font_file3_unknown_subtype() -> None:
+def test_is_embedded_false_for_unparsable_font_file3_unknown_subtype() -> None:
     # Upstream probes FontFile3 as an embedded OTF candidate without
     # rejecting unknown /Subtype values up front.
     font = PDCIDFontType2()
@@ -409,17 +412,23 @@ def test_is_embedded_true_for_font_file3_unknown_subtype() -> None:
     stream.set_name(COSName.SUBTYPE, "CIDFontType0C")  # type: ignore[attr-defined]
     fd.set_font_file3(stream)
     font.set_font_descriptor(fd)
-    assert font.is_embedded() is True
+    # Upstream probes the slot, but an empty (unparsable) program is
+    # damaged, not embedded: isEmbedded = (parsed program != null).
+    assert font.is_embedded() is False
+    assert font.is_damaged() is True
 
 
-def test_is_embedded_true_for_legacy_font_file() -> None:
+def test_is_embedded_false_for_unparsable_legacy_font_file() -> None:
     # Acrobat/PDFBox tolerate legacy /FontFile here for malformed Type2
     # descendants (PDFBOX-2599).
     font = PDCIDFontType2()
     fd = PDFontDescriptor()
     fd.set_font_file(COSStream())
     font.set_font_descriptor(fd)
-    assert font.is_embedded() is True
+    # Upstream probes the slot, but an empty (unparsable) program is
+    # damaged, not embedded: isEmbedded = (parsed program != null).
+    assert font.is_embedded() is False
+    assert font.is_damaged() is True
 
 
 def test_get_true_type_font_falls_back_to_font_file3_open_type() -> None:

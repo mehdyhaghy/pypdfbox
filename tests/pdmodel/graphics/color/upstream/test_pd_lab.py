@@ -10,6 +10,8 @@ adapt the assertions to ``get_a_range()`` / ``get_b_range()`` /
 ``get_white_point()`` / ``get_black_point()``.
 """
 
+import pytest
+
 from pypdfbox.cos import COSArray, COSDictionary
 from pypdfbox.pdmodel.graphics.color.pd_lab import PDLab
 
@@ -189,3 +191,53 @@ def test_default_decode_uses_range_for_a_and_b() -> None:
     cs.set_b_range((-30.0, 30.0))
     decode = cs.get_default_decode(8)
     assert decode == [0.0, 100.0, -50.0, 50.0, -30.0, 30.0]
+
+
+# ---------- PDFBOX-6258 / PDFBOX-6264 (3.0 branch, unreleased 3.0.9) ----------
+
+
+# Translated from PDLabTest.testClamp.
+def test_clamp() -> None:
+    lab = PDLab()
+    assert lab.get_a_range() == (-100.0, 100.0)
+    assert lab.get_b_range() == (-100.0, 100.0)
+    assert lab.get_default_decode(1) == [0.0, 100.0, -100.0, 100.0, -100.0, 100.0]
+    lab.set_a_range((-160.0, 160.0))
+    lab.set_b_range((-160.0, 160.0))
+    lab1 = [-101.0, -161.0, -161.0]
+    lab2 = [-100.0, -160.0, -160.0]
+    lab3 = [0.0, 0.0, 0.0]
+    lab4 = [100.0, 160.0, 160.0]
+    lab5 = [101.0, 161.0, 161.0]
+    lab.clamp(lab1)
+    lab.clamp(lab2)
+    lab.clamp(lab3)
+    lab.clamp(lab4)
+    lab.clamp(lab5)
+    assert lab1 == [0.0, -160.0, -160.0]
+    assert lab2 == [0.0, -160.0, -160.0]
+    assert lab3 == [0.0, 0.0, 0.0]
+    assert lab4 == [100.0, 160.0, 160.0]
+    assert lab5 == [100.0, 160.0, 160.0]
+
+
+# Translated from PDLabTest.testToRGB.
+def test_to_rgb() -> None:
+    lab = PDLab()
+
+    # PDF Lab values: L* is 0..100, a* and b* are -100..100.
+    black = lab.to_rgb([0.0, 0.0, 0.0])
+    white = lab.to_rgb([100.0, 0.0, 0.0])
+    red = lab.to_rgb([53.0, 80.0, 67.0])
+
+    # Black and white should be at the ends of the RGB range.
+    assert list(black) == pytest.approx([0.0, 0.0, 0.0], abs=0.01)
+    assert list(white) == pytest.approx([1.0, 1.0, 1.0], abs=0.02)
+
+    # Red should have a higher red component than green and blue.
+    assert red[0] > red[1]
+    assert red[0] > red[2]
+
+    # All RGB components must be in the valid range.
+    for component in red:
+        assert 0 <= component <= 1

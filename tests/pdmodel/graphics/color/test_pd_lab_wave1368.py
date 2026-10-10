@@ -197,15 +197,16 @@ def test_to_rgb_black_lab_returns_black_srgb() -> None:
 
 
 def test_to_rgb_custom_whitepoint_scales_xyz() -> None:
-    """A custom whitepoint scales the XYZ outputs accordingly."""
+    """A uniformly scaled whitepoint scales the XYZ outputs, but the
+    chromatic adaptation (PDFBOX-6260) normalizes that scale away again,
+    so the result equals the unit-whitepoint result."""
     cs = PDLab()
     cs.set_white_point([0.5, 0.5, 0.5])
     rgb_custom = cs.to_rgb([50.0, 0.0, 0.0])
     cs2 = PDLab()
     rgb_unit = cs2.to_rgb([50.0, 0.0, 0.0])
-    # Scaled whitepoint → lower XYZ → darker sRGB.
     assert rgb_custom is not None and rgb_unit is not None
-    assert rgb_custom[1] < rgb_unit[1]
+    assert rgb_custom == pytest.approx(rgb_unit, abs=1e-9)
 
 
 def test_to_rgb_rejects_short_input() -> None:

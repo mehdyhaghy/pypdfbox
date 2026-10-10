@@ -386,10 +386,11 @@ def test_encode_non_embedded_uses_cmap_subtable() -> None:
     font.is_embedded = lambda: False  # type: ignore[assignment,method-assign,return-value]
 
     class _StubTTF:
-        def get_unicode_cmap_subtable(self) -> Any:
+        def get_unicode_cmap_lookup(self, is_strict: bool = True) -> Any:
             return _FakeCmapSubtable({ord("X"): 0x88})
 
-    font.get_true_type_font = lambda: _StubTTF()  # type: ignore[assignment,method-assign,return-value]
+    # upstream: a non-embedded font encodes through its substitute's cmap
+    font._resolve_program = lambda: _StubTTF()  # type: ignore[assignment,method-assign,return-value]
     assert font.encode(ord("X")) == b"\x00\x88"
 
 

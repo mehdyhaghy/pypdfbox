@@ -198,9 +198,11 @@ def test_get_bounding_box_none_without_descendant() -> None:
     assert font.get_bounding_box() is None
 
 
-def test_get_bounding_box_none_without_descriptor_bbox() -> None:
+def test_get_bounding_box_from_substitute_without_descriptor_bbox() -> None:
+    # Upstream generateBoundingBox falls back to ttf.getFontBBox(), where
+    # ttf is the substitute for a non-embedded descendant.
     font = _build_type0(_build_descendant())
-    assert font.get_bounding_box() is None
+    assert font.get_bounding_box() is not None
 
 
 # ---------- get_font_matrix ----------
@@ -511,9 +513,13 @@ def test_has_glyph_true_when_descendant_has_default_width() -> None:
     assert font.has_glyph(0x41) is True
 
 
-def test_has_glyph_false_when_descendant_has_zero_default_width() -> None:
+def test_has_glyph_uses_cid_as_gid_without_unicode_mapping() -> None:
+    # Upstream PDCIDFontType2.hasGlyph is codeToGID(code) != 0. Not
+    # embedded and no Unicode mapping for the code: the CID is used as the
+    # GID (PDFBOX-2599), so the /DW value plays no part.
     font = _build_type0(_build_descendant(dw=0), encoding_name="Identity-H")
-    assert font.has_glyph(0x41) is False
+    assert font.has_glyph(0x41) is True
+    assert font.has_glyph(0) is False
 
 
 def test_has_glyph_false_without_descendant() -> None:
@@ -529,10 +535,11 @@ def test_get_width_from_font_zero_without_descendant() -> None:
     assert font.get_width_from_font(0x41) == 0.0
 
 
-def test_get_width_from_font_zero_without_embedded_program() -> None:
-    # PDCIDFontType2 with no /FontFile2 returns 0.0.
+def test_get_width_from_font_reads_substitute_without_embedded_program() -> None:
+    # Upstream reads the advance from ttf, the substitute font when the
+    # descendant has no /FontFile2.
     font = _build_type0(_build_descendant())
-    assert font.get_width_from_font(0x41) == 0.0
+    assert font.get_width_from_font(0x41) > 0.0
 
 
 def test_get_width_from_font_uses_descendant_embedded(

@@ -1,3 +1,4 @@
+import struct
 from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
@@ -319,6 +320,11 @@ class PDDeviceN(PDSpecialColorSpace):
     _TINT_TRANSFORM = 3
     _DEVICEN_ATTRIBUTES = 4
 
+    # RGB values (0..1) of a spot colorant with a zero tint must be at least
+    # this to count as white (PDFBOX-5074). Upstream's ``0.9f``, i.e. the
+    # 32-bit float value, which is what a COSFloat 0.9 evaluates to.
+    WHITE_THRESHOLD = struct.unpack("<f", struct.pack("<f", 0.9))[0]
+
     def __init__(self, array: COSArray | None = None) -> None:
         if array is None:
             array = COSArray()
@@ -339,6 +345,9 @@ class PDDeviceN(PDSpecialColorSpace):
         self._colorant_to_component: list[int] = []
         self._process_color_space: PDColorSpace | None = None
         self._spot_color_spaces: list[PDColorSpace | None] = []
+        # Whether the attributes are used for the conversion instead of the
+        # tint transform; calculated on first use (PDFBOX-5074).
+        self._use_attributes: bool | None = None
 
     # ---------- abstract surface ----------
 
@@ -482,6 +491,7 @@ class PDDeviceN(PDSpecialColorSpace):
         """Store ``/Attributes``. ``None`` removes the slot (upstream
         ``setAttributes(null)`` removes the index)."""
         assert self._array is not None
+        self._use_attributes = None
         if attributes is None:
             # Drop the trailing attributes slot if present.
             if self._array.size() > self._DEVICEN_ATTRIBUTES:
@@ -634,6 +644,64 @@ class PDDeviceN(PDSpecialColorSpace):
             if not is_nchannel:
                 self._colorant_to_component[c] = -1
 
+    def use_attributes(self) -> bool:
+        """Tells whether the conversion should be done with the attributes
+        (process and spot colorants) instead of the tint transform. The
+        result is calculated on first use. Mirrors upstream private
+        ``PDDeviceN.useAttributes()`` (PDFBOX-5074, 3.0 branch, unreleased
+        3.0.9)."""
+        if not self.has_attributes():
+            return False
+        if self._use_attributes is None:
+            if not self._spot_color_spaces:
+                self.init_color_conversion_cache()
+            self._use_attributes = (
+                not self.has_spot_colorant_with_ink_at_zero_tint()
+            )
+        return self._use_attributes
+
+    def has_spot_colorant_with_ink_at_zero_tint(self) -> bool:
+        """The attributes conversion multiplies the RGB values of the
+        colorants, so a colorant with a zero tint has to be white, i.e. it
+        must not change the result. A spot colorant that is not white at
+        zero tint (e.g. black, see PDFBOX-5074) can't be combined like that
+        and the result would be too dark; the tint transform is then the
+        better choice. Mirrors upstream private
+        ``PDDeviceN.hasSpotColorantWithInkAtZeroTint()``.
+        """
+        from .pd_separation import PDSeparation
+
+        for c in range(self._num_colorants):
+            spot = self._spot_color_spaces[c]
+            if self._colorant_to_component[c] >= 0 or spot is None:
+                # not a spot colorant that is used for the conversion
+                continue
+            if isinstance(spot, PDSeparation):
+                # don't use PDSeparation.to_rgb(), it caches by tint, so the
+                # value for zero would also be returned for all the
+                # following tints that are near zero
+                function = spot.get_tint_transform()
+                alternate = spot.get_alternate_color_space()
+                if function is None or alternate is None:
+                    continue
+                alt_value = function.eval([0.0])
+                if len(alt_value) < alternate.get_number_of_components():
+                    continue
+                rgb = PDColor(alt_value, alternate).to_rgb()
+            else:
+                # lenient: a non-Separation colorant space is converted the
+                # same way as in to_rgb_with_attributes()
+                rgb = spot.to_rgb([0.0] * spot.get_number_of_components())
+            if rgb is None:
+                continue
+            if (
+                rgb[0] < self.WHITE_THRESHOLD
+                or rgb[1] < self.WHITE_THRESHOLD
+                or rgb[2] < self.WHITE_THRESHOLD
+            ):
+                return True
+        return False
+
     # ---------- conversion ----------
 
     def to_rgb(
@@ -641,9 +709,10 @@ class PDDeviceN(PDSpecialColorSpace):
     ) -> tuple[float, float, float] | None:
         """Evaluate the tint vector to sRGB. Mirrors upstream
         ``PDDeviceN.toRGB(float[])`` — dispatches to
-        :meth:`to_rgb_with_attributes` when ``/Attributes`` is present,
-        else :meth:`to_rgb_with_tint_transform`."""
-        if self.has_attributes():
+        :meth:`to_rgb_with_attributes` when ``/Attributes`` is present and
+        usable (:meth:`use_attributes`, PDFBOX-5074), else
+        :meth:`to_rgb_with_tint_transform`."""
+        if self.use_attributes():
             return self.to_rgb_with_attributes(components)
         return self.to_rgb_with_tint_transform(components)
 
@@ -764,7 +833,7 @@ class PDDeviceN(PDSpecialColorSpace):
             if rgb is None:
                 # scale each 8-bit band 0..255 -> 0..1 in 32-bit float.
                 samples = [float(np.float32(b) / f255) for b in key]
-                if self.has_attributes():
+                if self.use_attributes():
                     triple = self.to_rgb_with_attributes(samples)
                 else:
                     triple = self.to_rgb_with_tint_transform(samples)

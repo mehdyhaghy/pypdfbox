@@ -346,13 +346,23 @@ class PDType0Font(PDFont):
         #     the identity GID == CID the previous fall-back assumed).
         # Routing the Type0 case through the descendant's own
         # ``code_to_gid`` recovers the charset-mapped GID.
-        cid = self.code_to_cid(code)
-        cid_to_gid = getattr(descendant, "cid_to_gid", None)
-        if callable(cid_to_gid):
-            gid = int(cid_to_gid(cid))
+        from .pd_cid_font_type2 import PDCIDFontType2
+
+        if isinstance(descendant, PDCIDFontType2):
+            # Upstream delegates the raw code: a non-embedded descendant
+            # resolves it through its substitute font (``toUnicode`` ->
+            # substitute cmap), an embedded one through code -> CID ->
+            # ``/CIDToGIDMap``.
+            gid = int(descendant.code_to_gid(code))
+        elif callable(cid_to_gid := getattr(descendant, "cid_to_gid", None)):
+            gid = int(cid_to_gid(self.code_to_cid(code)))
         else:
             descendant_code_to_gid = getattr(descendant, "code_to_gid", None)
-            gid = int(descendant_code_to_gid(code)) if callable(descendant_code_to_gid) else cid
+            gid = (
+                int(descendant_code_to_gid(code))
+                if callable(descendant_code_to_gid)
+                else self.code_to_cid(code)
+            )
 
         # GSUB single-substitution — glyph-by-glyph rewrites only.
         gsub = self._get_gsub_table()
@@ -759,7 +769,7 @@ class PDType0Font(PDFont):
         try:
             cid = self.code_to_cid(code)
             if descendant.is_embedded():
-                gid = descendant.code_to_gid(cid)
+                gid = descendant.code_to_gid(code)
             else:
                 # PDFBOX-5331 fallback: avoid the descendant's substitute-font
                 # GID path and use the CMap-resolved CID directly.
@@ -877,9 +887,15 @@ class PDType0Font(PDFont):
         for :class:`PDCIDFontType0`) and returns an empty list when no
         program is available.
         """
+        from .pd_cid_font_type2 import PDCIDFontType2
+
         descendant = self.get_descendant_font()
         if descendant is None:
             return []
+        if isinstance(descendant, PDCIDFontType2):
+            # upstream: descendantFont.getPath(code), raw code (the
+            # descendant resolves it, including the substitute-font path)
+            return list(descendant.get_path(code))
         get_glyph_path = getattr(descendant, "get_glyph_path", None)
         if not callable(get_glyph_path):
             return []
@@ -897,6 +913,10 @@ class PDType0Font(PDFont):
         descendant = self.get_descendant_font()
         if descendant is None:
             return []
+        from .pd_cid_font_type2 import PDCIDFontType2
+
+        if isinstance(descendant, PDCIDFontType2):
+            return list(descendant.get_normalized_path(code))
         get_normalized = getattr(descendant, "get_normalized_path", None)
         if not callable(get_normalized):
             return []
@@ -1084,6 +1104,11 @@ class PDType0Font(PDFont):
         descendant = self.get_descendant_font()
         if descendant is None:
             return False
+        from .pd_cid_font_type2 import PDCIDFontType2
+
+        if isinstance(descendant, PDCIDFontType2):
+            # upstream PDCIDFontType2.hasGlyph takes the raw code
+            return descendant.has_glyph(code)
         return descendant.has_glyph(self.code_to_cid(code))
 
     def get_width_from_font(self, code: int) -> float:
@@ -1102,6 +1127,11 @@ class PDType0Font(PDFont):
         get_wff = getattr(descendant, "get_width_from_font", None)
         if not callable(get_wff):
             return 0.0
+        from .pd_cid_font_type2 import PDCIDFontType2
+
+        if isinstance(descendant, PDCIDFontType2):
+            # upstream PDCIDFontType2.getWidthFromFont takes the raw code
+            return float(get_wff(code))
         return float(get_wff(self.code_to_cid(code)))
 
     def get_displacement(self, code: int) -> tuple[float, float]:
@@ -1273,6 +1303,14 @@ class PDType0Font(PDFont):
         # a freshly embedded font renders the wrong glyphs because the
         # content-stream codes would be Unicode codepoints, not glyph ids.
         use_embedded = self._use_embedded_encode(cmap)
+        if not use_embedded and self._use_predefined_unicode_encode():
+            # PDFBOX-5953 (3.0 branch): a non-embedded CIDFontType2 under a
+            # predefined "Uni..." CMap writes the raw Unicode value; delegate
+            # to the descendant exactly as upstream's encode(int) does.
+            descendant = self.get_descendant_font()
+            if isinstance(text, int):
+                return descendant.encode(text)
+            return b"".join(descendant.encode(ord(ch)) for ch in text)
         if isinstance(text, int):
             if use_embedded:
                 return self._encode_embedded_codepoint(text, cmap)
@@ -1316,6 +1354,23 @@ class PDType0Font(PDFont):
         try:
             return bool(descendant.is_embedded())
         except Exception:  # defensive: missing /FontFile2 etc.
+            return False
+
+    def _use_predefined_unicode_encode(self) -> bool:
+        """``True`` for a non-embedded :class:`PDCIDFontType2` descendant
+        whose encoding is a predefined ``Uni...`` CMap (not ``Identity-*``)
+        with a UCS2 CMap available: the PDFBOX-5953 branch of upstream
+        ``PDCIDFontType2.encode``."""
+        from .pd_cid_font_type2 import PDCIDFontType2
+
+        descendant = self.get_descendant_font()
+        if not isinstance(descendant, PDCIDFontType2):
+            return False
+        try:
+            if descendant.is_embedded():
+                return False
+            return PDCIDFontType2._is_predefined_unicode_encoding(self)
+        except Exception:  # defensive: malformed CMap / descriptor
             return False
 
     def _encode_embedded_codepoint(self, cp: int, cmap: CMap | None) -> bytes:

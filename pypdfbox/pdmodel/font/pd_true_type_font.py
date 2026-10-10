@@ -11,6 +11,7 @@ from pypdfbox.fontbox.ttf.glyph_data import BoundingBox
 
 from .encoding import (
     BuiltInEncoding,
+    DictionaryEncoding,
     Encoding,
     StandardEncoding,
 )
@@ -796,30 +797,7 @@ class PDTrueTypeFont(PDSimpleFont):
             name = encoding.get_name(code)
             if name == ".notdef" or not name:
                 return 0
-            if self._cmap_win_unicode is not None:
-                from pypdfbox.fontbox.encoding.glyph_list import GlyphList
-
-                unicode = GlyphList.DEFAULT.to_unicode(name)
-                if unicode:  # pragma: no branch
-                    # Defensive: every glyph name in WinAnsi/StandardEncoding
-                    # has a Unicode mapping in the bundled glyph list.
-                    uni = ord(unicode[0])
-                    gid = self._cmap_win_unicode.get_glyph_id(uni)
-            if gid == 0 and self._cmap_mac_roman is not None:
-                from pypdfbox.pdmodel.font.encoding.mac_os_roman_encoding import (
-                    MacOSRomanEncoding,
-                )
-
-                mac_code = MacOSRomanEncoding.INSTANCE.get_code(name)
-                if mac_code is not None:  # pragma: no branch
-                    # Defensive: MacOSRomanEncoding always resolves a
-                    # name to a code in the bundled glyph map.
-                    gid = self._cmap_mac_roman.get_glyph_id(mac_code)
-            if gid == 0:
-                try:
-                    gid = int(ttf.name_to_gid(name))
-                except Exception:
-                    gid = 0
+            gid = self._code_to_gid_by_name(name, ttf)
         else:
             from pypdfbox.pdmodel.font.encoding.mac_roman_encoding import (
                 MacRomanEncoding,
@@ -836,7 +814,23 @@ class PDTrueTypeFont(PDSimpleFont):
             # ``code_to_gid`` would skip the encoding-name (3,1) path and fall
             # to the raw-code ``else`` branch, diverging from PDFBox.
             encoding = self.get_encoding_typed()
-            if self._cmap_win_unicode is not None:
+            # PDFBOX-5960: some fonts have both the Symbolic and NonSymbolic
+            # flags set in their FontDescriptor, which is self-contradictory.
+            # When such a font also has an Encoding dictionary with a
+            # recognized /BaseEncoding, resolve the glyph by name first (as if
+            # the font were non-symbolic), and fall back to the code-based
+            # cmap lookup below only if that fails.
+            if (
+                self._has_contradictory_symbolic_flags()
+                and isinstance(encoding, DictionaryEncoding)
+                and self._is_recognized_base_encoding(encoding.get_base_encoding())
+            ):
+                name = encoding.get_name(code)
+                if name is not None and name != ".notdef":
+                    gid = self._code_to_gid_by_name(name, ttf)
+            # PDFBOX-4755 / PDF.js #5501, PDFBOX-3965: fallback for a font
+            # that has the symbol flag but isn't symbolic.
+            if gid == 0 and self._cmap_win_unicode is not None:
                 if isinstance(encoding, (WinAnsiEncoding, MacRomanEncoding)):
                     name = encoding.get_name(code)
                     if name == ".notdef" or not name:
@@ -867,6 +861,71 @@ class PDTrueTypeFont(PDSimpleFont):
             if gid == 0 and self._cmap_mac_roman is not None:
                 gid = self._cmap_mac_roman.get_glyph_id(code)
         return gid
+
+    def _code_to_gid_by_name(self, name: str, ttf: TrueTypeFont) -> int:
+        """Resolve a glyph name to a GID, the way a non-symbolic font would:
+        via the (3, 1) Windows/Unicode cmap, the (1, 0) Macintosh/Roman cmap,
+        or the ``post`` table, in that order. Returns 0 when none of the
+        tables map the name.
+
+        Mirrors upstream private ``PDTrueTypeFont.codeToGIDByName``
+        (PDFBOX-5960 refactor, 3.0 branch).
+        """
+        gid = 0
+        # (3, 1) - (Windows, Unicode)
+        if self._cmap_win_unicode is not None:
+            from pypdfbox.fontbox.encoding.glyph_list import GlyphList
+
+            unicode = GlyphList.DEFAULT.to_unicode(name)
+            if unicode:
+                gid = self._cmap_win_unicode.get_glyph_id(ord(unicode[0]))
+        # (1, 0) - (Macintosh, Roman)
+        if gid == 0 and self._cmap_mac_roman is not None:
+            from pypdfbox.pdmodel.font.encoding.mac_os_roman_encoding import (
+                MacOSRomanEncoding,
+            )
+
+            mac_code = MacOSRomanEncoding.INSTANCE.get_code(name)
+            if mac_code is not None:
+                gid = self._cmap_mac_roman.get_glyph_id(mac_code)
+        # 'post' table
+        if gid == 0:
+            try:
+                gid = int(ttf.name_to_gid(name))
+            except Exception:
+                gid = 0
+        return gid
+
+    def _has_contradictory_symbolic_flags(self) -> bool:
+        """PDFBOX-5960: ``True`` when the font descriptor has both the
+        Symbolic and NonSymbolic flags set, which is self-contradictory and
+        means the Symbolic flag can't be trusted on its own.
+
+        Mirrors upstream private
+        ``PDTrueTypeFont.hasContradictorySymbolicFlags``.
+        """
+        fd = self.get_font_descriptor()
+        return fd is not None and fd.is_symbolic() and fd.is_non_symbolic()
+
+    @staticmethod
+    def _is_recognized_base_encoding(encoding: Any) -> bool:
+        """``True`` when ``encoding`` is one of the standard named encodings,
+        i.e. it came from a recognized ``/BaseEncoding`` entry rather than
+        being synthesized as a fallback.
+
+        Mirrors upstream private static
+        ``PDTrueTypeFont.isRecognizedBaseEncoding`` (PDFBOX-5960).
+        """
+        from pypdfbox.pdmodel.font.encoding.mac_roman_encoding import (
+            MacRomanEncoding,
+        )
+        from pypdfbox.pdmodel.font.encoding.win_ansi_encoding import (
+            WinAnsiEncoding,
+        )
+
+        return isinstance(
+            encoding, (StandardEncoding, WinAnsiEncoding, MacRomanEncoding)
+        )
 
     def _code_to_gid_via_unicode_subtable(
         self, code: int, ttf: TrueTypeFont

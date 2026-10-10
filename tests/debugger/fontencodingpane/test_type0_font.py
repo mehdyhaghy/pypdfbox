@@ -46,12 +46,14 @@ def test_type0_pane_get_panel(tk_root):
     assert pane.get_panel() is pane.view
 
 
-def test_type0_pane_total_glyphs_starts_at_zero(tk_root):
+def test_type0_pane_total_glyphs_counts_substitute_glyphs(tk_root):
     parent = _type0_with_descendant()
     descendant = parent.get_descendant_font()
     pane = Type0Font(descendant, parent, tk_root)
-    # No embedded TTF program => has_glyph(code) is False for every code.
-    assert pane.total_available_glyphs == 0
+    # No embedded TTF program: as upstream, has_glyph resolves through the
+    # substitute font, where a code without a Unicode mapping uses the CID
+    # as the GID (PDFBOX-2599), so every non-zero CID counts.
+    assert pane.total_available_glyphs > 0
 
 
 def _type0_with_cid_to_gid_map() -> PDType0Font:

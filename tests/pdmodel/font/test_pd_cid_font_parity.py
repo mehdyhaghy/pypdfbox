@@ -49,12 +49,15 @@ def test_is_embedded_true_for_font_file() -> None:
     assert font.is_embedded() is True
 
 
-def test_is_embedded_true_for_font_file2() -> None:
+def test_is_embedded_false_for_unparsable_font_file2() -> None:
+    # Upstream PDCIDFontType2.isEmbedded is true only when the program
+    # parses; an empty /FontFile2 is damaged and the substitute is used.
     font = PDCIDFontType2()
     fd = PDFontDescriptor()
     fd.set_font_file2(COSStream())
     font.set_font_descriptor(fd)
-    assert font.is_embedded() is True
+    assert font.is_embedded() is False
+    assert font.is_damaged() is True
 
 
 def test_is_embedded_true_for_font_file3() -> None:

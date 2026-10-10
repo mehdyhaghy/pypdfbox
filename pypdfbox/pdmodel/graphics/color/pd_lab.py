@@ -2,7 +2,7 @@ from typing import Any
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 
-from .pd_cal_gray import _xyz_to_srgb
+from .pd_cie_dictionary_based_color_space import xyz_to_srgb_adapted
 from .pd_color import PDColor
 from .pd_color_space import PDColorSpace
 
@@ -44,6 +44,13 @@ class PDLab(PDColorSpace):
             array.add(COSName.get_pdf_name(self.NAME))
             array.add(COSDictionary())
         super().__init__(array)
+        # Cached a*/b* ranges (PDFBOX-6258 / PDFBOX-6264): filled at
+        # construction and refreshed whenever the range is changed.
+        self._min_a = -100.0
+        self._max_a = 100.0
+        self._min_b = -100.0
+        self._max_b = 100.0
+        self._cache_ranges()
         # Initial color per upstream: L=0, a=max(0, aMin), b=max(0, bMin)
         rng = self.get_range()
         a_min = rng[0] if len(rng) >= 1 else -100.0
@@ -113,6 +120,7 @@ class PDLab(PDColorSpace):
         # ``setARange`` / ``setBRange``. Refresh here so callers that
         # mutate /Range and immediately read ``get_initial_color`` see
         # the updated a*/b* minima.
+        self._cache_ranges()
         new_rng = self.get_range()
         a_min = new_rng[0] if len(new_rng) >= 1 else -100.0
         b_min = new_rng[2] if len(new_rng) >= 3 else -100.0
@@ -128,6 +136,7 @@ class PDLab(PDColorSpace):
     def clear_range(self) -> None:
         """Remove ``/Range`` and restore default a*/b* bounds."""
         self._dict().remove_item(_RANGE)
+        self._cache_ranges()
         self._initial_color = PDColor([0.0, 0.0, 0.0], self)
 
     # Component-level range accessors mirror upstream
@@ -185,6 +194,7 @@ class PDLab(PDColorSpace):
             range_array.set(index, COSFloat(float(lo)))
             range_array.set(index + 1, COSFloat(float(hi)))
         d.set_item(_RANGE, range_array)
+        self._cache_ranges()
         # Upstream invalidates the cached initial color when the range
         # changes; keep parity by recomputing on next access.
         rng = self.get_range()
@@ -195,6 +205,35 @@ class PDLab(PDColorSpace):
             self,
         )
 
+    def _cache_ranges(self) -> None:
+        """Cache the a*/b* bounds. Mirrors upstream private
+        ``PDLab.cacheRanges()`` (PDFBOX-6258, initialized at construction
+        by PDFBOX-6264): called at the beginning and when the range is
+        changed."""
+        self._min_a, self._max_a = self.get_a_range()
+        self._min_b, self._max_b = self.get_b_range()
+
+    def clamp(self, values: list[float]) -> None:
+        """Clamp ``values`` (``[L*, a*, b*]``) in place to the allowed
+        ranges. Mirrors upstream ``PDLab.clamp(float[])`` (PDFBOX-6258,
+        3.0 branch, unreleased 3.0.9): "The range of the first (L*)
+        component shall be 0 to 100; the ranges of the second and third
+        (a* and b*) components shall be defined by the Range entry in the
+        colour space dictionary"."""
+        # assumption: 3 elements: L a b
+        if values[0] < 0:
+            values[0] = 0.0
+        elif values[0] > 100:
+            values[0] = 100.0
+        if values[1] < self._min_a:
+            values[1] = self._min_a
+        elif values[1] > self._max_a:
+            values[1] = self._max_a
+        if values[2] < self._min_b:
+            values[2] = self._min_b
+        elif values[2] > self._max_b:
+            values[2] = self._max_b
+
     # ---------- predicates ----------
 
     def is_white_point(self) -> bool:
@@ -203,6 +242,7 @@ class PDLab(PDColorSpace):
         ``PDCIEDictionaryBasedColorSpace.isWhitePoint()`` (``protected`` in
         Java; promoted to public here so callers can probe the
         no-calibration shortcut without poking at internal state).
+        Deprecated upstream (PDFBOX-6260, "will be removed in 4.0").
         """
         wp = self.get_white_point()
         if len(wp) < 3:
@@ -217,10 +257,7 @@ class PDLab(PDColorSpace):
         ``[0, 100]``; the ``a*``/``b*`` bounds come from ``/Range``
         (default ``[-100, 100, -100, 100]``).
         """
-        rng = self.get_range()
-        if len(rng) >= 4:
-            return [0.0, 100.0, float(rng[0]), float(rng[1]), float(rng[2]), float(rng[3])]
-        return [0.0, 100.0, -100.0, 100.0, -100.0, 100.0]
+        return [0.0, 100.0, self._min_a, self._max_a, self._min_b, self._max_b]
 
     # ---------- private upstream parity helpers ----------
 
@@ -309,15 +346,9 @@ class PDLab(PDColorSpace):
         y = wp_y * self.inverse(lstar)
         z = wp_z * self.inverse(lstar - b_star * (1.0 / 200.0))
 
-        # Upstream's convXYZtoRGB clamps negatives to 0.
-        if x < 0.0:
-            x = 0.0
-        if y < 0.0:
-            y = 0.0
-        if z < 0.0:
-            z = 0.0
-
-        return _xyz_to_srgb(x, y, z)
+        # Upstream's convXYZtoRGB chromatically adapts the whitepoint
+        # (PDFBOX-6260), then clamps negatives to 0.
+        return xyz_to_srgb_adapted((wp_x, wp_y, wp_z), x, y, z)
 
     # ---------- rendering ----------
 
@@ -337,8 +368,8 @@ class PDLab(PDColorSpace):
         """
         from PIL import Image
 
-        a_min, a_max = self.get_a_range()
-        b_min, b_max = self.get_b_range()
+        a_min, a_max = self._min_a, self._max_a
+        b_min, b_max = self._min_b, self._max_b
         delta_a = a_max - a_min
         delta_b = b_max - b_min
 

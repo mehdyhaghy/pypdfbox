@@ -271,6 +271,17 @@ class PDColorSpace(ABC):
             out.append(1.0)
         return out
 
+    def clamp(self, values: list[float]) -> None:
+        """Clamp color values in place to the allowed ranges, usually
+        ``0..1``. Mirrors upstream ``PDColorSpace.clamp(float[])``
+        (PDFBOX-6258, 3.0 branch, unreleased 3.0.9); :class:`PDLab`
+        overrides it with its L*/a*/b* ranges."""
+        for i, v in enumerate(values):
+            if v < 0:
+                values[i] = 0.0
+            elif v > 1:
+                values[i] = 1.0
+
     # ---------- rendering ----------
 
     def to_rgb_image(

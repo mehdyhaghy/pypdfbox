@@ -129,15 +129,18 @@ def test_is_embedded_false_with_empty_descriptor() -> None:
     assert font.is_embedded() is False
 
 
-def test_is_embedded_true_when_font_file2_present() -> None:
+def test_is_embedded_false_for_empty_program_when_font_file2_present() -> None:
     font = PDCIDFontType2()
     fd = PDFontDescriptor()
     fd.set_font_file2(COSStream())
     font.set_font_descriptor(fd)
-    assert font.is_embedded() is True
+    # upstream isEmbedded is true only when the program parses; an empty
+    # program is damaged and the substitute font is used instead
+    assert font.is_embedded() is False
+    assert font.is_damaged() is True
 
 
-def test_is_embedded_true_for_open_type_font_file3() -> None:
+def test_is_embedded_false_for_empty_program_for_open_type_font_file3() -> None:
     # PDFBox 3.0 added /FontFile3 /OpenType acceptance for CIDFontType2
     # so OpenType-flavoured TrueType programs can ride along.
     font = PDCIDFontType2()
@@ -146,7 +149,10 @@ def test_is_embedded_true_for_open_type_font_file3() -> None:
     stream.set_name(COSName.SUBTYPE, "OpenType")  # type: ignore[attr-defined]
     fd.set_font_file3(stream)
     font.set_font_descriptor(fd)
-    assert font.is_embedded() is True
+    # upstream isEmbedded is true only when the program parses; an empty
+    # program is damaged and the substitute font is used instead
+    assert font.is_embedded() is False
+    assert font.is_damaged() is True
 
 
 # ---------- getTrueTypeFont (lazy parse) ----------

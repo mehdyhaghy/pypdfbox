@@ -118,7 +118,8 @@ def test_wave517_embedded_ttf_unicode_fallback_maps_gid_to_codepoint(
     descendant = PDCIDFontType2(COSDictionary())
     monkeypatch.setattr(descendant, "get_true_type_font", lambda: SimpleNamespace(_tt=inner))
     monkeypatch.setattr(descendant, "is_embedded", lambda: True)
-    monkeypatch.setattr(descendant, "code_to_gid", lambda cid: cid)
+    # upstream codeToGID takes the raw character code
+    monkeypatch.setattr(descendant, "code_to_gid", lambda code: code - 0x40)
     font = PDType0Font()
     monkeypatch.setattr(font, "get_descendant_font", lambda: descendant)
     monkeypatch.setattr(font, "code_to_cid", lambda code: code - 0x40)

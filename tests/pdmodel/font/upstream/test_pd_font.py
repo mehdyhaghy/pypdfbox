@@ -28,6 +28,10 @@ Listed below are the upstream methods and the per-test disposition:
   ``archive/migration-docs/UPSTREAM_3.0.8_WATCHLIST.md``, PDFBOX-6211
   row).
 
+- ``testPDFBox5960`` (added by PDFBOX-5960 on the upstream ``3.0`` branch,
+  unreleased 3.0.9): ported below with its 4 KB fixture
+  ``tests/fixtures/pdmodel/font/PDFBOX-5960-reduced1.pdf``.
+
 The cases in this file are the *base-class invariants* the upstream
 suite implies but does not assert directly: the COS surface of the
 abstract ``PDFont`` (type / subtype / descriptor / ``/ToUnicode`` cmap
@@ -36,10 +40,13 @@ plumbing). Hand-written counterparts live in
 ``tests/pdmodel/font/test_pd_font_base_parity.py``.
 """
 
+from pathlib import Path
+
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName
-from pypdfbox.pdmodel.font import PDType1Font
+from pypdfbox.pdmodel import PDDocument
+from pypdfbox.pdmodel.font import PDTrueTypeFont, PDType1Font
 
 
 def test_pd_font_get_type_returns_font_constant() -> None:
@@ -157,3 +164,31 @@ def test_pd_font_to_string_java_spelling_matches_str() -> None:
 def test_pdfbox6172() -> None:
     """Regression test for PDFBOX-6172 (fixture-driven; see skip reason)."""
     raise NotImplementedError("port upstream testPDFBox6172 at 3.0.8 re-sync")
+
+
+_PDFBOX_5960_PDF = (
+    Path(__file__).resolve().parents[3]
+    / "fixtures"
+    / "pdmodel"
+    / "font"
+    / "PDFBOX-5960-reduced1.pdf"
+)
+
+
+def test_pdfbox5960() -> None:
+    """Upstream ``testPDFBox5960`` (PDFBOX-5960, 3.0 branch, unreleased
+    3.0.9). The font descriptor sets both the Symbolic and NonSymbolic flags
+    and the ``/Encoding`` dictionary has a recognized ``/BaseEncoding``, so
+    the glyph is resolved by name first."""
+    doc = PDDocument.load(_PDFBOX_5960_PDF)
+    try:
+        page = doc.get_page(0)
+        font = page.get_resources().get_font(COSName.get_pdf_name("F1"))
+        assert isinstance(font, PDTrueTypeFont)
+        # code 71 ('G' in the content stream) is mapped by /Differences to
+        # "Ccedilla", which must be resolved by name (GID 90, the diameter
+        # symbol in this font), not through the symbolic code-based cmap
+        # (which wrongly yields GID 34, "G").
+        assert font.code_to_gid(71) == 90
+    finally:
+        doc.close()

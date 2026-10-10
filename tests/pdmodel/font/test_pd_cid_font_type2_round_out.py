@@ -260,8 +260,10 @@ def test_get_normalized_path_suppresses_notdef_for_substitute_font() -> None:
         ),
     }
     stub = _StubTTF(units_per_em=1000, glyph_order=[".notdef"], glyphs=glyphs)
-    font = _make_font_with_stub_ttf(stub)
-    # No /FontFile2 wired up -> is_embedded() is False -> notdef suppressed.
+    font = PDCIDFontType2()
+    # Non-embedded: the stub plays the substitute program.
+    font.is_embedded = lambda: False  # type: ignore[method-assign]
+    font._resolve_program = lambda: stub  # type: ignore[method-assign,return-value]
     assert font.is_embedded() is False
     assert font.get_normalized_path(0) == []
 

@@ -460,16 +460,39 @@ class PDShading:
                 values = fn.eval(input_list)
                 output.append(float(values[0]) if values else 0.0)
 
-        # Clamp to [0, 1] per PDF spec.
-        clamped: list[float] = []
-        for v in output:
-            f = float(v)
-            if f < 0.0:
-                f = 0.0
-            elif f > 1.0:
-                f = 1.0
-            clamped.append(f)
+        # From the PDF spec: "If the value returned by the function for a
+        # given colour component is out of range, it shall be adjusted to
+        # the nearest valid value." PDFBOX-6258 (3.0 branch, unreleased
+        # 3.0.9) delegates to the color space, so Lab uses its own ranges.
+        clamped = [float(v) for v in output]
+        color_space = self._get_clamp_color_space()
+        if color_space is None:
+            for i, f in enumerate(clamped):
+                if f < 0.0:
+                    clamped[i] = 0.0
+                elif f > 1.0:
+                    clamped[i] = 1.0
+        else:
+            color_space.clamp(clamped)
         return clamped
+
+    def _get_clamp_color_space(self) -> Any:
+        """Typed color space used by :meth:`eval_function` to clamp, cached
+        per backing ``/ColorSpace`` object because the function is
+        evaluated per sample while rendering. ``None`` when absent or
+        unparsable (the generic 0..1 clamp then applies)."""
+        cs_obj = self._dict.get_dictionary_object(_COLOR_SPACE, _CS)
+        cache = getattr(self, "_clamp_cs_cache", None)
+        if cache is not None and cache[0] is cs_obj:
+            return cache[1]
+        color_space = None
+        if cs_obj is not None:
+            try:
+                color_space = self.get_color_space_object()
+            except (OSError, ValueError, TypeError):
+                color_space = None
+        self._clamp_cs_cache = (cs_obj, color_space)
+        return color_space
 
     # ---------- paint (rendering hook) ----------
 

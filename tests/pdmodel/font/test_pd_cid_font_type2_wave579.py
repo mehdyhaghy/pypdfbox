@@ -70,7 +70,8 @@ def test_wave579_set_true_type_font_none_sets_negative_cache(
     font.set_true_type_font(None)
 
     assert font.get_true_type_font() is None
-    assert font.is_embedded() is True
+    # upstream: no parsed program => not embedded, damaged
+    assert font.is_embedded() is False
     assert font.is_damaged() is True
 
 

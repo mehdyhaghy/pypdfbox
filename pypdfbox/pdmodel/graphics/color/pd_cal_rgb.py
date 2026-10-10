@@ -1,6 +1,8 @@
+import struct
+
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 
-from .pd_cal_gray import _xyz_to_srgb
+from .pd_cie_dictionary_based_color_space import xyz_to_srgb_adapted
 from .pd_color import PDColor
 from .pd_color_space import PDColorSpace
 
@@ -9,6 +11,15 @@ _BLACK_POINT: COSName = COSName.get_pdf_name("BlackPoint")
 _GAMMA: COSName = COSName.get_pdf_name("Gamma")
 _MATRIX: COSName = COSName.get_pdf_name("Matrix")
 _IDENTITY_MATRIX: list[float] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+
+# Real-world producers embed slightly different roundings of D65, e.g.
+# (0.9505 1.0 1.089), (0.95045 1.0 1.08905) or (0.951 1.0 1.089); an exact
+# match rejects those and wrongly routes them into full calibration instead
+# of the hack they rely on, see PDFBOX-5079.
+# Upstream's constants are 32-bit floats (0.01f, 0.9505f, 1.089f).
+D65_TOLERANCE: float = struct.unpack("<f", struct.pack("<f", 0.01))[0]
+_D65_X: float = struct.unpack("<f", struct.pack("<f", 0.9505))[0]
+_D65_Z: float = struct.unpack("<f", struct.pack("<f", 1.089))[0]
 
 
 def _read_float_array(
@@ -148,13 +159,35 @@ class PDCalRGB(PDColorSpace):
         """Return ``True`` iff ``/WhitePoint`` is the unit tristimulus
         ``(1.0, 1.0, 1.0)``. Mirrors upstream
         ``PDCIEDictionaryBasedColorSpace.isWhitePoint()`` (``protected`` in
-        Java; promoted to public here so callers can detect the
-        no-calibration shortcut path used by upstream's ``toRGB``).
+        Java; promoted to public here). Deprecated upstream (PDFBOX-6260,
+        "will be removed in 4.0"); :meth:`to_rgb` now keys its shortcut on
+        :meth:`is_d65_white_point` instead (PDFBOX-5079).
         """
         wp = self.get_white_point()
         if len(wp) < 3:
             return False
         return wp[0] == 1.0 and wp[1] == 1.0 and wp[2] == 1.0
+
+    def is_d65_white_point(self) -> bool:
+        """Tests if the whitepoint is close enough to D65
+        ``(0.9505, 1.0, 1.089)`` to be considered D65, the only case for
+        which the CIE calibration skip in :meth:`to_rgb` was verified (see
+        PDFBOX-2553 and PDFBOX-5079). This is a tolerant match rather than
+        an exact one because real-world files use slightly different
+        roundings of the D65 whitepoint; the tolerance is still well clear
+        of genuinely different whitepoints such as D50
+        ``(0.9643, 1.0, 0.8251)``. Mirrors upstream private
+        ``PDCalRGB.isD65WhitePoint()`` (3.0 branch, unreleased 3.0.9).
+        """
+        wp = self.get_white_point()
+        wp_x = float(wp[0]) if len(wp) >= 1 else 1.0
+        wp_y = float(wp[1]) if len(wp) >= 2 else 1.0
+        wp_z = float(wp[2]) if len(wp) >= 3 else 1.0
+        return (
+            abs(wp_x - _D65_X) < D65_TOLERANCE
+            and abs(wp_y - 1.0) < D65_TOLERANCE
+            and abs(wp_z - _D65_Z) < D65_TOLERANCE
+        )
 
     # ---------- conversion ----------
 
@@ -170,12 +203,13 @@ class PDCalRGB(PDColorSpace):
 
         Then XYZ → sRGB (IEC 61966-2-1).
 
-        Mirrors upstream ``PDCalRGB.toRGB`` (PDFBox 3.0.x): when
-        ``isWhitePoint()`` is ``True`` (whitepoint is the unit
-        tristimulus) the full calibration runs; otherwise CIE
-        calibration is skipped and the input components are returned
-        directly — a hack documented as PDFBOX-2553 working only with
-        whitepoint D65 ``(0.9505, 1.0, 1.089)``.
+        Mirrors upstream ``PDCalRGB.toRGB`` on the 3.0 branch (PDFBOX-5079
+        and PDFBOX-6260, unreleased 3.0.9): when the whitepoint is close to
+        D65 (:meth:`is_d65_white_point`) CIE calibration is skipped and the
+        input components are returned directly (the PDFBOX-2553 hack, which
+        only works with whitepoint D65 ``(0.9505, 1.0, 1.089)``); for any
+        other whitepoint the full calibration runs, and ``convXYZtoRGB``
+        chromatically adapts the declared whitepoint (Bradford) first.
 
         ``values`` must contain exactly three components in ``[0, 1]``.
         """
@@ -186,9 +220,9 @@ class PDCalRGB(PDColorSpace):
         a = float(values[0])
         b = float(values[1])
         c = float(values[2])
-        if not self.is_white_point():
-            # Upstream PDFBox shortcut (PDFBOX-2553): skip CIE
-            # calibration, return the components verbatim.
+        if self.is_d65_white_point():
+            # this is a hack, we simply skip CIE calibration of the RGB
+            # value; this works only with whitepoint D65 (PDFBOX-2553)
             return (a, b, c)
         # Clamp
         a = 0.0 if a < 0.0 else (min(a, 1.0))
@@ -215,7 +249,11 @@ class PDCalRGB(PDColorSpace):
             x = x_a * a_p + x_b * b_p + x_c * c_p
             y = y_a * a_p + y_b * b_p + y_c * c_p
             z = z_a * a_p + z_b * b_p + z_c * c_p
-        return _xyz_to_srgb(x, y, z)
+        wp = self.get_white_point()
+        wp_x = float(wp[0]) if len(wp) >= 1 else 1.0
+        wp_y = float(wp[1]) if len(wp) >= 2 else 1.0
+        wp_z = float(wp[2]) if len(wp) >= 3 else 1.0
+        return xyz_to_srgb_adapted((wp_x, wp_y, wp_z), x, y, z)
 
 
 __all__ = ["PDCalRGB"]
