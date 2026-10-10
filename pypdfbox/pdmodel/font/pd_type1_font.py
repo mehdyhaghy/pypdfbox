@@ -413,7 +413,7 @@ class PDType1Font(PDSimpleFont):
            PostScript names (Helvetica, Times-Roman, Courier, … families,
            plus Symbol / ZapfDingbats) and the dict ships no font program,
            fall through to the bundled substitute TTF outline via
-           :meth:`Standard14Fonts.get_glyph_path` — Liberation for the
+           :meth:`Standard14Fonts.get_glyph_path` — Arimo / Tinos / Cousine for the
            Latin branches and DejaVu Sans for Symbol / ZapfDingbats.
 
         Returns an empty list when ``code`` does not resolve to a known
@@ -425,7 +425,7 @@ class PDType1Font(PDSimpleFont):
             if name is None:
                 return []
             return program.get_path(name)
-        # No embedded program — fall back to Liberation when the font is
+        # No embedded program — fall back to the bundled Arimo / Tinos / Cousine when the font is
         # one of the Standard 14.
         base_font = self.get_name()
         if base_font is None or not Standard14Fonts.contains_name(base_font):
@@ -475,7 +475,7 @@ class PDType1Font(PDSimpleFont):
 
     def _substitute_path_for_name(self, glyph_name: str) -> list[tuple]:
         """Draw a glyph *name* from the bundled Standard 14 substitute
-        (Liberation for the Latin cores, DejaVu Sans for Symbol /
+        (Arimo / Tinos / Cousine for the Latin cores, DejaVu Sans for Symbol /
         ZapfDingbats). Returns ``[]`` for ``.notdef`` or when the font is
         not one of the Standard 14. Mirrors the ``genericFont`` substitute
         branch upstream ``PDType1Font.getPath`` reaches when the font has
@@ -577,7 +577,7 @@ class PDType1Font(PDSimpleFont):
             # No embedded /FontFile program. Upstream falls through to the
             # generic substitute font here (``genericFont.getPath(name)``);
             # we mirror that for the Standard 14 cores via the bundled
-            # Liberation / DejaVu substitute. Without this a non-embedded
+            # Arimo / Tinos / Cousine / DejaVu substitute. Without this a non-embedded
             # Helvetica rendered nothing through ``get_normalized_path`` —
             # the interface the glyph cache / renderer reaches for (the
             # ``get_glyph_path(code)`` path already had the fall-through).

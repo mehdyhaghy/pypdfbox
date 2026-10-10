@@ -1,4 +1,4 @@
-"""Wave 1376 — wiring tests for the bundled Liberation last-resort font.
+"""Wave 1376 — wiring tests for the bundled last-resort font.
 
 These tests cover the four call sites in
 :class:`pypdfbox.pdmodel.font.font_mapper_impl.FontMapperImpl` that
@@ -10,7 +10,7 @@ through to ``.notdef`` rendering:
 * :meth:`get_font_box_font`  (line 348)
 * :meth:`get_cid_font`        (line 391)
 
-The bundled Liberation TTFs (12 fonts, 3.94 MB total, SIL OFL 1.1)
+The bundled Arimo / Tinos / Cousine TTFs (12 fonts, Apache 2.0)
 ride through the active :class:`FontProvider`'s ``scan_fonts`` path so
 the resulting font is a real :class:`FontBoxFont` indistinguishable
 from one resolved off the system font directories.
@@ -69,30 +69,30 @@ def _resolved_path_name(impl: FontMapperImpl, key: str) -> str:
 # ---------- _get_last_resort_font dispatch ----------
 
 
-def test_last_resort_default_descriptor_resolves_to_liberation_sans() -> None:
+def test_last_resort_default_descriptor_resolves_to_arimo() -> None:
     impl = FontMapperImpl()
     font = impl._get_last_resort_font()  # type: ignore[attr-defined]
     assert font is not None
     # Probe the parallel path cache so we know which Liberation TTF
     # the loader picked — fontTools' TTFont doesn't expose a stable
     # name attribute we can match against.
-    assert "LiberationSans" in _resolved_path_name(impl, "Sans-Regular")
+    assert "Arimo" in _resolved_path_name(impl, "Sans-Regular")
 
 
-def test_last_resort_serif_descriptor_resolves_to_liberation_serif() -> None:
+def test_last_resort_serif_descriptor_resolves_to_tinos() -> None:
     impl = FontMapperImpl()
     descriptor = _StubDescriptor(serif=True)
     font = impl._get_last_resort_font(descriptor)  # type: ignore[attr-defined]
     assert font is not None
-    assert "LiberationSerif" in _resolved_path_name(impl, "Serif-Regular")
+    assert "Tinos" in _resolved_path_name(impl, "Serif-Regular")
 
 
-def test_last_resort_mono_descriptor_resolves_to_liberation_mono() -> None:
+def test_last_resort_mono_descriptor_resolves_to_cousine() -> None:
     impl = FontMapperImpl()
     descriptor = _StubDescriptor(fixed_pitch=True)
     font = impl._get_last_resort_font(descriptor)  # type: ignore[attr-defined]
     assert font is not None
-    assert "LiberationMono" in _resolved_path_name(impl, "Mono-Regular")
+    assert "Cousine" in _resolved_path_name(impl, "Mono-Regular")
 
 
 def test_last_resort_bold_descriptor_resolves_to_bold_variant() -> None:
@@ -183,16 +183,16 @@ def test_get_cid_font_no_cid_info_falls_through_to_last_resort() -> None:
     assert mapping.get_true_type_font() is not None
 
 
-# ---------- explicit lookup by Liberation PostScript name ----------
+# ---------- explicit lookup by bundled PostScript name ----------
 
 
-def test_liberation_sans_resolves_through_provider_index() -> None:
+def test_arimo_resolves_through_provider_index() -> None:
     # Wave 1376 added ``pypdfbox/resources/ttf/`` to
     # ``_default_font_dirs``, so an explicit lookup by PostScript name
     # should find the bundled TTF without going through the last-resort
     # fallback at all.
     impl = FontMapperImpl()
-    found = impl.find_font(FontFormat.TTF, "LiberationSans")
+    found = impl.find_font(FontFormat.TTF, "Arimo-Regular")
     assert found is not None
 
 
@@ -202,9 +202,9 @@ def test_liberation_sans_resolves_through_provider_index() -> None:
 @pytest.mark.parametrize(
     ("descriptor", "expected_key", "expected_substring"),
     [
-        (_StubDescriptor(), "Sans-Regular", "Sans"),
-        (_StubDescriptor(serif=True), "Serif-Regular", "Serif"),
-        (_StubDescriptor(fixed_pitch=True), "Mono-Regular", "Mono"),
+        (_StubDescriptor(), "Sans-Regular", "Arimo"),
+        (_StubDescriptor(serif=True), "Serif-Regular", "Tinos"),
+        (_StubDescriptor(fixed_pitch=True), "Mono-Regular", "Cousine"),
         (_StubDescriptor(weight=700), "Sans-Bold", "Bold"),
         (_StubDescriptor(italic=True), "Sans-Italic", "Italic"),
     ],
@@ -248,11 +248,11 @@ def test_resolved_font_yields_ascii_glyph_metrics_not_notdef() -> None:
     if hmtx is not None:
         metrics = getattr(hmtx, "metrics", {})
         a_metrics = metrics.get("A")
-        assert a_metrics is not None, "Liberation TTF lacks 'A' glyph metrics"
+        assert a_metrics is not None, "bundled TTF lacks 'A' glyph metrics"
         advance = a_metrics[0]
         assert advance > 0, f"expected positive advance, got {advance}"
         return
     # Fallback assertion: the path cache records the Liberation TTF
     # that was loaded.
     path_name = _resolved_path_name(impl, "Sans-Regular")
-    assert "Liberation" in path_name
+    assert "Arimo" in path_name

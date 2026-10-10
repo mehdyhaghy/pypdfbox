@@ -8,7 +8,7 @@ installed vs editable installs.
 
 Currently houses:
 
-* :mod:`pypdfbox.resources.ttf` — the 12 Liberation TTFs used as
+* :mod:`pypdfbox.resources.ttf` — the 12 Arimo / Tinos / Cousine TTFs used as
   Standard 14 substitution targets when a PDF references one of the
   canonical PostScript names (Helvetica / Times / Courier families)
   without embedding the font program. See

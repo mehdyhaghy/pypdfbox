@@ -1,4 +1,4 @@
-"""Tests for the bundled Liberation TTF descriptor-keyed resolver.
+"""Tests for the bundled substitute-TTF descriptor-keyed resolver.
 
 The loader is original work (no upstream counterpart). It adapts the
 architectural pattern from :mod:`pypdfbox.fontbox.cjk_loader` to a
@@ -6,13 +6,13 @@ bundled font set rather than a network-fetched one. These tests exercise
 the contract from the perspective of callers in
 :mod:`pypdfbox.pdmodel.font.font_mapper_impl`:
 
-* ``font_descriptor=None`` -> ``LiberationSans-Regular`` (matches
+* ``font_descriptor=None`` -> ``Arimo-Regular`` (matches
   upstream PDFBox's eager constructor load).
 * Each descriptor combination (Sans/Serif/Mono × Regular/Bold/Italic/
   BoldItalic) resolves to the correct file.
 * Bold detection honours ``/FontWeight >= 600`` and the
   ``"bold"`` / ``"black"`` / ``"heavy"`` name heuristic.
-* The bundled directory contains the 12 Liberation TTFs + DejaVuSans
+* The bundled directory contains the 12 Arimo / Tinos / Cousine TTFs + DejaVuSans
   expected by the rest of the pipeline.
 
 Tests run entirely off the bundled wheel resources — no network, no
@@ -70,26 +70,26 @@ class _StubDescriptor:
 # ---------- bundled_dir / dejavu_path ----------
 
 
-def test_bundled_dir_exists_and_holds_all_libration_ttfs() -> None:
+def test_bundled_dir_exists_and_holds_all_substitute_ttfs() -> None:
     root = liberation_loader.bundled_dir()
     assert root.is_dir()
     expected = {
-        "LiberationSans-Regular.ttf",
-        "LiberationSans-Bold.ttf",
-        "LiberationSans-Italic.ttf",
-        "LiberationSans-BoldItalic.ttf",
-        "LiberationSerif-Regular.ttf",
-        "LiberationSerif-Bold.ttf",
-        "LiberationSerif-Italic.ttf",
-        "LiberationSerif-BoldItalic.ttf",
-        "LiberationMono-Regular.ttf",
-        "LiberationMono-Bold.ttf",
-        "LiberationMono-Italic.ttf",
-        "LiberationMono-BoldItalic.ttf",
+        "Arimo-Regular.ttf",
+        "Arimo-Bold.ttf",
+        "Arimo-Italic.ttf",
+        "Arimo-BoldItalic.ttf",
+        "Tinos-Regular.ttf",
+        "Tinos-Bold.ttf",
+        "Tinos-Italic.ttf",
+        "Tinos-BoldItalic.ttf",
+        "Cousine-Regular.ttf",
+        "Cousine-Bold.ttf",
+        "Cousine-Italic.ttf",
+        "Cousine-BoldItalic.ttf",
     }
     on_disk = {p.name for p in root.iterdir() if p.suffix == ".ttf"}
     missing = expected - on_disk
-    assert not missing, f"Liberation TTFs missing from bundle: {missing}"
+    assert not missing, f"substitute TTFs missing from bundle: {missing}"
 
 
 def test_dejavu_path_resolves_to_bundled_file() -> None:
@@ -106,7 +106,7 @@ def test_ensure_font_none_returns_sans_regular() -> None:
     # ensure_font(None) preserves that default.
     path = liberation_loader.ensure_font(None)
     assert path is not None
-    assert path.name == "LiberationSans-Regular.ttf"
+    assert path.name == "Arimo-Regular.ttf"
 
 
 def test_descriptor_to_key_none_yields_sans_regular() -> None:
@@ -117,61 +117,61 @@ def test_descriptor_to_key_none_yields_sans_regular() -> None:
 
 
 _PERMUTATIONS = [
-    (_StubDescriptor(), "Sans-Regular", "LiberationSans-Regular.ttf"),
+    (_StubDescriptor(), "Sans-Regular", "Arimo-Regular.ttf"),
     (
         _StubDescriptor(name="Helvetica-Bold"),
         "Sans-Bold",
-        "LiberationSans-Bold.ttf",
+        "Arimo-Bold.ttf",
     ),
     (
         _StubDescriptor(italic=True),
         "Sans-Italic",
-        "LiberationSans-Italic.ttf",
+        "Arimo-Italic.ttf",
     ),
     (
         _StubDescriptor(italic=True, name="Arial-BoldItalic"),
         "Sans-BoldItalic",
-        "LiberationSans-BoldItalic.ttf",
+        "Arimo-BoldItalic.ttf",
     ),
     (
         _StubDescriptor(serif=True),
         "Serif-Regular",
-        "LiberationSerif-Regular.ttf",
+        "Tinos-Regular.ttf",
     ),
     (
         _StubDescriptor(serif=True, weight=700),
         "Serif-Bold",
-        "LiberationSerif-Bold.ttf",
+        "Tinos-Bold.ttf",
     ),
     (
         _StubDescriptor(serif=True, italic=True),
         "Serif-Italic",
-        "LiberationSerif-Italic.ttf",
+        "Tinos-Italic.ttf",
     ),
     (
         _StubDescriptor(serif=True, italic=True, weight=800),
         "Serif-BoldItalic",
-        "LiberationSerif-BoldItalic.ttf",
+        "Tinos-BoldItalic.ttf",
     ),
     (
         _StubDescriptor(fixed_pitch=True),
         "Mono-Regular",
-        "LiberationMono-Regular.ttf",
+        "Cousine-Regular.ttf",
     ),
     (
         _StubDescriptor(fixed_pitch=True, weight=700),
         "Mono-Bold",
-        "LiberationMono-Bold.ttf",
+        "Cousine-Bold.ttf",
     ),
     (
         _StubDescriptor(fixed_pitch=True, italic=True),
         "Mono-Italic",
-        "LiberationMono-Italic.ttf",
+        "Cousine-Italic.ttf",
     ),
     (
         _StubDescriptor(fixed_pitch=True, italic=True, name="Courier-BoldOblique"),
         "Mono-BoldItalic",
-        "LiberationMono-BoldItalic.ttf",
+        "Cousine-BoldItalic.ttf",
     ),
 ]
 

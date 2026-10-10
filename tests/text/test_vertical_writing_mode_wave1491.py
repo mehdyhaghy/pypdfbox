@@ -25,9 +25,9 @@ from pypdfbox.text.pdf_text_stripper import PDFTextStripper
 
 _TTF = (
     Path(__file__).resolve().parents[2]
-    / "pypdfbox"
-    / "resources"
-    / "ttf"
+    / "tests"
+    / "fixtures"
+    / "fontbox" / "ttf"
     / "LiberationSans-Regular.ttf"
 )
 

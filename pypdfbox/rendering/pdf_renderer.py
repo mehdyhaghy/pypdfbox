@@ -9185,18 +9185,18 @@ class PDFRenderer(PDFStreamEngine):
     @staticmethod
     def _get_type1_units_per_em(font: Any) -> int | None:
         """Return ``units_per_em`` for a Type1/Type1C font when an embedded
-        program is available, falling back to the bundled Liberation
+        program is available, falling back to the bundled Arimo / Tinos / Cousine
         substitute's UPEM for non-embedded Standard 14 references.
 
         Routes through ``font._get_type1_font()`` (PFB) or
         ``font._get_cff_font()`` (CFF) — whichever exists. When neither
         embedded program is present *and* ``/BaseFont`` resolves to one of
-        the 14 Standard PostScript names with a Liberation substitute
+        the 14 Standard PostScript names with a bundled substitute
         mapped (Helvetica / Times-Roman / Courier families), the
-        Liberation TTF's UPEM is returned so the caller can drive the
+        substitute TTF's UPEM is returned so the caller can drive the
         Type 1 path-fill branch over
-        :meth:`PDType1Font.get_glyph_path`'s Liberation-backed outlines.
-        Symbol / ZapfDingbats have no Liberation equivalent, so this
+        :meth:`PDType1Font.get_glyph_path`'s bundled-substitute-backed outlines.
+        Symbol / ZapfDingbats have no Arimo / Tinos / Cousine equivalent, so this
         returns ``None`` for them and the caller falls back to the
         placeholder rectangle.
         """
@@ -9211,14 +9211,14 @@ class PDFRenderer(PDFStreamEngine):
             cff_program = font._get_cff_font()
             if cff_program is not None:
                 return cff_program.units_per_em
-            # Falls through to the Liberation branch below — PDType1CFont
+            # Falls through to the bundled-substitute branch below — PDType1CFont
             # is a subclass of PDType1Font so the isinstance check there
             # would match too if we didn't return early.
         if isinstance(font, PDType1Font):
             type1_program = font._get_type1_font()
             if type1_program is not None:
                 return type1_program.units_per_em
-            # No embedded program — try the Liberation substitute when the
+            # No embedded program — try the bundled substitute when the
             # font is one of the Standard 14.
             from pypdfbox.pdmodel.font.standard14_fonts import (
                 Standard14Fonts,
@@ -9515,7 +9515,7 @@ class PDFRenderer(PDFStreamEngine):
                         advance_units = upgraded
         # Once-per-font debug for Standard 14 references whose glyph
         # outlines we currently can't synthesise (no /FontFile and we
-        # don't yet bundle Liberation TTFs as substitution targets).
+        # don't yet bundle substitute TTFs as substitution targets).
         self._maybe_warn_standard14(font)
         # Faint placeholder — a 1x1 unit-square outline scaled by the
         # text-local matrix. Skip when no draw context (defensive) or when
@@ -9589,7 +9589,7 @@ class PDFRenderer(PDFStreamEngine):
         substitute available.
 
         All 14 canonical Standard PostScript names now resolve through a
-        bundled substitute (Liberation for the Helvetica / Times-Roman /
+        bundled substitute (Arimo / Tinos / Cousine for the Helvetica / Times-Roman /
         Courier branches, DejaVu Sans for Symbol / ZapfDingbats — see
         :meth:`Standard14Fonts.get_substitute_ttf`), so reaching this
         branch indicates either a substitute resource missing from the

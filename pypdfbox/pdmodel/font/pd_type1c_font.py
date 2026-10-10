@@ -253,7 +253,7 @@ class PDType1CFont(PDType1Font):
         if program is None:
             # No embedded CFF program. Upstream falls through to the generic
             # substitute font (``genericFont.getPath(name)``); mirror that
-            # for the Standard 14 cores via the bundled Liberation / DejaVu
+            # for the Standard 14 cores via the bundled Arimo / Tinos / Cousine / DejaVu
             # substitute, matching the inherited :class:`PDType1Font`
             # behaviour. A ``PDType1CFont`` without a /FontFile3 is rare
             # (the factory only selects this subclass when one is present),

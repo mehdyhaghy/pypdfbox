@@ -19,9 +19,9 @@ from pypdfbox.pdmodel.font.fs_font_info import FSFontInfo
 
 _LIBERATION_TTF = (
     Path(__file__).resolve().parents[3]
-    / "pypdfbox"
-    / "resources"
-    / "ttf"
+    / "tests"
+    / "fixtures"
+    / "fontbox" / "ttf"
     / "LiberationSans-Bold.ttf"
 )
 

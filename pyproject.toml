@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pypdfbox"
-version = "2.0.0"
+version = "2.1.0"
 description = "Python-native port of Apache PDFBox-compatible APIs (Apache 2.0)"
 readme = "README.md"
 requires-python = ">=3.14"
-license = "Apache-2.0"
-license-files = ["LICENSE", "NOTICE"]
+license = "Apache-2.0 AND APAFML AND Bitstream-Vera AND LicenseRef-Arev-Fonts"
+license-files = ["LICENSE", "NOTICE", "pypdfbox/resources/ttf/LICENSE*.txt", "pypdfbox/pdmodel/font/afm/LICENSE.txt"]
 authors = [
     { name = "Mehdy Haghy" },
     { name = "pypdfbox contributors" },

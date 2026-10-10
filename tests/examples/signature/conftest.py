@@ -18,6 +18,22 @@ from cryptography.x509.oid import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _no_ocsp_network(monkeypatch):
+    """Never let ``OcspHelper.perform_request`` reach the real network.
+
+    Tests that exercise the HTTP path monkeypatch ``_open_url`` themselves.
+    """
+    import urllib.error
+
+    from pypdfbox.examples.signature.cert import ocsp_helper as _ocsp_mod
+
+    def _blocked(request):
+        raise urllib.error.URLError("network access disabled in tests")
+
+    monkeypatch.setattr(_ocsp_mod, "_open_url", _blocked)
+
+
 def _build_self_signed(
     *,
     common_name: str = "pypdfbox-test",

@@ -47,10 +47,9 @@ Adobe Core 14 AFM (Adobe Font Metrics) files
   Courier, Symbol, ZapfDingbats families) under
   ``pypdfbox/pdmodel/font/afm/`` to provide standard metrics for the
   14 PDF Standard fonts (PDF 32000-1:2008 §9.6.2.2). The files are
-  redistributed verbatim from Apache PDFBox under the Adobe permissive
-  redistribution terms preserved in each AFM file's
-  ``Comment Copyright …`` header. See
-  ``pypdfbox/pdmodel/font/afm/LICENSE.txt`` for full attribution.
+  redistributed verbatim from Apache PDFBox under Adobe's AFM
+  redistribution terms (SPDX: APAFML), reproduced in
+  ``pypdfbox/pdmodel/font/afm/LICENSE.txt``.
 
   Times is a trademark of Linotype-Hell AG and/or its subsidiaries.
 
@@ -74,33 +73,23 @@ Adobe predefined CMap resources
 
 ----------------------------------------------------------------------
 
-Liberation Fonts
-  Digitized data copyright (c) 2010 Google Corporation
-    with Reserved Font Arimo, Tinos and Cousine.
-  Copyright (c) 2012 Red Hat, Inc.
-    with Reserved Font Name Liberation.
+Arimo, Tinos and Cousine Fonts (Chrome OS core fonts)
+  Digitized data copyright (c) 2010-2012 Google Corporation.
 
-  pypdfbox bundles the 12 Liberation TTFs (Sans / Serif / Mono families,
+  pypdfbox bundles 12 TTFs (Arimo / Tinos / Cousine families,
   Regular / Bold / Italic / BoldItalic) under
   ``pypdfbox/resources/ttf/`` as metric-compatible substitution targets
   for the Helvetica / Times-Roman / Courier families of the PDF Standard
   14 (PDF 32000-1:2008 §9.6.2.2). When a PDF references one of those
   canonical PostScript names without embedding a font program (no
   /FontFile, no /FontFile3), the renderer falls back to the matching
-  Liberation TTF so glyphs render with real outlines instead of the
-  placeholder rectangle.
+  TTF so glyphs render with real outlines instead of the placeholder
+  rectangle.
 
-  Files are redistributed verbatim from the upstream Liberation Fonts
-  2.1.5 release (https://github.com/liberationfonts/liberation-fonts)
-  under the SIL Open Font License, Version 1.1
-  (https://scripts.sil.org/OFL). The full OFL text travels in
-  ``pypdfbox/resources/ttf/LICENSE.txt``. The OFL Reserved Font Name
-  clause is honoured — pypdfbox redistributes the fonts unchanged under
-  their existing "Liberation" names; no derivative font under any other
-  name is created.
-
-  Liberation is a trademark of Red Hat, Inc. registered in U.S. Patent
-  and Trademark Office and certain other jurisdictions.
+  Files are redistributed unmodified from https://github.com/google/fonts
+  (Arimo 1.23, Tinos 1.23, Cousine 1.21, from the ``apache/`` tree)
+  under the Apache License, Version 2.0. The license text travels in
+  ``pypdfbox/resources/ttf/LICENSE.txt``.
 
 ----------------------------------------------------------------------
 
@@ -113,7 +102,7 @@ DejaVu Fonts (DejaVu Sans)
   pypdfbox bundles ``DejaVuSans.ttf`` under ``pypdfbox/resources/ttf/``
   as the rendering-time substitute for the two symbolic Standard 14
   fonts — Symbol and ZapfDingbats (PDF 32000-1:2008 §9.6.2.2) — whose
-  glyph repertoires the Liberation families do not cover. DejaVu Sans
+  glyph repertoires the Arimo / Tinos / Cousine families do not cover. DejaVu Sans
   provides full coverage of the Zapf Dingbats Unicode block
   (U+2700-U+27BF) and the Greek-letter / mathematical-operator portions
   of the Adobe Symbol encoding via the AGL-name → Unicode codepoint

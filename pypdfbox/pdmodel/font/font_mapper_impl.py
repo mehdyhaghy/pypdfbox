@@ -325,7 +325,7 @@ class FontMapperImpl(FontMapper):
         """Return ``True`` once at least one bundled last-resort font is cached.
 
         Companion accessor to :meth:`_get_last_resort_font`. Wave 1376
-        wired the bundled Liberation TTFs through the descriptor-keyed
+        wired the bundled Arimo / Tinos / Cousine TTFs through the descriptor-keyed
         cache (:attr:`_last_resort_by_key`); this method exposes whether
         any of them have been resolved during the lifetime of this
         mapper. The legacy single-slot ``_last_resort_font`` is also
@@ -802,7 +802,7 @@ class FontMapperImpl(FontMapper):
         117-133). pypdfbox defers the load so missing fonts don't break
         import. Wave 1376 extends the upstream behaviour: instead of
         always returning ``LiberationSans-Regular``, the descriptor
-        flags pick the closest Liberation family + weight via
+        flags pick the closest bundled family + weight via
         :func:`liberation_loader.ensure_font`. ``font_descriptor=None``
         still resolves to Sans-Regular (matches upstream).
 
@@ -860,7 +860,7 @@ class FontMapperImpl(FontMapper):
             scan([path])
         except OSError as ex:
             _LOG.warning(
-                "pypdfbox: scan of bundled Liberation font %s failed: %s",
+                "pypdfbox: scan of bundled font %s failed: %s",
                 path,
                 ex,
             )
@@ -868,14 +868,14 @@ class FontMapperImpl(FontMapper):
         # Refresh the local name index so the freshly-scanned font is
         # reachable through the standard lookup path.
         self.set_provider(provider)
-        stem = path.stem  # e.g. ``LiberationSans-Regular``
+        stem = path.stem  # e.g. ``Arimo-Regular``
         info = self._font_info_by_name.get(stem.lower())
         if info is not None:
             font = info.get_font()
             if font is not None:
                 return font
-        # Liberation publishes the Regular variant's PostScript name
-        # *without* the ``-Regular`` suffix (so
+        # Some families publish the Regular variant's PostScript name
+        # *without* the ``-Regular`` suffix (e.g. Liberation:
         # ``LiberationSans-Regular.ttf`` -> ``LiberationSans``). Strip
         # the suffix and retry.
         if stem.lower().endswith("-regular"):
@@ -889,7 +889,7 @@ class FontMapperImpl(FontMapper):
         # :class:`FSFontInfo` whose backing path matches ``path`` (the
         # provider may have stored it under an unexpected name). This
         # also keeps the lookup deterministic when the dict iteration
-        # order would otherwise pick a different Liberation variant.
+        # order would otherwise pick a different bundled variant.
         for candidate in self._font_info_by_name.values():
             cand_file = getattr(candidate, "file", None)
             if cand_file is not None and Path(str(cand_file)) == path:

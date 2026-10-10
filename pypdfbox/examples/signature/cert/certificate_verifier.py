@@ -267,10 +267,61 @@ class CertificateVerifier:
         ocsp_helper,
         additional_certs: Iterable[x509.Certificate],
     ) -> None:
-        """Drive an OCSP exchange (upstream 457)."""
+        """Verify the OCSP status at signing date, then the responder
+        certificate now (upstream 457).
+
+        ``ocsp_helper.get_response_ocsp()`` performs the request and fully
+        verifies the response. The responder certificate's own chain is
+        then verified unless it carries ``id-pkix-ocsp-nocheck`` or is the
+        certificate being checked.
+        """
+        now = _dt.datetime.now(_dt.UTC)
         resp = ocsp_helper.get_response_ocsp()
-        if resp is not None:
-            ocsp_helper.verify_resp_status(resp)
+        if resp is None:
+            return
+        ocsp_helper.verify_resp_status(resp)
+        LOG.info("OCSP check successful")
+
+        responder_cert = ocsp_helper.get_ocsp_responder_certificate()
+        if responder_cert is None:
+            raise CertificateVerificationException(
+                "OCSP responder certificate not available"
+            )
+        try:
+            responder_cert.extensions.get_extension_for_oid(ExtensionOID.OCSP_NO_CHECK)
+        except x509.ExtensionNotFound:
+            pass
+        else:
+            # https://tools.ietf.org/html/rfc6960#section-4.2.2.2.1
+            # A CA may specify that an OCSP client can trust a responder for
+            # the lifetime of the responder's certificate by including the
+            # extension id-pkix-ocsp-nocheck.
+            LOG.info(
+                "Revocation check of OCSP responder certificate skipped "
+                "(id-pkix-ocsp-nocheck is set)"
+            )
+            return
+
+        if ocsp_helper.get_certificate_to_check() == responder_cert:
+            LOG.info("OCSP responder certificate is identical to certificate to check")
+            return
+
+        LOG.info("Check of OCSP responder certificate")
+        additional_certs2 = list(additional_certs)
+        for cert in list(getattr(resp, "certificates", None) or []):
+            if cert != responder_cert and cert not in additional_certs2:
+                additional_certs2.append(cert)
+        result = CertificateVerifier.verify_certificate(
+            responder_cert, additional_certs2, True, now
+        )
+        if not result.is_valid():
+            exception = result.get_exception()
+            if isinstance(exception, CertificateVerificationException):
+                raise exception
+            raise CertificateVerificationException(
+                "OCSP responder certificate could not be verified"
+            ) from exception
+        LOG.info("Check of OCSP responder certificate done")
 
     @staticmethod
     def extract_ca_issuers_url(cert: x509.Certificate) -> list[str]:

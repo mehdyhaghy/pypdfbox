@@ -90,7 +90,7 @@ def _default_font_dirs() -> list[Path]:
     dirs.append(_cjk_cache_dir())
     # pypdfbox extension (wave 1376): include the bundled
     # ``pypdfbox/resources/ttf/`` directory so a lookup by PostScript
-    # name (e.g. ``"LiberationSans"``) resolves through the normal
+    # name (e.g. ``"Arimo-Regular"``) resolves through the normal
     # provider path without forcing callers to go through
     # ``liberation_loader.ensure_font``.
     from pypdfbox.fontbox.liberation_loader import bundled_dir as _liberation_dir

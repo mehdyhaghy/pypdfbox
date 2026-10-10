@@ -74,7 +74,7 @@ def test_constructor_stores_inputs(self_signed_with_revocation):
         ocsp_url="http://ocsp.test.invalid/check",
     )
     assert helper.get_ocsp_url() == "http://ocsp.test.invalid/check"
-    assert helper.get_response_ocsp() is None
+    assert helper.get_ocsp_responder_certificate() is None
     assert helper.get_basic_ocsp_resp() is None
     assert helper.get_certificate_to_check() is cert
     assert helper.get_issuer_certificate() is cert
@@ -98,28 +98,12 @@ def test_get_ocsp_responder_certificate_returns_none_without_response(self_signe
     assert helper.get_ocsp_responder_certificate() is None
 
 
-def test_get_ocsp_responder_certificate_reads_response_certs(self_signed_cert):
+def test_get_ocsp_responder_certificate_set_by_verification(self_signed_cert):
     cert, key = self_signed_cert
-    helper = OcspHelper(cert, None, cert, [], "http://x")
-    helper._response_ocsp = _build_response(cert, cert, key)
-    # cryptography's signed response carries an empty cert list by default;
-    # call still returns either a cert or None — but the property access is
-    # exercised, covering the try-branch.
-    result = helper.get_ocsp_responder_certificate()
-    assert result is None or isinstance(result, x509.Certificate)
-
-
-def test_get_ocsp_responder_certificate_handles_attribute_error(self_signed_cert):
-    cert, _ = self_signed_cert
-    helper = OcspHelper(cert, None, cert, [], "http://x")
-
-    class _Bad:
-        @property
-        def certificates(self):
-            raise AttributeError("simulate old cryptography release")
-
-    helper._response_ocsp = _Bad()  # type: ignore[assignment]
-    assert helper.get_ocsp_responder_certificate() is None
+    helper = OcspHelper(cert, None, cert, [cert], "http://x")
+    helper.verify_ocsp_response(_build_response(cert, cert, key))
+    # Responder is located by key hash in ``additional_certs``.
+    assert helper.get_ocsp_responder_certificate() == cert
 
 
 # ---------------------------------------------------------------------------
@@ -217,47 +201,41 @@ def test_check_ocsp_signature_raises_when_no_response(self_signed_cert):
         helper.check_ocsp_signature(object())
 
 
-def test_check_ocsp_signature_silent_with_response(self_signed_cert):
+def test_check_ocsp_signature_valid_with_stored_response(self_signed_cert):
     cert, key = self_signed_cert
     helper = OcspHelper(cert, None, cert, [], "http://x")
     helper._response_ocsp = _build_response(cert, cert, key)
-    helper.check_ocsp_signature(object())  # no raise
+    helper.check_ocsp_signature(cert)  # no raise
 
 
-def test_check_responder_cert_is_noop(self_signed_cert):
+def test_check_responder_cert_accepts_issuer(self_signed_cert):
     cert, _ = self_signed_cert
     helper = OcspHelper(cert, None, cert, [], "http://x")
-    assert helper.check_responder_cert(object()) is None
+    assert helper.check_responder_cert(cert) is None
 
 
-def test_check_certificate_id_is_noop(self_signed_cert):
+def test_perform_request_offline_raises_os_error(self_signed_cert):
+    # The autouse conftest fixture blocks the network.
     cert, _ = self_signed_cert
     helper = OcspHelper(cert, None, cert, [], "http://x")
-    assert helper.check_certificate_id(object()) is None
-
-
-def test_check_ocsp_response_fresh_is_noop(self_signed_cert):
-    cert, _ = self_signed_cert
-    helper = OcspHelper(cert, None, cert, [], "http://x")
-    assert helper.check_ocsp_response_fresh(object()) is None
-
-
-def test_perform_request_returns_empty_bytes(self_signed_cert):
-    cert, _ = self_signed_cert
-    helper = OcspHelper(cert, None, cert, [], "http://x")
-    assert helper.perform_request("http://x") == b""
+    with pytest.raises(OSError):
+        helper.perform_request("http://x")
 
 
 def test_find_responder_certificate_by_key_hash_returns_none(self_signed_cert):
-    cert, _ = self_signed_cert
+    cert, key = self_signed_cert
     helper = OcspHelper(cert, None, cert, [], "http://x")
-    assert helper.find_responder_certificate_by_key_hash(object(), b"hash") is None
+    resp = _build_response(cert, cert, key)
+    assert helper.find_responder_certificate_by_key_hash(resp, b"hash") is None
+    assert helper.get_ocsp_responder_certificate() is None
 
 
 def test_find_responder_certificate_by_name_returns_none(self_signed_cert):
-    cert, _ = self_signed_cert
+    cert, key = self_signed_cert
     helper = OcspHelper(cert, None, cert, [], "http://x")
-    assert helper.find_responder_certificate_by_name(object(), object()) is None
+    resp = _build_response(cert, cert, key)
+    other = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "nobody")])
+    assert helper.find_responder_certificate_by_name(resp, other) is None
 
 
 # ---------------------------------------------------------------------------
@@ -270,14 +248,18 @@ def test_get_key_hash_from_cert_holder_returns_sha1(self_signed_cert):
     helper = OcspHelper(cert, None, cert, [], "http://x")
     digest = helper.get_key_hash_from_cert_holder(cert)
 
-    expected = hashlib.sha1(
+    # RFC 6960 KeyHash: SHA-1 over the subjectPublicKey BIT STRING value
+    # (no tag / length / unused-bits octet) — same as the RFC 5280 SKI.
+    expected = x509.SubjectKeyIdentifier.from_public_key(cert.public_key()).digest
+    assert digest == expected
+    full_spki = hashlib.sha1(
         cert.public_key().public_bytes(
             serialization.Encoding.DER,
             serialization.PublicFormat.SubjectPublicKeyInfo,
         ),
         usedforsecurity=False,
     ).digest()
-    assert digest == expected
+    assert digest != full_spki
     assert len(digest) == 20
 
 
@@ -290,22 +272,20 @@ def test_verify_resp_status_accepts_good(self_signed_cert):
     cert, key = self_signed_cert
     helper = OcspHelper(cert, None, cert, [], "http://x")
     resp = _build_response(cert, cert, key, cert_status=ocsp.OCSPCertStatus.GOOD)
-    helper.verify_resp_status(resp)
-    # GOOD path stores the response for later inspection.
-    assert helper.get_response_ocsp() is resp
+    helper.verify_resp_status(resp)  # SUCCESSFUL → no raise
 
 
 def test_verify_ocsp_response_delegates_and_stores(self_signed_cert):
     cert, key = self_signed_cert
-    helper = OcspHelper(cert, None, cert, [], "http://x")
+    helper = OcspHelper(cert, None, cert, [cert], "http://x")
     resp = _build_response(cert, cert, key)
     helper.verify_ocsp_response(resp)
-    assert helper.get_response_ocsp() is resp
+    assert helper.get_basic_ocsp_resp() is resp
 
 
-def test_verify_resp_status_raises_for_revoked(self_signed_cert):
+def test_verify_ocsp_response_raises_for_revoked(self_signed_cert):
     cert, key = self_signed_cert
-    helper = OcspHelper(cert, None, cert, [], "http://x")
+    helper = OcspHelper(cert, None, cert, [cert], "http://x")
     revoked_at = _dt.datetime.now(_dt.UTC) - _dt.timedelta(hours=1)
     resp = _build_response(
         cert,
@@ -316,17 +296,17 @@ def test_verify_resp_status_raises_for_revoked(self_signed_cert):
         revocation_reason=x509.ReasonFlags.key_compromise,
     )
     with pytest.raises(RevokedCertificateException) as ei:
-        helper.verify_resp_status(resp)
+        helper.verify_ocsp_response(resp)
     # Revocation time bubbles through to the exception.
     assert ei.value.get_revocation_time() is not None
 
 
-def test_verify_resp_status_raises_for_unknown(self_signed_cert):
+def test_verify_ocsp_response_raises_for_unknown(self_signed_cert):
     cert, key = self_signed_cert
-    helper = OcspHelper(cert, None, cert, [], "http://x")
+    helper = OcspHelper(cert, None, cert, [cert], "http://x")
     resp = _build_response(cert, cert, key, cert_status=ocsp.OCSPCertStatus.UNKNOWN)
-    with pytest.raises(OcspException, match="UNKNOWN"):
-        helper.verify_resp_status(resp)
+    with pytest.raises(OcspException, match="Status of Cert is unknown"):
+        helper.verify_ocsp_response(resp)
 
 
 def test_verify_resp_status_raises_for_unsuccessful():
@@ -336,7 +316,7 @@ def test_verify_resp_status_raises_for_unsuccessful():
     unauth = ocsp.OCSPResponseBuilder.build_unsuccessful(
         ocsp.OCSPResponseStatus.UNAUTHORIZED
     )
-    with pytest.raises(OcspException, match="OCSP response status"):
+    with pytest.raises(OcspException, match="unsuccessful, status: UNAUTHORIZED"):
         helper.verify_resp_status(unauth)
 
 

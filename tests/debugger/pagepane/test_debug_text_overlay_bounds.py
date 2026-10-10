@@ -424,9 +424,9 @@ def test_calculate_glyph_bounds_type3_returns_none_when_glyph_bbox_none() -> Non
 
 _LIBERATION_SANS = (
     Path(__file__).resolve().parents[3]
-    / "pypdfbox"
-    / "resources"
-    / "ttf"
+    / "tests"
+    / "fixtures"
+    / "fontbox" / "ttf"
     / "LiberationSans-Regular.ttf"
 )
 

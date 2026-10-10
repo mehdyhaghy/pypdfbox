@@ -35,7 +35,7 @@ from pypdfbox.pdmodel.font.pd_true_type_font_embedder import (
 )
 from pypdfbox.pdmodel.pd_document import PDDocument
 
-_TTF_DIR = Path(__file__).resolve().parents[2].parent / "pypdfbox" / "resources" / "ttf"
+_TTF_DIR = Path(__file__).resolve().parents[2].parent / "tests" / "fixtures" / "fontbox" / "ttf"
 _LIBERATION_SANS = _TTF_DIR / "LiberationSans-Regular.ttf"
 
 

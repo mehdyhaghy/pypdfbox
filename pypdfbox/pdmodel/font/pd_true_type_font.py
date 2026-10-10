@@ -153,7 +153,7 @@ class PDTrueTypeFont(PDSimpleFont):
         fontTools ``TTFont`` (not a pypdfbox :class:`TrueTypeFont`), so we
         adapt it back into a pypdfbox :class:`TrueTypeFont` — re-parsing
         the backing file when one is recoverable (deterministic, and the
-        path the bundled ``LiberationSans-Regular.ttf`` last-resort takes)
+        path the bundled ``Arimo-Regular.ttf`` last-resort takes)
         and falling back to a fontTools ``save()`` round-trip otherwise.
 
         Headless / CI safe: any failure to map or adapt degrades to
@@ -184,7 +184,7 @@ class PDTrueTypeFont(PDSimpleFont):
         singleton (:class:`DefaultFontMapper`) is AFM-only and returns
         ``None`` there — and a headless host may have no usable system
         font either — so when the mapper yields nothing we fall back to
-        the bundled ``LiberationSans-*`` last resort via
+        the bundled ``Arimo-*`` last resort via
         :class:`FontMapperImpl`. That keeps the substitute deterministic
         on any machine / CI runner (the brief's CI-safe contract) while
         still preferring a host substitute when a system-scanning mapper
@@ -205,14 +205,14 @@ class PDTrueTypeFont(PDSimpleFont):
                         return adapted
         except Exception:  # mapping failures must not crash callers
             _LOG.exception("substitute lookup failed for %s", self.get_name())
-        # Deterministic bundled-Liberation last resort.
+        # Deterministic bundled last resort.
         return self._bundled_last_resort_substitute(descriptor)
 
     @staticmethod
     def _bundled_last_resort_substitute(
         descriptor: Any,
     ) -> TrueTypeFont | None:
-        """Load the bundled ``LiberationSans-*`` last-resort substitute via
+        """Load the bundled ``Arimo-*`` last-resort substitute via
         :class:`FontMapperImpl` and adapt it to a pypdfbox
         :class:`TrueTypeFont`. Deterministic and host-independent; returns
         ``None`` only if the bundled asset cannot be loaded (never raises).
@@ -1372,7 +1372,7 @@ def _adapt_substitute_to_true_type_font(
        (a future-proofing case), use it directly.
     2. Re-parse the backing file when one is recoverable from the
        fontTools reader. This is deterministic and is the path the
-       bundled ``LiberationSans-Regular.ttf`` last-resort takes, so the
+       bundled ``Arimo-Regular.ttf`` last-resort takes, so the
        substitute is reproducible across machines / CI for that font.
     3. Otherwise serialise the in-memory fontTools font and re-parse it
        (covers TTC members and synthesised fonts with no on-disk file).

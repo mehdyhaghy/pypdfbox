@@ -1,14 +1,17 @@
-"""Bundled Liberation TTF resolver — default last-resort font fallback.
+"""Bundled substitute-TTF resolver — default last-resort font fallback.
 
 This module has **no upstream counterpart**. It adapts the architectural
 pattern established by :mod:`pypdfbox.fontbox.cjk_loader` (wave 1362) to
-a *bundled* font set rather than a network-fetched one.
+a *bundled* font set rather than a network-fetched one. The module keeps
+its historical ``liberation_loader`` name for API stability; the
+bundled set is now the Apache-2.0 Chrome OS core fonts (Arimo / Tinos /
+Cousine) rather than the SIL-OFL Liberation fonts.
 
 Upstream Apache PDFBox eagerly loads ``LiberationSans-Regular.ttf`` from
 ``pdfbox/src/main/resources/org/apache/pdfbox/resources/ttf/`` in the
 ``FontMapperImpl`` constructor and uses it whenever a referenced font is
 neither embedded nor present on the system (Java line 117-133). pypdfbox
-mirrors that pattern but extends it: the 12 Liberation TTFs
+mirrors that pattern but extends it: 12 TTFs
 (Sans / Serif / Mono × Regular / Bold / Italic / BoldItalic) are bundled
 inside the wheel at ``pypdfbox/resources/ttf/``, so the descriptor flags
 (:meth:`PDFontDescriptor.is_fixed_pitch`, :meth:`is_serif`,
@@ -16,27 +19,27 @@ inside the wheel at ``pypdfbox/resources/ttf/``, so the descriptor flags
 pick the *closest* family + weight match rather than always falling back
 to Sans-Regular.
 
-License: Liberation Fonts (Red Hat / Liberation Sans Reserved Font Name)
-ship under the **SIL Open Font License 1.1** — permissive, already on
-the project allow-list. ``DejaVuSans.ttf`` ships under Bitstream Vera /
-DejaVu (BSD-style) terms. Both license texts live alongside the TTFs at
-``pypdfbox/resources/ttf/LICENSE.txt`` and
-``pypdfbox/resources/ttf/LICENSE-DejaVu.txt``; the project ``NOTICE``
-file carries the upstream attribution chain.
+Fonts: Arimo (Sans), Tinos (Serif) and Cousine (Mono) — metric-compatible
+with Arial / Helvetica, Times New Roman / Times and Courier New / Courier.
+They are the designs Liberation 2.x was derived from, so advance widths
+match the former Liberation bundle. Licensed under the **Apache License
+2.0** (``pypdfbox/resources/ttf/LICENSE.txt``). ``DejaVuSans.ttf`` ships
+under Bitstream Vera / Arev terms with DejaVu changes in the public domain
+(``pypdfbox/resources/ttf/LICENSE-DejaVu.txt``). The project ``NOTICE``
+file carries the attribution chain.
 
 Unlike :mod:`pypdfbox.fontbox.cjk_loader`, this resolver is **on by
 default** — no env-var gate, no opt-in extra. The fonts are part of the
 wheel and the substitution is the default behaviour, matching upstream
 PDFBox's eager constructor load.
 
-Coverage: Latin (incl. extended), Cyrillic, Greek, Hebrew, Arabic, and
-~120 other languages render with real glyphs instead of ``.notdef``
-placeholders. CJK is *not* covered here — that path remains
-:mod:`pypdfbox.fontbox.cjk_loader` and still requires
-``pip install pypdfbox[cjk]`` plus the ``PYPDFBOX_CJK_AUTODOWNLOAD``
-env var. Devanagari / Bengali / Tamil / Thai and other Indic scripts
-fall back to :data:`DEJAVU_PATH` (DejaVu Sans), which carries broader
-Unicode coverage than Liberation.
+Coverage: Latin (incl. extended), Cyrillic, Greek and Hebrew render with
+real glyphs instead of ``.notdef`` placeholders. CJK is *not* covered
+here — that path remains :mod:`pypdfbox.fontbox.cjk_loader` and still
+requires ``pip install pypdfbox[cjk]`` plus the
+``PYPDFBOX_CJK_AUTODOWNLOAD`` env var. Devanagari / Bengali / Tamil / Thai
+and other scripts fall back to :data:`DEJAVU_PATH` (DejaVu Sans), which
+carries broader Unicode coverage.
 """
 
 import functools
@@ -50,18 +53,18 @@ if TYPE_CHECKING:
 
 # Family + weight key -> filename inside ``pypdfbox/resources/ttf/``.
 _ASSET_MAP: dict[str, str] = {
-    "Sans-Regular": "LiberationSans-Regular.ttf",
-    "Sans-Bold": "LiberationSans-Bold.ttf",
-    "Sans-Italic": "LiberationSans-Italic.ttf",
-    "Sans-BoldItalic": "LiberationSans-BoldItalic.ttf",
-    "Serif-Regular": "LiberationSerif-Regular.ttf",
-    "Serif-Bold": "LiberationSerif-Bold.ttf",
-    "Serif-Italic": "LiberationSerif-Italic.ttf",
-    "Serif-BoldItalic": "LiberationSerif-BoldItalic.ttf",
-    "Mono-Regular": "LiberationMono-Regular.ttf",
-    "Mono-Bold": "LiberationMono-Bold.ttf",
-    "Mono-Italic": "LiberationMono-Italic.ttf",
-    "Mono-BoldItalic": "LiberationMono-BoldItalic.ttf",
+    "Sans-Regular": "Arimo-Regular.ttf",
+    "Sans-Bold": "Arimo-Bold.ttf",
+    "Sans-Italic": "Arimo-Italic.ttf",
+    "Sans-BoldItalic": "Arimo-BoldItalic.ttf",
+    "Serif-Regular": "Tinos-Regular.ttf",
+    "Serif-Bold": "Tinos-Bold.ttf",
+    "Serif-Italic": "Tinos-Italic.ttf",
+    "Serif-BoldItalic": "Tinos-BoldItalic.ttf",
+    "Mono-Regular": "Cousine-Regular.ttf",
+    "Mono-Bold": "Cousine-Bold.ttf",
+    "Mono-Italic": "Cousine-Italic.ttf",
+    "Mono-BoldItalic": "Cousine-BoldItalic.ttf",
 }
 
 _DEJAVU_FILENAME = "DejaVuSans.ttf"
@@ -89,7 +92,7 @@ def dejavu_path() -> Path:
     """Return the on-disk path of the bundled ``DejaVuSans.ttf``.
 
     Used as a secondary fallback for content (Devanagari, Bengali, math
-    symbols) whose glyphs aren't carried by the Liberation set. Callers
+    symbols) whose glyphs aren't carried by the Arimo / Tinos / Cousine set. Callers
     should treat this purely as a path lookup — glyph-level coverage
     testing is the renderer's responsibility.
     """
@@ -111,7 +114,7 @@ def _is_bold_via_name(font_name: str | None) -> bool:
 
 
 def _descriptor_to_key(font_descriptor: PDFontDescriptor | None) -> str:
-    """Derive a Liberation family+weight key from *font_descriptor*.
+    """Derive a bundled-font family+weight key from *font_descriptor*.
 
     Family selection (most-specific first):
 
@@ -183,7 +186,7 @@ def descriptor_to_key(font_descriptor: PDFontDescriptor | None) -> str:
 
 
 def ensure_font(font_descriptor: PDFontDescriptor | None) -> Path | None:
-    """Return the path of the bundled Liberation TTF best matching *font_descriptor*.
+    """Return the path of the bundled substitute TTF best matching *font_descriptor*.
 
     Returns ``None`` only when the bundle is somehow incomplete (e.g.
     custom wheel built without the resources package); callers should

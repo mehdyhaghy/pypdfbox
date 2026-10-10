@@ -538,33 +538,33 @@ def test_get_glyph_path_resolves_alias() -> None:
     assert alias == direct
 
 
-# ---------- Liberation TTF substitution (wave 1303) ----------
+# ---------- bundled TTF substitution (wave 1303) ----------
 
 
-_LIBERATION_MAPPED = [
-    ("Helvetica", "LiberationSans"),
-    ("Helvetica-Bold", "LiberationSans-Bold"),
-    ("Helvetica-Oblique", "LiberationSans-Italic"),
-    ("Helvetica-BoldOblique", "LiberationSans-BoldItalic"),
-    ("Times-Roman", "LiberationSerif"),
-    ("Times-Bold", "LiberationSerif-Bold"),
-    ("Times-Italic", "LiberationSerif-Italic"),
-    ("Times-BoldItalic", "LiberationSerif-BoldItalic"),
-    ("Courier", "LiberationMono"),
-    ("Courier-Bold", "LiberationMono-Bold"),
-    ("Courier-Oblique", "LiberationMono-Italic"),
-    ("Courier-BoldOblique", "LiberationMono-BoldItalic"),
+_SUBSTITUTE_MAPPED = [
+    ("Helvetica", "Arimo-Regular"),
+    ("Helvetica-Bold", "Arimo-Bold"),
+    ("Helvetica-Oblique", "Arimo-Italic"),
+    ("Helvetica-BoldOblique", "Arimo-BoldItalic"),
+    ("Times-Roman", "Tinos-Regular"),
+    ("Times-Bold", "Tinos-Bold"),
+    ("Times-Italic", "Tinos-Italic"),
+    ("Times-BoldItalic", "Tinos-BoldItalic"),
+    ("Courier", "Cousine-Regular"),
+    ("Courier-Bold", "Cousine-Bold"),
+    ("Courier-Oblique", "Cousine-Italic"),
+    ("Courier-BoldOblique", "Cousine-BoldItalic"),
 ]
 
 
-@pytest.mark.parametrize(("canonical", "ttf_name"), _LIBERATION_MAPPED)
+@pytest.mark.parametrize(("canonical", "ttf_name"), _SUBSTITUTE_MAPPED)
 def test_get_substitute_ttf_maps_all_12_proportional_and_mono_families(
     canonical: str, ttf_name: str
 ) -> None:
     """Every Standard 14 name in the Helvetica / Times-Roman / Courier
-    families must resolve to its bundled Liberation TTF substitute."""
+    families must resolve to its bundled Arimo / Tinos / Cousine substitute."""
     ttf = Standard14Fonts.get_substitute_ttf(canonical)
-    assert ttf is not None, f"{canonical} should have a Liberation substitute"
+    assert ttf is not None, f"{canonical} should have a bundled substitute"
     assert ttf.get_name() == ttf_name
 
 

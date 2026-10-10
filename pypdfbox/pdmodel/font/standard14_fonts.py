@@ -156,14 +156,15 @@ _GENERIC_FONTS_CACHE: dict[str, Standard14FontWrapper] = {}
 
 
 # Canonical Standard-14 name -> bundled substitute-TTF basename. The
-# Liberation families are metric-compatible with Arial / Times New Roman /
-# Courier New (themselves metric-compatible with the Adobe core fonts) so
-# the SIL-OFL Liberation set is the de-facto substitution target for any
-# Standard-14 reference shipped without a font program (Helvetica / Times /
-# Courier branches).
+# Arimo / Tinos / Cousine families (Apache-2.0 Chrome OS core fonts, the
+# designs Liberation 2.x derives from) are metric-compatible with Arial /
+# Times New Roman / Courier New (themselves metric-compatible with the Adobe
+# core fonts), so they are the substitution target for any Standard-14
+# reference shipped without a font program (Helvetica / Times / Courier
+# branches).
 #
-# Symbol and ZapfDingbats have no Liberation equivalent — Liberation
-# carries no symbolic or dingbat glyph repertoire. For those two names we
+# Symbol and ZapfDingbats have no Arimo / Tinos / Cousine equivalent — the
+# set carries no symbolic or dingbat glyph repertoire. For those two names we
 # fall back to **DejaVu Sans** (Bitstream Vera derivative; original
 # Bitstream Vera Fonts terms + DejaVu changes in public domain — both
 # permissive enough to bundle under Apache 2.0). DejaVu Sans provides
@@ -182,25 +183,25 @@ _GENERIC_FONTS_CACHE: dict[str, Standard14FontWrapper] = {}
 # ``PROVENANCE.md`` for the upstream SIL-OFL / Bitstream-Vera attribution
 # chains).
 _LIBERATION_TTF_NAMES: dict[str, str] = {
-    "Helvetica": "LiberationSans-Regular.ttf",
-    "Helvetica-Bold": "LiberationSans-Bold.ttf",
-    "Helvetica-Oblique": "LiberationSans-Italic.ttf",
-    "Helvetica-BoldOblique": "LiberationSans-BoldItalic.ttf",
-    "Times-Roman": "LiberationSerif-Regular.ttf",
-    "Times-Bold": "LiberationSerif-Bold.ttf",
-    "Times-Italic": "LiberationSerif-Italic.ttf",
-    "Times-BoldItalic": "LiberationSerif-BoldItalic.ttf",
-    "Courier": "LiberationMono-Regular.ttf",
-    "Courier-Bold": "LiberationMono-Bold.ttf",
-    "Courier-Oblique": "LiberationMono-Italic.ttf",
-    "Courier-BoldOblique": "LiberationMono-BoldItalic.ttf",
+    "Helvetica": "Arimo-Regular.ttf",
+    "Helvetica-Bold": "Arimo-Bold.ttf",
+    "Helvetica-Oblique": "Arimo-Italic.ttf",
+    "Helvetica-BoldOblique": "Arimo-BoldItalic.ttf",
+    "Times-Roman": "Tinos-Regular.ttf",
+    "Times-Bold": "Tinos-Bold.ttf",
+    "Times-Italic": "Tinos-Italic.ttf",
+    "Times-BoldItalic": "Tinos-BoldItalic.ttf",
+    "Courier": "Cousine-Regular.ttf",
+    "Courier-Bold": "Cousine-Bold.ttf",
+    "Courier-Oblique": "Cousine-Italic.ttf",
+    "Courier-BoldOblique": "Cousine-BoldItalic.ttf",
     # Symbol / ZapfDingbats — DejaVu Sans substitute (Bitstream Vera
     # derivative; DejaVu changes in public domain). DejaVu Sans covers
     # the entire Zapf Dingbats Unicode block and the Greek-letter / math-
     # operator portions of the Adobe Symbol encoding via the
     # AGL-name → Unicode codepoint fallback already implemented in
-    # :meth:`Standard14Fonts.get_glyph_path` (the same path the Liberation
-    # branch uses for non-Latin glyphs).
+    # :meth:`Standard14Fonts.get_glyph_path` (the same path the Arimo / Tinos /
+    # Cousine branch uses for non-Latin glyphs).
     "Symbol": "DejaVuSans.ttf",
     "ZapfDingbats": "DejaVuSans.ttf",
 }
@@ -476,12 +477,13 @@ def _load_substitution_ttf(canonical: str) -> TrueTypeFont | None:
     Mirrors the spirit of upstream's
     ``FontMapperImpl.getTrueTypeFont(Standard14Fonts.FontName.*)`` chain
     which, in PDFBox, reaches for the Liberation TTFs shipped under
-    ``org/apache/pdfbox/resources/ttf/`` — pypdfbox carries the same
-    Liberation set under :mod:`pypdfbox.resources.ttf` (SIL OFL 1.1, see
+    ``org/apache/pdfbox/resources/ttf/`` — pypdfbox carries the
+    metric-identical Arimo / Tinos / Cousine set under
+    :mod:`pypdfbox.resources.ttf` (Apache 2.0, see
     ``NOTICE`` and :file:`pypdfbox/resources/ttf/LICENSE.txt`) plus a
     bundled DejaVu Sans (Bitstream Vera derivative; DejaVu changes in
     public domain) used for the two symbolic Standard 14 names
-    (Symbol / ZapfDingbats) which Liberation has no equivalent for.
+    (Symbol / ZapfDingbats) which the Arimo / Tinos / Cousine set has no equivalent for.
 
     The parsed font is cached per canonical name and reused on every
     subsequent call.
@@ -501,7 +503,7 @@ def _load_substitution_ttf(canonical: str) -> TrueTypeFont | None:
         raw = resource.read_bytes()
     except (FileNotFoundError, OSError, ModuleNotFoundError) as exc:
         _LOG.debug(
-            "Standard 14 Liberation substitute %r missing: %s", ttf_name, exc
+            "Standard 14 bundled substitute %r missing: %s", ttf_name, exc
         )
         _LIBERATION_TTF_CACHE[canonical] = False
         return None
@@ -513,7 +515,7 @@ def _load_substitution_ttf(canonical: str) -> TrueTypeFont | None:
         parsed = TrueTypeFont.from_bytes(raw)
     except Exception as exc:
         _LOG.warning(
-            "Standard 14 Liberation substitute %r failed to parse: %s",
+            "Standard 14 bundled substitute %r failed to parse: %s",
             ttf_name,
             exc,
         )
@@ -1059,12 +1061,12 @@ class Standard14Fonts:
         ``LiberationSans-Regular.ttf`` in
         ``pdfbox/src/main/resources/org/apache/pdfbox/resources/ttf/`` and
         reaches for it through the ``FontMapperImpl`` indirection;
-        pypdfbox bundles the full 12-file Liberation set
+        pypdfbox bundles the full 12-file Arimo / Tinos / Cousine set
         (Sans/Serif/Mono × Regular/Bold/Italic/BoldItalic) under
         :mod:`pypdfbox.resources.ttf` so the Helvetica / Times-Roman /
         Courier families all get metric-compatible glyph outlines without
         any system-font scanning. The two symbolic Standard 14 names
-        (Symbol / ZapfDingbats) — for which Liberation has no equivalent —
+        (Symbol / ZapfDingbats) — for which the Arimo / Tinos / Cousine set has no equivalent —
         resolve to a bundled **DejaVu Sans** (Bitstream Vera derivative;
         DejaVu changes in public domain) which provides full Zapf Dingbats
         Unicode-block coverage and the bulk of the Adobe Symbol glyph set.
@@ -1108,7 +1110,7 @@ class Standard14Fonts:
         except ValueError:
             return []
         # Preferred outline source — the bundled substitute TTF when one
-        # is mapped for this canonical name (Liberation for the Helvetica
+        # is mapped for this canonical name (Arimo / Tinos / Cousine for the Helvetica
         # / Times / Courier branches, DejaVu Sans for the symbolic Symbol
         # / ZapfDingbats branch). Standard14FontWrapper.get_path always
         # returns ``[]`` (AFMs ship no outlines), so without this branch a

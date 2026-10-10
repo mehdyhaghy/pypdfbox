@@ -160,8 +160,8 @@ def test_check_revocations_with_issuer_attempts_ocsp_then_falls_back(
 ):
     """When OCSP is advertised, an OcspHelper is constructed and consulted.
 
-    The offline OcspHelper stub's ``get_response_ocsp`` returns ``None`` so
-    no exception is raised and the CRL fall-back path is never taken.
+    The autouse conftest fixture blocks the network, so the OCSP request
+    raises ``URLError`` (an ``OSError``) and the CRL fall-back path runs.
     """
     cert, _ = self_signed_with_revocation
     # Self-signed, so the recursion stops after the OCSP attempt.
@@ -419,7 +419,12 @@ def test_verify_ocsp_calls_verify_resp_status_when_response_present():
         def verify_resp_status(self, resp):
             captured["resp"] = resp
 
-    CertificateVerifier.verify_ocsp(_Helper(), additional_certs=[])
+        def get_ocsp_responder_certificate(self):
+            return None
+
+    # A response without a located responder certificate is rejected.
+    with pytest.raises(CertificateVerificationException, match="responder"):
+        CertificateVerifier.verify_ocsp(_Helper(), additional_certs=[])
     assert isinstance(captured["resp"], _Resp)
 
 

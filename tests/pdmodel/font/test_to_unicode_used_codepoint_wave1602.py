@@ -32,9 +32,9 @@ from pypdfbox.pdmodel.pd_document import PDDocument
 
 _LIB_SANS = (
     Path(__file__).parent.parent.parent.parent
-    / "pypdfbox"
-    / "resources"
-    / "ttf"
+    / "tests"
+    / "fixtures"
+    / "fontbox" / "ttf"
     / "LiberationSans-Regular.ttf"
 )
 

@@ -29,9 +29,9 @@ from pypdfbox.pdmodel.pd_document import PDDocument
 
 _LIBERATION_SANS = (
     Path(__file__).resolve().parents[4]
-    / "pypdfbox"
-    / "resources"
-    / "ttf"
+    / "tests"
+    / "fixtures"
+    / "fontbox" / "ttf"
     / "LiberationSans-Regular.ttf"
 )
 

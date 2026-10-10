@@ -32,9 +32,9 @@ from pypdfbox.pdmodel.font.pd_true_type_font import PDTrueTypeFont
 
 _BUNDLED_TTF = (
     Path(__file__).parents[3]
-    / "pypdfbox"
-    / "resources"
-    / "ttf"
+    / "tests"
+    / "fixtures"
+    / "fontbox" / "ttf"
     / "LiberationSans-Regular.ttf"
 )
 

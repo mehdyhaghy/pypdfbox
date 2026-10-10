@@ -1,27 +1,20 @@
-Adobe Core 14 AFM Files
-=======================
+SPDX-License-Identifier: APAFML
 
-The Adobe Font Metrics (AFM) files bundled in this directory describe the
-metrics of the 14 PDF Standard fonts (Times, Helvetica, Courier, Symbol,
-ZapfDingbats families) defined in PDF 32000-1:2008 (and ISO 32000-1) §9.6.2.2.
+Adobe Font Metrics (AFM) for PDF Core 14 Fonts
 
 Copyright (c) 1985, 1987, 1989, 1990, 1993, 1997 Adobe Systems Incorporated.
 All Rights Reserved.
 
-These AFM files are redistributed verbatim from the Apache PDFBox project
-(https://pdfbox.apache.org/), which itself ships them under the standard
-permissive Adobe AFM redistribution terms preserved in the per-file
-``Comment Copyright ...`` headers at the top of each ``.afm`` file. The
-underlying Adobe AFM files are publicly available metrics-only data and
-have been distributed by Adobe and downstream consumers (TeX Live, Ghostscript,
-Apache PDFBox, Apache FOP, ...) under terms that permit unmodified
-redistribution alongside derived works.
+   This file and the 14 PostScript(R) AFM files it accompanies may be used,
+   copied, and distributed for any purpose and without charge, with or without
+   modification, provided that all copyright notices are retained; that the
+   AFM files are not distributed without this file; that all modifications
+   to this file or any of the AFM files are prominently noted in the modified
+   file(s); and that this paragraph is not modified. Adobe Systems has no
+   responsibility or obligation to support the use of the AFM files.
+
+The 14 AFM files in this directory are redistributed unmodified from Apache
+PDFBox (pdfbox/src/main/resources/org/apache/pdfbox/resources/afm), which
+distributes them under the terms above.
 
 Times is a trademark of Linotype-Hell AG and/or its subsidiaries.
-
-Source: https://github.com/apache/pdfbox/tree/trunk/pdfbox/src/main/resources/org/apache/pdfbox/resources/afm
-
-The Adobe Glyph List (AGL) and the Zapf Dingbats Glyph List, used by
-``pypdfbox.fontbox.encoding`` to round-trip glyph names ↔ Unicode, ship under
-the same Adobe permissive terms; see the root ``NOTICE`` for the full
-attribution.

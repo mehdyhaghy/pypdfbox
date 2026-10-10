@@ -28,9 +28,9 @@ from pypdfbox.pdmodel.font.file_system_font_provider import FileSystemFontProvid
 
 _LIBERATION_DIR = (
     pathlib.Path(__file__).resolve().parents[3]
-    / "pypdfbox"
-    / "resources"
-    / "ttf"
+    / "tests"
+    / "fixtures"
+    / "fontbox" / "ttf"
 )
 
 

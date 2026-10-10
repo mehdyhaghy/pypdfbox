@@ -35,9 +35,9 @@ from pypdfbox.pdmodel.pd_document import PDDocument
 
 _LIBERATION_TTF = (
     Path(__file__).resolve().parents[3]
-    / "pypdfbox"
-    / "resources"
-    / "ttf"
+    / "tests"
+    / "fixtures"
+    / "fontbox" / "ttf"
     / "LiberationSans-Bold.ttf"
 )
 
