@@ -17,7 +17,7 @@ embedded one is missing. The PDF-aware wrappers in
 | `GlyphList` | Adobe glyph-name → Unicode mapping. `additional()` returns the supplemental list (PDFBox `additional.txt`). |
 | `FontProvider` | Protocol — `get_font_names()`, `get_font_info(name) -> FontInfo`. |
 | `FontMapper` | Protocol — `get_font_box_font(name, descriptor)`, `get_true_type_font(name, descriptor)`, `get_cid_font(name, descriptor, cid_system_info)`. |
-| `DefaultFontMapper` | The shipping `FontMapper`. Owns the system-font scanner and the Liberation fallback. |
+| `DefaultFontMapper` | The shipping `FontMapper`. Owns the system-font scanner and the bundled Arimo / Tinos / Cousine fallback. |
 | `Standard14FontWrapper` | Adapter that exposes a Standard 14 AFM as a `FontBoxFont`. |
 | `FontMappers` | Singleton accessor: `FontMappers.instance()`. |
 | `FontMapping[T]` | The result of a `FontMapper` lookup — the chosen font plus a `is_fallback` flag. |

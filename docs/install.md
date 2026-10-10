@@ -113,9 +113,9 @@ Pinned release: `Sans2.004` (2022-01-27). Font license: SIL OFL 1.1.
 Cache directory: platform-default per-user cache (override with
 `PYPDFBOX_CJK_CACHE_DIR`).
 
-If neither gate is open, PDFs referencing an unembedded CJK font
-produce `.notdef` glyphs — same behaviour as upstream Apache PDFBox
-under the same conditions.
+A matching CJK font installed on the system is always used first. If
+there is none and either gate is closed, PDFs referencing a non-embedded
+CJK font produce `.notdef` glyphs, as upstream Apache PDFBox does.
 
 ## Install from source
 

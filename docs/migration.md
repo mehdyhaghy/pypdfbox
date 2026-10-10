@@ -370,19 +370,15 @@ password.
 The five surprises most likely to bite a PDFBox developer on day
 one with pypdfbox:
 
-1. **Standard 14 fonts substitute via Liberation TTFs.** Apache
-   PDFBox 3.0.x ships its own pre-built Standard 14 metrics + AFM
-   files. pypdfbox cannot redistribute those (their license is
-   incompatible with Apache 2.0). Instead, pypdfbox bundles
-   Liberation Sans / Liberation Serif / Liberation Mono (SIL OFL)
-   and DejaVu Sans (Bitstream Vera + public-domain changes) and
-   uses them as drop-in metric-compatible substitutes for Helvetica,
-   Times, Courier, Symbol, and ZapfDingbats. The substitute set
-   covers Latin, Cyrillic, Greek, Hebrew, and Arabic glyphs.
-   Glyphs outside the substitute set (CJK in particular) fall back
-   to `.notdef`. The substitution is transparent — `PDType1Font.get_font_box_font()`
-   returns the resolved fallback, so glyph metrics and outlines are
-   consistent end-to-end.
+1. **Standard 14 fonts substitute via bundled TTFs.** Like upstream,
+   pypdfbox ships Adobe's Standard 14 AFM metrics. For glyph outlines
+   of non-embedded Standard 14 fonts it bundles Arimo, Tinos and
+   Cousine (Apache-2.0, metric-compatible with Helvetica, Times and
+   Courier) and DejaVu Sans for Symbol and ZapfDingbats. The
+   substitutes cover Latin, Cyrillic, Greek, Hebrew and Arabic. Other
+   scripts, CJK in particular, need a host font or render as `.notdef`.
+   `PDType1Font.get_font_box_font()` returns the resolved substitute,
+   so metrics and outlines stay consistent.
 
 2. **CJK content needs an opt-in install.** No CJK font ships with
    pypdfbox by default. To enable the Noto Sans CJK fallback:

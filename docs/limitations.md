@@ -30,20 +30,22 @@ full list. The most common stable-state divergences and gaps are:
    save-reload round-trip) rather than pixel-by-pixel. See
    [`CHANGES.md`](../CHANGES.md) → "Active divergences".
 
-4. **Standard 14 fallback fonts are bundled.** When a PDF references
-   a Standard 14 face (`Helvetica`, `Times-Roman`, `Courier`, …)
-   without embedding the program, pypdfbox substitutes via Liberation
-   TTFs bundled in `pypdfbox/pdmodel/font/resources/` (~4 MB on
-   install). Liberation is permissively licensed; this matches
-   upstream's behaviour of serving Standard 14 via a bundled fallback
-   when the host system lacks the font.
+4. **Standard 14 fallback fonts are bundled.** When a PDF uses a
+   Standard 14 font (`Helvetica`, `Times-Roman`, `Courier`, and so on)
+   without embedding it, pypdfbox substitutes the bundled Arimo, Tinos
+   and Cousine TTFs (Apache-2.0) from `pypdfbox/resources/ttf/`. They
+   are metric-compatible with Helvetica, Times and Courier, so layout
+   and text widths are unchanged. Upstream PDFBox also uses a fallback
+   font when the host lacks the original.
 
-5. **CJK auto-download is opt-in.** PDFs referencing an unembedded
-   CJK font produce `.notdef` glyphs unless the user both installs
-   `pypdfbox[cjk]` and sets `PYPDFBOX_CJK_AUTODOWNLOAD=1`. With both
-   set, the fontbox CJK loader downloads Noto Sans CJK (pinned to
-   release `Sans2.004`, SIL OFL 1.1) from the upstream GitHub
-   releases on first use, verifies the SHA-256, and caches per-user.
+5. **Non-embedded CJK fonts need a CJK font on the host.** pypdfbox
+   first uses a matching CJK font installed on the system. Unified fonts
+   such as Noto Sans CJK and Source Han Sans can stand in for any
+   Chinese, Japanese or Korean collection. If none is installed, the
+   opt-in `pypdfbox[cjk]` extra with `PYPDFBOX_CJK_AUTODOWNLOAD=1`
+   downloads Noto Sans CJK (release `Sans2.004`, SIL OFL 1.1), checks
+   its SHA-256 and stores it in a per-user cache. Otherwise the glyphs
+   render as `.notdef`, as in upstream PDFBox.
 
 6. **No PDF/A or PDF/UA conformance validation.** Apache PDFBox 4.0
    removes the Preflight module; pypdfbox follows that decision.

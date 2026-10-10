@@ -50,24 +50,25 @@ width = font.get_string_width("Hello") / 1000.0  # em -> page units at 1pt
 `Standard14Fonts.FontName` is a sealed enum — all 14 names are valid and
 guaranteed to resolve without embedding.
 
-## Liberation fallback
+## Fallback fonts
 
-When a referenced font is neither standard-14 nor embedded, the renderer
-falls back to the Liberation family bundled at
-`pypdfbox/resources/fonts/liberation/`. This is the last-resort path —
-embed your own font when fidelity matters.
+When a font is not embedded, `FontMappers.instance()` looks for it on the
+host first. If nothing matches, it falls back to the fonts bundled in
+`pypdfbox/resources/ttf/`: Arimo, Tinos and Cousine (Apache-2.0) for
+sans, serif and monospace, and DejaVu Sans for Symbol and ZapfDingbats.
+Embed your own font when fidelity matters.
 
-## CJK opt-in
+Non-embedded CID fonts (`PDCIDFontType0`, `PDCIDFontType2`) use the same
+mapper through `get_cid_font`. For Chinese, Japanese and Korean
+collections it picks an installed CJK font, including unified Identity
+fonts such as Noto Sans CJK and Source Han Sans.
 
-`pypdfbox.fontbox.cjk_loader` is a separate, opt-in entry point that loads
-the bundled CJK fonts (Source Han Sans subset) on first use. Importing the
-loader is mandatory: the fonts are not registered by default to keep cold
-imports light.
+## CJK auto-download (opt-in)
 
-```python
-from pypdfbox.fontbox.cjk_loader import register_cjk_fonts
-register_cjk_fonts()  # ~150ms, idempotent
-```
+If no CJK font is installed, `pypdfbox.fontbox.cjk_loader` can download
+Noto Sans CJK into a per-user cache. It runs only when `pypdfbox[cjk]`
+is installed and `PYPDFBOX_CJK_AUTODOWNLOAD=1` is set. See
+[Install](../install.md).
 
 ## Typical usage
 

@@ -39,6 +39,9 @@ usually translate directly. Coming from Java PDFBox, or from `pypdf` /
 `pdfminer.six` / `reportlab`? [`migration.md`](migration.md) maps the
 idioms side by side.
 
+The baseline is PDFBox 3.0.8. pypdfbox also includes settled fixes from
+the upstream `3.0` branch that will ship in PDFBox 3.0.9.
+
 Behavioural deviations from upstream are recorded in
 [`CHANGES.md`](../CHANGES.md); known gaps are in
 [`limitations.md`](limitations.md).
