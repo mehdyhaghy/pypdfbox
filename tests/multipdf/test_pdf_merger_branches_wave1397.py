@@ -98,6 +98,11 @@ class _SimpleCatalog:
     def set_acro_form(self, form: object) -> None:  # pragma: no cover - unused
         pass
 
+    def set_page_labels(self, labels: object) -> None:
+        # PDFBOX-6277: the merger seeds the destination /PageLabels via
+        # PDDocumentCatalog.set_page_labels.
+        self._cos.set_item(_PAGE_LABELS, labels.get_cos_object())  # type: ignore[attr-defined]
+
 
 class _StructRoot:
     """Minimal ``PDStructureTreeRoot`` stand-in for role-map / id-tree

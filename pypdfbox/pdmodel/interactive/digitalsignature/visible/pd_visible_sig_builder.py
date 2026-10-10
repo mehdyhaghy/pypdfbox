@@ -125,7 +125,8 @@ class PDVisibleSigBuilder(PDFTemplateBuilder):
             acro_form.set_append_only(True)
             acro_form_dict.set_direct(True)
             acro_form_fields.append(signature_field)
-            acro_form.set_default_appearance("/sylfaen 0 Tf 0 g")
+            # PDFBOX-6221 (3.0 branch, unreleased 3.0.9): Helv replaces sylfaen.
+            acro_form.set_default_appearance("/Helv 0 Tf 0 g")
             self._pdf_structure.set_acro_form_fields(acro_form_fields)
             self._pdf_structure.set_acro_form_dictionary(acro_form_dict)
         except Exception:  # pragma: no cover - parity surface stub

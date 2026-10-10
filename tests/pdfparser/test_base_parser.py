@@ -271,10 +271,20 @@ def test_literal_string_unbalanced_paren_recovers_before_next_name_line() -> Non
     assert p.peek_byte() == ord("\n")
 
 
-def test_literal_string_escaped_close_recovers_before_next_name_line() -> None:
+def test_literal_string_escaped_close_is_always_literal_paren() -> None:
+    # PDFBOX-6167 (3.0 branch, unreleased 3.0.9): the PDFBOX-276
+    # ``(c:\\)`` recovery was removed, so an escaped ')' never ends the
+    # string; the string now runs to the next balanced ')'.
     p = parser(b"(c:\\)\n/Producer (tool)")
-    assert p.read_literal_string() == b"c:\\"
-    assert p.peek_byte() == ord("\n")
+    assert p.read_literal_string() == b"c:)\n/Producer (tool)"
+
+
+def test_literal_string_escaped_close_before_eol_gt_not_truncated() -> None:
+    # PDFBOX-6167: ``\\)`` followed by LF + '>' used to trigger the
+    # PDFBOX-276 heuristic and truncate a valid string.
+    p = parser(b"(\\014\\)\n>)5")
+    assert p.read_literal_string() == b"\x0c)\n>"
+    assert p.peek_byte() == ord("5")
 
 
 def test_literal_string_unterminated_returns_accumulated_bytes() -> None:

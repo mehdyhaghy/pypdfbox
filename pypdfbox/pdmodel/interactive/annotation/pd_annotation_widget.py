@@ -54,8 +54,10 @@ class PDAnnotationWidget(PDAnnotation):
         # The base annotation constructor supplies a missing /Type /Annot but
         # preserves any existing /Type value, matching upstream's tolerant
         # COSDictionary-taking constructor. The widget constructor only stamps
-        # the widget subtype.
-        self._set_subtype(self.SUB_TYPE)
+        # the widget subtype, and only when it differs (PDFBOX-6270, 3.0
+        # branch) so a parsed widget is not marked dirty for incremental save.
+        if self.get_subtype() != self.SUB_TYPE:
+            self._set_subtype(self.SUB_TYPE)
 
     # ---------- /H (highlighting mode) ----------
 

@@ -57,6 +57,27 @@ def test_check_for_end_of_string() -> None:
     )
 
 
+# Upstream: testPDFBox276, disabled upstream (``//@Test``) by PDFBOX-6167
+# because the PDFBOX-276 escaped-')' recovery caused a regression and was
+# removed. Kept as a skipped test to mirror upstream.
+@pytest.mark.skip(
+    reason="disabled upstream by PDFBOX-6167: PDFBOX-276 recovery removed (regression)"
+)
+def test_pdf_box276() -> None:
+    # this is an invalid sequence.
+    input_bytes = b"(c:\\)\r/P"
+    cos_string = COSParser(RandomAccessReadBuffer(input_bytes)).parse_cos_string()
+    assert cos_string.get_string() == "c:\\"
+
+
+# Upstream: testPDFBox6167 (3.0 branch, unreleased 3.0.9).
+def test_pdf_box6167() -> None:
+    # this is a valid sequence.
+    input_bytes = b"(\\014\\)\n>)5"
+    cos_string = COSParser(RandomAccessReadBuffer(input_bytes)).parse_cos_string()
+    assert cos_string.get_string() == "\014)\n>"
+
+
 # Upstream: testBaseParserStackOverflow — PDFBOX-6041.
 # Upstream loads the fixture and asserts that loading either succeeds or
 # surfaces an ordinary ``IOException`` (any non-IOException fails the

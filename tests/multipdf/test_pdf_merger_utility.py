@@ -550,14 +550,46 @@ def test_merge_language_preserves_dest_when_set() -> None:
     src.close()
 
 
-def test_merge_mark_info_marks_destination() -> None:
+def test_merge_mark_info_skips_when_both_missing() -> None:
+    # PDFBOX-6276 (3.0 branch, unreleased 3.0.9): skip if both are null.
     util = PDFMergerUtility()
     dest = PDDocument()
     src = PDDocument()
     util.merge_mark_info(dest.get_document_catalog(), src.get_document_catalog())
+    assert dest.get_document_catalog().get_mark_info() is None
+    dest.close()
+    src.close()
+
+
+def test_merge_mark_info_or_folds_each_flag() -> None:
+    # PDFBOX-6276: Marked, Suspects and UserProperties are each OR-folded,
+    # and UserProperties no longer overwrites Suspects.
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_mark_info import (
+        PDMarkInfo,
+    )
+
+    util = PDFMergerUtility()
+    dest = PDDocument()
+    src = PDDocument()
+    src_mark = PDMarkInfo()
+    src_mark.set_suspect(True)
+    src.get_document_catalog().set_mark_info(src_mark)
+    util.merge_mark_info(dest.get_document_catalog(), src.get_document_catalog())
     info = dest.get_document_catalog().get_mark_info()
     assert info is not None
+    assert info.is_marked() is False
+    assert info.is_suspect() is True
+    assert info.uses_user_properties() is False
+
+    src_mark2 = PDMarkInfo()
+    src_mark2.set_marked(True)
+    src_mark2.set_user_properties(True)
+    src.get_document_catalog().set_mark_info(src_mark2)
+    util.merge_mark_info(dest.get_document_catalog(), src.get_document_catalog())
+    info = dest.get_document_catalog().get_mark_info()
     assert info.is_marked() is True
+    assert info.is_suspect() is True
+    assert info.uses_user_properties() is True
     dest.close()
     src.close()
 

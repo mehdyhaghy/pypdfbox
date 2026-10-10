@@ -374,12 +374,14 @@ def test_page_labels_indices_shifted_by_destination_page_count(
         assert isinstance(pl, COSDictionary)
         nums = pl.get_dictionary_object(COSName.get_pdf_name("Nums"))
         assert isinstance(nums, COSArray)
-        # Source A starts at 0 in destination; source B's "0" must shift
-        # by source A's page count (2).
+        # PDFBOX-6277 (3.0 branch, unreleased 3.0.9): the empty destination
+        # first gets the mandatory decimal 0 entry, then source A's 0 entry
+        # (upstream appends without de-duplicating). Source B's "0" must
+        # shift by source A's page count (2).
         indices = [
             int(nums.get_object(i).int_value()) for i in range(0, nums.size(), 2)
         ]
-        assert indices == [0, 2]
+        assert indices == [0, 0, 2]
 
 
 # ---------- ignore_acro_form_errors ----------

@@ -1076,7 +1076,7 @@ class PDFMergerUtility:
             # Upstream appendDocument runs these three catalog-scalar merges as
             # the final statements INSIDE the ``if (mergeStructTree)`` block
             # (Java lines 848-850), so they fire only when the structure tree
-            # is actually merged: /MarkInfo (marked=true, suspect OR-fold),
+            # is actually merged: /MarkInfo (marked/suspect/userprops OR-fold),
             # /Lang (first-source-wins), and /ViewerPreferences (dict fold +
             # boolean OR-merge). Mirrors that gating exactly.
             self.merge_mark_info(dest_catalog, src_catalog)
@@ -1420,17 +1420,26 @@ class PDFMergerUtility:
         dest_page_count = destination.get_number_of_pages()
         dest_labels = dest_catalog.get_cos_object().get_dictionary_object(_PAGE_LABELS)
         if not isinstance(dest_labels, COSDictionary):
-            dest_labels = COSDictionary()
+            # PDFBOX-6277 (3.0 branch, unreleased 3.0.9): create the
+            # mandatory page-0 entry (forced to decimal style) so the
+            # destination's own pages keep a valid label range.
+            from pypdfbox.pdmodel.pd_page_label_range import PDPageLabelRange
+            from pypdfbox.pdmodel.pd_page_labels import PDPageLabels
+
+            page_labels = PDPageLabels(destination)
+            page_label_range = PDPageLabelRange()
+            page_label_range.set_style(PDPageLabelRange.STYLE_DECIMAL)
+            page_labels.set_label_item(0, page_label_range)
+            dest_catalog.set_page_labels(page_labels)
+            dest_labels = dest_catalog.get_cos_object().get_dictionary_object(
+                _PAGE_LABELS
+            )
+        dest_nums_obj = dest_labels.get_dictionary_object(_NUMS)
+        if isinstance(dest_nums_obj, COSArray):
+            dest_nums = dest_nums_obj
+        else:
             dest_nums = COSArray()
             dest_labels.set_item(_NUMS, dest_nums)
-            dest_catalog.get_cos_object().set_item(_PAGE_LABELS, dest_labels)
-        else:
-            dest_nums_obj = dest_labels.get_dictionary_object(_NUMS)
-            if isinstance(dest_nums_obj, COSArray):
-                dest_nums = dest_nums_obj
-            else:
-                dest_nums = COSArray()
-                dest_labels.set_item(_NUMS, dest_nums)
         src_nums = src_labels.get_dictionary_object(_NUMS)
         if not isinstance(src_nums, COSArray):
             return
@@ -1580,7 +1589,9 @@ class PDFMergerUtility:
         """Flatten a ``PDNumberTreeNode`` (or anything with ``get_numbers`` /
         ``get_kids``) into an ordered ``int -> COSBase`` map.
 
-        Mirrors upstream ``PDFMergerUtility.getNumberTreeAsMap``. Walks the
+        Mirrors 3.0.8 ``PDFMergerUtility.getNumberTreeAsMap`` (removed upstream in
+        unreleased 3.0.9 in favor of ``PDNumberTreeNode.get_tree_as_map``; kept here
+        for compatibility). Walks the
         node and every kid recursively, returning the union of all leaf
         ``/Nums`` arrays. Returns an empty dict when ``tree`` is ``None``.
         Values are returned as raw COS objects so callers can re-clone them
@@ -1610,7 +1621,9 @@ class PDFMergerUtility:
         """Flatten a name-tree node (typically the ``/IDTree`` of a
         ``PDStructureTreeRoot``) into an ordered ``str -> COSBase`` map.
 
-        Mirrors upstream ``PDFMergerUtility.getIDTreeAsMap``. Returns raw
+        Mirrors 3.0.8 ``PDFMergerUtility.getIDTreeAsMap`` (removed upstream in
+        unreleased 3.0.9 in favor of ``PDNameTreeNode.get_tree_as_map``; kept here
+        for compatibility). Returns raw
         COS values rather than typed ``PDStructureElement`` instances so
         the merger can clone-and-rewrap without losing identity-table
         coalescing in :class:`PDFCloneUtility`.
@@ -2143,10 +2156,10 @@ class PDFMergerUtility:
                 setter(src_lang)
 
     def merge_mark_info(self, dest_catalog: Any, src_catalog: Any) -> None:
-        """Merge ``/MarkInfo``. Mirrors upstream ``mergeMarkInfo`` (Java
-        line 955): the destination is marked, ``Suspect`` is the OR of
-        both inputs, and ``UseUserProperties`` is folded in following
-        upstream's (PDFBOX-quirky) overwrite-into-Suspect ordering."""
+        """Merge ``/MarkInfo``. Mirrors upstream ``mergeMarkInfo`` including
+        the PDFBOX-6276 fixes (3.0 branch, unreleased 3.0.9): nothing is
+        done when neither catalog has ``/MarkInfo``; otherwise ``Marked``,
+        ``Suspects`` and ``UserProperties`` are each the OR of both inputs."""
         from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_mark_info import (
             PDMarkInfo,
         )
@@ -2156,13 +2169,17 @@ class PDFMergerUtility:
         src_get = getattr(src_catalog, "get_mark_info", None)
         if not (callable(dest_get) and callable(dest_set) and callable(src_get)):
             return
-        dest_mark = dest_get() or PDMarkInfo()
-        src_mark = src_get() or PDMarkInfo()
-        dest_mark.set_marked(True)
+        dest_mark = dest_get()
+        src_mark = src_get()
+        if src_mark is None and dest_mark is None:
+            return
+        if dest_mark is None:
+            dest_mark = PDMarkInfo()
+        if src_mark is None:
+            src_mark = PDMarkInfo()
+        dest_mark.set_marked(bool(src_mark.is_marked()) or bool(dest_mark.is_marked()))
         dest_mark.set_suspect(bool(src_mark.is_suspect()) or bool(dest_mark.is_suspect()))
-        # Upstream sets Suspect a second time using UsesUserProperties — we
-        # mirror that bug-for-bug so behaviour stays identical.
-        dest_mark.set_suspect(
+        dest_mark.set_user_properties(
             bool(src_mark.uses_user_properties())
             or bool(dest_mark.uses_user_properties())
         )

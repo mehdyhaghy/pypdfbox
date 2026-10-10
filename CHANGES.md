@@ -23,6 +23,30 @@ Trivial naming changes (camelCase → snake_case) are not listed.
 
 Divergences that remain live (will affect observable behaviour vs Java PDFBox):
 
+- **Escaped `\)` in a literal string is always a literal `)` (PDFBOX-6167).** Forward-port from the unreleased PDFBox 3.0.9 (3.0 branch commit 1a46f93d11): the PDFBOX-276 recovery that treated `\)` followed by an EOL plus `/` or `>` as a stray backslash ending the string was removed because it truncated valid strings such as `(\014\)\n>)`. This DIVERGES from the 3.0.8 baseline and oracle jar, where `(c:\)\n/Producer` still parses as `c:\`. The unescaped-`)` recovery (`check_for_end_of_string`) is unchanged.
+  upstream: PDFBox 3.0 branch `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/BaseParser.java`
+  reason: forward-port of a settled upstream regression fix ahead of the 3.0.9 release.
+
+- **Wrapping a parsed widget annotation or XObject no longer marks it dirty (PDFBOX-6270, PDFBOX-6271).** Forward-port from the unreleased PDFBox 3.0.9 (3.0 branch commits db1e760f2f, 97f9cc9ffc, cc45e11b8a): `PDAnnotationWidget(dict)` only sets `/Subtype /Widget`, and `PDXObject` only sets `/Type /XObject` and `/Subtype`, when the existing (raw) value differs. Reading `get_annotations()` or `get_normal_appearance_stream()` on a loaded document therefore leaves those objects out of an incremental save. This DIVERGES from the 3.0.8 baseline and oracle jar, which always rewrite the entries and flag the objects as updated.
+  upstream: PDFBox 3.0 branch `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationWidget.java`, `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/PDXObject.java`
+  reason: forward-port of a settled upstream fix ahead of the 3.0.9 release.
+
+- **`PDNameTreeNode.get_tree_as_map()` and `PDNumberTreeNode.get_tree_as_map()` added (PDFBOX-6274, PDFBOX-6275).** Forward-port from the unreleased PDFBox 3.0.9 (3.0 branch commits 31d71c2511, 90088dcdf4, 75c7659557): each returns a flattened recursive map of this node's own entries followed by every kid's, never `None`. This DIVERGES from the 3.0.8 baseline and oracle jar, which lack the method. Upstream also removed the static `PDFMergerUtility.getIDTreeAsMap` / `getNumberTreeAsMap`; pypdfbox keeps `get_id_tree_as_map` / `get_number_tree_as_map` for compatibility (they return raw COS values used by the merger internals).
+  upstream: PDFBox 3.0 branch `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDNameTreeNode.java`, `PDNumberTreeNode.java`
+  reason: forward-port of a settled upstream API addition ahead of the 3.0.9 release.
+
+- **`PDFMergerUtility.merge_mark_info` OR-folds `Marked`, `Suspects` and `UserProperties`, and skips when neither catalog has `/MarkInfo` (PDFBOX-6276).** Forward-port from the unreleased PDFBox 3.0.9 (3.0 branch commits 816f10a0f2, 98c4b5f138). The 3.0.8 baseline and oracle jar always force `Marked` to true, create `/MarkInfo` even when both inputs lack it, and overwrite `Suspects` with the `UserProperties` value; pypdfbox previously mirrored that bug for bug and now DIVERGES from 3.0.8.
+  upstream: PDFBox 3.0 branch `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFMergerUtility.java#mergeMarkInfo`
+  reason: forward-port of an upstream bug fix ahead of the 3.0.9 release.
+
+- **`PDFMergerUtility` seeds a mandatory decimal page-0 `/PageLabels` entry when the destination has none (PDFBOX-6277).** Forward-port from the unreleased PDFBox 3.0.9 (3.0 branch commits 1375c30c82, e8e1e5090d, fb85db31cc): `_merge_page_labels` (upstream `mergePageLabels`) creates a `PDPageLabels` with a decimal range at index 0 before appending the shifted source ranges, so the destination's own pages keep valid labels. This DIVERGES from the 3.0.8 baseline and oracle jar, whose merged `/Nums` starts at the first source range.
+  upstream: PDFBox 3.0 branch `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFMergerUtility.java#mergePageLabels`
+  reason: forward-port of an upstream bug fix ahead of the 3.0.9 release.
+
+- **Visible-signature AcroForm default appearance is `/Helv 0 Tf 0 g` instead of `/sylfaen 0 Tf 0 g` (PDFBOX-6221).** Forward-port from the unreleased PDFBox 3.0.9 (3.0 branch commit 6263ebe24b) in `PDVisibleSigBuilder.create_acro_form_dictionary`. This DIVERGES from the 3.0.8 baseline and oracle jar. No sylfaen font file was ever bundled, so no resource changes were needed.
+  upstream: PDFBox 3.0 branch `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/visible/PDVisibleSigBuilder.java`
+  reason: forward-port of an upstream fix ahead of the 3.0.9 release.
+
 - **Bundled substitute fonts are Arimo / Tinos / Cousine (Apache 2.0) instead of Liberation (SIL OFL 1.1).** `pypdfbox/resources/ttf/` ships the Google Chrome OS core fonts (Arimo 1.23, Tinos 1.23, Cousine 1.21, unmodified, from the `apache/` tree of google/fonts) as the Helvetica / Times / Courier last-resort substitutes; `liberation_loader` keeps its module name and API. These are the designs Liberation 2.x was derived from: same 2048 UPEM and identical ASCII advance widths, so layout and text extraction are unchanged. Visible differences: a substituted font program reports PostScript names like `Arimo-Regular` rather than `LiberationSans`, and about 30 non-ASCII code points that Liberation 2.1.5 covered (U+2010 HYPHEN, sub/superscript digits U+2076/2079/2080–2089, U+20BF, a few arrows, circles and astronomical symbols) render as `.notdef` from the substitute.
   upstream: PDFBox 3.0.8 `pdfbox/src/main/resources/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf` (loaded by `FontMapperImpl`)
   reason: keep every file the package ships under a permissive license; OFL-1.1 is flagged as non-permissive by supply-chain scanners.

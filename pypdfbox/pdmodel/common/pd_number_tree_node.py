@@ -194,6 +194,26 @@ class PDNumberTreeNode[T](ABC):
             out.update(child_numbers)
         return dict(sorted(out.items()))
 
+    def get_tree_as_map(self) -> dict[int, T]:
+        """Return a flattened recursive map of numbers on ALL levels.
+
+        Mirrors upstream ``PDNumberTreeNode.getTreeAsMap()`` (PDFBOX-6275,
+        3.0 branch, unreleased 3.0.9): this node's own ``/Nums`` first
+        (copied), then each kid's map in ``/Kids`` order. Never returns
+        ``None``.
+        """
+        numbers_array = self._node.get_dictionary_object(_NUMS)
+        numbers: dict[int, T] = {}
+        if isinstance(numbers_array, COSArray):
+            own = self._read_numbers_array(numbers_array)
+            if own is not None:
+                numbers.update(own)
+        kids = self.get_kids()
+        if kids is not None:
+            for kid in kids:
+                numbers.update(kid.get_tree_as_map())
+        return numbers
+
     def set_numbers(self, numbers: dict[int, T] | None) -> None:
         if numbers is None:
             self._node.remove_item(_NUMS)

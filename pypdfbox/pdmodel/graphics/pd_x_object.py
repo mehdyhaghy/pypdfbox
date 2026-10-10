@@ -154,10 +154,22 @@ class PDXObject:
                 f"PDXObject expects PDStream, COSStream, or PDDocument; "
                 f"got {type(stream).__name__}"
             )
-        # Mirror upstream: stamp /Type /XObject and /Subtype on the underlying dict.
-        cos = self._stream.get_cos_object()
-        cos.set_item(_TYPE, _XOBJECT)
-        cos.set_item(_SUBTYPE, subtype)
+        self._maybe_init_names(self._stream.get_cos_object(), subtype)
+
+    @staticmethod
+    def _maybe_init_names(strm: COSStream, subtype: COSName) -> None:
+        """Stamp ``/Type /XObject`` and ``/Subtype`` only when they differ.
+
+        Mirrors upstream ``PDXObject.maybeInitNames`` (PDFBOX-6271, 3.0
+        branch): an XObject loaded from an existing document that already
+        carries the right entries must not be marked dirty for incremental
+        save just by wrapping it. Compares the raw (non-dereferenced) items,
+        like upstream ``getItem``.
+        """
+        if strm.get_item(_TYPE) != _XOBJECT:
+            strm.set_item(_TYPE, _XOBJECT)
+        if strm.get_item(_SUBTYPE) != subtype:
+            strm.set_item(_SUBTYPE, subtype)
 
     def get_cos_object(self) -> COSStream:
         return self._stream.get_cos_object()

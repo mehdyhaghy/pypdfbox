@@ -355,8 +355,8 @@ class PDNameTreeNode[T](ABC):
         ``get_names()`` mirrors upstream and is NON-RECURSIVE — it returns
         only the current node's own ``/Names`` leaf array. This convenience
         recurses through ``/Kids`` to materialise every leaf value across a
-        multi-level tree. Upstream PDFBox has no equivalent; callers there
-        walk ``getKids()`` themselves (e.g. ``PDFMergerUtility.getIDTreeAsMap``).
+        multi-level tree. See also :meth:`get_tree_as_map`, the upstream
+        ``getTreeAsMap()`` added by PDFBOX-6274 (unreleased 3.0.9).
         """
         out: dict[str, T] = {}
         own = self._node.get_dictionary_object(_NAMES)
@@ -367,6 +367,22 @@ class PDNameTreeNode[T](ABC):
             for child in kids:
                 out.update(child.flatten())
         return out
+
+    def get_tree_as_map(self) -> dict[str, T]:
+        """Return a flattened recursive map of names on ALL levels.
+
+        Mirrors upstream ``PDNameTreeNode.getTreeAsMap()`` (PDFBOX-6274,
+        3.0 branch, unreleased 3.0.9): this node's own ``/Names`` first
+        (copied, as :meth:`get_names` reads only THIS level), then each
+        kid's map in ``/Kids`` order. Never returns ``None``.
+        """
+        names = self.get_names()
+        names = {} if names is None else dict(names)
+        kids = self.get_kids()
+        if kids is not None:
+            for kid in kids:
+                names.update(kid.get_tree_as_map())
+        return names
 
     def merge(self, other: PDNameTreeNode[T] | dict[str, T] | None) -> None:
         """Merge ``other`` into this node, overwriting on key collisions.

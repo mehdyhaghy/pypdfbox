@@ -405,7 +405,7 @@ def test_parent_tree(tmp_path) -> None:
 
     * :meth:`PDStructureTreeRoot.get_parent_tree` returns a typed
       :class:`PDStructureElementNumberTreeNode`.
-    * ``PDFMergerUtility.get_number_tree_as_map`` flattens it into the
+    * ``PDNumberTreeNode.get_tree_as_map`` flattens it into the
       expected ``{key: value}`` mapping.
     * :meth:`PDStructureTreeRoot.get_parent_tree_next_key` returns the
       sentinel value (``len(map)`` for a dense allocator-style tree).
@@ -460,7 +460,7 @@ def test_parent_tree(tmp_path) -> None:
         # entry as a typed PDStructureElement-backed COSObjectable).
         first = pt.get_value(0)
         assert first is not None
-        flat = PDFMergerUtility.get_number_tree_as_map(pt)
+        flat = pt.get_tree_as_map()
         assert len(flat) == 3
         assert max(flat.keys()) + 1 == 3
         assert min(flat.keys()) == 0
@@ -649,17 +649,13 @@ def test_split_with_structure_tree() -> None:
             )
             assert (
                 len(
-                    PDFMergerUtility.get_id_tree_as_map(
-                        structure_tree_root.get_id_tree()
-                    )
+                    structure_tree_root.get_id_tree().get_tree_as_map()
                 )
                 == 126
             )
             assert (
                 len(
-                    PDFMergerUtility.get_number_tree_as_map(
-                        structure_tree_root.get_parent_tree()
-                    )
+                    structure_tree_root.get_parent_tree().get_tree_as_map()
                 )
                 == 2
             )
@@ -695,9 +691,7 @@ def test_split_with_structure_tree_and_destinations() -> None:
             )
             assert (
                 len(
-                    PDFMergerUtility.get_number_tree_as_map(
-                        structure_tree_root.get_parent_tree()
-                    )
+                    structure_tree_root.get_parent_tree().get_tree_as_map()
                 )
                 == 7
             )
@@ -779,9 +773,7 @@ def test_single_page_split() -> None:
             )
             assert (
                 len(
-                    PDFMergerUtility.get_number_tree_as_map(
-                        structure_tree_root.get_parent_tree()
-                    )
+                    structure_tree_root.get_parent_tree().get_tree_as_map()
                 )
                 == expected_pt_sizes[index]
             ), f"chunk {index} parent-tree size"
@@ -1180,3 +1172,47 @@ def test_pdf_box_515(tmp_path: Path) -> None:
         assert (
             merged_leaf.get_int(COSName.get_pdf_name("Height")) == expected_height
         )
+
+
+def test_page_labels() -> None:
+    """PDFBOX-6277 (3.0 branch, unreleased 3.0.9): check that index 0 is
+    present despite missing page labels in the destination."""
+    from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
+    from pypdfbox.pdmodel.pd_page_label_range import PDPageLabelRange
+    from pypdfbox.pdmodel.pd_page_labels import PDPageLabels
+
+    with PDDocument() as doc1, PDDocument() as doc2:
+        doc1.add_page(PDPage())
+        doc1.add_page(PDPage())
+        doc1.add_page(PDPage())
+        page_labels = PDPageLabels(doc1)
+        page_label_range1 = PDPageLabelRange()
+        page_label_range1.set_prefix("RO ")
+        page_label_range1.set_start(3)
+        page_label_range1.set_style(PDPageLabelRange.STYLE_ROMAN_UPPER)
+        page_labels.set_label_item(0, page_label_range1)
+        page_label_range2 = PDPageLabelRange()
+        page_label_range2.set_start(1)
+        page_label_range2.set_style(PDPageLabelRange.STYLE_DECIMAL)
+        page_labels.set_label_item(2, page_label_range2)
+        doc1.get_document_catalog().set_page_labels(page_labels)
+
+        doc2.add_page(PDPage())
+        doc2.add_page(PDPage())
+        doc2.add_page(PDPage())
+
+        pdf_merger_utility = PDFMergerUtility()
+        pdf_merger_utility.append_document(doc2, doc1)
+
+        labels_dict = (
+            doc2.get_document_catalog()
+            .get_cos_object()
+            .get_dictionary_object(COSName.get_pdf_name("PageLabels"))
+        )
+        array = labels_dict.get_dictionary_object(COSName.get_pdf_name("Nums"))
+        assert isinstance(array, COSArray)
+        assert array.get_object(0) == COSInteger.get(0)
+        assert isinstance(array.get_object(1), COSDictionary)
+
+        labels = doc2.get_document_catalog().get_page_labels().get_labels_by_page_indices()
+        assert labels == ["1", "2", "3", "RO III", "RO IV", "1"]

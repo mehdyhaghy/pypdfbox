@@ -81,7 +81,7 @@ PDF-specific parsing — port territory.
 
 | pypdfbox path | upstream PDFBox version | upstream Java path |
 |---|---|---|
-| `pypdfbox/pdfparser/base_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/BaseParser.java` (tokenization plus literal-string parsing/recovery subset; includes PDFBOX-6093 `\r\n>` end-of-string leniency) |
+| `pypdfbox/pdfparser/base_parser.py` | 3.0.x + PDFBOX-6167 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/BaseParser.java` (tokenization plus literal-string parsing/recovery subset; includes PDFBOX-6093 `\r\n>` end-of-string leniency) |
 | `pypdfbox/pdfparser/cos_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/COSParser.java` (direct-object / array / dict / indirect-ref + brute-force recovery + parsePDFHeader + parseXrefTable + parseXrefObjStream + parseObjectStream + direct-/Length stream body; indirect-/Length deferred to PDFParser) |
 | `pypdfbox/pdfparser/xref_trailer_resolver.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/XrefTrailerResolver.java` |
 | `pypdfbox/pdfparser/xref_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/XrefParser.java` (parity façade — full implementation stays inlined on `COSParser`; this module exposes the upstream public surface so callers porting `new XrefParser(cosParser).parseXref(doc, off)` work unchanged) |
@@ -262,7 +262,7 @@ Cluster #3 (PDStream + XObject family).
 | `pypdfbox/pdmodel/common/pd_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDStream.java` |
 | `pypdfbox/pdmodel/common/pd_range.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDRange.java` (typed wrapper around the 2-entry COSArray pair; pypdfbox extensions: `width`, `contains`, `clamp`, `is_normalized`, `is_well_formed`, `as_tuple`, iteration, value-equality / hashing, `set_starting_index`) |
 | `pypdfbox/pdmodel/common/pd_matrix.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/util/Matrix.java` (renamed `PDMatrix` and re-homed under `pdmodel/common` for callers that work with page-level matrices without reaching into `pypdfbox.util`; deferred surface that depends on classes not yet ported: AffineTransform/Vector overloads. pypdfbox extensions: `is_identity`, `get_single` defensive copy, `__copy__`/`__deepcopy__` hooks. Static `Matrix.concatenate(a, b)` is exposed as `concatenate_matrices` to avoid colliding with the instance method `concatenate`.) |
-| `pypdfbox/pdmodel/graphics/pd_x_object.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/PDXObject.java` |
+| `pypdfbox/pdmodel/graphics/pd_x_object.py` | 3.0.x + PDFBOX-6271 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/PDXObject.java` |
 | `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/PDImageXObject.java` (metadata + stream access, typed color-space/mask metadata, filter predicates, suffixes, decoded stream access, and best-effort PIL conversion for DCT/JPX plus raw 8-bit DeviceGray/DeviceRGB/Separation/DeviceN; full sampled-image rendering features such as decode arrays, masks, Indexed expansion, and non-8bpc samples remain rendering-cluster work) |
 | `pypdfbox/pdmodel/graphics/form/pd_form_x_object.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/form/PDFormXObject.java` |
 | `pypdfbox/pdmodel/graphics/form/pd_transparency_group_attributes.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/form/PDTransparencyGroupAttributes.java` |
@@ -278,7 +278,7 @@ Cluster #5 lite (annotation base + common subclasses).
 | `pypdfbox/pdmodel/interactive/annotation/pd_annotation_text.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationText.java` |
 | `pypdfbox/pdmodel/interactive/annotation/pd_annotation_square_circle.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationSquareCircle.java`, `PDAnnotationSquare.java`, `PDAnnotationCircle.java` |
 | `pypdfbox/pdmodel/interactive/annotation/pd_annotation_unknown.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationUnknown.java` |
-| `pypdfbox/pdmodel/interactive/annotation/pd_annotation_widget.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationWidget.java` (lite — `/AA /BS /MK /Parent` return raw COS) |
+| `pypdfbox/pdmodel/interactive/annotation/pd_annotation_widget.py` | 3.0.x + PDFBOX-6270 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationWidget.java` (lite: `/AA /BS /MK /Parent` return raw COS) |
 
 Cluster #7 partial (outlines + destinations + actions).
 
@@ -355,9 +355,9 @@ Cluster #7 foundations (file specifications, generic name tree, optional content
 
 | pypdfbox path | upstream PDFBox version | upstream Java path |
 |---|---|---|
-| `pypdfbox/pdmodel/common/pd_name_tree_node.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDNameTreeNode.java` |
+| `pypdfbox/pdmodel/common/pd_name_tree_node.py` | 3.0.x + PDFBOX-6274 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDNameTreeNode.java` |
 | `pypdfbox/pdmodel/common/pd_string_name_tree_node.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDJavascriptNameTreeNode.java` (modelled after; concrete string-keyed subclass — additive value→COS direction) |
-| `pypdfbox/pdmodel/common/pd_number_tree_node.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDNumberTreeNode.java` |
+| `pypdfbox/pdmodel/common/pd_number_tree_node.py` | 3.0.x + PDFBOX-6275 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDNumberTreeNode.java` |
 | `pypdfbox/pdmodel/pd_document_name_dictionary.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDDocumentNameDictionary.java` |
 | `pypdfbox/pdmodel/pd_document_name_destination_dictionary.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDDocumentNameDestinationDictionary.java` |
 | `pypdfbox/pdmodel/pd_embedded_files_name_tree_node.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDEmbeddedFilesNameTreeNode.java` |
@@ -696,7 +696,7 @@ Upstream baseline branch: `apache/pdfbox` `3.0` (most files at `pdfbox/src/test/
 
 | pypdfbox test path | upstream Java test path |
 |---|---|
-| `tests/pdfparser/upstream/test_base_parser.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/TestBaseParser.java` (includes `testCheckForEndOfString` / PDFBOX-6093 literal-string recovery) |
+| `tests/pdfparser/upstream/test_base_parser.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/TestBaseParser.java` (includes `testCheckForEndOfString` / PDFBOX-6093 literal-string recovery; + PDFBOX-6167 (3.0 branch, unreleased 3.0.9): `testPDFBox6167`, and `testPDFBox276` kept skipped as upstream disabled it) |
 | `tests/pdfparser/upstream/test_pdf_stream_parser.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/PDFStreamParserTest.java` |
 | `tests/pdfparser/upstream/test_cos_parser.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/COSParserTest.java` (parse-header / brute-force / rebuild-trailer / parse-xref-stream / parse-xref-table subset; fixture-corpus-driven cases skipped) |
 | `tests/pdfparser/upstream/test_endstream_filter_stream.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/EndstreamFilterStreamTest.java` (byte-sequence test directly ported; PDFBOX-2079 embedded-file fixture path covered by a synthetic missing-`/Length` stream-body regression through `PDFParser._read_stream_body()`) |
@@ -1069,7 +1069,7 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | pypdfbox path | upstream PDFBox version | upstream Java path |
 |---|---|---|
 | `pypdfbox/multipdf/splitter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/multipdf/Splitter.java` |
-| `pypdfbox/multipdf/pdf_merger_utility.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFMergerUtility.java` (structure-tree merging deferred) |
+| `pypdfbox/multipdf/pdf_merger_utility.py` | 3.0.x + PDFBOX-6276, PDFBOX-6277 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFMergerUtility.java` (structure-tree merging deferred) |
 | `pypdfbox/pdmodel/graphics/image/jpeg_factory.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/JPEGFactory.java` |
 | `pypdfbox/pdmodel/graphics/image/lossless_factory.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/LosslessFactory.java` |
 | `pypdfbox/pdmodel/graphics/image/ccitt_factory.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/CCITTFactory.java` (only `createFromImage(BufferedImage)` is ported; the TIFF-extraction path `createFromFile`/`createFromByteArray` is deferred — see CHANGES.md) |
@@ -1109,7 +1109,11 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `tests/pdmodel/graphics/image/upstream/test_jpeg_factory.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/image/JPEGFactoryTest.java` |
 | `tests/pdmodel/graphics/image/upstream/test_lossless_factory.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/image/LosslessFactoryTest.java` (rendering-comparison parts skipped) |
 | `tests/pdmodel/graphics/image/upstream/test_lossless_factory_helpers_wave886.py` | 3.0.x | (no upstream Java equivalent — pypdfbox-original coverage augmentation exercising lossless-factory helper code paths via mock image objects with custom color-space getters) |
-| `tests/multipdf/upstream/test_pdf_merger_utility.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/multipdf/PDFMergerUtilityTest.java` (4 active + 25 skipped — rendering / fixture-dependent) |
+| `tests/multipdf/upstream/test_pdf_merger_utility.py` | 3.0.x + PDFBOX-6274, PDFBOX-6275, PDFBOX-6277 (3.0 branch, unreleased 3.0.9: `getTreeAsMap` call sites, new `testPageLabels`) | `pdfbox/src/test/java/org/apache/pdfbox/multipdf/PDFMergerUtilityTest.java` (4 active + 25 skipped — rendering / fixture-dependent) |
+| `tests/pdmodel/common/test_tree_as_map_pdfbox_6274_6275.py` | 3.0 branch (unreleased 3.0.9) | hand-written; `PDNameTreeNode.getTreeAsMap` / `PDNumberTreeNode.getTreeAsMap` (PDFBOX-6274, PDFBOX-6275) multi-level flattening, ordering and copy semantics |
+| `tests/pdmodel/interactive/digitalsignature/visible/test_pd_visible_sig_builder_pdfbox_6221.py` | 3.0 branch (unreleased 3.0.9) | hand-written; `PDVisibleSigBuilder.createAcroFormDictionary` default appearance `/Helv` (PDFBOX-6221) |
+| `tests/pdmodel/interactive/annotation/upstream/test_pd_annotation_widget.py` (PDFBOX-6270 addition) | 3.0 branch (unreleased 3.0.9) | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationWidgetTest.java` (`testDontDirtyOnConstruction`) |
+| `tests/pdmodel/interactive/annotation/test_no_dirty_on_read_pdfbox_6270_6271.py` | 3.0 branch (unreleased 3.0.9) | hand-written; reading annotations and the normal appearance stream of a loaded document leaves them clean, and an incremental save does not rewrite them (PDFBOX-6270, PDFBOX-6271) |
 | `tests/fontbox/ttf/upstream/test_ttf_subsetter.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/ttf/TTFSubsetterTest.java` (4 active + 5 skipped — system-font / `forceInvisible`) |
 
 ### Port group 8 additions
@@ -1420,7 +1424,7 @@ Original work (no PROVENANCE row needed; listed here for clarity):
 | `tests/pdmodel/interactive/annotation/upstream/test_pd_annotation_text.py` | 3.0.x | placeholder — upstream has no standalone `PDAnnotationTextTest.java`; API mirror against `PDAnnotationText.java` (PDFBox 3.0.x) |
 | `tests/pdmodel/interactive/annotation/upstream/test_pd_annotation_polyline.py` | 3.0.x | placeholder — upstream has no `PDAnnotationPolylineTest.java`; tests anchored to `PDAnnotationPolyline.java` source line refs |
 | `tests/pdmodel/common/upstream/test_pd_number_tree_node.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/common/TestPDNumberTreeNode.java` |
-| `tests/pdmodel/graphics/form/upstream/test_pd_form_x_object.py` | 3.0.x | placeholder — upstream has no dedicated `PDFormXObjectTest.java` (covered transitively); tests anchored to `PDFormXObject.java` source line refs |
+| `tests/pdmodel/graphics/form/upstream/test_pd_form_x_object.py` | 3.0.x + PDFBOX-6271 (3.0 branch, unreleased 3.0.9) | placeholder: upstream 3.0.8 has no dedicated `PDFormXObjectTest.java` (covered transitively); tests anchored to `PDFormXObject.java` source line refs; plus `testDontDirtyOnConstruction` from the 3.0 branch `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/form/PDFormXObjectTest.java` |
 | `tests/pdmodel/font/upstream/test_pd_type1_font.py` | 3.0.x | placeholder — upstream has no dedicated `PDType1FontTest.java`; coverage derived from `PDFontTest.java` factory subset + upstream `PDType1Font.java` private helpers |
 | `tests/pdmodel/encryption/upstream/test_security_handler.py` | 3.0.x | placeholder — upstream has no dedicated `SecurityHandlerTest.java`; surface inferred from `SecurityHandler.java` (PDFBox 3.0.x) |
 | `tests/pdfwriter/upstream/test_cos_writer.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdfwriter/COSWriterTest.java` (2 ports active, 2 skipped pending fixture support) |
@@ -2531,7 +2535,7 @@ Backfill of upstream Java paths for source files added in earlier waves (mostly 
 
 | pypdfbox path | upstream PDFBox version | upstream Java path |
 |---|---|---|
-| `pypdfbox/pdmodel/interactive/digitalsignature/visible/pd_visible_sig_builder.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/visible/PdVisibleSigBuilder.java` |
+| `pypdfbox/pdmodel/interactive/digitalsignature/visible/pd_visible_sig_builder.py` | 3.0.x + PDFBOX-6221 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/visible/PdVisibleSigBuilder.java` |
 | `pypdfbox/pdmodel/interactive/digitalsignature/visible/pd_visible_sig_properties.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/visible/PdVisibleSigProperties.java` |
 | `pypdfbox/pdmodel/interactive/digitalsignature/visible/pd_visible_sign_designer.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/visible/PdVisibleSignDesigner.java` |
 | `pypdfbox/pdmodel/interactive/digitalsignature/visible/pdf_template_builder.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/visible/PdfTemplateBuilder.java` |

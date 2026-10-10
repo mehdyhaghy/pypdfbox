@@ -56,11 +56,13 @@ def test_read_name_with_single_hex_digit_keeps_hash_and_digit() -> None:
     assert p.read_byte() == ord(" ")
 
 
-def test_literal_string_malformed_escaped_close_can_end_before_name() -> None:
+def test_literal_string_escaped_close_no_longer_ends_before_name() -> None:
+    # PDFBOX-6167 (3.0 branch, unreleased 3.0.9) removed the PDFBOX-276
+    # recovery: an escaped ')' is always a literal ')' and never ends the
+    # string, so the unterminated string runs to EOF.
     p = parser(b"(abc\\)\n/Next")
 
-    assert p.read_literal_string() == b"abc\\"
-    assert p.read_byte() == ord("\n")
+    assert p.read_literal_string() == b"abc)\n/Next"
 
 
 def test_hex_string_invalid_digit_recovers_leniently() -> None:

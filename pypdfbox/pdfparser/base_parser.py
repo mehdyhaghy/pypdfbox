@@ -681,6 +681,9 @@ class BaseParser:
     def check_for_end_of_string(self, braces_parameter: int) -> int:
         """Patch for malformed literal strings — see PDFBOX-276 / 1217.
         Mirrors upstream ``BaseParser.checkForEndOfString(int)`` (line 494).
+        Since PDFBOX-6167 it is no longer applied to an escaped ``\\)``
+        (the ``/Title (c:\\) /Producer`` case is inactive as of 10/2026);
+        returning the input means no change.
 
         Looks ahead up to three bytes; if they form one of the documented
         end-of-string sequences (``CR/LF/CRLF`` followed by ``/`` or ``>``)
@@ -719,13 +722,10 @@ class BaseParser:
             # outer loop at EOF.
             out.append(0xFF)
             return depth
-        if b == 0x29:  # ')' — PDFBox-276 malformed string recovery.
-            depth = self._check_for_end_of_string(depth)
-            if depth == 0:
-                out.append(0x5C)
-                return 0
-            out.append(b)
-            return depth
+        # PDFBOX-6167: the PDFBOX-276 ``/Title (c:\\)`` recovery for an
+        # escaped ')' was removed upstream (3.0 branch, 10/2026) because it
+        # truncated valid strings; ``\\)`` is now always a literal ')',
+        # handled by ``_ESCAPE_MAP`` below.
         mapped = self._ESCAPE_MAP.get(b)
         if mapped is not None:
             out.append(mapped)

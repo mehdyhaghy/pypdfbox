@@ -284,8 +284,13 @@ def test_wave388_page_labels_create_destination_nums_when_missing() -> None:
         .get_dictionary_object(_NUMS)
     )
     assert isinstance(merged_nums, COSArray)
-    assert merged_nums.get_object(0).int_value() == 2
-    assert merged_nums.get_object(1) is label
+    # PDFBOX-6277 (3.0 branch, unreleased 3.0.9): a mandatory decimal
+    # 0 entry is created first for the destination's own pages.
+    assert merged_nums.get_object(0).int_value() == 0
+    assert isinstance(merged_nums.get_object(1), COSDictionary)
+    assert merged_nums.get_object(1).get_name_as_string(COSName.get_pdf_name("S")) == "D"
+    assert merged_nums.get_object(2).int_value() == 2
+    assert merged_nums.get_object(3) is label
     source.close()
     destination.close()
 

@@ -6,6 +6,9 @@ content-stream / appearance / structure-tree tests. This file targets
 the upstream public API surface directly so the form X-Object class has
 its own first-class coverage.
 
+The upstream 3.0 branch (unreleased 3.0.9) adds ``PDFormXObjectTest.java``
+for PDFBOX-6271; its single test is ported at the bottom of this file.
+
 Each test cites the upstream Java line(s) it mirrors.
 """
 
@@ -388,3 +391,26 @@ def test_last_modified_round_trip() -> None:
     when = _dt.datetime(2024, 6, 15, 12, 34, 56, tzinfo=_dt.UTC)
     form.set_last_modified(when)
     assert form.get_last_modified() == when
+
+
+# Upstream: PDFormXObjectTest.testDontDirtyOnConstruction (PDFBOX-6271,
+# 3.0 branch, unreleased 3.0.9): a correct form XObject must not get dirty.
+def test_dont_dirty_on_construction() -> None:
+    from pypdfbox.cos import COSDocumentState
+
+    # setup: build a COSStream that will accept update flags
+    s = COSStream()
+    state = COSDocumentState()
+    state.set_parsing(False)
+    s.get_update_state().set_origin_document_state(state)
+
+    # set type/subtype correctly for an XObject
+    # (this stands in for an XObject that was parsed from an existing document)
+    s.set_item(COSName.TYPE, COSName.XOBJECT)
+    s.set_item(COSName.SUBTYPE, COSName.FORM)
+    s.set_needs_to_be_updated(False)
+
+    # construct a PDFormXObject wrapper around it
+    PDFormXObject(s)
+
+    assert not s.is_needs_to_be_updated()
