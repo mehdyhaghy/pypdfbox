@@ -241,7 +241,7 @@ def test_to_rgb_image_uses_bulk_icc_transform_for_srgb_v4() -> None:
     assert img.size == (4, 1)
     assert img.mode == "RGB"
     # sRGB-shaped profile → values approximately identity.
-    pixels = list(img.getdata())
+    pixels = list(img.get_flattened_data())
     assert pixels[0][0] > 200  # red dominant in first pixel
     assert pixels[1][1] > 200  # green dominant in second
     assert pixels[2][2] > 200  # blue dominant in third
@@ -262,7 +262,7 @@ def test_to_rgb_image_falls_back_when_profile_corrupt() -> None:
     assert isinstance(img, Image.Image)
     assert img.size == (2, 1)
     assert img.mode == "RGB"
-    pixels = list(img.getdata())
+    pixels = list(img.get_flattened_data())
     assert pixels[0] == (10, 20, 30)
     assert pixels[1] == (40, 50, 60)
 

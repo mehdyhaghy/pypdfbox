@@ -66,7 +66,7 @@ def test_wave1349_get_image_crops_to_region_tuple() -> None:
     # The cropped pixels are positions (1,1), (2,1), (1,2), (2,2) in the
     # original 4×4 ramp — values 5, 6, 9, 10 → ×16 → 80, 96, 144, 160.
     # ``to_pil_image`` for DeviceGray converts to RGB so we read tuples.
-    pixels = list(out.getdata())
+    pixels = list(out.get_flattened_data())
     assert pixels == [(80, 80, 80), (96, 96, 96), (144, 144, 144), (160, 160, 160)]
 
 

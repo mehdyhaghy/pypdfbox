@@ -233,7 +233,7 @@ def test_to_raw_image_returns_single_band_L_image() -> None:
     img = cs.to_raw_image(b"\x00\x7f\xff\x00", 2, 2)
     assert img.size == (2, 2)
     assert img.mode == "L"
-    pixels = list(img.getdata())
+    pixels = list(img.get_flattened_data())
     assert pixels == [0, 0x7F, 0xFF, 0]
 
 
@@ -241,7 +241,7 @@ def test_to_raw_image_pads_short_raster() -> None:
     cs = _make_separation("Spot1", PDDeviceRGB.INSTANCE)
     # 2 bytes for a 2x2 = 4-pixel image — pad with zeros.
     img = cs.to_raw_image(b"\xff\xff", 2, 2)
-    pixels = list(img.getdata())
+    pixels = list(img.get_flattened_data())
     assert pixels == [0xFF, 0xFF, 0, 0]
 
 

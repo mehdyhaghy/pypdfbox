@@ -171,7 +171,7 @@ def test_to_rgb_image_awt_delegates_to_to_rgb_image() -> None:
         raster, None, 2, 1
     )
     direct = PDDeviceCMYK.INSTANCE.to_rgb_image(raster, 2, 1)
-    assert list(via_awt.getdata()) == list(direct.getdata())
+    assert list(via_awt.get_flattened_data()) == list(direct.get_flattened_data())
 
 
 def test_to_rgb_image_subtractive_midtone_pixel() -> None:

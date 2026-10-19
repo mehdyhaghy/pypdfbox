@@ -110,7 +110,7 @@ def test_to_rgb_image_decodes_indexed_raster() -> None:
     img = cs.to_rgb_image(b"\x00\x01\x02\x03", 2, 2)
     assert img.mode == "RGB"
     assert img.size == (2, 2)
-    assert list(img.getdata()) == [
+    assert list(img.get_flattened_data()) == [
         (0, 0, 0),
         (255, 0, 0),
         (0, 255, 0),
@@ -125,7 +125,7 @@ def test_to_rgb_image_clamps_out_of_range_indices() -> None:
     cs = _indexed_rgb(1, palette)
     img = cs.to_rgb_image(b"\x00\x05", 2, 1)
     # Index 5 is clamped to actualMaxIndex=1 → green.
-    assert list(img.getdata()) == [(255, 0, 0), (0, 255, 0)]
+    assert list(img.get_flattened_data()) == [(255, 0, 0), (0, 255, 0)]
 
 
 def test_to_rgb_image_pads_short_raster_with_zero() -> None:
@@ -134,7 +134,7 @@ def test_to_rgb_image_pads_short_raster_with_zero() -> None:
     # Caller asks for 4 pixels but supplies 2 bytes — remaining pixels
     # land on index 0 (black).
     img = cs.to_rgb_image(b"\x01\x01", 2, 2)
-    assert list(img.getdata()) == [
+    assert list(img.get_flattened_data()) == [
         (255, 255, 255),
         (255, 255, 255),
         (0, 0, 0),
@@ -157,7 +157,7 @@ def test_to_raw_image_returns_palette_decoded_rgb_image() -> None:
     assert img is not None
     assert img.mode == "RGB"
     assert img.size == (2, 2)
-    assert list(img.getdata()) == [
+    assert list(img.get_flattened_data()) == [
         (255, 0, 0),
         (0, 255, 0),
         (0, 0, 255),
@@ -179,7 +179,7 @@ def test_to_raw_image_for_device_gray_base_returns_decoded_rgb() -> None:
     assert img is not None
     assert img.mode == "RGB"
     # Gray 0x00, 0x80, 0xff replicated to all three channels.
-    pixels = list(img.getdata())
+    pixels = list(img.get_flattened_data())
     assert pixels[0] == (0, 0, 0)
     assert pixels[2] == (255, 255, 255)
     assert pixels[1][0] == pixels[1][1] == pixels[1][2]

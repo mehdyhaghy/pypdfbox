@@ -329,7 +329,7 @@ def test_to_rgb_image_returns_pillow_rgb() -> None:
     img = cs.to_rgb_image(b"\x00\x01\x02\x00", 2, 2)
     assert img.size == (2, 2)
     assert img.mode == "RGB"
-    pixels = list(img.getdata())
+    pixels = list(img.get_flattened_data())
     assert pixels == [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 0, 0)]
 
 
@@ -337,7 +337,7 @@ def test_to_rgb_image_clamps_out_of_range_indices() -> None:
     """Indices > hival should be clamped to the last valid palette entry."""
     cs = _indexed(1, b"\xff\x00\x00\x00\xff\x00")
     img = cs.to_rgb_image(b"\x00\x05\x99\xfa", 4, 1)
-    pixels = list(img.getdata())
+    pixels = list(img.get_flattened_data())
     # Indices 5, 0x99, 0xfa all clamp to palette[1] = green.
     assert pixels == [(255, 0, 0), (0, 255, 0), (0, 255, 0), (0, 255, 0)]
 
@@ -345,7 +345,7 @@ def test_to_rgb_image_clamps_out_of_range_indices() -> None:
 def test_to_rgb_image_pads_short_raster_with_index_zero() -> None:
     cs = _indexed(1, b"\xff\x00\x00\x00\xff\x00")
     img = cs.to_rgb_image(b"\x01", 2, 1)  # 1 byte for a 2-pixel raster
-    pixels = list(img.getdata())
+    pixels = list(img.get_flattened_data())
     # Second pixel is padded with 0 → palette[0] = red.
     assert pixels == [(0, 255, 0), (255, 0, 0)]
 

@@ -114,7 +114,7 @@ def test_wave426_to_pil_image_decodes_raw_rgb_gray_and_short_data() -> None:
     rendered_rgb = rgb.to_pil_image()
     assert rendered_rgb is not None
     assert rendered_rgb.mode == "RGB"
-    assert list(rendered_rgb.getdata()) == [(255, 0, 0), (0, 128, 255)]
+    assert list(rendered_rgb.get_flattened_data()) == [(255, 0, 0), (0, 128, 255)]
 
     gray = _image()
     gray.set_width(2)
@@ -125,7 +125,7 @@ def test_wave426_to_pil_image_decodes_raw_rgb_gray_and_short_data() -> None:
     rendered_gray = gray.to_pil_image()
     assert rendered_gray is not None
     assert rendered_gray.mode == "RGB"
-    assert list(rendered_gray.getdata()) == [(0, 0, 0), (200, 200, 200)]
+    assert list(rendered_gray.get_flattened_data()) == [(0, 0, 0), (200, 200, 200)]
 
     short = _image()
     short.set_width(2)
@@ -182,7 +182,7 @@ def test_wave426_decode_devicen_to_rgb_clamps_and_caches_samples() -> None:
     rendered = _decode_devicen_to_rgb(color_space, bytes([200, 200]), 2, 1)
 
     assert rendered is not None
-    assert list(rendered.getdata()) == [(255, 0, 128), (255, 0, 128)]
+    assert list(rendered.get_flattened_data()) == [(255, 0, 128), (255, 0, 128)]
 
 
 def test_wave426_decode_devicen_to_rgb_handles_short_zero_and_failing_transforms() -> None:
@@ -190,7 +190,7 @@ def test_wave426_decode_devicen_to_rgb_handles_short_zero_and_failing_transforms
 
     zero_component = _decode_devicen_to_rgb(_DeviceNColorSpace(0), b"\x44", 1, 1)
     assert zero_component is not None
-    assert list(zero_component.getdata()) == [(68, 68, 68)]
+    assert list(zero_component.get_flattened_data()) == [(68, 68, 68)]
 
     failing = _decode_devicen_to_rgb(
         _DeviceNColorSpace(2, fail=True),
@@ -199,7 +199,7 @@ def test_wave426_decode_devicen_to_rgb_handles_short_zero_and_failing_transforms
         1,
     )
     assert failing is not None
-    assert list(failing.getdata()) == [(20, 20, 20)]
+    assert list(failing.get_flattened_data()) == [(20, 20, 20)]
 
 
 def test_wave426_luminance_fallback_and_clamp_helpers() -> None:
@@ -207,11 +207,11 @@ def test_wave426_luminance_fallback_and_clamp_helpers() -> None:
 
     one_component = _luminance_fallback(bytes([10, 20]), 2, 1, 1)
     assert one_component is not None
-    assert list(one_component.getdata()) == [(10, 10, 10), (20, 20, 20)]
+    assert list(one_component.get_flattened_data()) == [(10, 10, 10), (20, 20, 20)]
 
     two_component = _luminance_fallback(bytes([10, 30, 80, 100]), 2, 1, 2)
     assert two_component is not None
-    assert list(two_component.getdata()) == [(20, 20, 20), (90, 90, 90)]
+    assert list(two_component.get_flattened_data()) == [(20, 20, 20), (90, 90, 90)]
 
     assert _clamp01(-0.5) == 0.0
     assert _clamp01(0.25) == 0.25

@@ -339,7 +339,7 @@ def test_to_raw_image_returns_l_mode() -> None:
     assert img.mode == "L"
     assert img.size == (2, 2)
     # Untouched 8-bit data.
-    assert list(img.getdata()) == [0, 128, 255, 64]
+    assert list(img.get_flattened_data()) == [0, 128, 255, 64]
 
 
 def test_to_raw_image_short_raster_is_zero_padded() -> None:
@@ -347,7 +347,7 @@ def test_to_raw_image_short_raster_is_zero_padded() -> None:
     img = cs.to_raw_image(b"\x10", 2, 2)
     assert img.mode == "L"
     assert img.size == (2, 2)
-    assert list(img.getdata()) == [16, 0, 0, 0]
+    assert list(img.get_flattened_data()) == [16, 0, 0, 0]
 
 
 # ---------- sanity coverage of accessors not yet asserted elsewhere ----------

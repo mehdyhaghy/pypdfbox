@@ -98,7 +98,7 @@ def test_overlay_render_to_draw_paints_rectangles() -> None:
         if hasattr(image, "get_flattened_data"):
             flat = image.get_flattened_data()
         else:
-            flat = list(image.getdata())
+            flat = list(image.get_flattened_data())
         # ``get_flattened_data`` yields a flat tuple of channels; chunk back.
         if flat and isinstance(flat[0], int):
             pixels = list(zip(flat[0::3], flat[1::3], flat[2::3], strict=False))
