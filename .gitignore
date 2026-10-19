@@ -20,6 +20,12 @@ env/
 .coverage
 .coverage.*
 htmlcov/
+coverage.xml
+coverage.lcov
+*.lcov
+junit*.xml
+.hypothesis/
+.benchmarks/
 .tox/
 .nox/
 
@@ -68,12 +74,16 @@ archive/oracle/cache/
 archive/oracle/jars/
 archive/oracle/build/
 *.pdf.diff
+*.log
+*.prof
 
 # Upstream Java source — local clone for parity tooling (see scripts/parity.py)
-pdfbox/
+/pdfbox/
 
 # Shared parity / wave checkpoint (project-local, untracked by design — see .parity/README.md)
 .parity/
+
+# Coverage JSON reports (once committed by mistake; 2.7 MB still in history)
 coverage.json
 
 # AI assistant config + migration apparatus — kept LOCAL only (not for the public repo)
