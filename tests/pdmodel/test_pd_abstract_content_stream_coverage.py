@@ -302,8 +302,23 @@ def test_set_text_rise_emits_Ts() -> None:
 
 
 class _FakeFont:
+    """Latin-1 encoder stand-in with the ``PDFont`` predicates ``set_font``
+    and ``show_text`` consult (not subset, not embedded, Standard 14)."""
+
     def encode(self, text: str) -> bytes:
         return text.encode("latin-1")
+
+    def will_be_subset(self) -> bool:
+        return False
+
+    def is_embedded(self) -> bool:
+        return False
+
+    def is_standard14(self) -> bool:
+        return True
+
+    def get_name(self) -> str:
+        return "Fake"
 
 
 def test_set_font_with_resources_emits_Tf() -> None:
@@ -349,7 +364,7 @@ def test_show_text_emits_hex_string_and_Tj() -> None:
     out.truncate()
     cs.show_text("AB")
     # "AB" -> latin-1 0x41 0x42 -> hex "4142"
-    assert out.getvalue() == b"<4142> Tj\n"
+    assert out.getvalue() == b"(AB) Tj\n"
 
 
 def test_show_text_with_positioning_emits_TJ() -> None:
@@ -359,7 +374,7 @@ def test_show_text_with_positioning_emits_TJ() -> None:
     out.seek(0)
     out.truncate()
     cs.show_text_with_positioning(["A", -120, "B"])
-    assert out.getvalue() == b"[<41>-120 <42>] TJ\n"
+    assert out.getvalue() == b"[(A)-120 (B)] TJ\n"
 
 
 def test_show_text_with_positioning_rejects_other_types() -> None:
@@ -938,99 +953,77 @@ def test_set_non_stroking_color_space_stack_replaces_top() -> None:
 # ------------------------------------------------------------------
 
 
-def test_encode_for_gsub_no_worker_uses_font_encoder() -> None:
+class _GsubFont(_FakeFont):
+    """Type0-shaped stand-in: cmap lookup maps a code point to itself minus
+    0x40 (``A`` -> 1), glyph ids encode as 2 bytes."""
+
+    class _Cmap:
+        def get_glyph_id(self, code_point: int) -> int:
+            return code_point - 0x40 if code_point > 0x40 else 0
+
+    def get_cmap_lookup(self) -> Any:
+        return self._Cmap()
+
+    def encode_glyph_id(self, gid: int) -> bytes:
+        return gid.to_bytes(2, "big")
+
+
+class _RecordingWorker:
+    """GSUB worker that records each glyph run and doubles the first glyph."""
+
+    def __init__(self) -> None:
+        self.runs: list[list[int]] = []
+
+    def apply_transforms(self, glyph_ids: list[int]) -> list[int]:
+        self.runs.append(list(glyph_ids))
+        return [glyph_ids[0] * 2, *glyph_ids[1:]]
+
+
+def test_encode_for_gsub_splits_on_space_and_encodes_spaces_with_font() -> None:
+    # Upstream encodeForGsub: StringUtil.tokenizeOnSpace keeps the
+    # separators; a single whitespace token goes through font.encode, every
+    # other token through applyGSUBRules.
     cs, _ = _make()
-    result = cs.encode_for_gsub(None, _FakeFont(), "hi")
-    assert result == b"hi"
+    worker = _RecordingWorker()
+    glyph_ids: set[int] = set()
+    result = cs.encode_for_gsub(worker, glyph_ids, _GsubFont(), "AB C")
+    assert worker.runs == [[1, 2], [3]]
+    assert result == b"\x00\x02\x00\x02 \x00\x06"
+    assert glyph_ids == {2, 6}
 
 
-def test_encode_for_gsub_no_encoder_falls_back_to_latin1() -> None:
-    cs, _ = _make()
-
-    class FontNoEncode:
-        pass
-
-    result = cs.encode_for_gsub(None, FontNoEncode(), "abc")
-    assert result == b"abc"
-
-
-def test_encode_for_gsub_with_worker_applies_per_word() -> None:
-    cs, _ = _make()
-
-    class Worker:
-        def __init__(self) -> None:
-            self.words: list[str] = []
-
-        def apply_transformations(self, word: str) -> list[int]:
-            self.words.append(word)
-            return []
-
-    worker = Worker()
-    font = _FakeFont()
-    result = cs.encode_for_gsub(worker, font, "foo bar")
-    assert worker.words == ["foo", "bar"]
-    # No glyph IDs returned ⇒ falls back to per-word encoding, with a
-    # space inserted between words.
-    assert result == b"foo bar"
-
-
-def test_apply_gsub_rules_no_worker_appends_encoded_word() -> None:
-    cs, _ = _make()
-    out = bytearray()
-    result = cs.apply_gsub_rules(None, out, _FakeFont(), "abc")
-    assert bytes(out) == b"abc"
-    assert result == []
-
-
-def test_apply_gsub_rules_no_encoder_returns_empty() -> None:
-    cs, _ = _make()
-
-    class FontNoEncode:
-        pass
-
-    out = bytearray()
-    result = cs.apply_gsub_rules(object(), out, FontNoEncode(), "abc")
-    assert result == []
-    assert bytes(out) == b""
-
-
-def test_apply_gsub_rules_with_glyph_ids_calls_encode_glyph_id() -> None:
-    cs, _ = _make()
-
-    class Worker:
-        def apply_transformations(self, word: str) -> list[int]:
-            return [10, 20]
-
-    class FontWithGlyph(_FakeFont):
-        def encode_glyph_id(self, gid: int) -> bytes:
-            return bytes([gid])
-
-    out = bytearray()
-    result = cs.apply_gsub_rules(Worker(), out, FontWithGlyph(), "ab")
-    assert result == [10, 20]
-    assert bytes(out) == b"\x0a\x14"
-
-
-def test_apply_gsub_rules_falls_back_when_encode_glyph_id_missing() -> None:
-    cs, _ = _make()
-
-    class Worker:
-        def apply_transformations(self, word: str) -> list[int]:
-            return [10]
-
-    out = bytearray()
-    cs.apply_gsub_rules(Worker(), out, _FakeFont(), "hi")
-    # encode_glyph_id missing ⇒ falls back to encoder("hi")
-    assert bytes(out) == b"hi"
-
-
-def test_apply_gsub_rules_worker_without_apply_transformations() -> None:
+def test_apply_gsub_rules_appends_transformed_glyphs() -> None:
     cs, _ = _make()
     out = bytearray()
-    result = cs.apply_gsub_rules(object(), out, _FakeFont(), "abc")
-    assert result == []
-    # AttributeError is swallowed, no glyphs ⇒ falls through to encoder
-    assert bytes(out) == b"abc"
+    result = cs.apply_gsub_rules(_RecordingWorker(), out, _GsubFont(), "AB")
+    assert result == [2, 2]
+    assert bytes(out) == b"\x00\x02\x00\x02"
+
+
+def test_apply_gsub_rules_missing_glyph_substitutes_notdef() -> None:
+    # Upstream throws IllegalStateException; pypdfbox substitutes glyph 0,
+    # matching its PDFont.encode contract for unencodable characters.
+    cs, _ = _make()
+    out = bytearray()
+    worker = _RecordingWorker()
+    result = cs.apply_gsub_rules(worker, out, _GsubFont(), "A!")
+    assert worker.runs == [[1, 0]]
+    assert result == [2, 0]
+    assert bytes(out) == b"\x00\x02\x00\x00"
+
+
+def test_module_level_gsub_helpers_match_methods() -> None:
+    from pypdfbox.pdmodel.pd_abstract_content_stream import (
+        apply_gsub_rules,
+        encode_for_gsub,
+    )
+
+    glyph_ids: set[int] = set()
+    assert encode_for_gsub(_RecordingWorker(), glyph_ids, _GsubFont(), "A") == (
+        b"\x00\x02"
+    )
+    out = bytearray()
+    assert apply_gsub_rules(_RecordingWorker(), out, _GsubFont(), "B") == [4]
 
 
 # ------------------------------------------------------------------

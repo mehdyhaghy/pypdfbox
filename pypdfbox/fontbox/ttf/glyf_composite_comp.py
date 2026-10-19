@@ -245,7 +245,34 @@ class GlyfCompositeComp:
         already-decoded glyphs.
         """
         comp = cls()
-        comp._flags = int(getattr(component, "flags", 0))
+        # fontTools keeps only the "semantic" flag bits on a decoded
+        # component and drops the ones describing the binary layout
+        # (ARG_1_AND_2_ARE_WORDS, ARGS_ARE_XY_VALUES, the scale bits,
+        # MORE_COMPONENTS, WE_HAVE_INSTRUCTIONS). Rebuild the layout bits
+        # from the decoded fields so the upstream getters see the flags
+        # the glyf table actually carried. MORE_COMPONENTS and
+        # WE_HAVE_INSTRUCTIONS depend on the component's position and are
+        # restored by GlyfCompositeDescript.from_glyph.
+        flags = int(getattr(component, "flags", 0))
+        if hasattr(component, "x"):
+            flags |= cls.ARGS_ARE_XY_VALUES
+            args = (int(component.x), int(component.y))
+            if any(not -128 <= a <= 127 for a in args):
+                flags |= cls.ARG_1_AND_2_ARE_WORDS
+        elif any(
+            not 0 <= int(getattr(component, name, 0)) <= 255
+            for name in ("firstPt", "secondPt")
+        ):
+            flags |= cls.ARG_1_AND_2_ARE_WORDS
+        if hasattr(component, "transform"):
+            t = component.transform
+            if t[0][1] or t[1][0]:
+                flags |= cls.WE_HAVE_A_TWO_BY_TWO
+            elif t[0][0] != t[1][1]:
+                flags |= cls.WE_HAVE_AN_X_AND_Y_SCALE
+            else:
+                flags |= cls.WE_HAVE_A_SCALE
+        comp._flags = flags
         comp._glyph_index = int(
             getattr(component, "glyphID", getattr(component, "glyphIndex", 0))
         )

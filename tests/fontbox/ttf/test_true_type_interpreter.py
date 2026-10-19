@@ -277,7 +277,48 @@ def test_simple_glyphs_match_freetype(liberation, ppem):
     for gid, expected in golden.items():
         glyph = liberation["glyf"][order[gid]]
         if glyph.isComposite() or glyph.numberOfContours <= 0:
-            continue  # composites need GlyphHinter's assembly (next wave)
+            continue  # composites: GlyphHinter assembles them (upstream/test_golden_hinting.py)
         assert _hint_simple_glyph(liberation, interp, ppem, gid) == expected, f"gid {gid}"
         checked += 1
     assert checked > 10
+
+
+# --- error classification (wave 1611) -------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "program",
+    [
+        [0x21],  # POP: pop from empty list
+        [0xB0, 1, 0x23],  # SWAP with one value: index past the bottom
+        [0xB0, 1, 0x8A],  # ROLL with one value: pop index out of range
+        [0xB0, 1, 0x60],  # ADD with one value
+    ],
+    ids=["pop", "swap", "roll", "add"],
+)
+def test_stack_underflow_is_labelled_as_such(program):
+    with pytest.raises(HintingException, match="^interpreter stack underflow$"):
+        _interp().execute_program(bytes(program), 16)
+
+
+def test_other_index_errors_are_not_called_stack_underflow():
+    interp = _interp()
+
+    def broken(ctx):
+        raise IndexError("list index out of range")
+
+    interp._dispatch[0x4F] = broken  # DEBUG
+    with pytest.raises(HintingException, match="interpreter index out of range"):
+        # three values on the stack, so it cannot have been the stack
+        interp.execute_program(bytes([0xB2, 1, 2, 3, 0x4F]), 16)
+
+
+def test_iup_contour_end_beyond_the_zone_is_reported():
+    interp = _interp()
+    interp.set_ppem(16, 16)
+    zone = Zone(4, 1)
+    zone.get_contour_ends()[0] = 9  # malformed: the zone has 4 points
+    ctx = interp.new_context(GraphicsState())
+    ctx.set_glyph_zone(zone)
+    with pytest.raises(HintingException, match="IUP: contour end 9 out of range"):
+        interp.run(ctx, BytecodeStream(bytes([0x31])))  # IUP[x]

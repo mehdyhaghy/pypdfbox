@@ -202,13 +202,16 @@ def test_parser_directory_switch_creates_typed_tables() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_get_hinted_path_without_glyph_hinter_returns_none(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setitem(sys.modules, _HINTER_MODULE, None)
+def test_get_hinted_path_creates_one_glyph_hinter() -> None:
+    from pypdfbox.fontbox.ttf.glyph_hinter import GlyphHinter
+
     font = _liberation()
-    assert font.get_hinted_path(43, 16) is None
-    assert font._hinter is False
+    assert font._hinter is None
+    assert font.get_hinted_path(43, 16) is not None
+    hinter = font._hinter
+    assert isinstance(hinter, GlyphHinter)
+    font.get_hinted_path(44, 11)
+    assert font._hinter is hinter
 
 
 def test_get_hinted_path_delegates_to_lazily_created_hinter(

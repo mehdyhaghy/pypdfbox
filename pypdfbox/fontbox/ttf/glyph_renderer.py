@@ -27,6 +27,8 @@ if TYPE_CHECKING:
 
 _LOG = logging.getLogger(__name__)
 
+_ON_CURVE = GlyfDescript.ON_CURVE
+
 
 class GlyphRenderer:
     """Render a :class:`GlyphDescription` into a recorded path."""
@@ -57,10 +59,97 @@ class GlyphRenderer:
         attribute is a list of ``(operator, args)`` tuples ready to be
         replayed onto any other pen.
         """
-        points = self.describe(self._glyph_description, self._hinted_x, self._hinted_y)
-        return self.calculate_path(points)
+        from fontTools.pens.recordingPen import RecordingPen
+
+        gd = self._glyph_description
+        n = gd.get_point_count()
+        # describe(): the per-point coordinates, on-curve flags and contour ends, as parallel
+        # lists rather than Point objects (the hinted path is built once per glyph and size,
+        # so this is on the rendering hot path); calculate_path() below is the same walk
+        hinted_x = self._hinted_x
+        hinted_y = self._hinted_y
+        xs = (
+            [int(hinted_x[i]) for i in range(n)]
+            if hinted_x is not None
+            else [int(gd.get_x_coordinate(i)) for i in range(n)]
+        )
+        ys = (
+            [int(hinted_y[i]) for i in range(n)]
+            if hinted_y is not None
+            else [int(gd.get_y_coordinate(i)) for i in range(n)]
+        )
+        # a description may carry the per-point on-curve and contour-end flags precomputed
+        # (the hinter's does); otherwise derive them through the accessor surface
+        on = getattr(gd, "on_curve_flags", None)
+        ends = getattr(gd, "contour_end_flags", None)
+        if on is None or ends is None or len(on) != n or len(ends) != n:
+            on, ends = GlyphRenderer._point_flags(gd, n)
+
+        path = RecordingPen()
+        out = path.value
+        append = out.append
+        start = 0
+        for p in range(n):
+            if not ends[p]:
+                continue
+            stop = p + 1
+            contour = list(zip(xs[start:stop], ys[start:stop], on[start:stop], strict=True))
+            first = contour[0]
+            last = contour[-1]
+            if first[2]:
+                # close by repeating the start
+                contour.append(first)
+            elif last[2]:
+                # off-curve start, on-curve end: prepend the end
+                contour.insert(0, last)
+            else:
+                # both off-curve: synthesise an on-curve midpoint
+                pmid = (_mid_int(first[0], last[0]), _mid_int(first[1], last[1]), True)
+                contour.insert(0, pmid)
+                contour.append(pmid)
+            head = contour[0]
+            append(("moveTo", ((head[0], head[1]),)))
+            j = 1
+            clen = len(contour)
+            while j < clen:
+                px, py, pon = contour[j]
+                if pon:
+                    append(("lineTo", ((px, py),)))
+                elif j + 1 < clen:
+                    nx, ny, non = contour[j + 1]
+                    if non:
+                        append(("qCurveTo", ((px, py), (nx, ny))))
+                        j += 1
+                    else:
+                        append(
+                            ("qCurveTo", ((px, py), (_mid_int(px, nx), _mid_int(py, ny))))
+                        )
+                else:  # pragma: no cover - defensive; the contour always ends on-curve
+                    append(("lineTo", ((px, py),)))
+                j += 1
+            append(("closePath", ()))
+            start = p + 1
+        return path
 
     # ---- internals ---------------------------------------------------
+
+    @staticmethod
+    def _point_flags(gd: Any, n: int) -> tuple[list[bool], list[bool]]:
+        """The on-curve and end-of-contour flag of each point, as :meth:`describe` sets them."""
+        get_flags = gd.get_flags
+        on = [(get_flags(i) & _ON_CURVE) != 0 for i in range(n)]
+        ends = [False] * n
+        end_pt_index = 0
+        end_pt_of_contour_index = -1
+        get_end = gd.get_end_pt_of_contours
+        for i in range(n):
+            if end_pt_of_contour_index == -1:
+                end_pt_of_contour_index = get_end(end_pt_index)
+            if end_pt_of_contour_index == i:
+                ends[i] = True
+                end_pt_index += 1
+                end_pt_of_contour_index = -1
+        return on, ends
 
     @staticmethod
     def describe(
@@ -181,9 +270,7 @@ def _mid_int(a: int, b: int) -> int:
     instead of using Python's floor-division.
     """
     diff = b - a
-    # Truncate toward zero.
-    truncated = int(diff / 2) if diff != 0 else 0
-    return a + truncated
+    return a + (diff // 2 if diff >= 0 else -(-diff // 2))
 
 
 __all__ = ["GlyphRenderer"]

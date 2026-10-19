@@ -2,10 +2,8 @@
 ``fontbox/src/test/java/org/apache/fontbox/ttf/GlyphSubstitutionTableLiberationFontTest.java``.
 
 All five upstream cases run end-to-end against the bundled
-``LiberationSans-Regular.ttf`` fixture once wave 1375 added the
-:meth:`GlyphSubstitutionTable.get_gsub_data` projection — see the
-``GsubData`` deviation note in
-:class:`pypdfbox.fontbox.ttf.GlyphSubstitutionTable`.
+``LiberationSans-Regular.ttf`` fixture; ``get_gsub_data`` returns the
+upstream ``MapBackedGsubData`` built by ``GlyphSubstitutionDataExtractor``.
 """
 
 from pathlib import Path
@@ -93,5 +91,5 @@ def test_check_gsub_data_loading_for_all_supported_scripts(
     gsub_data = gsub.get_gsub_data(script_tag)
     assert gsub_data is not None
     assert gsub_data is not GsubData.NO_DATA_FOUND
-    assert gsub_data.get_language() == Language.UNSPECIFIED.name
+    assert gsub_data.get_language() is Language.UNSPECIFIED
     assert gsub_data.get_active_script_name() == script_tag

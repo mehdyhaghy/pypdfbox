@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import TYPE_CHECKING, Any
 
 from .table.common.coverage_table_format1 import CoverageTableFormat1
@@ -11,6 +12,9 @@ if TYPE_CHECKING:
     from .ttf_data_stream import TTFDataStream
 
 _LOG = logging.getLogger(__name__)
+
+# Upstream ``WORDPATTERN``: four ASCII word characters (Java's ``\w``).
+_WORD_PATTERN = re.compile(r"[a-zA-Z_0-9]{4}")
 
 
 class GlyphSubstitutionTable(TTFTable):
@@ -25,24 +29,18 @@ class GlyphSubstitutionTable(TTFTable):
     that fontTools already covers, including type-1/2/3/4/7 lookups and
     coverage formats 1 and 2.
 
-    The two callers pypdfbox actually exercises today are
-    :meth:`get_substitution` (used by PDType0Font during text encoding)
-    and :meth:`get_supported_script_tags` (used by tooling that reports
-    OpenType capabilities). Everything else is accessor-shaped, so the
-    upstream surface stays reportable without porting the
-    ``GsubData`` / ``ScriptFeature`` / ``LookupSubTable`` object graph.
+    :meth:`get_gsub_data` converts the fontTools structures into the
+    upstream ``ScriptTable`` / ``FeatureRecord`` / ``LookupTable`` graph
+    and runs the ported :class:`GlyphSubstitutionDataExtractor` over it,
+    so it returns the same :class:`MapBackedGsubData` (language, active
+    script, feature -> glyph-run substitution maps) as upstream.
 
-    Deviation from upstream — see ``CHANGES.md``:
+    Notes:
 
-    * ``GsubData`` projection is a feature-tag-name-only view backed by
-      the bundled ``org.apache.fontbox.ttf.model.GsubData`` port
-      (``pypdfbox/fontbox/ttf/gsub/gsub_data.py``). ``get_gsub_data()``
-      and ``get_gsub_data(scriptTag)`` both return a populated
-      :class:`GsubData` whose ``feature_list`` exposes every script's
-      feature tags; the per-feature substitution dictionaries are kept
-      empty (callers that need the real run→substitute pairs should
-      walk the lookups via :meth:`get_substitution` /
-      :meth:`apply_feature`, which is the canonical upstream path too).
+    * The data maps carry no FeatureVariations and fontTools folds single
+      substitution formats 1 and 2 into one mapping (same extracted
+      pairs). Upstream's byte-offset plausibility checks have no
+      fontTools equivalent; the tag-order checks are kept.
     * Lookup application supports lookup type 1 (single substitution)
       only — that matches upstream's ``applyFeature`` which also gates
       on ``lookupType == 1`` and warns/skips otherwise. Higher-order
@@ -100,6 +98,12 @@ class GlyphSubstitutionTable(TTFTable):
         # Inherit). Mirrors upstream ``lastUsedSupportedScript``.
         self._last_used_supported_script: str | None = None
 
+        # Upstream ``gsubData`` field plus the ScriptList / FeatureList /
+        # LookupList object graph it is extracted from; built lazily from
+        # the fontTools structures (see :meth:`_get_upstream_model`).
+        self._gsub_data: Any | None = None
+        self._upstream_model: tuple[dict[str, Any], list[Any], list[Any]] | None = None
+
     # ------------------------------------------------------------------
     # Population path
     # ------------------------------------------------------------------
@@ -142,6 +146,8 @@ class GlyphSubstitutionTable(TTFTable):
                     seen_features.setdefault(tag, None)
         self._script_tags = list(seen_scripts.keys())
         self._feature_tags = list(seen_features.keys())
+        self._gsub_data = None
+        self._upstream_model = None
         self.initialized = True
 
     def read(self, ttf: TrueTypeFont, data: TTFDataStream) -> None:
@@ -579,91 +585,306 @@ class GlyphSubstitutionTable(TTFTable):
     def get_gsub_data(
         self, script_tag: str | None = None
     ) -> Any | None:
-        """Project a :class:`GsubData` view for ``script_tag``.
+        """Return the :class:`MapBackedGsubData` for this table.
 
         Mirrors upstream's ``getGsubData()`` / ``getGsubData(String)``
-        (GlyphSubstitutionTable.java). Behaviour:
+        (GlyphSubstitutionTable.java) backed by the ported
+        :class:`GlyphSubstitutionDataExtractor`:
 
-        * ``script_tag is None`` — selects the most-preferred supported
-          script (via :meth:`select_script_tag` against the language
-          preference order matching upstream's ``Language`` enum) and
-          projects against it. Returns :attr:`GsubData.NO_DATA_FOUND`
-          when no GSUB script list is available.
-        * Otherwise — projects against ``script_tag`` exactly. Returns
-          ``None`` when the tag is not in
-          :meth:`get_supported_script_tags`.
+        * ``script_tag is None``: the data built when the table was read.
+          The language is the first :class:`Language` (declaration order
+          BENGALI, DEVANAGARI, GUJARATI, LATIN, DFLT) one of whose script
+          tags is in the ScriptList, and the active script is that tag.
+          Returns :attr:`GsubData.NO_DATA_FOUND` when no language matches
+          (e.g. a font carrying only ``hebr``). Built on first use and
+          cached, like upstream's ``gsubData`` field.
+        * Otherwise: freshly built data for ``script_tag`` with the
+          language left :attr:`Language.UNSPECIFIED`, or ``None`` when
+          the tag is not in the ScriptList (no caching, as upstream).
 
-        The projection is built lazily from the underlying fontTools
-        structures; the ``feature_list`` field of the returned
-        :class:`GsubData` carries ``{feature_tag: {(): ()}}`` placeholder
-        substitution maps so :meth:`GsubData.is_feature_supported` /
-        :meth:`GsubData.get_supported_features` light up. The substitution
-        maps themselves are still deferred to the
-        :meth:`get_substitution` / :meth:`apply_feature` accessors;
-        building a complete glyph-run substitution dictionary requires
-        running the same shaping pipeline upstream's lookup graph
-        encodes, which is left to the per-script :class:`GsubWorker`
-        implementations.
+        Each feature maps glyph runs to the substitute glyph id, extracted
+        from single (type 1), alternate (type 3) and ligature (type 4)
+        lookups, including those wrapped in extension (type 7) lookups.
+        Multiple (type 2) and contextual lookups contribute nothing, as
+        in upstream 3.0.x.
         """
+        from .gsub.glyph_substitution_data_extractor import (
+            GlyphSubstitutionDataExtractor,
+        )
         from .gsub.gsub_data import GsubData
-        from .model.language import Language
 
         if self._gsub_table is None:
             return GsubData.NO_DATA_FOUND if script_tag is None else None
 
+        script_list, feature_records, lookup_tables = self._get_upstream_model()
         if script_tag is None:
-            # Pick the preferred script the same way upstream does:
-            # walk the ``Language`` preference list and use the first
-            # supported script tag.
-            preferred = self._pick_default_script_tag()
-            if preferred is None:
-                return GsubData.NO_DATA_FOUND
-            return self._project_gsub_data(preferred, Language.UNSPECIFIED)
+            if self._gsub_data is None:
+                self._gsub_data = GlyphSubstitutionDataExtractor().get_gsub_data(
+                    script_list, feature_records, lookup_tables
+                )
+            return self._gsub_data
 
-        if script_tag not in self._script_tags:
+        script_table = script_list.get(script_tag)
+        if script_table is None:
             return None
-        return self._project_gsub_data(script_tag, Language.UNSPECIFIED)
-
-    def _pick_default_script_tag(self) -> str | None:
-        """Pick the default script tag using the upstream preference order."""
-        # Late import to keep cyclic deps tidy.
-        from .model.language import Language
-
-        for language in Language:
-            for tag in language.get_script_names():
-                if tag in self._script_tags:
-                    return tag
-        # Fall back to whatever the first script in the table is.
-        return self._script_tags[0] if self._script_tags else None
-
-    def _project_gsub_data(
-        self, script_tag: str, language: Any
-    ) -> Any:
-        """Build a :class:`GsubData` view for ``script_tag``.
-
-        Walks the ScriptList → LangSys → FeatureRecord chain and records
-        every supported feature tag with a placeholder substitution map.
-        """
-        from .gsub.gsub_data import GsubData
-
-        feature_list: dict[str, dict[tuple[int, ...], tuple[int, ...]]] = {}
-        if self._gsub_table is not None:
-            lang_sys_tables = self.get_lang_sys_tables(script_tag)
-            if lang_sys_tables:
-                feature_records = self.get_feature_records(lang_sys_tables)
-                for fr in feature_records:
-                    tag = str(getattr(fr, "FeatureTag", "")).strip()
-                    if tag:
-                        # Placeholder empty substitution map — callers
-                        # that need the real run→substitute pairs should
-                        # walk the lookups via :meth:`apply_feature`.
-                        feature_list.setdefault(tag, {})
-
-        return GsubData(
-            language=language.name if hasattr(language, "name") else str(language),
-            active_script_name=script_tag,
-            feature_list=feature_list,
+        return GlyphSubstitutionDataExtractor().get_gsub_data_for_script(
+            script_tag, script_table, feature_records, lookup_tables
         )
+
+    # ------------------------------------------------------------------
+    # Upstream object model built from the fontTools structures
+    # ------------------------------------------------------------------
+
+    def _get_upstream_model(self) -> tuple[dict[str, Any], list[Any], list[Any]]:
+        """Return ``(script_list, feature_records, lookup_tables)``.
+
+        The same ``ScriptTable`` / ``FeatureRecord`` / ``LookupTable``
+        graph upstream's ``read`` decodes from the byte stream, converted
+        from the fontTools tables and cached. Upstream's sanity checks
+        that survive fontTools decoding are kept: a duplicate script tag
+        keeps the first record (PDFBOX-6146), unsorted LangSys records
+        empty that script (PDFBOX-4489), an unsorted FeatureRecord array
+        with a non-word tag empties the feature list, and only lookup
+        types 1-4 and 7 (extension, unwrapped) carry subtables.
+        """
+        if self._upstream_model is None:
+            self._upstream_model = (
+                self._convert_script_list(),
+                self._convert_feature_list(),
+                self._convert_lookup_list(),
+            )
+        return self._upstream_model
+
+    def _convert_script_list(self) -> dict[str, Any]:
+        from .gsub.lang_sys_table import LangSysTable
+        from .gsub.script_table import ScriptTable
+
+        def lang_sys(ls: Any) -> LangSysTable:
+            return LangSysTable(
+                lookup_order=0,
+                required_feature_index=int(getattr(ls, "ReqFeatureIndex", 0xFFFF)),
+                feature_indices=tuple(
+                    int(i) for i in (getattr(ls, "FeatureIndex", None) or [])
+                ),
+            )
+
+        result: dict[str, ScriptTable] = {}
+        sl = getattr(self._gsub_table, "ScriptList", None)
+        for sr in getattr(sl, "ScriptRecord", None) or []:
+            tag = str(sr.ScriptTag)
+            if tag in result:
+                # PDFBOX-6146
+                continue
+            script = getattr(sr, "Script", None)
+            records = list(getattr(script, "LangSysRecord", None) or [])
+            lang_tags = [str(r.LangSysTag) for r in records]
+            unsorted = next(
+                (i for i in range(1, len(lang_tags)) if lang_tags[i] < lang_tags[i - 1]),
+                None,
+            )
+            if unsorted is not None:
+                # PDFBOX-4489: catch corrupt file
+                _LOG.error(
+                    "LangSysRecords not alphabetically sorted by LangSys tag: %s < %s",
+                    lang_tags[unsorted],
+                    lang_tags[unsorted - 1],
+                )
+                result[tag] = ScriptTable(None, {})
+                continue
+            default_ls = getattr(script, "DefaultLangSys", None)
+            lang_sys_tables: dict[str, LangSysTable] = {}
+            for lang_tag, record in zip(lang_tags, records, strict=True):
+                lang_sys_tables[lang_tag] = lang_sys(record.LangSys)
+            result[tag] = ScriptTable(
+                lang_sys(default_ls) if default_ls is not None else None,
+                lang_sys_tables,
+            )
+        return result
+
+    def _convert_feature_list(self) -> list[Any]:
+        from .gsub.feature_record import FeatureRecord
+        from .gsub.feature_table import FeatureTable
+
+        fl = getattr(self._gsub_table, "FeatureList", None)
+        records = list(getattr(fl, "FeatureRecord", None) or [])
+        tags = [str(fr.FeatureTag) for fr in records]
+        for i in range(1, len(tags)):
+            if tags[i] < tags[i - 1]:
+                # catch corrupt file; ArialUni.ttf has many unsorted word
+                # tags but isn't corrupt, so only trash characters count
+                if _WORD_PATTERN.fullmatch(tags[i]) and _WORD_PATTERN.fullmatch(
+                    tags[i - 1]
+                ):
+                    _LOG.debug(
+                        "FeatureRecord array not alphabetically sorted by "
+                        "FeatureTag: %s < %s",
+                        tags[i],
+                        tags[i - 1],
+                    )
+                else:
+                    _LOG.warning(
+                        "FeatureRecord array not alphabetically sorted by "
+                        "FeatureTag: %s < %s",
+                        tags[i],
+                        tags[i - 1],
+                    )
+                    return []
+        out: list[FeatureRecord] = []
+        for tag, fr in zip(tags, records, strict=True):
+            feature = getattr(fr, "Feature", None)
+            indices = tuple(
+                int(i) for i in (getattr(feature, "LookupListIndex", None) or [])
+            )
+            out.append(
+                FeatureRecord(
+                    feature_tag=tag,
+                    feature_table=FeatureTable(
+                        feature_params=0, lookup_list_indices=indices
+                    ),
+                )
+            )
+        return out
+
+    def _convert_lookup_list(self) -> list[Any]:
+        from .gsub.lookup_table import LookupTable
+
+        ll = getattr(self._gsub_table, "LookupList", None)
+        if ll is None:
+            _LOG.warning("lookupListOffset is 0, LookupListTable is considered empty")
+            return []
+        out: list[LookupTable] = []
+        for lookup in getattr(ll, "Lookup", None) or []:
+            lookup_type = int(getattr(lookup, "LookupType", 0))
+            lookup_flag = int(getattr(lookup, "LookupFlag", 0))
+            mark_filtering_set = (
+                int(getattr(lookup, "MarkFilteringSet", 0) or 0)
+                if lookup_flag & 0x0010
+                else 0
+            )
+            sub_tables: list[Any] = []
+            is_extension = lookup_type == 7
+            for st in getattr(lookup, "SubTable", None) or []:
+                if not is_extension and lookup_type in (1, 2, 3, 4):
+                    converted = self._convert_lookup_subtable(st, lookup_type)
+                elif is_extension:
+                    # Extension Substitution: unwrap, and keep the
+                    # wrapped type as the lookup type (upstream).
+                    inner = getattr(st, "ExtSubTable", None)
+                    ext_type = int(getattr(st, "ExtensionLookupType", 0) or 0)
+                    if inner is None:
+                        continue
+                    if int(getattr(st, "Format", 1) or 1) != 1:
+                        _LOG.error(
+                            "The expected SubstFormat for ExtensionSubstFormat1 "
+                            "subtable is %s but should be 1",
+                            getattr(st, "Format", None),
+                        )
+                        continue
+                    if lookup_type != 7 and lookup_type != ext_type:
+                        _LOG.error(
+                            "extensionLookupType changed from %d to %d",
+                            lookup_type,
+                            ext_type,
+                        )
+                        continue
+                    lookup_type = ext_type
+                    converted = self._convert_lookup_subtable(inner, ext_type)
+                else:
+                    _LOG.debug(
+                        "Type %d GSUB lookup table is not supported and will be ignored",
+                        lookup_type,
+                    )
+                    break
+                if converted is not None:
+                    sub_tables.append(converted)
+            out.append(
+                LookupTable(
+                    lookup_type=lookup_type,
+                    lookup_flag=lookup_flag,
+                    mark_filtering_set=mark_filtering_set,
+                    sub_tables=tuple(sub_tables),
+                )
+            )
+        return out
+
+    def _gid(self, glyph_name: str) -> int:
+        gid = self._glyph_name_to_gid.get(glyph_name)
+        if gid is not None:
+            return gid
+        return int(self._tt_font.getGlyphID(glyph_name))
+
+    def _convert_lookup_subtable(self, st: Any, lookup_type: int) -> Any | None:
+        """Convert one fontTools subtable of ``lookup_type`` (1-4)."""
+        from .gsub.lookup_subtable import (
+            AlternateSetTable,
+            LigatureSetTable,
+            LigatureTable,
+            LookupTypeAlternateSubstitutionFormat1,
+            LookupTypeLigatureSubstitutionSubstFormat1,
+            LookupTypeMultipleSubstitutionFormat1,
+            LookupTypeSingleSubstFormat2,
+            SequenceTable,
+        )
+
+        gid = self._gid
+        if lookup_type == 1:
+            mapping = getattr(st, "mapping", None)
+            if mapping is None:
+                return None
+            # fontTools folds formats 1 and 2 into one mapping; the
+            # explicit-substitute form yields the same extracted pairs.
+            return LookupTypeSingleSubstFormat2(
+                substitute_glyph_ids=tuple(gid(v) for v in mapping.values()),
+                coverage_table=tuple(gid(k) for k in mapping),
+            )
+        if lookup_type == 2:
+            mapping = getattr(st, "mapping", None)
+            if mapping is None:
+                return None
+            return LookupTypeMultipleSubstitutionFormat1(
+                coverage_table=tuple(gid(k) for k in mapping),
+                sequence_tables=tuple(
+                    SequenceTable(
+                        glyph_count=len(v), substitute_glyph_ids=tuple(gid(g) for g in v)
+                    )
+                    for v in mapping.values()
+                ),
+            )
+        if lookup_type == 3:
+            alternates = getattr(st, "alternates", None)
+            if alternates is None:
+                return None
+            return LookupTypeAlternateSubstitutionFormat1(
+                coverage_table=tuple(gid(k) for k in alternates),
+                alternate_set_tables=tuple(
+                    AlternateSetTable(
+                        glyph_count=len(v), alternate_glyph_ids=tuple(gid(g) for g in v)
+                    )
+                    for v in alternates.values()
+                ),
+            )
+        if lookup_type == 4:
+            ligatures = getattr(st, "ligatures", None)
+            if ligatures is None:
+                return None
+            sets = []
+            for ligs in ligatures.values():
+                tables = []
+                for lig in ligs:
+                    components = tuple(gid(c) for c in (lig.Component or []))
+                    tables.append(
+                        LigatureTable(
+                            ligature_glyph=gid(lig.LigGlyph),
+                            component_glyph_ids=components,
+                            component_count=len(components) + 1,
+                        )
+                    )
+                sets.append(LigatureSetTable(ligature_tables=tuple(tables)))
+            return LookupTypeLigatureSubstitutionSubstFormat1(
+                coverage_table=tuple(gid(k) for k in ligatures),
+                ligature_set_tables=tuple(sets),
+            )
+        return None
 
     # ------------------------------------------------------------------
     # Helpers

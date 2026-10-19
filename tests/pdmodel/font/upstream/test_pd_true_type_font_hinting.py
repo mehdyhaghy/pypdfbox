@@ -9,11 +9,6 @@ unhinted one, is in the same 1000/em space, and respects the gasp gate.
 from pathlib import Path
 from typing import Any
 
-import pytest
-
-# The GlyphHinter port (wave 1611) is required to produce hinted paths.
-pytest.importorskip("pypdfbox.fontbox.ttf.glyph_hinter")
-
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel import PDDocument
 from pypdfbox.pdmodel.font import PDTrueTypeFont

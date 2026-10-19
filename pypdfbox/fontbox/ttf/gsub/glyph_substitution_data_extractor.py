@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from ..model.language import Language
 from ..model.map_backed_gsub_data import MapBackedGsubData
 from .feature_record import FeatureRecord
+from .gsub_data import GsubData
 from .lang_sys_table import LangSysTable
 from .lookup_subtable import (
     AlternateSetTable,
@@ -51,23 +52,18 @@ class GlyphSubstitutionDataExtractor:
         script_list: Mapping[str, ScriptTable],
         feature_list_table_records: list[FeatureRecord] | tuple[FeatureRecord, ...],
         lookup_list_tables: list[LookupTable] | tuple[LookupTable, ...],
-    ) -> MapBackedGsubData | None:
+    ) -> MapBackedGsubData | GsubData:
         """Build :class:`MapBackedGsubData` for the first matching language.
 
         Mirrors upstream ``getGsubData(Map, FeatureListTable,
-        LookupListTable)`` — the helper iterates over the
-        :class:`Language` enum in declaration order and picks the
-        first :class:`Language` whose preferred script tag is present
-        in ``script_list``. Returns ``None`` when no supported
-        language has any of its script tags present (upstream returns
-        ``GsubData.NO_DATA_FOUND``; the Python port keeps the
-        existing ``gsub_data.GsubData.NO_DATA_FOUND`` sentinel
-        separate so this method returns ``None`` for the new shape
-        and callers can adapt).
+        LookupListTable)``: iterates the :class:`Language` enum in
+        declaration order and picks the first language one of whose
+        script tags is present in ``script_list``. Returns
+        :attr:`GsubData.NO_DATA_FOUND` when no language matches.
         """
         script_table_details = self.get_supported_language(script_list)
         if script_table_details is None:
-            return None
+            return GsubData.NO_DATA_FOUND
         return self.build_map_backed_gsub_data(
             feature_list_table_records,
             lookup_list_tables,
@@ -386,19 +382,17 @@ class GlyphSubstitutionDataExtractor:
         glyph_substitution_map: dict[tuple[int, ...], int],
         ligature_substitution_table: LookupTypeLigatureSubstitutionSubstFormat1,
     ) -> None:
-        for ligature_set_table in ligature_substitution_table.get_ligature_set_tables():
+        coverage_object = ligature_substitution_table.get_coverage_object()
+        for i, ligature_set_table in enumerate(
+            ligature_substitution_table.get_ligature_set_tables()
+        ):
+            # Upstream's reader stores the coverage glyph of the set as
+            # component 0 of every LigatureTable; the pypdfbox model keeps
+            # only the trailing components, so put the first one back here.
+            coverage_glyph_id = coverage_object.get_glyph_id(i)
             for ligature_table in ligature_set_table.get_ligature_tables():
-                # ``LigatureTable`` only stores the *trailing* component
-                # ids; the implicit first component is the coverage
-                # glyph for this set. Upstream's ligature substitution
-                # walks the coverage in lockstep with the set list, so
-                # the implicit first component is already baked into
-                # the runtime check. The data extractor preserves the
-                # upstream behavior of recording only the trailing
-                # components in the substitution map — callers join the
-                # coverage glyph on the read side.
                 self.extract_data_from_ligature_table(
-                    glyph_substitution_map, ligature_table
+                    glyph_substitution_map, ligature_table, coverage_glyph_id
                 )
 
     def extract_data_from_alternate_substitution_subst_format1_table(
@@ -437,8 +431,13 @@ class GlyphSubstitutionDataExtractor:
         self,
         glyph_substitution_map: dict[tuple[int, ...], int],
         ligature_table,  # LigatureTable (avoid extra import)
+        coverage_glyph_id: int,
     ) -> None:
-        component_glyph_ids = list(ligature_table.get_component_glyph_ids())
+        trailing = list(ligature_table.get_component_glyph_ids())
+        if trailing or ligature_table.get_component_count() > 0:
+            component_glyph_ids = [coverage_glyph_id, *trailing]
+        else:
+            component_glyph_ids = []
         LOG.debug("glyphsToBeSubstituted: %s", component_glyph_ids)
         self.put_new_substitution_entry(
             glyph_substitution_map,

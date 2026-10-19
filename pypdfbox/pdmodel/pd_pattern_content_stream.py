@@ -62,6 +62,8 @@ class PDPatternContentStream(PDPageContentStream):
         self._font_stack = deque()
         self._font_size_stack = deque()
         self._glyph_layout_processor = None
+        self._gsub_workers = {}
+        self._gsub_worker_factory = None
         self._target_stream = cos
         existing_res = pattern.get_resources()
         if existing_res is None:

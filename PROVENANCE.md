@@ -4810,3 +4810,9 @@ License: SIL Open Font License 1.1 (permissive; on the project allow-list)
 | `tests/fixtures/fontbox/ttf/hinting/LiberationSans-Regular-13.txt` | 3.0.9-SNAPSHOT | `fontbox/src/test/resources/ttf/hinting/LiberationSans-Regular-13.txt` (FreeType golden hinted points) |
 | `tests/fixtures/fontbox/ttf/hinting/LiberationSans-Regular-16.txt` | 3.0.9-SNAPSHOT | `fontbox/src/test/resources/ttf/hinting/LiberationSans-Regular-16.txt` (FreeType golden hinted points) |
 | `tests/fixtures/fontbox/ttf/hinting/LiberationSans-Regular-24.txt` | 3.0.9-SNAPSHOT | `fontbox/src/test/resources/ttf/hinting/LiberationSans-Regular-24.txt` (FreeType golden hinted points) |
+| `pypdfbox/fontbox/ttf/glyph_hinter.py` | 3.0.9-SNAPSHOT | `fontbox/src/main/java/org/apache/fontbox/ttf/GlyphHinter.java` (PDFBOX-3293) |
+| `tests/fontbox/ttf/upstream/test_golden_hinting.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/GoldenHintingTest.java` |
+| `tests/fontbox/ttf/upstream/test_hinting_integration.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/HintingIntegrationTest.java` (`testFontWithoutBytecodeFallsBack` uses LiberationSans with fpgm/prep removed instead of the SIL OFL Lohit-Bengali) |
+| `tests/fontbox/ttf/upstream/test_hinting_smoke.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/HintingSmokeTest.java` (9 of 11 fonts skipped: SIL OFL or Maven-downloaded) |
+| `tests/fontbox/ttf/upstream/test_hinting_concurrency.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/HintingConcurrencyTest.java` |
+| `tests/fontbox/ttf/upstream/test_system_font_hinting.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/SystemFontHintingTest.java` (skips without Arial) |

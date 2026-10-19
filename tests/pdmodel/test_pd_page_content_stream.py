@@ -175,11 +175,13 @@ def test_show_text_non_ascii_uses_hex_form() -> None:
     with PDPageContentStream(doc, page) as cs:
         cs.begin_text()
         cs.set_font(font, 10)
-        cs.show_text("中")  # CJK, not Latin-1
+        cs.show_text("中")  # CJK, not in Helvetica's StandardEncoding
         cs.end_text()
     body = _stream_bytes(page)
-    # UTF-16BE of U+4E2D = 4E2D
-    assert b"<4E2D> Tj" in body
+    # show_text runs font.encode: Helvetica cannot encode U+4E2D, so
+    # pypdfbox's documented simple-font fallback substitutes "?"
+    # (upstream raises IllegalArgumentException).
+    assert b"(?) Tj" in body
 
 
 def test_text_state_setters() -> None:
@@ -677,7 +679,9 @@ def test_show_text_accepts_bytes_ascii_safe() -> None:
     assert _stream_bytes(page) == b"BT\n/F1 12 Tf\n(hi) Tj\nET\n"
 
 
-def test_show_text_bytes_with_high_bytes_uses_hex_form() -> None:
+def test_show_text_bytes_with_control_bytes_uses_literal_form() -> None:
+    # COSWriter.writeString keeps 7-bit data without CR/LF literal, even
+    # when it carries NUL bytes (the usual shape of 2-byte Identity-H codes).
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
@@ -685,7 +689,18 @@ def test_show_text_bytes_with_high_bytes_uses_hex_form() -> None:
         cs.set_font(_make_font(), 12)
         cs.show_text(b"\x00H\x00i")
         cs.end_text()
-    assert _stream_bytes(page) == b"BT\n/F1 12 Tf\n<00480069> Tj\nET\n"
+    assert _stream_bytes(page) == b"BT\n/F1 12 Tf\n(\x00H\x00i) Tj\nET\n"
+
+
+def test_show_text_bytes_with_high_bytes_uses_hex_form() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
+        cs.set_font(_make_font(), 12)
+        cs.show_text(b"\x80H\x0ai")
+        cs.end_text()
+    assert _stream_bytes(page) == b"BT\n/F1 12 Tf\n<80480A69> Tj\nET\n"
 
 
 def test_show_text_bytes_escapes_special_characters() -> None:
@@ -851,7 +866,7 @@ def test_move_to_next_line_show_text_escapes_specials() -> None:
     assert b"(a\\(b\\)c\\\\d) '\n" in _stream_bytes(page)
 
 
-def test_move_to_next_line_show_text_non_ascii_uses_hex() -> None:
+def test_move_to_next_line_show_text_unencodable_uses_font_fallback() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
@@ -859,7 +874,8 @@ def test_move_to_next_line_show_text_non_ascii_uses_hex() -> None:
         cs.set_font(_make_font(), 12)
         cs.move_to_next_line_show_text("中")
         cs.end_text()
-    assert b"<4E2D> '\n" in _stream_bytes(page)
+    # Encoded by the font: Helvetica substitutes "?" for U+4E2D.
+    assert b"(?) '\n" in _stream_bytes(page)
 
 
 def test_set_spacings_show_text_emits_double_quote() -> None:
@@ -947,7 +963,7 @@ def test_show_text_with_positioning_rejects_bool_item() -> None:
         cs.show_text_with_positioning(["ok", True])  # type: ignore[list-item]
 
 
-def test_show_text_with_positioning_non_ascii_uses_hex_form() -> None:
+def test_show_text_with_positioning_unencodable_uses_font_fallback() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
@@ -955,7 +971,8 @@ def test_show_text_with_positioning_non_ascii_uses_hex_form() -> None:
         cs.set_font(_make_font(), 12)
         cs.show_text_with_positioning(["中", -100, "国"])
         cs.end_text()
-    assert b"[<4E2D>-100 <56FD>] TJ\n" in _stream_bytes(page)
+    # Each string is encoded by the font (Helvetica substitutes "?").
+    assert b"[(?)-100 (?)] TJ\n" in _stream_bytes(page)
 
 
 def test_show_text_with_positioning_empty_list() -> None:

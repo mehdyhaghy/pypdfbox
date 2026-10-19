@@ -145,15 +145,16 @@ def test_put_routes_cid_font_to_the_single_font_slot():
 # ---------- descendant fonts are not shared ----------
 
 
-def test_descendant_font_is_rebuilt_per_call():
+def test_descendant_font_is_built_once_per_parent():
+    """Upstream keeps the descendant in a final field built by the constructor, so one parent
+    hands out one wrapper (its parsed program and widths are not rebuilt per glyph)."""
     type0_dict, _, _, _ = _build_type0_graph()
     font = PDType0Font(type0_dict)
     first = font.get_descendant_font()
     second = font.get_descendant_font()
     assert isinstance(first, PDCIDFontType2)
-    assert isinstance(second, PDCIDFontType2)
-    assert first is not second
-    assert first.get_cos_object() is second.get_cos_object()
+    assert first is second
+    assert first.get_parent() is font
 
 
 def test_descendant_not_shared_between_two_type0_parents():

@@ -15,6 +15,7 @@ from pypdfbox.fontbox.ttf.gsub import (
     LookupTypeSingleSubstFormat2,
     ScriptTable,
 )
+from pypdfbox.fontbox.ttf.gsub.gsub_data import GsubData
 from pypdfbox.fontbox.ttf.model import Language, MapBackedGsubData
 
 
@@ -111,9 +112,10 @@ def test_ligature_substitution_data() -> None:
         [_ligature_lookup()],
     )
     feature = data.get_feature("liga")
-    # Trailing components only — upstream's data extractor doesn't
-    # include the first coverage glyph in the key.
-    assert feature.get_replacement_for_glyphs([31, 32]) == 500
+    # Upstream's reader stores the set's coverage glyph as component 0,
+    # so the key is the full glyph run (coverage glyph + trailing ones).
+    assert feature.get_replacement_for_glyphs([30, 31, 32]) == 500
+    assert not feature.can_replace_glyphs([31, 32])
 
 
 def test_alternate_substitution_first_distinct_wins() -> None:
@@ -132,7 +134,7 @@ def test_alternate_substitution_first_distinct_wins() -> None:
     assert feature.get_replacement_for_glyphs([40]) == 41
 
 
-def test_returns_none_when_no_language_matches() -> None:
+def test_returns_no_data_found_when_no_language_matches() -> None:
     extractor = GlyphSubstitutionDataExtractor()
     # Script tag the Language enum doesn't recognise.
     data = extractor.get_gsub_data(
@@ -140,7 +142,7 @@ def test_returns_none_when_no_language_matches() -> None:
         [],
         [],
     )
-    assert data is None
+    assert data is GsubData.NO_DATA_FOUND
 
 
 def test_get_gsub_data_for_script_uses_unspecified_language() -> None:

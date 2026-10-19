@@ -141,11 +141,10 @@ def test_ligature_empty_components_candidate_is_skipped() -> None:
     assert sub.do_substitution_glyphs([70, 71]) == [600]
 
 
-def test_ligature_extractor_records_trailing_components_only() -> None:
+def test_ligature_extractor_records_full_component_run() -> None:
     """The data extractor records each LigatureTable as a
-    ``trailing_components -> ligature_glyph`` entry. The implicit first
-    component (= the Coverage glyph) is intentionally *not* prepended —
-    the worker reattaches it at apply time."""
+    ``(coverage_glyph, *trailing_components) -> ligature_glyph`` entry,
+    as upstream (whose reader stores the coverage glyph as component 0)."""
     extractor = GlyphSubstitutionDataExtractor()
     sub = LookupTypeLigatureSubstitutionSubstFormat1(
         coverage_table=(70,),
@@ -164,7 +163,7 @@ def test_ligature_extractor_records_trailing_components_only() -> None:
     extractor.extract_data_from_ligature_substitution_subst_format1_table(
         glyph_map, sub
     )
-    assert glyph_map == {(71,): 500, (71, 72): 600}
+    assert glyph_map == {(70, 71): 500, (70, 71, 72): 600}
 
 
 def test_ligature_extractor_handles_multiple_ligature_sets() -> None:
@@ -190,7 +189,7 @@ def test_ligature_extractor_handles_multiple_ligature_sets() -> None:
     extractor.extract_data_from_ligature_substitution_subst_format1_table(
         glyph_map, sub
     )
-    assert glyph_map == {(71,): 500, (81,): 600}
+    assert glyph_map == {(70, 71): 500, (80, 81): 600}
 
 
 def test_ligature_overlapping_candidates_first_match_wins() -> None:

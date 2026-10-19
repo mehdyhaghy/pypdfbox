@@ -18,6 +18,7 @@ from typing import Any
 
 from pypdfbox.fontbox.ttf.glyph_substitution_table import GlyphSubstitutionTable
 from pypdfbox.fontbox.ttf.gsub.gsub_data import GsubData
+from pypdfbox.fontbox.ttf.model.language import Language
 from pypdfbox.fontbox.ttf.open_type_script import OpenTypeScript
 
 # ----------------------------------------------------------------------
@@ -222,14 +223,15 @@ def _bind_stub(t: GlyphSubstitutionTable, gsub: _StubGsubTable) -> None:
 
 def test_get_gsub_data_returns_populated_data_when_script_supported() -> None:
     """``get_gsub_data(scriptTag)`` must return a populated GsubData
-    with the script's feature tags exposed in ``feature_list``."""
+    with the script's feature tags and an UNSPECIFIED language."""
     t = GlyphSubstitutionTable()
     _bind_stub(t, _StubGsubTable("latn", ["liga", "kern", "sups"]))
     data = t.get_gsub_data("latn")
     assert data is not None
-    assert isinstance(data, GsubData)
-    assert data.active_script_name == "latn"
-    assert set(data.feature_list.keys()) == {"liga", "kern", "sups"}
+    assert data is not GsubData.NO_DATA_FOUND
+    assert data.get_language() is Language.UNSPECIFIED
+    assert data.get_active_script_name() == "latn"
+    assert data.get_supported_features() == {"liga", "kern", "sups"}
 
 
 def test_get_gsub_data_unknown_script_returns_none() -> None:
@@ -249,8 +251,9 @@ def test_get_gsub_data_no_args_picks_default_script() -> None:
     _bind_stub(t, _StubGsubTable("latn", ["liga"]))
     data = t.get_gsub_data()
     assert data is not None
-    assert data.active_script_name == "latn"
-    assert "liga" in data.feature_list
+    assert data.get_language() is Language.LATIN
+    assert data.get_active_script_name() == "latn"
+    assert data.is_feature_supported("liga")
 
 
 def test_get_gsub_data_no_table_returns_no_data_found_sentinel() -> None:

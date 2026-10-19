@@ -335,9 +335,8 @@ def test_extractor_unwraps_extension_with_inner_type4_ligature() -> None:
     extractor = GlyphSubstitutionDataExtractor()
     glyph_substitution_map: dict[tuple[int, ...], int] = {}
     extractor.extract_data(glyph_substitution_map, _FauxLookup())
-    # Ligature: trailing components (41,) -> glyph 400. The first
-    # component (40) is implicit and not stored in the map key.
-    assert glyph_substitution_map == {(41,): 400}
+    # Ligature: coverage glyph 40 + trailing component 41 -> glyph 400.
+    assert glyph_substitution_map == {(40, 41): 400}
 
 
 def test_extractor_handles_extension_with_no_inner_gracefully() -> None:

@@ -92,7 +92,7 @@ def test_wave438_text_overloads_escape_hex_and_positioning() -> None:
         b"(a\\(b\\)\\\\c) Tj\n"
         b"(next) '\n"
         b"1 2 <FF> \"\n"
-        b"[(A)-120 <0042>] TJ\n"
+        b"[(A)-120 (\x00B)] TJ\n"
         b"ET\n"
     )
     doc.close()

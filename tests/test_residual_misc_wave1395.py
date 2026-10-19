@@ -9,10 +9,8 @@ assertion targeting a specific missing line per the wave-1395 audit:
 * ``fontbox/ttf/ttf_subsetter.py`` line 700 — ``_build_subset_font``
   honours the ``no_subset_tables`` policy (path through
   ``Options.no_subset_tables`` assignment).
-* ``fontbox/ttf/glyph_substitution_table.py`` lines 622, 639 —
-  ``get_gsub_data(None)`` when ``_gsub_table is not None`` but no
-  preferred script is found; and the ``_pick_default_script_tag``
-  fall-back when no Language preference matches.
+* ``fontbox/ttf/glyph_substitution_table.py`` — ``get_gsub_data(None)``
+  returns ``NO_DATA_FOUND`` when no ``Language`` matches a script.
 * ``fontbox/ttf/gsub/gsub_worker_for_smcp.py`` line 57 — the
   ``script_feature is None`` continue branch (feature supported but
   ``get_feature`` returns ``None``).
@@ -99,44 +97,57 @@ def test_ttf_subsetter_build_with_no_subset_tables_policy_takes_branch() -> None
         font.close()
 
 
-# ---------- GlyphSubstitutionTable picks no default script (line 622) ----------
+# ---------- GlyphSubstitutionTable: no supported language -> NO_DATA_FOUND ----------
+
+
+def _bare_gsub_table(script_tags: list[str]) -> object:
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        ScriptList=SimpleNamespace(
+            ScriptRecord=[
+                SimpleNamespace(
+                    ScriptTag=tag,
+                    Script=SimpleNamespace(LangSysRecord=[], DefaultLangSys=None),
+                )
+                for tag in script_tags
+            ]
+        ),
+        FeatureList=SimpleNamespace(FeatureRecord=[]),
+        LookupList=SimpleNamespace(Lookup=[]),
+    )
 
 
 def test_glyph_substitution_table_default_script_returns_no_data() -> None:
-    """Line 622 — when ``script_tag is None`` and ``_pick_default_script_tag``
-    returns ``None`` (empty script-tag list), return ``GsubData.NO_DATA_FOUND``."""
+    """A table without scripts has no supported language, so the default
+    ``get_gsub_data()`` is ``GsubData.NO_DATA_FOUND`` (upstream)."""
     from pypdfbox.fontbox.ttf.glyph_substitution_table import (
         GlyphSubstitutionTable,
     )
     from pypdfbox.fontbox.ttf.gsub.gsub_data import GsubData
 
-    # Build an empty table — gsub_table populated (so it doesn't take the
-    # outer None branch) but with no scripts.
-    table = GlyphSubstitutionTable.__new__(GlyphSubstitutionTable)
-    table._gsub_table = object()  # sentinel — anything truthy works
-    table._script_tags = []
-    # Call: script_tag=None -> _pick_default_script_tag walks Language
-    # preference list, none match because _script_tags is empty; the
-    # final ``return self._script_tags[0] if self._script_tags else None``
-    # arm returns None; we then hit line 622 (NO_DATA_FOUND).
+    table = GlyphSubstitutionTable()
+    table._gsub_table = _bare_gsub_table([])
     assert table.get_gsub_data(None) is GsubData.NO_DATA_FOUND
 
 
-def test_glyph_substitution_table_default_script_falls_back_to_first(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Line 639 — ``_pick_default_script_tag`` fall-back to the first
-    script when no Language preference matches. Build a fake table whose
-    script_tags list contains an exotic tag (no Language matches)."""
+def test_glyph_substitution_table_default_script_has_no_first_script_fallback() -> None:
+    """Upstream ``getSupportedLanguage`` never falls back to the first
+    script: a font whose scripts match no ``Language`` yields
+    ``NO_DATA_FOUND``, while ``get_gsub_data(tag)`` still works."""
     from pypdfbox.fontbox.ttf.glyph_substitution_table import (
         GlyphSubstitutionTable,
     )
+    from pypdfbox.fontbox.ttf.gsub.gsub_data import GsubData
+    from pypdfbox.fontbox.ttf.model.language import Language
 
-    table = GlyphSubstitutionTable.__new__(GlyphSubstitutionTable)
-    table._gsub_table = object()
-    table._script_tags = ["zzzz"]  # not in any Language.script_names
-    picked = table._pick_default_script_tag()
-    assert picked == "zzzz"
+    table = GlyphSubstitutionTable()
+    table._gsub_table = _bare_gsub_table(["zzzz"])
+    table._script_tags = ["zzzz"]
+    assert table.get_gsub_data() is GsubData.NO_DATA_FOUND
+    data = table.get_gsub_data("zzzz")
+    assert data.get_language() is Language.UNSPECIFIED
+    assert data.get_active_script_name() == "zzzz"
 
 
 # ---------- gsub workers — feature supported but get_feature is None ----------

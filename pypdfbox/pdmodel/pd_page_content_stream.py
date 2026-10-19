@@ -118,11 +118,9 @@ class PDPageContentStream(ContentStreamForGlyphLayoutInterface):
         # mirrors that guard (see ``_require_inside_text_block`` /
         # ``_require_outside_text_block`` and ``_show_text_internal``).
         self._in_text_mode: bool = False
-        # Whether ``set_font`` has been called. Upstream tracks a
-        # ``fontStack`` and ``showTextInternal`` raises
-        # ``IllegalStateException("Must call setFont() before showText()")``
-        # when it is empty. The lite surface has no glyph encoder so it does
-        # not need the full font object, only the "a font was selected" bit.
+        # Whether ``set_font`` has been called at least once. The show-text
+        # guards check ``_font_stack`` (upstream ``fontStack.isEmpty()``);
+        # this flag is kept for callers that introspect it.
         self._font_set: bool = False
         # PDFBOX-4951 added ``fontStack`` / ``fontSizeStack`` consumers to
         # ``showText``: with a glyph-layout processor registered the active
@@ -136,6 +134,10 @@ class PDPageContentStream(ContentStreamForGlyphLayoutInterface):
         # the core library ships no implementation, and the show-text path
         # is byte-for-byte unchanged while it stays unset.
         self._glyph_layout_processor: GlyphLayoutProcessorInterface | None = None
+        # Complex text layout: one GSUB worker per Type 0 font, built by
+        # ``set_font`` (upstream ``gsubWorkers`` / ``gsubWorkerFactory``).
+        self._gsub_workers: dict[Any, Any] = {}
+        self._gsub_worker_factory: Any = None
 
         # Resolve the destination COSStream + the resource dictionary
         # we'll attach fonts/XObjects/etc. to.
@@ -896,30 +898,49 @@ class PDPageContentStream(ContentStreamForGlyphLayoutInterface):
         """Emit ``/<key> <size> Tf``. Auto-registers ``font`` under the
         page's /Resources /Font dict (key ``F1``, ``F2``, ... — 1-based, per
         upstream ``PDResources.createKey``) if absent, reusing the existing
-        key when the same font COS object is already registered."""
+        key when the same font COS object is already registered.
+
+        Mirrors upstream ``setFont`` (PDAbstractContentStream.java lines
+        168-221): a font that will be subset is queued on the document's
+        ``fontsToSubset`` set (subset on save), and a Type 0 font with GSUB
+        data gets a GSUB worker for complex text layout."""
+        from .pd_abstract_content_stream import _register_font
+
         if not isinstance(font, PDFont):
             raise TypeError(
                 f"PDPageContentStream.set_font expects PDFont; got "
                 f"{type(font).__name__}"
             )
+        # Font-stack bookkeeping (Java lines 170-178).
+        if not self._font_stack:
+            self._font_stack.append(font)
+        else:
+            self._font_stack.pop()
+            self._font_stack.append(font)
+        _register_font(
+            self._document, font, self._gsub_workers, self._get_gsub_worker_factory()
+        )
         key = self._resource_key_for_font(font)
         self._write_name(key)
         self._buffer.append(0x20)
         self._write_operands(size)
         self._write_operator(b"Tf")
         self._font_set = True
-        # Mirrors upstream's fontStack / fontSizeStack bookkeeping
-        # (PDAbstractContentStream.setFont, Java lines 186-204).
-        if not self._font_stack:
-            self._font_stack.append(font)
-        else:
-            self._font_stack.pop()
-            self._font_stack.append(font)
+        # PDFBOX-4951 fontSizeStack bookkeeping.
         if not self._font_size_stack:
             self._font_size_stack.append(size)
         else:
             self._font_size_stack.pop()
             self._font_size_stack.append(size)
+
+    def _get_gsub_worker_factory(self) -> Any:
+        if self._gsub_worker_factory is None:
+            from pypdfbox.fontbox.ttf.gsub.gsub_worker_factory import (
+                GsubWorkerFactory,
+            )
+
+            self._gsub_worker_factory = GsubWorkerFactory()
+        return self._gsub_worker_factory
 
     def set_glyph_layout_processor(
         self, glyph_layout_processor: GlyphLayoutProcessorInterface | None
@@ -1017,24 +1038,20 @@ class PDPageContentStream(ContentStreamForGlyphLayoutInterface):
     def show_text(self, text: str | bytes) -> None:
         """Emit ``(text) Tj``.
 
-        ``text`` may be ``str`` (encoded via the lite latin-1/UTF-16BE
-        fallback — see deferred font.encode below) or already-encoded
-        ``bytes`` for callers that ran the bytes through their font's
-        encoder. Bytes are emitted as a literal string when ASCII-safe,
-        otherwise as hex form.
+        Mirrors upstream ``showText`` (PDAbstractContentStream.java lines
+        265-270): ``text`` is encoded by the current font, with subset
+        tracking, and written with ``COSWriter.writeString`` (see
+        :meth:`_show_text_internal`).
 
-        Note: the *font*'s encode step is a font-cluster #4+ concern.
-        Upstream calls ``font.encode(text)``; the lite surface here
-        encodes the Python ``str`` as Latin-1 when possible (which matches
-        the WinAnsi standard 14-font mapping for ASCII) and falls back to
-        UTF-16BE hex form for non-Latin-1 input.
+        pypdfbox extension: ``text`` may also be already-encoded ``bytes``
+        (for example the output of ``font.encode``), which are written
+        as-is with no subset tracking.
 
         Since PDFBOX-4951, when a glyph-layout processor is registered (see
         :meth:`set_glyph_layout_processor`) and it claims the current font,
-        the text is handed to the processor instead of being encoded here —
-        the processor then drives :meth:`show_glyphs_with_positioning` /
-        :meth:`show_glyph_codes`. With no processor registered (the default)
-        the emitted bytes are unchanged.
+        ``str`` text is handed to the processor instead of being encoded
+        here; the processor then drives
+        :meth:`show_glyphs_with_positioning` / :meth:`show_glyph_codes`.
         """
         processor = self._glyph_layout_processor
         if processor is not None and isinstance(text, str):
@@ -1057,44 +1074,41 @@ class PDPageContentStream(ContentStreamForGlyphLayoutInterface):
         self._write_operator(b"Tj")
 
     def _show_text_internal(self, text: str | bytes) -> None:
-        """Encode ``text`` and append the PDF string literal (no operator,
-        no trailing space). Mirrors upstream's ``showTextInternal``.
+        """Encode ``text`` and append the PDF string (no operator, no
+        trailing space). Mirrors upstream's ``showTextInternal``
+        (PDAbstractContentStream.java lines 279-329).
 
-        Upstream raises ``IllegalStateException`` when not inside a text
-        block (``Must call beginText() before showText()``) and when no
-        font has been selected (``Must call setFont() before showText()``).
-        Both guards are reproduced here as :class:`RuntimeError` so the
-        show-text family (``Tj``/``TJ``/``'``/``"``) refuses to emit a
-        string outside ``BT``/``ET`` or before ``Tf``."""
+        Raises :class:`RuntimeError` (upstream ``IllegalStateException``)
+        outside ``BT``/``ET`` and before ``set_font``. ``str`` text goes
+        through the current font: a Type 0 font with a GSUB worker is
+        encoded glyph by glyph after GSUB, any other font by
+        ``font.encode(text)``; when the font will be subset every code
+        point is added to the subset. The bytes are written by
+        ``COSWriter.write_string``: literal ``(...)`` with ``(``, ``)``,
+        ``\\`` escaped when every byte is 7-bit and none is CR/LF, hex
+        ``<...>`` otherwise. ``bytes`` input (pypdfbox extension) skips
+        the encoding and subset steps."""
+        from pypdfbox.pdfwriter.cos_writer import COSWriter
+
+        from .pd_abstract_content_stream import _encode_text
+
         if not self._in_text_mode:
             raise RuntimeError(
                 "Must call begin_text() before show_text()."
             )
-        if not self._font_set:
+        if not self._font_stack:
             raise RuntimeError(
                 "Must call set_font() before show_text()."
             )
         if isinstance(text, (bytes, bytearray)):
-            data = bytes(text)
-            ascii_safe = all(0x20 <= b < 0x80 or b == 0x09 for b in data)
+            encoded_text = bytes(text)
         else:
-            try:
-                data = text.encode("latin-1")
-                ascii_safe = all(0x20 <= b < 0x80 or b == 0x09 for b in data)
-            except UnicodeEncodeError:
-                data = text.encode("utf-16-be")
-                ascii_safe = False
-        if ascii_safe:
-            self._buffer.append(0x28)  # (
-            for b in data:
-                if b in (0x28, 0x29, 0x5C):  # ( ) \
-                    self._buffer.append(0x5C)
-                self._buffer.append(b)
-            self._buffer.append(0x29)  # )
-        else:
-            self._buffer.append(0x3C)  # <
-            self._buffer.extend(data.hex().upper().encode("ascii"))
-            self._buffer.append(0x3E)  # >
+            encoded_text = _encode_text(
+                self._font_stack[-1], text, self._gsub_workers
+            )
+        sink = io.BytesIO()
+        COSWriter.write_string(encoded_text, sink)
+        self._buffer.extend(sink.getvalue())
 
     def new_line_at_offset(self, tx: float, ty: float) -> None:
         self._require_inside_text_block("new_line_at_offset")
@@ -1161,8 +1175,9 @@ class PDPageContentStream(ContentStreamForGlyphLayoutInterface):
 
         Each item is either:
 
-        - ``str`` / ``bytes`` — a string to show (encoded the same way
-          :meth:`show_text` encodes its argument).
+        - ``str`` — a string to show, encoded by the current font exactly
+          like :meth:`show_text` (``bytes`` are written pre-encoded, a
+          pypdfbox extension).
         - ``int`` / ``float`` — a position adjustment expressed in
           thousandths of a unit of text space (PDF 32000-1 §9.4.3).
           Positive values move the text *backwards*, i.e. tighten the
@@ -1181,7 +1196,7 @@ class PDPageContentStream(ContentStreamForGlyphLayoutInterface):
             raise RuntimeError(
                 "Must call begin_text() before show_text_with_positioning()."
             )
-        if not self._font_set:
+        if not self._font_stack:
             raise RuntimeError(
                 "Must call set_font() before show_text_with_positioning()."
             )

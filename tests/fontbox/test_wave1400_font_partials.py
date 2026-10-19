@@ -514,69 +514,6 @@ def test_get_lang_sys_tables_omits_default_when_absent() -> None:
     assert result == [fake_lang_sys]  # no default appended
 
 
-def test_project_gsub_data_with_no_gsub_table_returns_empty_features() -> None:
-    """Branch [652, 664]: ``_gsub_table is None`` — feature_list stays empty."""
-    from pypdfbox.fontbox.ttf.glyph_substitution_table import GlyphSubstitutionTable
-
-    gsub = GlyphSubstitutionTable()
-    gsub._gsub_table = None
-    data = gsub._project_gsub_data("latn", "dflt")
-    assert data.feature_list == {}
-    assert data.active_script_name == "latn"
-
-
-def test_project_gsub_data_with_no_lang_sys_returns_empty_features() -> None:
-    """Branch [654, 664]: ``lang_sys_tables`` is empty — skip feature loop."""
-    from types import SimpleNamespace
-
-    from pypdfbox.fontbox.ttf.glyph_substitution_table import GlyphSubstitutionTable
-
-    # Script with neither LangSysRecord nor DefaultLangSys.
-    fake_table = SimpleNamespace(
-        ScriptList=SimpleNamespace(ScriptRecord=[
-            SimpleNamespace(
-                ScriptTag="cyrl",
-                Script=SimpleNamespace(LangSysRecord=None, DefaultLangSys=None),
-            ),
-        ]),
-        FeatureList=None,
-    )
-    gsub = GlyphSubstitutionTable()
-    gsub._gsub_table = fake_table
-    data = gsub._project_gsub_data("cyrl", "dflt")
-    assert data.feature_list == {}
-
-
-def test_project_gsub_data_skips_empty_feature_tag() -> None:
-    """Branch [658, 656]: ``if tag`` False — continue past empty tag."""
-    from types import SimpleNamespace
-
-    from pypdfbox.fontbox.ttf.glyph_substitution_table import GlyphSubstitutionTable
-
-    # Build a script with one default LangSys carrying a feature index 0.
-    default_ls = SimpleNamespace(
-        FeatureIndex=[0],
-        ReqFeatureIndex=0xFFFF,
-    )
-    fake_table = SimpleNamespace(
-        ScriptList=SimpleNamespace(ScriptRecord=[
-            SimpleNamespace(
-                ScriptTag="latn",
-                Script=SimpleNamespace(LangSysRecord=None, DefaultLangSys=default_ls),
-            ),
-        ]),
-        # Feature 0 has a blank tag → filtered out.
-        FeatureList=SimpleNamespace(FeatureRecord=[
-            SimpleNamespace(FeatureTag="   ", Feature=SimpleNamespace(LookupListIndex=[])),
-        ]),
-    )
-    gsub = GlyphSubstitutionTable()
-    gsub._gsub_table = fake_table
-    data = gsub._project_gsub_data("latn", "dflt")
-    # Empty-tag feature filtered → no entry recorded.
-    assert data.feature_list == {}
-
-
 # ============================================================
 # pypdfbox/fontbox/ttf/glyf_composite_descript.py
 # ============================================================

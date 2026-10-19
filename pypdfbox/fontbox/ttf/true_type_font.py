@@ -180,7 +180,7 @@ class TrueTypeFont:
         self._loca: IndexToLocationTable | None = None
         self._loca_resolved: bool = False
         # Lazily created hinting engine (upstream ``GlyphHinter hinter``,
-        # PDFBOX-3293). ``False`` marks "glyph_hinter module unavailable".
+        # PDFBOX-3293).
         self._hinter: Any = None
         self._lock_hinter = threading.Lock()
         # Raw bytes kept for embedding round-trips (``get_original_data``).
@@ -789,19 +789,16 @@ class TrueTypeFont:
         ``PDFRenderer.set_hinting_enabled``; the caller falls back to the
         raw outline when this returns ``None``.
         """
-        with self._lock_hinter:
-            if self._hinter is None:
-                try:
-                    # The GlyphHinter port lands in wave 1611; until then
-                    # hinting is unavailable and every glyph is unhinted.
-                    from .glyph_hinter import GlyphHinter  # type: ignore[import-not-found]
-                except ImportError:
-                    self._hinter = False
-                else:
+        glyph_hinter = self._hinter
+        if glyph_hinter is None:
+            with self._lock_hinter:
+                if self._hinter is None:
+                    # imported here: the hinter pulls in the bytecode interpreter, which only
+                    # a hinting renderer needs
+                    from .glyph_hinter import GlyphHinter
+
                     self._hinter = GlyphHinter(self)
-            glyph_hinter = self._hinter
-        if glyph_hinter is False:
-            return None
+                glyph_hinter = self._hinter
         return glyph_hinter.get_path(gid, ppem)
 
     # ---------- GSUB feature toggles -----------------------------------

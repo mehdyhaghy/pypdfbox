@@ -7,12 +7,10 @@ asserts the structure of a ported ``GsubData`` value class — including
 tags (``abvs``, ``akhn``, ``blwf``, ``blws``, ``half``, ``haln``,
 ``init``, ``nukt``, ``pres``, ``pstf``, ``rphf``, ``vatu``).
 
-We intentionally do **not** port that assertion shape: pypdfbox does
-not port the ``org.apache.fontbox.ttf.model.{GsubData, Language,
-ScriptFeature, MapBackedScriptFeature}`` value-class graph (see
-``CHANGES.md``). The ``Lohit-Bengali.ttf`` fixture and the per-feature
-``/gsub/lohit_bengali/bng2/<feature>.txt`` golden tables are also not
-copied into ``tests/fixtures``.
+The ``Lohit-Bengali.ttf`` fixture (SIL OFL) and the per-feature
+``/gsub/lohit_bengali/bng2/<feature>.txt`` golden tables are not
+copied into ``tests/fixtures`` (wave 1360 rule), so the Bengali
+assertions cannot run.
 
 Instead this file ports the *intent* of the upstream test against the
 ``LiberationSans-Regular.ttf`` fixture we already ship: load a font
@@ -26,6 +24,7 @@ from pathlib import Path
 import pytest
 
 from pypdfbox.fontbox.ttf import GlyphSubstitutionTable, TrueTypeFont
+from pypdfbox.fontbox.ttf.model.language import Language
 
 FIXTURE = (
     Path(__file__).resolve().parents[3]
@@ -57,9 +56,9 @@ def test_get_gsub_data() -> None:
     assert table.get_initialized() is True
     assert table.get_supported_script_tags() == EXPECTED_SCRIPTS
     assert set(table.get_supported_feature_tags()) == EXPECTED_FEATURES
-    # Wave 1375: ``get_gsub_data()`` now projects a real :class:`GsubData`
-    # view (see ``GlyphSubstitutionTable.get_gsub_data`` docstring). The
-    # default invocation resolves to the most-preferred supported script.
+    # The default invocation resolves the first supported Language.
     gsub_data = table.get_gsub_data()
     assert gsub_data is not None
+    assert gsub_data.get_language() is Language.LATIN
     assert gsub_data.get_active_script_name() == "latn"
+    assert gsub_data.get_supported_features() == {"ccmp", "subs", "sups"}

@@ -13,6 +13,7 @@ in the shared base constructor, with trailing zeros trimmed).
 """
 
 import logging
+import unicodedata
 from collections import deque
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, BinaryIO
@@ -51,6 +52,165 @@ def _format_decimal(value: float, max_fraction_digits: int = 4) -> bytes:
     Non-finite values raise :class:`ValueError`, mirroring upstream's
     ``writeOperand(float)`` ``IllegalArgumentException`` guard."""
     return _format_number(value, max_fraction_digits)
+
+
+def _java_is_whitespace(ch: str) -> bool:
+    """Mirror ``java.lang.Character.isWhitespace`` for a single character.
+
+    Java counts the Unicode space / line / paragraph separators except the
+    non-breaking ones (U+00A0, U+2007, U+202F), plus the ASCII controls
+    TAB, LF, VT, FF, CR and U+001C-U+001F."""
+    if ch in "\t\n\x0b\x0c\r\x1c\x1d\x1e\x1f":
+        return True
+    if ch in "\u00a0\u2007\u202f":
+        return False
+    return unicodedata.category(ch) in ("Zs", "Zl", "Zp")
+
+
+def _gsub_data_for_type0(font: Any) -> Any:
+    """Return the ``GsubData`` upstream's ``PDType0Font.getGsubData()`` would.
+
+    Upstream's embedding constructor captures ``ttf.getGsubData()``; a font
+    read back from a PDF (the ``COSDictionary`` constructor) carries
+    ``GsubData.NO_DATA_FOUND``."""
+    from pypdfbox.fontbox.ttf.gsub.gsub_data import GsubData
+
+    if not getattr(font, "_embedded_from_font_file", False):
+        return GsubData.NO_DATA_FOUND
+    descendant = font.get_descendant_font()
+    get_ttf = getattr(descendant, "get_true_type_font", None)
+    ttf = get_ttf() if callable(get_ttf) else None
+    get_gsub_data = getattr(ttf, "get_gsub_data", None)
+    if not callable(get_gsub_data):
+        return GsubData.NO_DATA_FOUND
+    gsub_data = get_gsub_data()
+    return GsubData.NO_DATA_FOUND if gsub_data is None else gsub_data
+
+
+def _register_font(
+    document: Any,
+    font: Any,
+    gsub_workers: dict[Any, Any],
+    gsub_worker_factory: Any,
+) -> None:
+    """The font bookkeeping of upstream ``setFont`` (Java lines 180-217).
+
+    Queues a subsetted font on the document's ``fontsToSubset`` set (so
+    ``PDDocument.save`` subsets it), warns about a non-embedded
+    non-Standard-14 font, and builds the per-font GSUB worker used by
+    complex text layout. Shared by :class:`PDAbstractContentStream` and
+    :class:`~pypdfbox.pdmodel.pd_page_content_stream.PDPageContentStream`."""
+    from pypdfbox.fontbox.ttf.gsub.gsub_data import GsubData
+
+    from .font.pd_type0_font import PDType0Font
+
+    # keep track of fonts which are configured for subsetting
+    if font.will_be_subset():
+        if document is not None:
+            document.get_fonts_to_subset().add(font)
+        else:
+            _log.warning(
+                "Using the subsetted font '%s' without a PDDocument context; "
+                "call subset() before saving",
+                font.get_name(),
+            )
+    elif not font.is_embedded() and not font.is_standard14():
+        _log.warning(
+            "attempting to use font '%s' that isn't embedded", font.get_name()
+        )
+
+    # complex text layout
+    if isinstance(font, PDType0Font):
+        gsub_data = _gsub_data_for_type0(font)
+        if gsub_data is not GsubData.NO_DATA_FOUND:
+            gsub_workers[font] = gsub_worker_factory.get_gsub_worker(
+                font.get_cmap_lookup(), gsub_data
+            )
+        else:
+            _log.debug("No GSUB data found in font%s", font.get_name())
+
+
+def _encode_text(font: Any, text: str, gsub_workers: dict[Any, Any]) -> bytes:
+    """Encode ``text`` with ``font`` and record subset usage.
+
+    The encoding half of upstream ``showTextInternal`` (Java lines 292-326):
+    a ``PDType0Font`` with a GSUB worker goes through
+    :func:`encode_for_gsub` (its glyph ids are pinned into the subset);
+    every other font uses ``font.encode(text)``. When the font will be
+    subset, each Unicode code point of ``text`` is added to the subset."""
+    from .font.pd_type0_font import PDType0Font
+
+    # complex text layout
+    encoded_text: bytes | None = None
+    if isinstance(font, PDType0Font):
+        gsub_worker = gsub_workers.get(font)
+        if gsub_worker is not None:
+            glyph_ids: set[int] = set()
+            encoded_text = encode_for_gsub(gsub_worker, glyph_ids, font, text)
+            if font.will_be_subset():
+                font.add_glyphs_to_subset(glyph_ids)
+
+    if encoded_text is None:
+        encoded_text = font.encode(text)
+
+    # Unicode code points to keep when subsetting
+    if font.will_be_subset():
+        for ch in text:
+            font.add_to_subset(ord(ch))
+    return encoded_text
+
+
+def encode_for_gsub(
+    gsub_worker: Any, glyph_ids: set[int], font: Any, text: str
+) -> bytes:
+    """Encode ``text`` word by word through ``gsub_worker``.
+
+    Mirrors the private ``encodeForGsub`` (Java lines 1689-1711): the text
+    is split on whitespace with the separators kept
+    (``StringUtil.tokenizeOnSpace``); a single whitespace token is encoded
+    with ``font.encode`` and every other token goes through
+    :func:`apply_gsub_rules`, whose glyph ids are added to ``glyph_ids``."""
+    from pypdfbox.util.string_util import StringUtil
+
+    out = bytearray()
+    for word in StringUtil.tokenize_on_space(text):
+        if word is None:
+            continue
+        if len(word) == 1 and _java_is_whitespace(word):
+            out.extend(font.encode(word))
+        else:
+            glyph_ids.update(apply_gsub_rules(gsub_worker, out, font, word))
+    return bytes(out)
+
+
+def apply_gsub_rules(
+    gsub_worker: Any, out: bytearray, font: Any, word: str
+) -> list[int]:
+    """Map ``word`` to glyph ids, apply GSUB, append the encoded glyphs.
+
+    Mirrors the private ``applyGSUBRules`` (Java lines 1727-1768).
+
+    Deviation: upstream throws ``IllegalStateException`` when the font's
+    cmap has no glyph for a character. pypdfbox substitutes glyph 0
+    (``.notdef``) instead, matching its documented ``PDFont.encode``
+    contract (unencodable characters become CID 0 rather than raising), so
+    the GSUB and plain-encode paths emit the same bytes for such text."""
+    cmap_lookup = font.get_cmap_lookup()
+    original_glyph_ids: list[int] = []
+    # convert characters into glyphIds
+    for ch in word:
+        glyph_id = cmap_lookup.get_glyph_id(ord(ch))
+        if glyph_id is None or glyph_id <= 0:
+            _log.warning(
+                "No glyph for U+%04X in font %s", ord(ch), font.get_name()
+            )
+            glyph_id = 0
+        original_glyph_ids.append(glyph_id)
+
+    glyph_ids_after_gsub = gsub_worker.apply_transforms(original_glyph_ids)
+    for glyph_id in glyph_ids_after_gsub:
+        out.extend(font.encode_glyph_id(glyph_id))
+    return list(glyph_ids_after_gsub)
 
 
 class PDAbstractContentStream(ContentStreamForGlyphLayoutInterface):
@@ -101,6 +261,19 @@ class PDAbstractContentStream(ContentStreamForGlyphLayoutInterface):
         # artifact either, and the whole show-text path behaves exactly as
         # before while it stays unset.
         self._glyph_layout_processor: GlyphLayoutProcessorInterface | None = None
+        # Complex text layout: one GSUB worker per Type 0 font, built by
+        # ``set_font`` (upstream ``gsubWorkers`` / ``gsubWorkerFactory``).
+        self._gsub_workers: dict[Any, Any] = {}
+        self._gsub_worker_factory: Any = None
+
+    def _get_gsub_worker_factory(self) -> Any:
+        if self._gsub_worker_factory is None:
+            from pypdfbox.fontbox.ttf.gsub.gsub_worker_factory import (
+                GsubWorkerFactory,
+            )
+
+            self._gsub_worker_factory = GsubWorkerFactory()
+        return self._gsub_worker_factory
 
     def set_glyph_layout_processor(
         self, glyph_layout_processor: GlyphLayoutProcessorInterface | None
@@ -237,13 +410,24 @@ class PDAbstractContentStream(ContentStreamForGlyphLayoutInterface):
         else:
             self._font_size_stack.pop()
             self._font_size_stack.append(font_size)
+        _register_font(
+            self._document,
+            font,
+            self._gsub_workers,
+            self._get_gsub_worker_factory(),
+        )
         if self._resources is not None:
             self.write_operand(self._resources.add(font))
         self.write_operand(font_size)
         self.write_operator("Tf")
 
-    def show_text(self, text: str) -> None:
-        """Emit ``Tj``. Mirrors ``showText`` (Java lines 337-364).
+    def show_text(self, text: str | bytes) -> None:
+        """Emit ``Tj``. Mirrors ``showText`` (Java lines 265-270, plus the
+        PDFBOX-4951 glyph-layout-processor branch).
+
+        ``text`` is encoded by the current font (see
+        :meth:`show_text_internal`). pypdfbox extension: pre-encoded
+        ``bytes`` are written as-is and never handed to a processor.
 
         When a glyph-layout processor has been registered (see
         :meth:`set_glyph_layout_processor`) and it claims the current font,
@@ -260,7 +444,11 @@ class PDAbstractContentStream(ContentStreamForGlyphLayoutInterface):
             raise RuntimeError("Font is set, but fontSize is not set")
         font = self._font_stack[-1]
         processor = self._glyph_layout_processor
-        if processor is not None and processor.supports_font(font):
+        if (
+            processor is not None
+            and isinstance(text, str)
+            and processor.supports_font(font)
+        ):
             font_size = self._font_size_stack[-1]
             processor.show_text(self, font, font_size, text)
             return
@@ -343,28 +531,39 @@ class PDAbstractContentStream(ContentStreamForGlyphLayoutInterface):
         self.write("] ")
         self.write_operator("TJ")
 
-    def show_text_internal(self, text: str) -> None:
-        """Mirrors the protected ``showTextInternal`` (Java line 435).
+    def show_text_internal(self, text: str | bytes) -> None:
+        """Output a string using the correct encoding and subsetting.
 
-        Upstream moved the ``beginText`` / ``setFont`` guards up into
-        ``showText`` for PDFBOX-4951; the port keeps them here as well
-        because the ``'`` / ``"`` operator helpers reach this method
-        directly.
+        Mirrors the protected ``showTextInternal`` (Java lines 279-329):
+        the text is encoded by the current font (through the GSUB worker
+        for a Type 0 font that has one), every code point is added to the
+        subset when the font will be subset, and the bytes are written with
+        ``COSWriter.writeString`` (literal form for 7-bit data without
+        CR/LF, hex form otherwise).
+
+        pypdfbox extension: already-encoded ``bytes`` are written as-is
+        (no encoding, no subset tracking).
         """
+        from pypdfbox.pdfwriter.cos_writer import COSWriter
+
         if not self._in_text_mode:
             raise RuntimeError("Must call begin_text() before show_text()")
         if not self._font_stack:
             raise RuntimeError("Must call set_font() before show_text()")
-        font = self._font_stack[-1]
-        encoder = getattr(font, "encode", None)
-        encoded = encoder(text) if encoder is not None else text.encode("latin-1")
-        self._output_stream.write(b"<")
-        self._output_stream.write(encoded.hex().encode("ascii"))
-        self._output_stream.write(b">")
+        if isinstance(text, (bytes, bytearray)):
+            encoded_text = bytes(text)
+        else:
+            encoded_text = _encode_text(
+                self._font_stack[-1], text, self._gsub_workers
+            )
+        COSWriter.write_string(encoded_text, self._output_stream)
 
     def show_text_with_positioning(self, array: list[Any]) -> None:
         """Emit ``TJ``. Mirrors ``showTextWithPositioning`` (Java lines
-        261-288, including the PDFBOX-4951 up-front state guards)."""
+        236-256, plus the PDFBOX-4951 up-front state guards).
+
+        pypdfbox extensions: ``int`` adjustments are accepted alongside
+        ``float``, and ``bytes`` items are written pre-encoded."""
         if not self._in_text_mode:
             raise RuntimeError(
                 "Must call begin_text() before show_text_with_positioning()"
@@ -375,9 +574,9 @@ class PDAbstractContentStream(ContentStreamForGlyphLayoutInterface):
             )
         self.write("[")
         for obj in array:
-            if isinstance(obj, str):
+            if isinstance(obj, (str, bytes, bytearray)):
                 self.show_text_internal(obj)
-            elif isinstance(obj, (int, float)):
+            elif isinstance(obj, (int, float)) and not isinstance(obj, bool):
                 self.write_operand(obj)
             else:
                 raise ValueError(
@@ -818,33 +1017,19 @@ class PDAbstractContentStream(ContentStreamForGlyphLayoutInterface):
             self._non_stroking_color_space_stack.append(color_space)
 
     # ------------------------------------------------------------------
-    # GSUB / complex-text helpers (signatures only — full GSUB pipeline
-    # lives in subclasses)
+    # GSUB / complex-text helpers
     # ------------------------------------------------------------------
 
     def encode_for_gsub(
         self,
         gsub_worker: Any,
+        glyph_ids: set[int],
         font: Any,
         text: str,
     ) -> bytes:
-        """Run a string through the GSUB worker and return font-encoded bytes.
-        Mirrors the private ``encodeForGsub`` (Java line 1689)."""
-        encoder = getattr(font, "encode", None)
-        if encoder is None:
-            return text.encode("latin-1")
-        if gsub_worker is None:
-            return encoder(text)
-        # Word-by-word GSUB application (matches upstream's whitespace split).
-        out = bytearray()
-        space_bytes = encoder(" ")
-        first = True
-        for word in text.split(" "):
-            if not first:
-                out.extend(space_bytes)
-            first = False
-            self.apply_gsub_rules(gsub_worker, out, font, word)
-        return bytes(out)
+        """Mirrors the private ``encodeForGsub`` (Java line 1689); see
+        :func:`encode_for_gsub`."""
+        return encode_for_gsub(gsub_worker, glyph_ids, font, text)
 
     def apply_gsub_rules(
         self,
@@ -853,29 +1038,9 @@ class PDAbstractContentStream(ContentStreamForGlyphLayoutInterface):
         font: Any,
         word: str,
     ) -> list[int]:
-        """Apply GSUB rules to a word and append the encoded result.
-        Mirrors the private ``applyGSUBRules`` (Java line 1727)."""
-        encoder = getattr(font, "encode", None)
-        if gsub_worker is None or encoder is None:
-            if encoder is not None:
-                out.extend(encoder(word))
-            return []
-        # Best-effort delegation — actual GSUB processing is implemented
-        # by subclass-specific font workers (PDType0Font + GsubWorker).
-        try:
-            glyphs = gsub_worker.apply_transformations(word)
-        except AttributeError:
-            glyphs = []
-        if glyphs:
-            for gid in glyphs:
-                try:
-                    out.extend(font.encode_glyph_id(gid))
-                except AttributeError:
-                    out.extend(encoder(word))
-                    break
-        else:
-            out.extend(encoder(word))
-        return list(glyphs) if glyphs else []
+        """Mirrors the private ``applyGSUBRules`` (Java line 1727); see
+        :func:`apply_gsub_rules`."""
+        return apply_gsub_rules(gsub_worker, out, font, word)
 
     # ---------- close ----------
 

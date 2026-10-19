@@ -43,10 +43,23 @@ class _Concrete(PDAbstractContentStream):
 
 
 class _FakeFont:
-    """Latin-1 encoder stand-in (matches the existing base-class tests)."""
+    """Latin-1 encoder stand-in with the ``PDFont`` predicates ``set_font``
+    and ``show_text`` consult (not subset, not embedded, Standard 14)."""
 
     def encode(self, text: str) -> bytes:
         return text.encode("latin-1")
+
+    def will_be_subset(self) -> bool:
+        return False
+
+    def is_embedded(self) -> bool:
+        return False
+
+    def is_standard14(self) -> bool:
+        return True
+
+    def get_name(self) -> str:
+        return "Fake"
 
 
 class _StubProcessor(GlyphLayoutProcessorInterface):
@@ -111,7 +124,7 @@ def test_abstract_show_text_without_processor_is_unchanged() -> None:
     out.seek(0)
     out.truncate()
     cs.show_text("AB")
-    assert out.getvalue() == b"<4142> Tj\n"
+    assert out.getvalue() == b"(AB) Tj\n"
 
 
 def test_abstract_show_text_with_positioning_without_processor_is_unchanged() -> None:
@@ -122,7 +135,7 @@ def test_abstract_show_text_with_positioning_without_processor_is_unchanged() ->
     out.seek(0)
     out.truncate()
     cs.show_text_with_positioning(["A", -120, "B"])
-    assert out.getvalue() == b"[<41>-120 <42>] TJ\n"
+    assert out.getvalue() == b"[(A)-120 (B)] TJ\n"
 
 
 def test_abstract_set_font_bytes_unchanged() -> None:
@@ -234,7 +247,7 @@ def test_setting_the_processor_to_none_restores_the_default_path() -> None:
     out.seek(0)
     out.truncate()
     cs.show_text("AB")
-    assert out.getvalue() == b"<4142> Tj\n"
+    assert out.getvalue() == b"(AB) Tj\n"
 
 
 # ==================================================================

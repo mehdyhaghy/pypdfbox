@@ -101,6 +101,11 @@ class PDType0Font(PDFont):
         # ``embedder.needsSubset()`` flag rather than the raw codepoint
         # set (a load-time decision, not a per-call lookup).
         self._will_be_subset: bool = False
+        # ``True`` only for fonts built by the embedding ``load*`` factories.
+        # Upstream's embedding constructor captures ``ttf.getGsubData()`` while
+        # the COSDictionary constructor leaves ``GsubData.NO_DATA_FOUND``; the
+        # content-stream writers read this flag to make the same distinction.
+        self._embedded_from_font_file: bool = False
         # GSUB feature gating — :meth:`set_gsub_features` overrides;
         # :meth:`get_gsub_features` returns the resolved set (defaults to
         # ``["liga"]`` for latin per upstream's ``PDType0Font.applyGsub``
@@ -115,15 +120,23 @@ class PDType0Font(PDFont):
 
         A descendant font refers back to its parent Type 0 font, so it is
         never shared or cached across parents — upstream reverted the
-        PDFBOX-6175 ``ResourceCache`` pooling for exactly that reason, and
-        a fresh wrapper is built per call.
+        PDFBOX-6175 ``ResourceCache`` pooling for exactly that reason. Like
+        upstream's ``descendantFont`` field (built once in the constructor),
+        the wrapper is kept on this parent, so its parsed font program and
+        ``/W`` widths are not rebuilt per glyph; it is rebuilt when
+        ``/DescendantFonts`` now names a different dictionary.
         """
         arr = self._dict.get_dictionary_object(_DESCENDANT_FONTS)
         if not isinstance(arr, COSArray) or arr.size() == 0:
             return None
         first = arr.get_object(0)
         if isinstance(first, COSDictionary):
-            return PDType0Font._wrap_descendant(first, self)
+            cached = getattr(self, "_descendant_font_cache", None)
+            if cached is not None and cached[0] is first:
+                return cached[1]
+            descendant = PDType0Font._wrap_descendant(first, self)
+            self._descendant_font_cache = (first, descendant)
+            return descendant
         return None
 
     def get_cid_font(self) -> PDCIDFont | None:
@@ -1773,6 +1786,9 @@ class PDType0Font(PDFont):
         # Mirrors PDCIDFontType2Embedder.buildSubset (CIDToGIDMap + buildWidths).
         self._rebuild_subset_cid_to_gid_map(descendant, old_to_new)
         self._rebuild_subset_widths(descendant, old_to_new, ttf)
+        # the descendant wrapper parsed the full program and the old /W; let the next
+        # get_descendant_font() build a fresh one over the subset
+        self._descendant_font_cache = None
         # Mirror the tag onto our own /BaseFont — per PDF 32000-1 §9.7.6.2
         # the parent and descendant must share the tagged PostScript name.
         from .pd_true_type_font import _BASE_FONT
@@ -1920,6 +1936,7 @@ class PDType0Font(PDFont):
         ttf_bytes = _read_font_bytes(source)
         font = _build_type0_from_ttf(ttf_bytes, fallback_name="EmbeddedTTF")
         font._will_be_subset = bool(embed_subset)
+        font._embedded_from_font_file = True
         return font
 
     @classmethod
@@ -1964,6 +1981,7 @@ class PDType0Font(PDFont):
         ttf_bytes = _read_font_bytes(source)
         font = _build_type0_from_ttf(ttf_bytes, fallback_name="EmbeddedTTF")
         font._will_be_subset = bool(embed_subset)
+        font._embedded_from_font_file = True
         # Upgrade the encoding to Identity-V so ``is_vertical`` reports
         # the correct writing mode and downstream get_displacement /
         # get_position_vector consult the descendant's vertical metrics.
@@ -1998,6 +2016,7 @@ class PDType0Font(PDFont):
         otf_bytes = _read_font_bytes(source)
         font = _build_type0_from_ttf(otf_bytes, fallback_name="EmbeddedOTF")
         font._will_be_subset = bool(embed_subset)
+        font._embedded_from_font_file = True
         return font
 
 

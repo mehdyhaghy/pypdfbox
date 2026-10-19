@@ -9,11 +9,6 @@ with it disabled.
 import io
 from pathlib import Path
 
-import pytest
-
-# The GlyphHinter port (wave 1611) is required to produce hinted paths.
-pytest.importorskip("pypdfbox.fontbox.ttf.glyph_hinter")
-
 from PIL import Image, ImageChops
 
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle

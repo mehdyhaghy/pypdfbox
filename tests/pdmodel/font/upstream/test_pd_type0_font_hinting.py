@@ -9,11 +9,6 @@ The CID half of the render-path hinting wiring:
 from pathlib import Path
 from typing import Any
 
-import pytest
-
-# The GlyphHinter port (wave 1611) is required to produce hinted paths.
-pytest.importorskip("pypdfbox.fontbox.ttf.glyph_hinter")
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.fontbox.ttf import TTFParser
 from pypdfbox.pdmodel import PDDocument

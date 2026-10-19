@@ -270,7 +270,7 @@ def test_extract_data_handles_ligature_lookup_through_dispatch() -> None:
     table = LookupTable(lookup_type=4, sub_tables=(sub,))
     out: dict[tuple[int, ...], int] = {}
     extractor.extract_data(out, table)
-    assert out == {(1, 2): 900}
+    assert out == {(0, 1, 2): 900}
 
 
 def test_extract_data_handles_single_format1_through_dispatch() -> None:

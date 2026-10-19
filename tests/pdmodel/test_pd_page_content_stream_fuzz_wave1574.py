@@ -327,25 +327,31 @@ def test_show_text_escapes_parens_and_backslash_exact() -> None:
     assert b"(a\\(b\\)c\\\\d) Tj\n" in _body(page)
 
 
-def test_show_text_non_latin1_uses_hex_form() -> None:
+def test_show_text_unencodable_uses_font_fallback() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
         cs.begin_text()
         cs.set_font(_make_font(), 10)
-        cs.show_text("中")  # CJK, not Latin-1 -> UTF-16BE hex
+        cs.show_text("中")  # not in Helvetica's built-in StandardEncoding
         cs.end_text()
-    assert b"<4E2D> Tj\n" in _body(page)
+    # show_text runs font.encode; pypdfbox's simple-font fallback
+    # substitutes "?" (upstream raises IllegalArgumentException).
+    assert b"(?) Tj\n" in _body(page)
 
 
-def test_show_text_latin1_high_byte_stays_literal() -> None:
+def test_show_text_high_byte_uses_hex_form() -> None:
     doc = PDDocument()
     page = _make_page(doc)
+    font = _make_font()
+    font.get_cos_object().set_name(
+        COSName.get_pdf_name("Encoding"), "WinAnsiEncoding"
+    )
     with PDPageContentStream(doc, page) as cs:
         cs.begin_text()
-        cs.set_font(_make_font(), 10)
-        # é is U+00E9, encodable as Latin-1 (0xE9) which is not ASCII-safe
-        # -> hex form per the lite encoder.
+        cs.set_font(font, 10)
+        # WinAnsi encodes U+00E9 as 0xE9; COSWriter.writeString switches to
+        # hex form for any byte >= 0x80.
         cs.show_text("é")
         cs.end_text()
     assert b"<E9> Tj\n" in _body(page)

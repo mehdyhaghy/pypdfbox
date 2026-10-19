@@ -286,6 +286,13 @@ class GlyfCompositeDescript(GlyfDescript):
         components = getattr(glyph, "components", []) or []
         for component in components:
             descript._components.append(GlyfCompositeComp.from_fonttools(component))
+        # Restore the position-dependent bits fontTools drops (see
+        # GlyfCompositeComp.from_fonttools).
+        for comp in descript._components[:-1]:
+            comp._flags |= GlyfCompositeComp.MORE_COMPONENTS
+        program = getattr(glyph, "program", None)
+        if descript._components and program is not None and len(program.getBytecode()):
+            descript._components[-1]._flags |= GlyfCompositeComp.WE_HAVE_INSTRUCTIONS
         for comp in descript._components:
             sub = description_for_index(comp.get_glyph_index())
             if sub is not None:

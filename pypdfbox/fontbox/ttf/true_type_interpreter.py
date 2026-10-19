@@ -22,7 +22,9 @@ Performance design (behaviour is upstream's; only the mechanics differ):
   is converted to ``HintingException("interpreter stack underflow")`` by
   :meth:`TrueTypeInterpreter.run`. Every other index the bytecode supplies
   (points, storage, CVT, contours) is range-checked explicitly, so negative
-  values never reach Python's wrap-around indexing.
+  values never reach Python's wrap-around indexing, and so do the contour
+  ends IUP walks; any other ``IndexError`` is reported as "interpreter index
+  out of range", not as an underflow.
 * Values are plain Python ``int``\\ s. Every place upstream relies on Java's
   32-bit ``int`` wrapping (arithmetic opcodes, coordinate stores, ``long`` to
   ``int`` casts in :mod:`fixed`) narrows explicitly, with an in-range fast
@@ -103,6 +105,19 @@ def _abs32(value: int) -> int:
 def _short(value: int) -> int:
     """Java ``(short)`` cast: the low 16 bits, sign-extended."""
     return ((value + 0x8000) & 0xFFFF) - 0x8000
+
+
+def _is_stack_underflow(error: IndexError, stack: list[int]) -> bool:
+    """Whether ``error`` came from reaching past the bottom of the operand stack.
+
+    The stack handlers either pop (``list.pop`` reports "pop from empty list"
+    or "pop index out of range") or index the top one or two slots, which
+    can only fail while fewer than two values are left.
+    """
+    message = str(error)
+    if message.startswith("pop "):
+        return True
+    return message == "list index out of range" and len(stack) < 2
 
 
 def _skip_push_operands(opcode: int, code: bytes, ip: int, limit: int) -> int:
@@ -311,8 +326,13 @@ class TrueTypeInterpreter:
                     tracer.trace(ip, opcode, ctx)
                     dispatch[opcode](ctx)
         except IndexError as e:
-            # the only unchecked index left to the bytecode is popping an empty operand stack
-            raise HintingException("interpreter stack underflow", e) from e
+            # The only index left unchecked is the operand stack's: popping or peeking past its
+            # bottom. Every other index is range-checked where it is used, so an IndexError from
+            # anywhere else is a bug here and is reported as such rather than as an underflow.
+            # (Classified only on this error path, so the dispatch loop pays nothing for it.)
+            if _is_stack_underflow(e, ctx._stack):
+                raise HintingException("interpreter stack underflow", e) from e
+            raise HintingException(f"interpreter index out of range: {e}", e) from e
         finally:
             ctx._stream = previous
 
@@ -1610,7 +1630,13 @@ class TrueTypeInterpreter:
             orus = zone._unscaled_y
             touched = zone._touched_y
         start = 0
+        point_count = zone._point_count
         for end in zone._contour_ends:
+            if end >= point_count:
+                # malformed contour data: upstream fails here with an index out of bounds
+                raise HintingException(
+                    f"IUP: contour end {end} out of range, zone has {point_count} points"
+                )
             _interpolate_contour(cur, org, orus, touched, start, end)
             start = end + 1
 

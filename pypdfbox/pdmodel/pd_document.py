@@ -502,6 +502,9 @@ class PDDocument:
                 f"or None, got {type(compress_parameters).__name__}"
             )
         compress = compress_parameters.is_compress()
+        # Upstream ``save(OutputStream, CompressParameters)`` subsets the
+        # fonts that ``set_font`` queued before handing off to the writer.
+        self.subset_designated_fonts()
 
         # Honour ``set_all_security_to_be_removed``: drop /Encrypt from the
         # trailer (and force any decrypted streams to be re-emitted as
@@ -584,6 +587,8 @@ class PDDocument:
         and splices the resulting PKCS#7 DER blob back into ``/Contents``."""
         if self._closed:
             raise OSError("Cannot save a document which has been closed")
+        # Upstream ``saveIncremental`` subsets queued fonts first.
+        self.subset_designated_fonts()
         source = self._document.get_source()
         if source is None:
             # Mirrors upstream ``IllegalStateException`` (PDDocument.java
@@ -1645,8 +1650,9 @@ class PDDocument:
         ``PDDocument.subsetDesignatedFonts`` (PDDocument.java:1040-1048).
 
         Pypdfbox keeps the API public for symmetry with the rest of the
-        port; the writer cluster invokes it from :meth:`save` /
-        :meth:`save_incremental` once font subsetting lands."""
+        port; :meth:`save`, :meth:`save_incremental` and
+        :meth:`save_incremental_for_external_signing` invoke it before
+        writing, as upstream does."""
         for font in list(self._fonts_to_subset):
             subset = getattr(font, "subset", None)
             if callable(subset):
@@ -2054,6 +2060,9 @@ class PDDocument:
         """
         if self._closed:
             raise OSError("Cannot save a document which has been closed")
+        # Upstream ``saveIncrementalForExternalSigning`` subsets queued
+        # fonts first.
+        self.subset_designated_fonts()
         # Upstream order (PDDocument.java line 1174 then 1190): the source
         # check fires before the signature-field check. Both are
         # ``IllegalStateException`` → ``RuntimeError`` per the project's

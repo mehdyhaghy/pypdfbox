@@ -9394,16 +9394,24 @@ class PDFRenderer(PDFStreamEngine):
                 if desc is not None:
                     font_file2 = desc.get_font_file2()
                     if font_file2 is not None:
-                        try:
-                            from pypdfbox.fontbox.ttf import (
-                                TrueTypeFont,
-                            )
+                        # the descendant parses and keeps its program (the
+                        # parent keeps the descendant), so a page of text
+                        # does not re-parse the font for every string
+                        get_ttf = getattr(descendant, "get_true_type_font", None)
+                        if callable(get_ttf):
+                            with contextlib.suppress(Exception):
+                                ttf = get_ttf()
+                        if ttf is None:
+                            try:
+                                from pypdfbox.fontbox.ttf import (
+                                    TrueTypeFont,
+                                )
 
-                            ttf = TrueTypeFont.from_bytes(
-                                font_file2.to_byte_array()
-                            )
-                        except Exception:
-                            ttf = None
+                                ttf = TrueTypeFont.from_bytes(
+                                    font_file2.to_byte_array()
+                                )
+                            except Exception:
+                                ttf = None
         if ttf is None:
             return (None, None)
         try:

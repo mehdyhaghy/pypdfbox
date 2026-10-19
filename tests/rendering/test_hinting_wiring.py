@@ -2,14 +2,12 @@
 ``PDFRenderer.set_hinting_enabled``, ``PageDrawerParameters``,
 ``PageDrawer``, ``GlyphCache`` and the printing classes.
 
-The GlyphHinter interpreter lands in a later wave, so the tests that need
-a hinted outline stub ``TrueTypeFont.get_hinted_path``; with hinting
-disabled (the default) rendering must be byte-identical to the unhinted
-path."""
+The tests that need a known hinted outline stub
+``TrueTypeFont.get_hinted_path``; with hinting disabled (the default)
+rendering must be byte-identical to the unhinted path."""
 
 import io
 import logging
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -230,12 +228,9 @@ def test_disabled_hinting_is_pixel_identical_and_never_hints(
 
 
 @pytest.mark.parametrize("type0", [False, True], ids=["truetype", "type0"])
-def test_enabled_hinting_without_glyph_hinter_matches_unhinted(
-    type0: bool, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setitem(sys.modules, "pypdfbox.fontbox.ttf.glyph_hinter", None)
+def test_enabled_hinting_changes_the_rendering(type0: bool) -> None:
     pdf = _build_pdf(type0)
-    assert _differences(_render(pdf, False), _render(pdf, True)) == 0
+    assert _differences(_render(pdf, False), _render(pdf, True)) > 0
 
 
 @pytest.mark.parametrize("type0", [False, True], ids=["truetype", "type0"])
@@ -266,3 +261,41 @@ def test_enabled_hinting_draws_hinted_outline_at_device_ppem(
     assert _differences(off, on) > 0
     assert seen, "the hinted path was never requested"
     assert {ppem for _gid, ppem in seen} == {15}
+
+
+@pytest.mark.parametrize("type0", [False, True], ids=["truetype", "type0"])
+def test_repeated_glyph_is_hinted_once_per_ppem(
+    type0: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The renderer's per-(code, ppem) cache: "Hamburgefons 123" repeats glyphs, and each
+    distinct glyph is grid-fitted exactly once at the page's ppem."""
+    calls: list[tuple[int, int]] = []
+    real = TrueTypeFont.get_hinted_path
+
+    def _counting(self: TrueTypeFont, gid: int, ppem: int) -> Any:
+        calls.append((gid, ppem))
+        return real(self, gid, ppem)
+
+    monkeypatch.setattr(TrueTypeFont, "get_hinted_path", _counting)
+    pdf = _build_pdf(type0)
+    _render(pdf, True)
+    assert calls
+    assert len(calls) == len(set(calls)), "a glyph was hinted more than once at one ppem"
+    # the space is asked once too (hinting does not apply; the None is cached)
+    assert len({gid for gid, _ in calls}) == len(set("Hamburgefons 123"))
+
+
+def test_type0_render_reuses_the_descendant_font_program() -> None:
+    pdf = _build_pdf(True)
+    with PDDocument.load(pdf) as doc:
+        renderer = PDFRenderer(doc)
+        renderer.set_hinting_enabled(True)
+        renderer.render_image_with_dpi(0, 96)
+        page = doc.get_page(0)
+        font = next(iter(page.get_resources().get_font_names()))
+        type0 = page.get_resources().get_font(font)
+        descendant = type0.get_descendant_font()
+        assert type0.get_descendant_font() is descendant
+        ttf = descendant.get_true_type_font()
+        assert ttf is not None
+        assert descendant.get_true_type_font() is ttf

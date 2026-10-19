@@ -174,8 +174,16 @@ def test_main_embeds_font(
     )
     out = tmp_path / "embedded.pdf"
     CreatePDFA.main([str(out), "Font check", str(_REPO_TTF)])
-    # PDType0Font.load always embeds, so the font descriptor's
-    # /FontFile entry should exist in the saved PDF — easiest test:
-    # ensure the on-disk file is large enough to contain the embedded
-    # font (which is multi-hundred-kB for DejaVu).
-    assert out.stat().st_size > 100_000
+    # PDType0Font.load embeds a subset (upstream: set_font queues the font on
+    # the document and save() subsets it), so the descendant carries a
+    # /FontFile2 and a six-letter subset tag on its /BaseFont.
+    with PDDocument.load(str(out)) as doc:
+        resources = doc.get_page(0).get_resources()
+        fonts = [resources.get_font(n) for n in resources.get_font_names()]
+        assert fonts
+        font = fonts[0]
+        assert font.get_name()[6] == "+"
+        descriptor = font.get_descendant_font().get_font_descriptor()
+        assert descriptor.get_font_file2() is not None
+    # A subset is far smaller than the ~700 kB DejaVuSans program.
+    assert out.stat().st_size < 200_000
