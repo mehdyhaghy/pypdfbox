@@ -924,6 +924,24 @@ class PDType0Font(PDFont):
             return []
         return list(get_normalized(self.code_to_cid(code)))
 
+    def get_hinted_normalized_path(self, code: int, ppem: int) -> Any:
+        """Grid-fitted (TrueType-hinted) normalized outline for ``code`` at
+        ``ppem``, or ``None`` to use the unhinted path.
+
+        Mirrors upstream ``PDType0Font.getHintedNormalizedPath(int, int)``:
+        PDCIDFont's implementation returns ``None`` and only
+        :class:`PDCIDFontType2` overrides it, so the dispatch alone gives
+        the hinted path for a TrueType-based descendant and ``None`` for a
+        CFF-based one.
+        """
+        descendant = self.get_descendant_font()
+        if descendant is None:
+            return None
+        getter = getattr(descendant, "get_hinted_normalized_path", None)
+        if not callable(getter):
+            return None
+        return getter(code, ppem)
+
     # ---------- GSUB / cmap-lookup accessors ----------
 
     def get_gsub_data(self) -> Any | None:

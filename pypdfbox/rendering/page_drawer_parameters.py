@@ -22,6 +22,7 @@ class PageDrawerParameters:
         "_renderer",
         "_page",
         "_subsampling_allowed",
+        "_hinting_enabled",
         "_destination",
         "_rendering_hints",
         "_image_downscaling_optimization_threshold",
@@ -32,6 +33,7 @@ class PageDrawerParameters:
         renderer: PDFRenderer,
         page: PDPage,
         subsampling_allowed: bool,
+        hinting_enabled: bool,
         destination: RenderDestination,
         rendering_hints: Any,
         image_downscaling_optimization_threshold: float,
@@ -39,6 +41,7 @@ class PageDrawerParameters:
         self._renderer = renderer
         self._page = page
         self._subsampling_allowed = bool(subsampling_allowed)
+        self._hinting_enabled = bool(hinting_enabled)
         self._destination = destination
         self._rendering_hints = rendering_hints
         self._image_downscaling_optimization_threshold = float(
@@ -56,6 +59,10 @@ class PageDrawerParameters:
     def is_subsampling_allowed(self) -> bool:
         """Whether image-subsampling shortcuts are permitted."""
         return self._subsampling_allowed
+
+    def is_hinting_enabled(self) -> bool:
+        """Whether TrueType glyph outlines are grid-fitted (hinted)."""
+        return self._hinting_enabled
 
     def get_destination(self) -> RenderDestination:
         """Return the render destination (EXPORT / VIEW / PRINT)."""

@@ -1320,6 +1320,12 @@ class PDFDebugger:
         from pypdfbox.rendering.pdf_renderer import PDFRenderer
 
         renderer = PDFRenderer(self._document)
+        # Upstream: pageable.setHintingEnabled(ViewMenu.isHintingEnabled()).
+        hinting_setter = getattr(renderer, "set_hinting_enabled", None)
+        if callable(hinting_setter):
+            from pypdfbox.debugger.ui.view_menu import ViewMenu
+
+            hinting_setter(ViewMenu.is_hinting_enabled())
         images = [
             renderer.render_image_with_dpi(i, dpi=150.0).convert("RGB")
             for i in range(n_pages)

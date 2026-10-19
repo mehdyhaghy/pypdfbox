@@ -27,11 +27,12 @@ IDX_SHOW_APPROXIMATE_TEXT_BOUNDS = 8
 IDX_SHOW_GLYPH_BOUNDS = 9
 IDX_SEP_2 = 10
 IDX_ALLOW_SUBSAMPLING = 11
-IDX_SEP_3 = 12
-IDX_EXTRACT_TEXT = 13
-IDX_TEXT_STRIPPER = 14
-IDX_SEP_4 = 15
-IDX_REPAIR_ACROFORM = 16
+IDX_ENABLE_HINTING = 12
+IDX_SEP_3 = 13
+IDX_EXTRACT_TEXT = 14
+IDX_TEXT_STRIPPER = 15
+IDX_SEP_4 = 16
+IDX_REPAIR_ACROFORM = 17
 
 
 @pytest.fixture(autouse=True)
@@ -61,8 +62,8 @@ def _reset_singletons() -> Iterator[None]:
 def test_construction_wires_full_upstream_layout(tk_root: tk.Tk) -> None:
     view = ViewMenu(master=tk_root)
     tk_menu = view.get_menu()
-    # 5 cascades + 1 sep + 4 checkbuttons + 1 sep + 1 checkbutton + 1 sep
-    # + 1 command + 1 cascade + 1 sep + 1 checkbutton => indices 0..16.
+    # 5 cascades + 1 sep + 4 checkbuttons + 1 sep + 2 checkbuttons + 1 sep
+    # + 1 command + 1 cascade + 1 sep + 1 checkbutton => indices 0..17.
     assert tk_menu.index("end") == IDX_REPAIR_ACROFORM
     assert tk_menu.type(IDX_TREE_VIEW) == "cascade"
     assert tk_menu.type(IDX_ZOOM) == "cascade"
@@ -76,6 +77,7 @@ def test_construction_wires_full_upstream_layout(tk_root: tk.Tk) -> None:
     assert tk_menu.type(IDX_SHOW_GLYPH_BOUNDS) == "checkbutton"
     assert tk_menu.type(IDX_SEP_2) == "separator"
     assert tk_menu.type(IDX_ALLOW_SUBSAMPLING) == "checkbutton"
+    assert tk_menu.type(IDX_ENABLE_HINTING) == "checkbutton"
     assert tk_menu.type(IDX_SEP_3) == "separator"
     assert tk_menu.type(IDX_EXTRACT_TEXT) == "command"
     assert tk_menu.type(IDX_TEXT_STRIPPER) == "cascade"
@@ -120,6 +122,29 @@ def test_allow_subsampling_toggle(tk_root: tk.Tk) -> None:
     assert ViewMenu.is_allow_subsampling() is True
     view.get_menu().invoke(IDX_ALLOW_SUBSAMPLING)
     assert ViewMenu.is_allow_subsampling() is False
+
+
+# ----------------------------------------------------------------------
+# Enable Hinting (PDFBOX-3293, always enabled)
+# ----------------------------------------------------------------------
+
+
+def test_enable_hinting_default_off(tk_root: tk.Tk) -> None:
+    view = ViewMenu.get_instance(master=tk_root)
+    assert view.get_menu().entrycget(IDX_ENABLE_HINTING, "label") == "Enable Hinting"
+    assert ViewMenu.is_hinting_enabled() is False
+
+
+def test_enable_hinting_toggle(tk_root: tk.Tk) -> None:
+    view = ViewMenu.get_instance(master=tk_root)
+    view.get_menu().invoke(IDX_ENABLE_HINTING)
+    assert ViewMenu.is_hinting_enabled() is True
+    view.get_menu().invoke(IDX_ENABLE_HINTING)
+    assert ViewMenu.is_hinting_enabled() is False
+
+
+def test_enable_hinting_is_rendering_option() -> None:
+    assert ViewMenu.is_rendering_option(ViewMenu.ENABLE_HINTING) is True
 
 
 # ----------------------------------------------------------------------
@@ -261,6 +286,7 @@ def test_accessors_without_instance_default_to_false() -> None:
     # rather than crashing (mirrors the *Allow subsampling* contract).
     ViewMenu._reset_instance()
     assert ViewMenu.is_allow_subsampling() is False
+    assert ViewMenu.is_hinting_enabled() is False
     assert ViewMenu.is_show_text_positions() is False
     assert ViewMenu.is_show_text_strip_beads() is False
     assert ViewMenu.is_show_approximate_text_bounds() is False

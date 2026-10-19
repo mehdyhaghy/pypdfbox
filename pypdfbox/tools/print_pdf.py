@@ -63,6 +63,8 @@ class PrintPDF:
         self.dpi: int = 0
         self.no_center: bool = False
         self.no_color_opt: bool = False
+        self.subsampling: bool = False
+        self.hinting: bool = False
         self.infile: Path | None = None
 
     # --- helpers that don't need a printer subsystem --------------------
@@ -126,7 +128,8 @@ class PrintPDF:
         * Upstream pops a ``PrinterJob.printDialog`` when ``silentPrint``
           is false. Python has no equivalent dialog, so a non-silent
           request is logged and falls through to the silent code path.
-        * ``-dpi`` / ``-border`` / ``-noCenter`` / ``-noColorOpt`` apply
+        * ``-dpi`` / ``-border`` / ``-noCenter`` / ``-noColorOpt`` /
+          ``-subsampling`` / ``-hinting`` apply
           only to the upstream in-process rasterising path; with the
           OS spooler the underlying app / driver decides. We keep the
           attributes on the instance so callers / subclasses can inspect
@@ -247,6 +250,8 @@ class PrintPDF:
         parser.add_argument("-dpi", type=int, default=0)
         parser.add_argument("-noCenter", dest="noCenter", action="store_true")
         parser.add_argument("-noColorOpt", dest="noColorOpt", action="store_true")
+        parser.add_argument("-subsampling", action="store_true")
+        parser.add_argument("-hinting", action="store_true")
         parser.add_argument("-i", "--input", dest="infile", required=True)
         ns = parser.parse_args(args)
         runner = PrintPDF()
@@ -261,6 +266,8 @@ class PrintPDF:
         runner.dpi = ns.dpi
         runner.no_center = ns.noCenter
         runner.no_color_opt = ns.noColorOpt
+        runner.subsampling = ns.subsampling
+        runner.hinting = ns.hinting
         runner.infile = Path(ns.infile)
         return runner.call()
 

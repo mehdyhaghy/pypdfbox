@@ -29,7 +29,7 @@ from pypdfbox.debugger.ui.zoom_menu import ZoomMenu
 # Mirror the indices from ``test_view_menu.py`` so reads here also serve
 # as documentation of the upstream menu order.
 IDX_SHOW_APPROXIMATE_TEXT_BOUNDS = 8
-IDX_REPAIR_ACROFORM = 16
+IDX_REPAIR_ACROFORM = 17
 
 
 @pytest.fixture(autouse=True)
@@ -60,7 +60,7 @@ def test_create_view_menu_returns_populated_menu(tk_root: tk.Tk) -> None:
     view = ViewMenu(master=tk_root)
     # Constructor already wired ``set_menu(create_view_menu())`` — the
     # returned menu should match the one ``get_menu`` exposes and carry
-    # the full 17-entry upstream layout (indices 0..16).
+    # the full 18-entry upstream layout (indices 0..17).
     menu = view.get_menu()
     assert menu is not None
     assert isinstance(menu, tk.Menu)

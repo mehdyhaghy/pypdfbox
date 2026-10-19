@@ -62,6 +62,7 @@ def _drawer_with_bare_renderer() -> tuple[PageDrawer, PDFRenderer]:
         renderer=renderer,
         page=page,
         subsampling_allowed=False,
+        hinting_enabled=False,
         destination=RenderDestination.EXPORT,
         rendering_hints=None,
         image_downscaling_optimization_threshold=0.0,

@@ -52,6 +52,7 @@ class PDFToImage:
         self.cropbox: list[int] | None = None
         self.show_time: bool = False
         self.subsampling: bool = False
+        self.hinting: bool = False
         self.infile: Path | None = None
 
     def call(self) -> int:
@@ -98,6 +99,8 @@ class PDFToImage:
                 renderer = PDFRenderer(document)
                 with contextlib.suppress(AttributeError):
                     renderer.set_subsampling_allowed(self.subsampling)
+                with contextlib.suppress(AttributeError):
+                    renderer.set_hinting_enabled(self.hinting)
                 # Resolve string ``-color`` to the ``ImageType`` enum the
                 # renderer expects (upstream picocli auto-converts).
                 if isinstance(self.image_type, str):
@@ -166,6 +169,7 @@ class PDFToImage:
         parser.add_argument("-cropbox", nargs=4, type=int, default=None)
         parser.add_argument("-time", action="store_true", dest="show_time")
         parser.add_argument("-subsampling", action="store_true")
+        parser.add_argument("-hinting", action="store_true")
         parser.add_argument("-i", "--input", dest="infile", required=True)
         ns = parser.parse_args(args)
         runner = PDFToImage()
@@ -181,6 +185,7 @@ class PDFToImage:
         runner.cropbox = ns.cropbox
         runner.show_time = ns.show_time
         runner.subsampling = ns.subsampling
+        runner.hinting = ns.hinting
         runner.infile = Path(ns.infile)
         return runner.call()
 

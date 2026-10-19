@@ -19,6 +19,8 @@ project porting rules:
 - ``getPath``           → :meth:`get_path`
 - ``getNormalizedPath`` → :meth:`get_normalized_path`
 - ``hasGlyph``          → :meth:`has_glyph`
+- ``getHintedNormalizedPath`` → :func:`get_hinted_normalized_path`
+  (a Java ``default`` method; see below)
 
 Java ``IOException`` raised by upstream accessors maps to :class:`OSError`
 per the project's Java→Python exception mapping.
@@ -76,5 +78,27 @@ class PDVectorFont(Protocol):
         """
         ...
 
+
+
+def get_hinted_normalized_path(self: Any, code: int, ppem: int) -> Any:
+    """Return the grid-fitted (TrueType-hinted) normalized glyph path for
+    ``code`` at ``ppem``, or ``None`` if hinting does not apply (not an
+    embedded TrueType outline font, a ppem the font's gasp table excludes,
+    or hinting disabled). Like :meth:`PDVectorFont.get_normalized_path`
+    the result is normalized to the 1000 unit square.
+
+    Mirrors upstream's ``default GeneralPath getHintedNormalizedPath(int,
+    int)`` (PDFBOX-3293), which returns ``null``. It is attached to the
+    protocol after class creation so it is not a structural member: as with
+    a Java default method, a font need not implement it to satisfy
+    ``isinstance(font, PDVectorFont)``. Concrete fonts that do not hint
+    (``PDType1Font``, ``PDCIDFont``) define the same ``None`` default.
+
+    :raises OSError: when the font program cannot be read.
+    """
+    return None
+
+
+PDVectorFont.get_hinted_normalized_path = get_hinted_normalized_path  # type: ignore[attr-defined]
 
 __all__ = ["PDVectorFont"]

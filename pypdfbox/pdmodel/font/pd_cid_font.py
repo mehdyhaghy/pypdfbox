@@ -564,6 +564,15 @@ class PDCIDFont(PDFont):
 
     # ---------- glyph queries ----------
 
+    def get_hinted_normalized_path(self, code: int, ppem: int) -> list[tuple] | None:
+        """Hinted normalized outline for ``code`` at ``ppem``; always ``None``.
+
+        Mirrors the upstream ``PDVectorFont.getHintedNormalizedPath(int, int)``
+        default method (PDFBOX-3293), which this class inherits unchanged:
+        no hinting, so callers use the unhinted normalized path.
+        """
+        return None
+
     def has_glyph(self, cid: int) -> bool:
         """``True`` when ``cid`` resolves to a non-zero advance — either
         explicitly via ``/W`` or via a non-zero ``/DW`` fallback.

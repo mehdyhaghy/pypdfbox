@@ -42,6 +42,7 @@ class PDFPageable:
         self._dpi = dpi
         self._center = center
         self._subsampling_allowed = False
+        self._hinting_enabled = False
         self._rendering_hints: dict | None = None
         self._number_of_pages = document.get_number_of_pages()
 
@@ -56,6 +57,14 @@ class PDFPageable:
 
     def set_subsampling_allowed(self, subsampling_allowed: bool) -> None:
         self._subsampling_allowed = subsampling_allowed
+
+    def is_hinting_enabled(self) -> bool:
+        """Whether TrueType hinting is enabled."""
+        return self._hinting_enabled
+
+    def set_hinting_enabled(self, hinting_enabled: bool) -> None:
+        """Set whether TrueType hinting is enabled."""
+        self._hinting_enabled = hinting_enabled
 
     def get_number_of_pages(self) -> int:
         return self._number_of_pages
@@ -74,6 +83,7 @@ class PDFPageable:
         printable = PDFPrintable(self._document, scaling=None)
         printable._page_index = page_index
         printable._subsampling_allowed = self._subsampling_allowed
+        printable.set_hinting_enabled(self._hinting_enabled)
         printable._rendering_hints = self._rendering_hints
         return printable
 

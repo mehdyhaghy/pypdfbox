@@ -23,7 +23,7 @@ def _make_drawer() -> tuple[PDDocument, MyPageDrawer]:
     doc.add_page(PDPage())
     renderer = PDFRenderer(doc)
     params = PageDrawerParameters(
-        renderer, doc.get_page(0), True, RenderDestination.EXPORT, {}, 0.5,
+        renderer, doc.get_page(0), True, False, RenderDestination.EXPORT, {}, 0.5,
     )
     return doc, MyPageDrawer(params)
 

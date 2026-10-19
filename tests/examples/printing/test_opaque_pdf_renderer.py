@@ -44,6 +44,7 @@ def test_create_page_drawer_returns_opaque_drawer() -> None:
             renderer,
             page,
             False,
+            False,
             RenderDestination.PRINT,
             None,
             0.5,

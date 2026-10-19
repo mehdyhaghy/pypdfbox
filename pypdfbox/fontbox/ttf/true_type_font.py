@@ -1,10 +1,15 @@
 import io
+import threading
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from .cmap_table import CmapTable
+from .control_value_program_table import ControlValueProgramTable
+from .control_value_table import ControlValueTable
 from .digital_signature_table import DigitalSignatureTable
+from .font_program_table import FontProgramTable
+from .gasp_table import GaspTable
 from .glyph_positioning_table import GlyphPositioningTable
 from .glyph_substitution_table import GlyphSubstitutionTable
 from .gsub.gsub_data import GsubData
@@ -174,6 +179,10 @@ class TrueTypeFont:
         self._os2_resolved: bool = False
         self._loca: IndexToLocationTable | None = None
         self._loca_resolved: bool = False
+        # Lazily created hinting engine (upstream ``GlyphHinter hinter``,
+        # PDFBOX-3293). ``False`` marks "glyph_hinter module unavailable".
+        self._hinter: Any = None
+        self._lock_hinter = threading.Lock()
         # Raw bytes kept for embedding round-trips (``get_original_data``).
         self._raw_bytes: bytes = bytes(raw)
         self._closed: bool = False
@@ -274,6 +283,14 @@ class TrueTypeFont:
         directory observe the upstream contract.
         """
         if table is None:
+            return
+        if isinstance(
+            table,
+            (ControlValueTable, FontProgramTable, ControlValueProgramTable, GaspTable),
+        ):
+            # Hinting tables are read by pypdfbox's own readers (upstream
+            # ``TTFTable.read``), not decoded by fontTools.
+            self._read_typed_table(table)
             return
         raw = self.get_table_bytes(table)
         if raw is not None:
@@ -683,6 +700,109 @@ class TrueTypeFont:
         t.populate_from_fonttools(self._tt)
         self._gsub = t
         return t
+
+    # ---------- hinting tables (cvt / fpgm / prep / gasp) --------------
+
+    def _get_hinting_table(self, table_class: type[TTFTable]) -> Any:
+        """Return the typed hinting table for ``table_class.TAG`` or ``None``.
+
+        Mirrors upstream ``getTable(String)`` for the four hinting tables:
+        the directory entry is replaced by a typed table read from the raw
+        on-disk bytes on first access (fontTools' decoders are bypassed, so
+        the values match upstream's own readers byte for byte). A truncated
+        table raises :class:`OSError`, matching upstream's ``IOException``
+        (``EOFException``) contract, and is retried on the next call.
+        """
+        tag = table_class.TAG  # type: ignore[attr-defined]
+        table_map = self.get_table_map()
+        entry = table_map.get(tag)
+        if entry is None:
+            return None
+        if isinstance(entry, table_class) and entry.get_initialized():
+            return entry
+        table = entry if isinstance(entry, table_class) else table_class()
+        table.set_tag(tag)
+        table.set_check_sum(entry.get_check_sum())
+        table.set_offset(entry.get_offset())
+        table.set_length(entry.get_length())
+        self._read_typed_table(table)
+        table_map[tag] = table
+        return table
+
+    def _read_typed_table(self, table: TTFTable) -> None:
+        raw = self.get_table_bytes(table)
+        if raw is None:
+            msg = f"table '{table.get_tag()}' extends past the end of the font"
+            raise OSError(msg)
+        try:
+            table.read(self, MemoryTTFDataStream(raw))
+        except EOFError as exc:
+            raise OSError(str(exc)) from exc
+
+    def get_control_values(self) -> ControlValueTable | None:
+        """Return the ``cvt `` (Control Value) table, or ``None`` if absent.
+
+        Mirrors upstream ``getControlValues()``.
+
+        :raises OSError: if the table cannot be read.
+        """
+        return self._get_hinting_table(ControlValueTable)
+
+    def get_font_program(self) -> FontProgramTable | None:
+        """Return the ``fpgm`` (Font Program) table, or ``None`` if absent.
+
+        Mirrors upstream ``getFontProgram()``.
+
+        :raises OSError: if the table cannot be read.
+        """
+        return self._get_hinting_table(FontProgramTable)
+
+    def get_control_value_program(self) -> ControlValueProgramTable | None:
+        """Return the ``prep`` (Control Value Program) table, or ``None``.
+
+        Mirrors upstream ``getControlValueProgram()``.
+
+        :raises OSError: if the table cannot be read.
+        """
+        return self._get_hinting_table(ControlValueProgramTable)
+
+    def get_gasp(self) -> GaspTable | None:
+        """Return the ``gasp`` (Grid-fitting And Scan-conversion Procedure)
+        table, or ``None`` if absent.
+
+        Mirrors upstream ``getGasp()``.
+
+        :raises OSError: if the table cannot be read.
+        """
+        return self._get_hinting_table(GaspTable)
+
+    def get_hinted_path(self, gid: int, ppem: int) -> Any:
+        """Return the grid-fitted (hinted) path of glyph ``gid`` at ``ppem``.
+
+        Mirrors upstream ``getHintedPath(int, int)`` (PDFBOX-3293). The
+        path is in font units, in the same fontTools ``RecordingPen``
+        shape as :meth:`GlyphData.get_path`, or ``None`` if hinting does
+        not apply (no bytecode program, an empty glyph or a simple glyph
+        without instructions, or a ppem excluded by the gasp table or
+        below ``head.lowestRecPPEM``) or fails. Composite glyphs are
+        hinted. Whether to hint at all is the caller's decision, e.g.
+        ``PDFRenderer.set_hinting_enabled``; the caller falls back to the
+        raw outline when this returns ``None``.
+        """
+        with self._lock_hinter:
+            if self._hinter is None:
+                try:
+                    # The GlyphHinter port lands in wave 1611; until then
+                    # hinting is unavailable and every glyph is unhinted.
+                    from .glyph_hinter import GlyphHinter  # type: ignore[import-not-found]
+                except ImportError:
+                    self._hinter = False
+                else:
+                    self._hinter = GlyphHinter(self)
+            glyph_hinter = self._hinter
+        if glyph_hinter is False:
+            return None
+        return glyph_hinter.get_path(gid, ppem)
 
     # ---------- GSUB feature toggles -----------------------------------
 

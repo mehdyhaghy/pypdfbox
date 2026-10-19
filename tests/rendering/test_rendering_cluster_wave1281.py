@@ -67,6 +67,7 @@ def test_page_drawer_parameters_round_trip():
         renderer="r",
         page="p",
         subsampling_allowed=True,
+        hinting_enabled=False,
         destination=RenderDestination.VIEW,
         rendering_hints={"AA": True},
         image_downscaling_optimization_threshold=0.5,

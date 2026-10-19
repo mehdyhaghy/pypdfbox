@@ -405,3 +405,45 @@ def test_send_document_no_spooler_no_opener_surfaces_path(
     finally:
         doc.close()
         debugger._document = None
+
+
+def test_send_document_forwards_hinting_toggle(
+    debugger: PDFDebugger,
+    monkeypatch: pytest.MonkeyPatch,
+    stub_render: None,
+) -> None:
+    """Upstream: ``pageable.setHintingEnabled(ViewMenu.isHintingEnabled())``."""
+    import subprocess
+
+    from pypdfbox.rendering import pdf_renderer as _pdf_renderer
+
+    seen: list[bool] = []
+    real_setter = _pdf_renderer.PDFRenderer.set_hinting_enabled
+
+    def _spy(self: Any, hinting_enabled: bool) -> None:
+        seen.append(hinting_enabled)
+        real_setter(self, hinting_enabled)
+
+    monkeypatch.setattr(_pdf_renderer.PDFRenderer, "set_hinting_enabled", _spy)
+    ViewMenu.get_instance()._enable_hinting_var.set(True)
+    captured: list[str] = []
+
+    class _FakePopen:
+        def __init__(self, argv: list[str]) -> None:
+            captured.append(argv[-1])
+
+    doc = PDDocument()
+    try:
+        doc.add_page(PDPage())
+        debugger._document = doc
+        monkeypatch.setattr("pypdfbox.debugger.pd_debugger.sys.platform", "linux")
+        monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/lp" if cmd == "lp" else None)
+        monkeypatch.setattr(subprocess, "Popen", _FakePopen)
+        debugger._send_document_to_printer(1)
+        assert seen == [True]
+        for path in captured:
+            with contextlib.suppress(OSError):
+                os.unlink(path)
+    finally:
+        doc.close()
+        debugger._document = None

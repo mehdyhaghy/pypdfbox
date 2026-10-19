@@ -33,6 +33,7 @@ def _make_drawer() -> PageDrawer:
         renderer=renderer,
         page=page,
         subsampling_allowed=False,
+        hinting_enabled=False,
         destination=RenderDestination.VIEW,
         rendering_hints={"AA": True},
         image_downscaling_optimization_threshold=0.5,

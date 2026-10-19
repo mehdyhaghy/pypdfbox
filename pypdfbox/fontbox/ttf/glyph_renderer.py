@@ -31,8 +31,23 @@ _LOG = logging.getLogger(__name__)
 class GlyphRenderer:
     """Render a :class:`GlyphDescription` into a recorded path."""
 
-    def __init__(self, glyph_description: Any) -> None:
+    def __init__(
+        self,
+        glyph_description: Any,
+        hinted_x: list[int] | None = None,
+        hinted_y: list[int] | None = None,
+    ) -> None:
+        """Wrap ``glyph_description``.
+
+        When ``hinted_x`` / ``hinted_y`` are given, the path is built from
+        those grid-fitted (hinted) coordinates instead of the glyph's raw
+        coordinates. They are in font units (the hinting having been
+        applied and scaled back) and must be parallel to the glyph's
+        points. Mirrors upstream's two constructors.
+        """
         self._glyph_description = glyph_description
+        self._hinted_x = hinted_x
+        self._hinted_y = hinted_y
 
     def get_path(self) -> RecordingPen:
         """Build and return the recorded path for the wrapped glyph.
@@ -42,16 +57,22 @@ class GlyphRenderer:
         attribute is a list of ``(operator, args)`` tuples ready to be
         replayed onto any other pen.
         """
-        points = self.describe(self._glyph_description)
+        points = self.describe(self._glyph_description, self._hinted_x, self._hinted_y)
         return self.calculate_path(points)
 
     # ---- internals ---------------------------------------------------
 
     @staticmethod
-    def describe(gd: Any) -> list[Point]:
+    def describe(
+        gd: Any,
+        hinted_x: list[int] | None = None,
+        hinted_y: list[int] | None = None,
+    ) -> list[Point]:
         """Snapshot the description's point array.
 
-        Mirrors upstream ``describe(GlyphDescription)`` (line 64).
+        Mirrors upstream ``describe(GlyphDescription)`` (line 64). The
+        optional hinted coordinate arrays replace the raw ones, as the
+        upstream renderer's ``hintedX`` / ``hintedY`` fields do.
         """
         end_pt_index = 0
         end_pt_of_contour_index = -1
@@ -64,10 +85,12 @@ class GlyphRenderer:
             if end_pt:
                 end_pt_index += 1
                 end_pt_of_contour_index = -1
+            x = hinted_x[i] if hinted_x is not None else gd.get_x_coordinate(i)
+            y = hinted_y[i] if hinted_y is not None else gd.get_y_coordinate(i)
             points.append(
                 Point(
-                    int(gd.get_x_coordinate(i)),
-                    int(gd.get_y_coordinate(i)),
+                    int(x),
+                    int(y),
                     (gd.get_flags(i) & GlyfDescript.ON_CURVE) != 0,
                     end_pt,
                 )

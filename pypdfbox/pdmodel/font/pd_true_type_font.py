@@ -597,6 +597,35 @@ class PDTrueTypeFont(PDSimpleFont):
         scale = 1000.0 / units_per_em
         return _scale_path(path, scale)
 
+    def get_hinted_normalized_path(
+        self, code: int, ppem: int
+    ) -> list[tuple[Any, ...]] | None:
+        """Grid-fitted (TrueType-hinted) outline for ``code`` at ``ppem``,
+        normalized to the 1000-unit text space, or ``None`` when hinting
+        does not apply and the caller should use :meth:`get_normalized_path`.
+
+        Mirrors upstream ``PDTrueTypeFont.getHintedNormalizedPath(int, int)``
+        (PDFBOX-3293): only embedded ``glyf``-based outlines carry hinting
+        that can be executed. The segments use the same fontTools
+        ``(verb, args)`` shape as :meth:`get_normalized_path`.
+        """
+        if not self.is_embedded():
+            return None
+        ttf = self.get_true_type_font()
+        if ttf is None or _is_post_script_program(ttf):
+            return None
+        gid = self.code_to_gid(code)
+        if gid == 0:
+            return None
+        hinted = ttf.get_hinted_path(gid, ppem)
+        if hinted is None:
+            return None
+        path = list(getattr(hinted, "value", hinted))
+        units_per_em = ttf.get_units_per_em()
+        if units_per_em != 1000 and units_per_em > 0:
+            path = _scale_path(path, 1000.0 / units_per_em)
+        return path
+
     def get_path_by_name(self, name: str) -> list[tuple[Any, ...]]:
         """Glyph outline for the PostScript glyph ``name``, with the same
         name-resolution fallbacks upstream applies in ``getPath(String)``:
@@ -1378,6 +1407,17 @@ class _CmapPlatformView:
     def get_glyph_id(self, code: int) -> int:
         """GID for ``code`` (``0`` when unmapped)."""
         return self._code_to_gid.get(int(code), 0)
+
+
+def _is_post_script_program(ttf: Any) -> bool:
+    """Upstream ``otf != null && otf.isPostScript()``."""
+    is_post_script = getattr(ttf, "is_post_script", None)
+    if not callable(is_post_script):
+        return False
+    try:
+        return bool(is_post_script())
+    except Exception:
+        return False
 
 
 def _scale_path(

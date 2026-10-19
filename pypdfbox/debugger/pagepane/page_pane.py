@@ -383,6 +383,12 @@ class PagePane:
         if setter is not None:
             with contextlib.suppress(TypeError, ValueError):
                 setter(subsampling)
+        # Mirror upstream: PDFRenderer.setHintingEnabled gated on
+        # ViewMenu.isHintingEnabled() (PDFBOX-3293).
+        hinting_setter = getattr(renderer, "set_hinting_enabled", None)
+        if hinting_setter is not None:
+            with contextlib.suppress(TypeError, ValueError):
+                hinting_setter(_resolve_hinting_enabled())
         scale = _resolve_zoom_scale()
         image_type = _resolve_image_type()
         destination = _resolve_render_destination()
@@ -818,6 +824,21 @@ def _resolve_allow_subsampling() -> bool:
     except ImportError:
         return False
     getter = getattr(ViewMenu, "is_allow_subsampling", None)
+    if getter is None:
+        return False
+    try:
+        return bool(getter())
+    except Exception:
+        return False
+
+
+def _resolve_hinting_enabled() -> bool:
+    """Mirror upstream's ``ViewMenu.isHintingEnabled()``."""
+    try:
+        from pypdfbox.debugger.ui.view_menu import ViewMenu
+    except ImportError:
+        return False
+    getter = getattr(ViewMenu, "is_hinting_enabled", None)
     if getter is None:
         return False
     try:

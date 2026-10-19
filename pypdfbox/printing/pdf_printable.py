@@ -45,6 +45,7 @@ class PDFPrintable:
         self._center = center
         self._page_index = 0
         self._subsampling_allowed = False
+        self._hinting_enabled = False
         self._rendering_hints: dict | None = None
 
     def get_rendering_hints(self) -> dict | None:
@@ -58,6 +59,21 @@ class PDFPrintable:
 
     def set_subsampling_allowed(self, subsampling_allowed: bool) -> None:
         self._subsampling_allowed = subsampling_allowed
+
+    def is_hinting_enabled(self) -> bool:
+        """Whether the renderer grid-fits (hints) TrueType glyph outlines.
+
+        Mirrors upstream ``PDFPrintable.isHintingEnabled()``. Off by default.
+        """
+        return self._hinting_enabled
+
+    def set_hinting_enabled(self, hinting_enabled: bool) -> None:
+        """Set whether the renderer grid-fits (hints) TrueType glyph outlines.
+
+        Mirrors upstream ``PDFPrintable.setHintingEnabled(boolean)``. Only
+        embedded TrueType outline fonts are affected. Off by default.
+        """
+        self._hinting_enabled = hinting_enabled
 
     def get_scaling(self) -> Scaling:
         return self._scaling
@@ -76,6 +92,15 @@ class PDFPrintable:
         from pypdfbox.rendering.pdf_renderer import PDFRenderer
 
         renderer = PDFRenderer(self._document)
+        # Forward the render flags (upstream print()); tolerate renderer
+        # substitutes that do not implement the setters.
+        for setter_name, value in (
+            ("set_subsampling_allowed", self._subsampling_allowed),
+            ("set_hinting_enabled", self._hinting_enabled),
+        ):
+            setter = getattr(renderer, setter_name, None)
+            if callable(setter):
+                setter(value)
         idx = self._page_index if page_index is None else page_index
         if self._dpi and self._dpi > 0:
             return renderer.render_image_with_dpi(idx, self._dpi)

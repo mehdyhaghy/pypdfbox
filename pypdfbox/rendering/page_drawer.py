@@ -14,6 +14,7 @@ object holds the Graphics2D-equivalent buffers.
 """
 
 import logging
+import math
 from typing import TYPE_CHECKING, Any
 
 from pypdfbox.contentstream.pdf_graphics_stream_engine import PDFGraphicsStreamEngine
@@ -69,6 +70,7 @@ class PageDrawer(PDFGraphicsStreamEngine):
         self._inv_table: Any = None
         self._annotation_filter: Any = lambda annotation: True
         self._subsampling_allowed: bool = parameters.is_subsampling_allowed()
+        self._hinting_enabled: bool = parameters.is_hinting_enabled()
         self._destination = parameters.get_destination()
         self._rendering_hints = parameters.get_rendering_hints()
         self._image_downscaling_optimization_threshold = (
@@ -483,6 +485,35 @@ class PageDrawer(PDFGraphicsStreamEngine):
         helper = getattr(self._renderer, "_render_glyph", None)
         if callable(helper):
             helper(font, code, text_rendering_matrix, displacement)
+
+    @staticmethod
+    def hinting_ppem(at: Any) -> int:
+        """Derive the pixels-per-em to grid-fit at, or 0 to render unhinted.
+
+        Mirrors upstream ``static int hintingPpem(AffineTransform)``
+        (PDFBOX-3293). ``at`` maps normalized (1000 units/em) glyph
+        coordinates to device space; it may be a
+        :class:`~pypdfbox.util.matrix.Matrix` (anything exposing
+        ``get_shear_x`` / ``get_scale_y``) or a PDF-style
+        ``(a, b, c, d, e, f)`` tuple. The ppem is the magnitude of the
+        transform's vertical basis vector, i.e. the device height of one
+        em, so it is rotation-invariant: the glyph is grid-fit upright and
+        the full transform is applied to the hinted outline afterwards.
+
+        The caller is responsible for composing the device transform (DPI
+        scale) in first; otherwise the glyph is grid-fit at its point size
+        instead of its rendered size.
+        """
+        if hasattr(at, "get_shear_x") and hasattr(at, "get_scale_y"):
+            shear_x = float(at.get_shear_x())
+            scale_y = float(at.get_scale_y())
+        else:
+            shear_x = float(at[2])
+            scale_y = float(at[3])
+        # length of the y basis vector = device pixels per normalized unit
+        scale = math.hypot(shear_x, scale_y)
+        ppem = _java_round(1000.0 * scale)
+        return max(0, ppem)
 
     def show_type3_glyph(
         self,
@@ -904,6 +935,11 @@ class TransparencyGroup:
         from PIL import Image
 
         return Image.new("LA", (max(1, int(width)), max(1, int(height))), (0, 0))
+
+
+def _java_round(value: float) -> int:
+    """``Math.round(double)``: round half up (toward positive infinity)."""
+    return math.floor(value + 0.5)
 
 
 __all__ = ["PageDrawer", "TransparencyGroup"]

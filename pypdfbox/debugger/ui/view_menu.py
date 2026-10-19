@@ -19,6 +19,7 @@ The wiring follows upstream order:
 10. *Show Glyph Bounds* checkbutton
 11. separator
 12. *Allow subsampling* checkbutton
+12b. *Enable Hinting* checkbutton
 13. separator
 14. *Extract Text* command
 15. ``TextStripperMenu`` cascade
@@ -57,6 +58,7 @@ class ViewMenu(MenuBase):
     SHOW_FONT_BBOX: ClassVar[str] = "Show Approximate Text Bounds"
     SHOW_GLYPH_BOUNDS: ClassVar[str] = "Show Glyph Bounds"
     ALLOW_SUBSAMPLING: ClassVar[str] = "Allow subsampling"
+    ENABLE_HINTING: ClassVar[str] = "Enable Hinting"
     EXTRACT_TEXT: ClassVar[str] = "Extract Text"
     REPAIR_ACROFORM: ClassVar[str] = "Repair AcroForm"
 
@@ -154,6 +156,13 @@ class ViewMenu(MenuBase):
             variable=self._allow_subsampling_var,
         )
 
+        # 12b. TrueType hinting toggle (PDFBOX-3293) — always available.
+        self._enable_hinting_var = tk.BooleanVar(master=master, value=False)
+        menu.add_checkbutton(
+            label=self.ENABLE_HINTING,
+            variable=self._enable_hinting_var,
+        )
+
         # 13. separator.
         menu.add_separator()
 
@@ -233,6 +242,13 @@ class ViewMenu(MenuBase):
         return bool(ViewMenu._instance._allow_subsampling_var.get())
 
     @staticmethod
+    def is_hinting_enabled() -> bool:
+        """Return whether font hinting shall be used."""
+        if ViewMenu._instance is None:
+            return False
+        return bool(ViewMenu._instance._enable_hinting_var.get())
+
+    @staticmethod
     def is_show_text_positions() -> bool:
         """Return whether the *Show TextStripper TextPositions* toggle is on."""
         if ViewMenu._instance is None:
@@ -300,6 +316,7 @@ class ViewMenu(MenuBase):
             ViewMenu.SHOW_TEXT_STRIPPER_BEADS,
             ViewMenu.SHOW_FONT_BBOX,
             ViewMenu.SHOW_GLYPH_BOUNDS,
+            ViewMenu.ENABLE_HINTING,
             ViewMenu.ALLOW_SUBSAMPLING,
         }
 

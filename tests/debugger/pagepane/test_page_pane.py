@@ -13,6 +13,7 @@ from pypdfbox.cos import COSStream
 from pypdfbox.debugger.pagepane.page_pane import (
     PagePane,
     _resolve_allow_subsampling,
+    _resolve_hinting_enabled,
     _resolve_image_type,
     _resolve_render_destination,
     _resolve_rotation,
@@ -1589,5 +1590,48 @@ def test_render_worker_done_is_no_op_before_execute(tk_root: tk.Tk) -> None:
         # Should not raise.
         worker.done()
         assert worker.get() is None
+    finally:
+        doc.close()
+
+
+def test_resolve_hinting_enabled_reflects_view_menu_state(
+    tk_root: tk.Tk, _reset_menus: None
+) -> None:
+    from pypdfbox.debugger.ui.view_menu import ViewMenu
+
+    instance = ViewMenu.get_instance(master=tk_root)
+    assert _resolve_hinting_enabled() is False
+    instance._enable_hinting_var.set(True)
+    assert _resolve_hinting_enabled() is True
+    instance._enable_hinting_var.set(False)
+    assert _resolve_hinting_enabled() is False
+
+
+def test_page_pane_forwards_hinting_toggle_to_renderer(
+    tk_root: tk.Tk, _reset_menus: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Upstream PagePane calls ``renderer.setHintingEnabled(ViewMenu.isHintingEnabled())``."""
+    from pypdfbox.debugger.ui.view_menu import ViewMenu
+
+    ViewMenu.get_instance(master=tk_root)._enable_hinting_var.set(True)
+    seen: dict[str, object] = {}
+
+    import pypdfbox.rendering as rendering_module
+
+    real_renderer_cls = rendering_module.PDFRenderer
+
+    class _SpyRenderer(real_renderer_cls):  # type: ignore[misc, valid-type]
+        def set_hinting_enabled(self, hinting_enabled):  # type: ignore[override]
+            seen["hinting"] = hinting_enabled
+            super().set_hinting_enabled(hinting_enabled)
+
+    monkeypatch.setattr(rendering_module, "PDFRenderer", _SpyRenderer)
+
+    doc = _make_one_page_doc()
+    try:
+        page_dict = doc.get_page(0).get_cos_object()
+        pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
+        pane.init()
+        assert seen.get("hinting") is True
     finally:
         doc.close()

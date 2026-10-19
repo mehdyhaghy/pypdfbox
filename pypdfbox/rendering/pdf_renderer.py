@@ -1117,6 +1117,12 @@ class PDFRenderer(PDFStreamEngine):
         # had nothing", so we don't re-walk the mapper per-glyph. Filled
         # by ``_resolve_font_program`` (PDF 32000-1 §9.8 / §9.10).
         self._font_program_cache: dict[int, Any | None] = {}
+        # Per-render glyph caches used only while TrueType hinting is
+        # enabled (mirrors upstream PageDrawer's ``Map<PDFont, GlyphCache>``
+        # feeding ``GlyphCache.getPathForCharacterCode(code, ppem)``).
+        # Keyed by ``id(font)``; each cache holds a strong font reference so
+        # the id stays unique for the cache's lifetime.
+        self._hinting_glyph_caches: dict[int, Any] = {}
         # Type 3 charproc per-glyph metric overrides. ``d0`` sets
         # ``_type3_d0_wx`` (uncoloured glyph — advance only); ``d1`` sets
         # ``_type3_d1_wx`` plus installs a bbox clip (coloured glyph). The
@@ -1160,6 +1166,9 @@ class PDFRenderer(PDFStreamEngine):
         # unconditionally and would crash on AttributeError. Defaults match
         # upstream ``PDFRenderer`` field initialisers in PDFBox 3.0.x.
         self._subsampling_allowed: bool = False
+        # Mirrors upstream ``hintingEnabled`` (PDFBOX-3293): TrueType
+        # grid-fitting is off by default.
+        self._hinting_enabled: bool = False
         self._default_destination: str = "View"
         # Active destination resolved per render_image call — annotation
         # visibility consults this for the four-arg renderImage overload
@@ -1397,6 +1406,7 @@ class PDFRenderer(PDFStreamEngine):
             renderer=self,
             page=page,
             subsampling_allowed=self._subsampling_allowed,
+            hinting_enabled=self._hinting_enabled,
             destination=resolved_destination,
             rendering_hints=self._rendering_hints,
             image_downscaling_optimization_threshold=(
@@ -1546,6 +1556,7 @@ class PDFRenderer(PDFStreamEngine):
         self._warned_standard14_fonts = set()
         self._standard14_warn_decided = set()
         self._font_program_cache = {}
+        self._hinting_glyph_caches = {}
         self._glyph_clip_scratch = {}
         # Reset text-knockout sub-canvas state (wave 1387) — defensive
         # in case a previous render aborted mid-BT/ET.
@@ -1642,6 +1653,24 @@ class PDFRenderer(PDFStreamEngine):
     def is_subsampling_allowed(self) -> bool:
         """Mirror of upstream ``PDFRenderer.isSubsamplingAllowed()``."""
         return self._subsampling_allowed
+
+    def is_hinting_enabled(self) -> bool:
+        """Whether TrueType glyph outlines are grid-fitted (hinted).
+
+        Mirrors upstream ``PDFRenderer.isHintingEnabled()``. When enabled,
+        the renderer runs the font's bytecode instructions at the size the
+        glyph is drawn at. Hinting is off by default.
+        """
+        return self._hinting_enabled
+
+    def set_hinting_enabled(self, hinting_enabled: bool) -> None:
+        """Enable or disable TrueType grid-fitting (hinting).
+
+        Mirrors upstream ``PDFRenderer.setHintingEnabled(boolean)``. Only
+        embedded TrueType outline fonts are affected; other fonts render
+        as before. Hinting is off by default.
+        """
+        self._hinting_enabled = bool(hinting_enabled)
 
     def set_default_destination(
         self, destination: str | RenderDestination
@@ -9609,8 +9638,16 @@ class PDFRenderer(PDFStreamEngine):
                 gid = self._code_to_gid(font, code, ttf)
                 glyph_name = ttf._tt.getGlyphName(gid)
                 glyph = glyph_set[glyph_name]
-                pen = _AggdrawPathPen(scale=1.0 / ttf.get_units_per_em())
-                glyph.draw(make_base_pen_bridge(pen, glyph_set=glyph_set))
+                # Grid-fitting is off by default; set_hinting_enabled(True)
+                # turns it on. While it is off no ppem is derived and the
+                # glyph is drawn exactly as before (upstream PageDrawer
+                # showFontGlyph, PDFBOX-3293).
+                pen = None
+                if self._hinting_enabled:
+                    pen = self._hinted_glyph_pen(font, code, glyph_to_device)
+                if pen is None:
+                    pen = _AggdrawPathPen(scale=1.0 / ttf.get_units_per_em())
+                    glyph.draw(make_base_pen_bridge(pen, glyph_set=glyph_set))
                 # Prefer the PDFont's declared advance width (already in
                 # 1/1000 em — populated from /Widths for simple TTF fonts
                 # and from the descendant CIDFont's /W array for Type0
@@ -9740,6 +9777,52 @@ class PDFRenderer(PDFStreamEngine):
             with contextlib.suppress(Exception):
                 self._draw_placeholder_box(glyph_to_device, advance_units)
         return _advance(advance_units)
+
+    def _hinted_glyph_pen(
+        self, font: Any, code: int, glyph_to_device: _Matrix
+    ) -> _AggdrawPathPen | None:
+        """Return a pen holding the grid-fitted outline of ``code``, or
+        ``None`` to draw the unhinted glyph.
+
+        ``glyph_to_device`` maps unit-em glyph space to device pixels (the
+        device scale already composed in, as upstream does with ``xform``).
+        The ppem is derived via :meth:`PageDrawer.hinting_ppem`, which
+        expects a transform whose input is the 1000-unit normalized glyph
+        space, so the matrix is pre-scaled by 1/1000.
+        """
+        from pypdfbox.rendering.glyph_cache import GlyphCache
+        from pypdfbox.rendering.page_drawer import PageDrawer
+
+        normalized_to_device = _matmul((0.001, 0.0, 0.0, 0.001, 0.0, 0.0), glyph_to_device)
+        ppem = PageDrawer.hinting_ppem(normalized_to_device)
+        if ppem <= 0:
+            return None
+        key = id(font)
+        cache = self._hinting_glyph_caches.get(key)
+        if cache is None:
+            cache = GlyphCache(font)
+            self._hinting_glyph_caches[key] = cache
+        path = cache._get_hinted_path(code, ppem)
+        if path is None:
+            return None
+        pen = _AggdrawPathPen(scale=1.0 / 1000.0)
+        commands = list(path)
+        if commands and isinstance(commands[0], tuple) and len(commands[0]) == 2 and (
+            commands[0][0] in ("moveTo", "lineTo", "qCurveTo", "curveTo", "closePath")
+        ):
+            # fontTools RecordingPen value (PDTrueTypeFont shape).
+            from fontTools.pens.recordingPen import (  # type: ignore[import-untyped]
+                replayRecording,
+            )
+
+            replayRecording(commands, make_base_pen_bridge(pen))
+        else:
+            # ``("moveto", x, y)`` command tuples (PDCIDFontType2 shape).
+            built = self._build_aggdraw_path_from_commands(commands, scale=1.0 / 1000.0)
+            if built is not None:
+                pen.path = built
+                pen.has_segments = True
+        return pen
 
     @staticmethod
     def _fallback_advance_units(

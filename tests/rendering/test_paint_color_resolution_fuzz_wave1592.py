@@ -80,6 +80,9 @@ class _FakeParams:
     def is_subsampling_allowed(self) -> bool:
         return False
 
+    def is_hinting_enabled(self) -> bool:
+        return False
+
     def get_destination(self) -> Any:
         return None
 

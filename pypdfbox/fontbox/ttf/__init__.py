@@ -1,7 +1,11 @@
 from .cff_table import CFFTable
 from .cmap_lookup import CmapLookup
 from .cmap_subtable import CmapSubtable
+from .control_value_program_table import ControlValueProgramTable
+from .control_value_table import ControlValueTable
 from .digital_signature_table import DigitalSignatureTable
+from .font_program_table import FontProgramTable
+from .gasp_table import GaspTable
 from .glyf_composite_comp import GlyfCompositeComp
 from .glyf_composite_descript import GlyfCompositeDescript
 from .glyf_descript import GlyfDescript
@@ -42,7 +46,11 @@ __all__ = [
     "CFFTable",
     "CmapLookup",
     "CmapSubtable",
+    "ControlValueProgramTable",
+    "ControlValueTable",
     "DigitalSignatureTable",
+    "FontProgramTable",
+    "GaspTable",
     "GlyfCompositeComp",
     "GlyfCompositeDescript",
     "GlyfDescript",

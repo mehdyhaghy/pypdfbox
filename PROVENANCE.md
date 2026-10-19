@@ -4779,3 +4779,34 @@ License: SIL Open Font License 1.1 (permissive; on the project allow-list)
 | `tests/multipdf/test_splitter_named_destinations_wave1609.py` | 3.0.9-SNAPSHOT | hand-written; PDFBOX-6283 named-destination handling in `pdfbox/src/main/java/org/apache/pdfbox/multipdf/Splitter.java` |
 | `tests/pdmodel/test_pd_page_tree_failed_lookup_wave1609.py` | 3.0.9-SNAPSHOT | hand-written; PDFBOX-6286 regression for `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDPageTree.java` (upstream test: `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/TestPDPageTree.java`) |
 | `tests/pdmodel/font/test_codepoint_encoding_cache_wave1609.py` | 3.0.9-SNAPSHOT | hand-written; PDFBOX-6287 shared `codepointEncoding` cache in `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDFont.java` (upstream test: `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/TestFontEncoding.java`) |
+| `pypdfbox/fontbox/ttf/fixed.py` | 3.0.9-SNAPSHOT | `fontbox/src/main/java/org/apache/fontbox/ttf/Fixed.java` (PDFBOX-3293) |
+| `pypdfbox/fontbox/ttf/unit_vector.py` | 3.0.9-SNAPSHOT | `fontbox/src/main/java/org/apache/fontbox/ttf/UnitVector.java` (PDFBOX-3293) |
+| `pypdfbox/fontbox/ttf/zone.py` | 3.0.9-SNAPSHOT | `fontbox/src/main/java/org/apache/fontbox/ttf/Zone.java` (PDFBOX-3293) |
+| `pypdfbox/fontbox/ttf/graphics_state.py` | 3.0.9-SNAPSHOT | `fontbox/src/main/java/org/apache/fontbox/ttf/GraphicsState.java` (PDFBOX-3293) |
+| `pypdfbox/fontbox/ttf/bytecode_stream.py` | 3.0.9-SNAPSHOT | `fontbox/src/main/java/org/apache/fontbox/ttf/BytecodeStream.java` (PDFBOX-3293) |
+| `pypdfbox/fontbox/ttf/function_def.py` | 3.0.9-SNAPSHOT | `fontbox/src/main/java/org/apache/fontbox/ttf/FunctionDef.java` (PDFBOX-3293) |
+| `pypdfbox/fontbox/ttf/hinting_exception.py` | 3.0.9-SNAPSHOT | `fontbox/src/main/java/org/apache/fontbox/ttf/HintingException.java` (PDFBOX-3293) |
+| `pypdfbox/fontbox/ttf/execution_context.py` | 3.0.9-SNAPSHOT | `fontbox/src/main/java/org/apache/fontbox/ttf/ExecutionContext.java` (PDFBOX-3293) |
+| `pypdfbox/fontbox/ttf/execution_tracer.py` | 3.0.9-SNAPSHOT | `fontbox/src/main/java/org/apache/fontbox/ttf/ExecutionTracer.java` (PDFBOX-3293) |
+| `pypdfbox/fontbox/ttf/true_type_interpreter.py` | 3.0.9-SNAPSHOT | `fontbox/src/main/java/org/apache/fontbox/ttf/TrueTypeInterpreter.java` (PDFBOX-3293) |
+| `pypdfbox/fontbox/ttf/control_value_table.py` | 3.0.9-SNAPSHOT | `fontbox/src/main/java/org/apache/fontbox/ttf/ControlValueTable.java` (PDFBOX-3293) |
+| `pypdfbox/fontbox/ttf/control_value_program_table.py` | 3.0.9-SNAPSHOT | `fontbox/src/main/java/org/apache/fontbox/ttf/ControlValueProgramTable.java` (PDFBOX-3293) |
+| `pypdfbox/fontbox/ttf/font_program_table.py` | 3.0.9-SNAPSHOT | `fontbox/src/main/java/org/apache/fontbox/ttf/FontProgramTable.java` (PDFBOX-3293) |
+| `pypdfbox/fontbox/ttf/gasp_table.py` | 3.0.9-SNAPSHOT | `fontbox/src/main/java/org/apache/fontbox/ttf/GaspTable.java` (PDFBOX-3293) |
+| `tests/fontbox/ttf/upstream/test_fixed.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/FixedTest.java` |
+| `tests/fontbox/ttf/upstream/test_unit_vector.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/UnitVectorTest.java` |
+| `tests/fontbox/ttf/upstream/test_graphics_state.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/GraphicsStateTest.java` |
+| `tests/fontbox/ttf/upstream/test_bytecode_stream.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/BytecodeStreamTest.java` |
+| `tests/fontbox/ttf/upstream/test_round_state.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/RoundStateTest.java` |
+| `tests/fontbox/ttf/upstream/test_point_ops.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/PointOpsTest.java` |
+| `tests/fontbox/ttf/upstream/test_true_type_interpreter.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/TrueTypeInterpreterTest.java` |
+| `tests/fontbox/ttf/upstream/test_backward_compatibility_move.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/BackwardCompatibilityMoveTest.java` |
+| `tests/fontbox/ttf/upstream/test_hinting_tables.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/HintingTablesTest.java` (absent-tables case skips: JosefinSans/Lohit-Tamil are SIL OFL and not bundled, per the wave 1360 rule) |
+| `tests/rendering/upstream/test_hinting_ppem.py` | 3.0.9-SNAPSHOT | `pdfbox/src/test/java/org/apache/pdfbox/rendering/HintingPpemTest.java` |
+| `tests/rendering/upstream/test_render_hinting_integration.py` | 3.0.9-SNAPSHOT | `pdfbox/src/test/java/org/apache/pdfbox/rendering/RenderHintingIntegrationTest.java` |
+| `tests/pdmodel/font/upstream/test_pd_true_type_font_hinting.py` | 3.0.9-SNAPSHOT | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/PDTrueTypeFontHintingTest.java` |
+| `tests/pdmodel/font/upstream/test_pd_type0_font_hinting.py` | 3.0.9-SNAPSHOT | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/PDType0FontHintingTest.java` |
+| `tests/fixtures/fontbox/ttf/hinting/LiberationSans-Regular-11.txt` | 3.0.9-SNAPSHOT | `fontbox/src/test/resources/ttf/hinting/LiberationSans-Regular-11.txt` (FreeType golden hinted points) |
+| `tests/fixtures/fontbox/ttf/hinting/LiberationSans-Regular-13.txt` | 3.0.9-SNAPSHOT | `fontbox/src/test/resources/ttf/hinting/LiberationSans-Regular-13.txt` (FreeType golden hinted points) |
+| `tests/fixtures/fontbox/ttf/hinting/LiberationSans-Regular-16.txt` | 3.0.9-SNAPSHOT | `fontbox/src/test/resources/ttf/hinting/LiberationSans-Regular-16.txt` (FreeType golden hinted points) |
+| `tests/fixtures/fontbox/ttf/hinting/LiberationSans-Regular-24.txt` | 3.0.9-SNAPSHOT | `fontbox/src/test/resources/ttf/hinting/LiberationSans-Regular-24.txt` (FreeType golden hinted points) |

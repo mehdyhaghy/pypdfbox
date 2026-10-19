@@ -936,6 +936,15 @@ class PDType1Font(PDSimpleFont):
         """
         return self.get_normalized_path_for_code(code)
 
+    def get_hinted_normalized_path(self, code: int, ppem: int) -> list[tuple] | None:
+        """Hinted normalized outline for ``code`` at ``ppem``; always ``None``.
+
+        Mirrors the upstream ``PDVectorFont.getHintedNormalizedPath(int, int)``
+        default method (PDFBOX-3293), which this class inherits unchanged:
+        no hinting, so callers use the unhinted normalized path.
+        """
+        return None
+
     # ---------- embedded program length-field repair ----------
 
     def repair_length1(self, data: bytes | bytearray, length1: int) -> int:

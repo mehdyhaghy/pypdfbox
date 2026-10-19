@@ -586,7 +586,7 @@ class TTFParser:
         overrides (e.g. :class:`OTFParser`) see every tag, then
         applies the zero-length guard from upstream L394-L398.
         """
-        table = self.read_table(tag)
+        table = self._new_directory_table(tag)
         table.set_tag(tag)
         table.set_check_sum(check_sum)
         table.set_offset(offset)
@@ -596,6 +596,31 @@ class TTFParser:
         if length == 0 and tag != "glyf":
             return None
         return table
+
+    def _new_directory_table(self, tag: str) -> TTFTable:
+        """Map a directory tag to its table class.
+
+        Mirrors the ``switch`` in upstream ``readTableDirectory``: the
+        tables pypdfbox reads itself (the TrueType hinting tables, added
+        by PDFBOX-3293) get their typed class; every other tag goes
+        through :meth:`read_table`, because their payload is decoded by
+        fontTools and exposed through the typed ``TrueTypeFont`` accessors.
+        """
+        from .control_value_program_table import ControlValueProgramTable
+        from .control_value_table import ControlValueTable
+        from .font_program_table import FontProgramTable
+        from .gasp_table import GaspTable
+
+        hinting_tables: dict[str, type[TTFTable]] = {
+            ControlValueTable.TAG: ControlValueTable,
+            FontProgramTable.TAG: FontProgramTable,
+            ControlValueProgramTable.TAG: ControlValueProgramTable,
+            GaspTable.TAG: GaspTable,
+        }
+        table_class = hinting_tables.get(tag)
+        if table_class is not None:
+            return table_class()
+        return self.read_table(tag)
 
     def parse_tables(self, font: TrueTypeFont) -> None:
         """Force every directory entry to load and validate presence.

@@ -842,6 +842,50 @@ class PDCIDFontType2(PDCIDFont):
             scaled.append((head, *coords))
         return scaled
 
+    def get_hinted_normalized_path(
+        self, code: int, ppem: int
+    ) -> list[tuple[Any, ...]] | None:
+        """Grid-fitted (TrueType-hinted) outline for ``code`` at ``ppem``,
+        normalized to the 1000-unit square, or ``None`` when hinting does
+        not apply and the caller should use :meth:`get_normalized_path`.
+
+        Mirrors upstream ``PDCIDFontType2.getHintedNormalizedPath(int, int)``
+        (PDFBOX-3293): only an embedded descendant with TrueType outlines
+        can hint. The commands use the same ``("moveto", x, y)`` shape as
+        :meth:`get_normalized_path`.
+        """
+        if not self.is_embedded():
+            return None
+        ttf = self.get_true_type_font()
+        if ttf is None or self.is_open_type_post_script():
+            return None
+        try:
+            gid = self.code_to_gid(code)
+        except Exception:
+            return None
+        if gid == 0:
+            return None
+        hinted = ttf.get_hinted_path(gid, ppem)
+        if hinted is None:
+            return None
+        from fontTools.pens.recordingPen import (  # type: ignore[import-untyped]
+            replayRecording,
+        )
+
+        from pypdfbox.fontbox.type1.type1_font import _make_path_pen
+
+        pen = _make_path_pen(None)
+        replayRecording(list(getattr(hinted, "value", hinted)), pen)
+        path: list[tuple[Any, ...]] = list(pen.commands)
+        units_per_em = ttf.get_units_per_em()
+        if units_per_em <= 0 or units_per_em == 1000:
+            return path
+        scale = 1000.0 / float(units_per_em)
+        return [
+            cmd if len(cmd) <= 1 else (cmd[0], *(float(v) * scale for v in cmd[1:]))
+            for cmd in path
+        ]
+
     # ---------- glyph-ID encoding ----------
 
     def encode_glyph_id(self, glyph_id: int) -> bytes:

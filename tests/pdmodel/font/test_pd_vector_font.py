@@ -68,7 +68,13 @@ def test_protocol_methods_exposed() -> None:
 
 def test_protocol_no_extras_beyond_upstream() -> None:
     public = {m for m in dir(PDVectorFont) if not m.startswith("_")}
-    assert public == {"get_path", "get_normalized_path", "has_glyph"}
+    # getHintedNormalizedPath is a Java default method (PDFBOX-3293, 3.0.9)
+    assert public == {
+        "get_path",
+        "get_normalized_path",
+        "has_glyph",
+        "get_hinted_normalized_path",
+    }
 
 
 def test_protocol_methods_are_callable() -> None:

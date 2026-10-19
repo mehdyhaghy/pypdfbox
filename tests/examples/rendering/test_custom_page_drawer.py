@@ -46,7 +46,7 @@ def _make_drawer(use_my_renderer: bool = False) -> tuple[
         MyPDFRenderer(doc) if use_my_renderer else PDFRenderer(doc)
     )
     params = PageDrawerParameters(
-        renderer, doc.get_page(0), True, RenderDestination.EXPORT, {}, 0.5,
+        renderer, doc.get_page(0), True, False, RenderDestination.EXPORT, {}, 0.5,
     )
     if use_my_renderer:
         # Exercises ``MyPDFRenderer.create_page_drawer`` (line 37).
