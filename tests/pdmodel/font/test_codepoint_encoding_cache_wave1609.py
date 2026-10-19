@@ -67,16 +67,19 @@ def test_cid_font_width_cache_invalidated_by_set_w() -> None:
         font = PDType0Font.load(doc, _ttf_bytes())
         cid_font = font.get_descendant_font()
         code = int.from_bytes(font.encode("A"), "big")
-        width = cid_font.get_width(code)
-        assert cid_font._cid_code_to_width[code] == width
-        cid = cid_font.code_to_cid(code)
+        # PDFBOX-6175: the per-code width memo on the descendant is gone;
+        # get_width takes the parent Type 0 font
+        width = cid_font.get_width(code, font)
+        assert width == font.get_width(code)
+        cid = cid_font.code_to_cid(code, font)
         w = COSArray()
         w.add(COSInteger.get(cid))
         inner = COSArray()
         inner.add(COSInteger.get(123))
         w.add(inner)
         cid_font.set_w(w)
-        assert cid_font._cid_code_to_width == {}
-        assert cid_font.get_width(code) == 123.0
+        assert cid_font.get_width(code, font) == 123.0
+        assert font.get_width(code) == 123.0
+        cid_font.set_w(None)
         cid_font.set_dw(777)
-        assert cid_font._cid_code_to_width == {}
+        assert cid_font.get_width(code, font) == 777.0

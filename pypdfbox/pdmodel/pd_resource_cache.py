@@ -4,7 +4,9 @@ from typing import TYPE_CHECKING, TypeVar
 from pypdfbox.cos import COSObject
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.font.pd_cid_font import PDCIDFont
     from pypdfbox.pdmodel.font.pd_font import PDFont
+    from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
     from pypdfbox.pdmodel.graphics.color import PDColorSpace
     from pypdfbox.pdmodel.graphics.pattern import PDAbstractPattern
     from pypdfbox.pdmodel.graphics.pd_property_list import PDPropertyList
@@ -36,6 +38,31 @@ class PDResourceCache(ABC):
     @abstractmethod
     def put_font(self, indirect: COSObject, font: PDFont) -> None:
         """Cache ``font`` under the indirect ref ``indirect``."""
+
+    @abstractmethod
+    def get_cid_font(self, indirect: COSObject) -> PDCIDFont | None:
+        """Return the cached :class:`PDCIDFont` for ``indirect``, or ``None``.
+        Mirrors upstream ``ResourceCache.getCIDFont`` (PDFBOX-6175)."""
+
+    @abstractmethod
+    def put_cid_font(self, indirect: COSObject, cid_font: PDCIDFont) -> None:
+        """Cache ``cid_font`` under ``indirect``. Mirrors upstream
+        ``ResourceCache.put(COSObject, PDCIDFont)`` (PDFBOX-6175)."""
+
+    @abstractmethod
+    def get_font_descriptor(
+        self, indirect: COSObject
+    ) -> PDFontDescriptor | None:
+        """Return the cached :class:`PDFontDescriptor` for ``indirect``, or
+        ``None``. Mirrors upstream ``ResourceCache.getFontDescriptor``
+        (PDFBOX-6175)."""
+
+    @abstractmethod
+    def put_font_descriptor(
+        self, indirect: COSObject, font_descriptor: PDFontDescriptor
+    ) -> None:
+        """Cache ``font_descriptor`` under ``indirect``. Mirrors upstream
+        ``ResourceCache.put(COSObject, PDFontDescriptor)`` (PDFBOX-6175)."""
 
     @abstractmethod
     def get_x_object(self, indirect: COSObject) -> PDXObject | None:
@@ -144,6 +171,20 @@ class PDResourceCache(ABC):
         Mirrors upstream ``ResourceCache.removeFont``."""
         return None
 
+    def remove_cid_font(self, indirect: COSObject) -> PDCIDFont | None:
+        """Remove and return the cached CID font for ``indirect``, or
+        ``None``. Mirrors upstream ``ResourceCache.removeCIDFont``
+        (PDFBOX-6175)."""
+        return None
+
+    def remove_font_descriptor(
+        self, indirect: COSObject
+    ) -> PDFontDescriptor | None:
+        """Remove and return the cached font descriptor for ``indirect``, or
+        ``None``. Mirrors upstream ``ResourceCache.removeFontDescriptor``
+        (PDFBOX-6175)."""
+        return None
+
     def remove_shading(self, indirect: COSObject) -> PDShading | None:
         """Remove and return the cached shading for ``indirect``, or
         ``None``. Mirrors upstream ``ResourceCache.removeShading``."""
@@ -198,6 +239,8 @@ class DefaultResourceCache(PDResourceCache):
     def __init__(self, enable_stable_cache: bool = True) -> None:
         self._stable_cache_enabled: bool = enable_stable_cache
         self._fonts: dict[COSObject, PDFont] = {}
+        self._cid_fonts: dict[COSObject, PDCIDFont] = {}
+        self._font_descriptors: dict[COSObject, PDFontDescriptor] = {}
         self._xobjects: dict[COSObject, PDXObject] = {}
         self._color_spaces: dict[COSObject, PDColorSpace] = {}
         self._patterns: dict[COSObject, PDAbstractPattern] = {}
@@ -226,6 +269,26 @@ class DefaultResourceCache(PDResourceCache):
 
     def put_font(self, indirect: COSObject, font: PDFont) -> None:
         self._fonts[indirect] = font
+
+    # ---------- CID fonts (PDFBOX-6175) ----------
+
+    def get_cid_font(self, indirect: COSObject) -> PDCIDFont | None:
+        return self._cid_fonts.get(indirect)
+
+    def put_cid_font(self, indirect: COSObject, cid_font: PDCIDFont) -> None:
+        self._cid_fonts[indirect] = cid_font
+
+    # ---------- font descriptors (PDFBOX-6175) ----------
+
+    def get_font_descriptor(
+        self, indirect: COSObject
+    ) -> PDFontDescriptor | None:
+        return self._font_descriptors.get(indirect)
+
+    def put_font_descriptor(
+        self, indirect: COSObject, font_descriptor: PDFontDescriptor
+    ) -> None:
+        self._font_descriptors[indirect] = font_descriptor
 
     # ---------- XObjects ----------
 
@@ -321,6 +384,18 @@ class DefaultResourceCache(PDResourceCache):
             indirect,
         )
 
+    def remove_cid_font(self, indirect: COSObject) -> PDCIDFont | None:
+        # Upstream DefaultResourceCache.removeCIDFont has no stable-cache
+        # guard: the entry is always dropped.
+        return self._cid_fonts.pop(indirect, None)
+
+    def remove_font_descriptor(
+        self, indirect: COSObject
+    ) -> PDFontDescriptor | None:
+        # Upstream DefaultResourceCache.removeFontDescriptor has no
+        # stable-cache guard either.
+        return self._font_descriptors.pop(indirect, None)
+
     def remove_shading(self, indirect: COSObject) -> PDShading | None:
         return self._remove_stable(
             self._shadings,
@@ -386,19 +461,18 @@ class DefaultResourceCache(PDResourceCache):
     # ---------- upstream-overload dispatch ----------
 
     def put(self, indirect: COSObject, resource: object) -> None:
-        """Type-dispatching mirror of upstream's seven ``put(COSObject, ...)``
-        overloads. Routes to the appropriate ``put_*`` method based on the
-        runtime type of ``resource``. Raises :class:`TypeError` for
-        unsupported types so callers don't silently drop resources.
-
-        Note that ``PDCIDFont`` subclasses ``PDFont`` in pypdfbox, so a CID
-        font lands in the single font slot — upstream cab99713 removed the
-        dedicated ``put(COSObject, PDCIDFont)`` /
-        ``put(COSObject, PDFontDescriptor)`` overloads."""
+        """Type-dispatching mirror of upstream's nine ``put(COSObject, ...)``
+        overloads, including the PDFBOX-6175 ``put(COSObject, PDCIDFont)``
+        and ``put(COSObject, PDFontDescriptor)``. Routes to the appropriate
+        ``put_*`` method based on the runtime type of ``resource``. Raises
+        :class:`TypeError` for unsupported types so callers don't silently
+        drop resources."""
         # Imports kept lazy so the cache module stays import-light — pulling
-        # in all seven wrappers eagerly would balloon the dependency graph for
+        # in all nine wrappers eagerly would balloon the dependency graph for
         # a callsite most pypdfbox code never touches.
+        from pypdfbox.pdmodel.font.pd_cid_font import PDCIDFont
         from pypdfbox.pdmodel.font.pd_font import PDFont
+        from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
         from pypdfbox.pdmodel.graphics.color.pd_color_space import PDColorSpace
         from pypdfbox.pdmodel.graphics.pattern.pd_abstract_pattern import (
             PDAbstractPattern,
@@ -412,6 +486,10 @@ class DefaultResourceCache(PDResourceCache):
 
         if isinstance(resource, PDFont):
             self.put_font(indirect, resource)
+        elif isinstance(resource, PDCIDFont):
+            self.put_cid_font(indirect, resource)
+        elif isinstance(resource, PDFontDescriptor):
+            self.put_font_descriptor(indirect, resource)
         elif isinstance(resource, PDColorSpace):
             self.put_color_space(indirect, resource)
         elif isinstance(resource, PDExtendedGraphicsState):
@@ -444,6 +522,8 @@ class DefaultResourceCache(PDResourceCache):
         exposes an explicit hook for tests and long-running services that
         rotate documents."""
         self._fonts.clear()
+        self._cid_fonts.clear()
+        self._font_descriptors.clear()
         self._xobjects.clear()
         self._color_spaces.clear()
         self._patterns.clear()

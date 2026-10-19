@@ -148,11 +148,10 @@ class PDFontFactory:
         resource_cache: PDResourceCache | None = None,
     ) -> PDFont | None:
         # ``resource_cache`` mirrors the upstream second argument to
-        # ``PDFontFactory.createFont`` — used by callers that want font
-        # instances pooled across pages. We don't currently consult it
-        # (all dispatch arms construct fresh wrappers); the parameter is
-        # accepted for signature parity so PDFBox-shaped calls don't break.
-        del resource_cache
+        # ``PDFontFactory.createFont``. Per upstream trunk (PDFBOX-6175) it
+        # is forwarded to every font constructor except PDMMType1Font, so
+        # an indirect /FontDescriptor (and, for /Type0, the indirect
+        # descendant PDCIDFont) is shared through the cache.
         if font_dict is None:
             return None
         if not isinstance(font_dict, COSDictionary):
@@ -181,8 +180,8 @@ class PDFontFactory:
             # byte-level kind is resolved lazily inside PDType1CFont).
             # Plain /Type1 with no FontFile3 stays on PDType1Font.
             if _descriptor_has_font_file3(font_dict):
-                return PDType1CFont(font_dict)
-            return PDType1Font(font_dict)
+                return PDType1CFont(font_dict, resource_cache)
+            return PDType1Font(font_dict, resource_cache)
         if sub_type == PDMMType1Font.SUB_TYPE:
             # MMType1 whose /FontDescriptor contains a /FontFile3 is a
             # CFF-backed multiple-master Type 1 font; route to
@@ -190,22 +189,18 @@ class PDFontFactory:
             # MMType1 + containsKey(FONT_FILE3) branch returns PDType1CFont,
             # again without inspecting the FontFile3 /Subtype).
             if _descriptor_has_font_file3(font_dict):
-                return PDType1CFont(font_dict)
+                return PDType1CFont(font_dict, resource_cache)
             return PDMMType1Font(font_dict)
         if sub_type == PDTrueTypeFont.SUB_TYPE:
-            return PDTrueTypeFont(font_dict)
+            return PDTrueTypeFont(font_dict, resource_cache)
         if sub_type == PDType3Font.SUB_TYPE:
-            # Upstream forwards the ResourceCache to PDType3Font's two-arg
-            # constructor; pypdfbox's PDType3Font does not pool resources,
-            # so the cache is dropped here (see the resource_cache note at
-            # the top of create_font).
-            return PDType3Font(font_dict)
+            return PDType3Font(font_dict, resource_cache)
         if sub_type == PDType0Font.SUB_TYPE:
             # Upstream repairs a mismatched descendant /Subtype against the
             # embedded font program kind (fixType0Subtype) before wrapping,
             # then always returns PDType0Font.
             PDFontFactory._fix_type0_descendant_subtype(font_dict, sub_type)
-            return PDType0Font(font_dict)
+            return PDType0Font(font_dict, resource_cache)
         if sub_type == PDCIDFontType0.SUB_TYPE:
             # A CIDFont is only ever legal as a /Type0 descendant — it must
             # never be the top-level font dictionary. Upstream raises
@@ -226,7 +221,7 @@ class PDFontFactory:
             "Invalid font subtype '%s'",
             "null" if sub_type is None else f"COSName{{{sub_type}}}",
         )
-        return PDType1Font(font_dict)
+        return PDType1Font(font_dict, resource_cache)
 
     @staticmethod
     def _fix_type0_descendant_subtype(
@@ -272,22 +267,25 @@ class PDFontFactory:
     @staticmethod
     def create_descendant_font(
         font_dict: COSDictionary,
-        parent: PDType0Font | None = None,
+        resource_cache: PDResourceCache | None = None,
     ) -> PDCIDFont | None:
         """Build a :class:`PDCIDFont` from a Type0 descendant font dict.
 
         Mirrors PDFBox's package-private
-        ``PDFontFactory.createDescendantFont(COSDictionary, PDType0Font)``
+        ``PDFontFactory.createDescendantFont(COSDictionary, ResourceCache)``
         — used internally by :class:`PDType0Font` to wrap the entry in
         ``/DescendantFonts``. Surfaced publicly here because pypdfbox
         callers occasionally need to wrap a descendant dict from the
         outside (e.g. when stitching a Type0 chain together post-parse).
 
         ``font_dict`` must be a font dictionary (``/Type /Font``) whose
-        ``/Subtype`` is ``CIDFontType0`` or ``CIDFontType2``. ``parent``
-        is the wrapping :class:`PDType0Font` and is forwarded so the
-        descendant can resolve its parent CMap when answering
-        ``code_to_cid`` / ``code_to_gid``.
+        ``/Subtype`` is ``CIDFontType0`` or ``CIDFontType2``.
+        ``resource_cache`` (can be ``None``) is forwarded so the
+        descendant's indirect ``/FontDescriptor`` is shared through the
+        cache. Upstream trunk (PDFBOX-6175) removed the parent Type 0 font
+        from the descendant: a :class:`PDCIDFont` is stateless with respect
+        to its parent, which is passed to each per-glyph call instead, so
+        one descendant may be shared by several Type 0 fonts.
 
         Returns ``None`` for ``None`` / non-dictionary inputs (matching
         the lenient pattern :meth:`create_font` follows). Raises
@@ -318,9 +316,9 @@ class PDFontFactory:
             )
         sub_type = font_dict.get_name(_SUBTYPE)
         if sub_type == PDCIDFontType0.SUB_TYPE:
-            return PDCIDFontType0(font_dict, parent)
+            return PDCIDFontType0(font_dict, resource_cache)
         if sub_type == PDCIDFontType2.SUB_TYPE:
-            return PDCIDFontType2(font_dict, parent)
+            return PDCIDFontType2(font_dict, resource_cache)
         raise OSError(
             f"Invalid descendant font type: {sub_type!r} "
             "(expected /CIDFontType0 or /CIDFontType2)"

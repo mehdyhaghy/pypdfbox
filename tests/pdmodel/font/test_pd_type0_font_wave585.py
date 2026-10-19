@@ -14,8 +14,8 @@ from pypdfbox.pdmodel.font.pd_type0_font import PDType0Font
 def test_wave585_wraps_type0_descendant_and_missing_info_branches() -> None:
     descendant_dict = COSDictionary()
     descendant_dict.set_name(COSName.SUBTYPE, PDCIDFontType0.SUB_TYPE)  # type: ignore[attr-defined]
-    parent = PDType0Font()
-    wrapped = PDType0Font._wrap_descendant(descendant_dict, parent)
+    # PDFBOX-6175: the second argument is the resource cache, not the parent
+    wrapped = PDType0Font._wrap_descendant(descendant_dict, None)
 
     assert isinstance(wrapped, PDCIDFontType0)
     assert PDType0Font().get_cid_system_info() is None

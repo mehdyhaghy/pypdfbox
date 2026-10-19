@@ -145,9 +145,9 @@ def test_latin_via_cns1_non_embedded(cid_substitute: Any) -> None:
         # 0x48 is "H": the CMap maps it to CID 41, which is not a valid glyph
         # index in an Adobe-Identity-0 substitute; it must be resolved via
         # Unicode
-        assert cid_font.code_to_cid(0x48) == 41
-        assert cid_font.has_glyph(0x48), "glyph for 'H' not found in substitute"
-        path = cid_font.get_path(0x48)
+        assert cid_font.code_to_cid(0x48, font) == 41
+        assert cid_font.has_glyph(0x48, font), "glyph for 'H' not found in substitute"
+        path = cid_font.get_path(0x48, font)
         assert path, "glyph for 'H' has an empty path"
 
         # Skipped: the "regular weight should be preferred over Bold on a
@@ -162,7 +162,7 @@ def test_latin_via_cns1_non_embedded(cid_substitute: Any) -> None:
             # the wrong glyph
             expected = mapping.get_font().get_unicode_cmap_lookup().get_glyph_id(0x4E2D)
             assert expected > 0
-            assert cid_font.code_to_gid(0x4E2D) == expected, (
+            assert cid_font.code_to_gid(0x4E2D, font) == expected, (
                 "GID must be resolved via Unicode, not used as a CID"
             )
     finally:

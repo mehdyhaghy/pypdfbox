@@ -437,7 +437,7 @@ def test_load_ttf_uses_postscript_name(liberation_bytes: bytes) -> None:
     assert name == "LiberationSans"
     descendant = font.get_descendant_font()
     assert descendant is not None
-    assert descendant.get_name() == "LiberationSans"
+    assert descendant.get_base_font() == "LiberationSans"
 
 
 def test_load_ttf_round_trip_through_subset(liberation_bytes: bytes) -> None:

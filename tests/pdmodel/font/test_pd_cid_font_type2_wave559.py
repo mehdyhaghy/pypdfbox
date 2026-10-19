@@ -71,13 +71,13 @@ def test_get_height_falls_back_to_w2_when_cid_mapping_fails() -> None:
 
     font.cid_to_gid = raise_mapping  # type: ignore[method-assign]
 
-    assert font.get_height(4) == pytest.approx(777.0)
+    assert font.get_height(4, None) == pytest.approx(777.0)
 
 
 def test_get_height_returns_zero_when_glyf_lookup_raises_key_error() -> None:
     font = _font_with_ttf(_StubTTF(_MissingGlyphTable()))
 
-    assert font.get_height(1) == 0.0
+    assert font.get_height(1, None) == 0.0
 
 
 def test_get_font_matrix_uses_default_when_units_per_em_raises() -> None:
@@ -123,5 +123,5 @@ def test_has_glyph_falls_back_to_width_tables_when_gid_mapping_fails() -> None:
 
     font.cid_to_gid = raise_mapping  # type: ignore[method-assign]
 
-    assert font.has_glyph(9) is True
-    assert font.has_glyph(10) is False
+    assert font.has_glyph(9, None) is True
+    assert font.has_glyph(10, None) is False

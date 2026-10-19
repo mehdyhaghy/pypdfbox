@@ -36,6 +36,8 @@ class _RecordingCache(ResourceCache):
         self.shading: Any = None
         self.ext_g_state: Any = None
         self.property_list: Any = None
+        self.cid_font: Any = None
+        self.font_descriptor: Any = None
 
     def get_font(self, indirect: COSObject) -> Any:
         return self.font
@@ -78,6 +80,18 @@ class _RecordingCache(ResourceCache):
 
     def put_property_list(self, indirect: COSObject, prop: Any) -> None:
         self.property_list = prop
+
+    def get_cid_font(self, indirect: COSObject) -> Any:
+        return self.cid_font
+
+    def put_cid_font(self, indirect: COSObject, cid_font: Any) -> None:
+        self.cid_font = cid_font
+
+    def get_font_descriptor(self, indirect: COSObject) -> Any:
+        return self.font_descriptor
+
+    def put_font_descriptor(self, indirect: COSObject, font_descriptor: Any) -> None:
+        self.font_descriptor = font_descriptor
 
 
 def _ref(num: int = 1) -> COSObject:
@@ -130,15 +144,26 @@ def test_put_rejects_unsupported_value_type_with_typeerror() -> None:
         cache.put(_ref(5), 123)
 
 
-def test_put_rejects_pd_font_descriptor_explicitly() -> None:
-    """PDFontDescriptor is in the PD-family but the thin ``ResourceCache``
-    dispatcher only knows the four canonical slots; descriptors must fall
-    through to the TypeError branch (DefaultResourceCache handles them via
-    a different dispatcher)."""
+def test_put_dispatches_pd_font_descriptor() -> None:
+    """PDFBOX-6175 (trunk): ``put(COSObject, PDFontDescriptor)`` routes to
+    ``put_font_descriptor``."""
     cache = _RecordingCache()
     descriptor = PDFontDescriptor(COSDictionary())
-    with pytest.raises(TypeError):
-        cache.put(_ref(6), descriptor)
+    cache.put(_ref(6), descriptor)
+    assert cache.font_descriptor is descriptor
+    assert cache.font is None
+
+
+def test_put_dispatches_pd_cid_font() -> None:
+    """PDFBOX-6175 (trunk): ``put(COSObject, PDCIDFont)`` routes to
+    ``put_cid_font``; a PDCIDFont is not a PDFont."""
+    from pypdfbox.pdmodel.font.pd_cid_font_type2 import PDCIDFontType2
+
+    cache = _RecordingCache()
+    cid_font = PDCIDFontType2(COSDictionary())
+    cache.put(_ref(7), cid_font)
+    assert cache.cid_font is cid_font
+    assert cache.font is None
 
 
 def test_resource_cache_inherits_all_abstract_methods() -> None:

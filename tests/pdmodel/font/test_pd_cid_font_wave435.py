@@ -10,7 +10,7 @@ class _MappedCIDFont(PDCIDFont):
     def get_subtype(self) -> str:
         return "CIDFontType2"
 
-    def code_to_cid(self, code: int) -> int:
+    def code_to_cid(self, code: int, parent: object) -> int:
         return int(code) + 10
 
 
@@ -50,9 +50,9 @@ def test_w_parser_skips_malformed_entries_and_keeps_valid_forms() -> None:
         21: 500.0,
         22: 500.0,
     }
-    assert font.get_width(0) == 100.0
-    assert font.has_explicit_width(2) is True
-    assert font.has_explicit_width(3) is False
+    assert font.get_width(0, None) == 100.0
+    assert font.has_explicit_width(2, None) is True
+    assert font.has_explicit_width(3, None) is False
 
 
 def test_width_cache_can_be_cleared_after_in_place_w_mutation() -> None:
@@ -113,12 +113,14 @@ def test_w2_parser_handles_malformed_entries_and_large_ranges_compactly() -> Non
 
     assert parsed[2] == (700.0, 100.0, 800.0)
     assert parsed[4] == (710.0, 110.0, 810.0)
-    assert parsed[10] == (900.0, 200.0, 880.0)
+    # cid-ranges stay compact (PDFBOX-6175, bcf78963), never in the dict
+    assert 10 not in parsed
+    assert font._get_w2_metrics(10) == (900.0, 200.0, 880.0)
     assert 1000 not in parsed
-    assert font.get_height(5000) == -1200.0
-    assert font.get_position_vector(5000) == (300.0, 900.0)
-    assert font.get_position_vector(99) == (300.0, 880.0)
-    assert font.get_vertical_displacement_vector_y(89) == -900.0
+    assert font.get_height(5000, None) == -1200.0
+    assert font.get_position_vector(5000, None) == (300.0, 900.0)
+    assert font.get_position_vector(99, None) == (300.0, 880.0)
+    assert font.get_vertical_displacement_vector_y(89, None) == -900.0
 
 
 def test_cid_to_gid_map_accessors_stream_identity_and_type_errors() -> None:

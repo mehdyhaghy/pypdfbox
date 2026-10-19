@@ -13,6 +13,7 @@ from .pd_simple_font import PDSimpleFont
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+    from pypdfbox.pdmodel.pd_resource_cache import PDResourceCache
     from pypdfbox.pdmodel.pd_resources import PDResources
 
     from .encoding.encoding import Encoding
@@ -45,8 +46,15 @@ class PDType3Font(PDSimpleFont):
 
     SUB_TYPE = "Type3"
 
-    def __init__(self, font_dict: COSDictionary | None = None) -> None:
-        super().__init__(font_dict)
+    def __init__(
+        self,
+        font_dict: COSDictionary | None = None,
+        resource_cache: PDResourceCache | None = None,
+    ) -> None:
+        # ``resource_cache`` (can be ``None``) mirrors upstream trunk's
+        # ``(COSDictionary, ResourceCache)`` constructor (PDFBOX-6175): it
+        # lets an indirect /FontDescriptor be shared through the cache.
+        super().__init__(font_dict, resource_cache)
         # Memoised generated bbox — upstream's ``fontBBox`` field.
         self._font_bbox_cache: PDRectangle | None = None
 

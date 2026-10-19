@@ -48,7 +48,8 @@ class Type0Font(FontPane):
         self._total_available_glyphs = 0
 
         cid_to_gid = self.read_cid_to_gid_map(descendant_font, parent_font)
-        attributes: dict[str, str] = {"Font": str(descendant_font.get_name())}
+        # upstream trunk (PDFBOX-6175, 7ee9ce66): descendantFont.getBaseFont()
+        attributes: dict[str, str] = {"Font": str(descendant_font.get_base_font())}
 
         if cid_to_gid is not None:
             attributes["CIDs"] = str(len(cid_to_gid))
@@ -102,8 +103,9 @@ class Type0Font(FontPane):
 
         Every lookup goes through the parent ``PDType0Font`` rather than
         the descendant ``PDCIDFont``; upstream reduced the direct usage of
-        the descendant font in the PDFBOX-6175 follow-up because a
-        descendant is bound to its parent and must be reached through it.
+        the descendant font in PDFBOX-6175 (ddef86fc): the descendant no
+        longer knows its parent, so per-glyph lookups go through the parent,
+        which passes itself to the descendant.
         """
         rows: list[list[Any]] = []
         for code in range(65535):

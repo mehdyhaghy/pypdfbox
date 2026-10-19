@@ -164,7 +164,7 @@ def test_encode_glyph_id_returns_two_bytes_always() -> None:
 
 def test_get_normalized_path_empty_when_no_program() -> None:
     font = PDCIDFontType2()
-    assert font.get_normalized_path(1) == []
+    assert font.get_normalized_path(1, None) == []
 
 
 def test_get_normalized_path_unscaled_for_1000_upem() -> None:
@@ -186,7 +186,7 @@ def test_get_normalized_path_unscaled_for_1000_upem() -> None:
     stub = _StubTTF(units_per_em=1000, glyph_order=[".notdef", "A"], glyphs=glyphs)
     font = _make_font_with_stub_ttf(stub)
     raw = font.get_glyph_path(1)
-    normalized = font.get_normalized_path(1)
+    normalized = font.get_normalized_path(1, None)
     assert normalized == raw
 
 
@@ -206,7 +206,7 @@ def test_get_normalized_path_scales_2048_upem_to_1000() -> None:
     }
     stub = _StubTTF(units_per_em=2048, glyph_order=[".notdef", "A"], glyphs=glyphs)
     font = _make_font_with_stub_ttf(stub)
-    normalized = font.get_normalized_path(1)
+    normalized = font.get_normalized_path(1, None)
     assert normalized[0] == ("moveto", pytest.approx(0.0), pytest.approx(0.0))
     # 1024 * (1000 / 2048) = 500
     assert normalized[1] == ("lineto", pytest.approx(500.0), pytest.approx(0.0))
@@ -230,7 +230,7 @@ def test_get_normalized_path_scales_curveto_arguments() -> None:
     }
     stub = _StubTTF(units_per_em=2048, glyph_order=[".notdef", "A"], glyphs=glyphs)
     font = _make_font_with_stub_ttf(stub)
-    normalized = font.get_normalized_path(1)
+    normalized = font.get_normalized_path(1, None)
     # 256 * (1000/2048) = 125.0; 512 -> 250.0; 768 -> 375.0; 1024 -> 500.0; 2048 -> 1000.0
     assert normalized[1] == (
         "curveto",
@@ -265,7 +265,7 @@ def test_get_normalized_path_suppresses_notdef_for_substitute_font() -> None:
     font.is_embedded = lambda: False  # type: ignore[method-assign]
     font._resolve_program = lambda: stub  # type: ignore[method-assign,return-value]
     assert font.is_embedded() is False
-    assert font.get_normalized_path(0) == []
+    assert font.get_normalized_path(0, None) == []
 
 
 def test_get_normalized_path_emits_notdef_for_embedded_font() -> None:
@@ -288,7 +288,7 @@ def test_get_normalized_path_emits_notdef_for_embedded_font() -> None:
     fd.set_font_file2(COSStream())
     font.set_font_descriptor(fd)
     assert font.is_embedded() is True
-    normalized = font.get_normalized_path(0)
+    normalized = font.get_normalized_path(0, None)
     assert normalized[0] == ("moveto", pytest.approx(0.0), pytest.approx(0.0))
     assert normalized[-1] == ("closepath",)
 
@@ -309,7 +309,7 @@ def test_get_normalized_path_empty_when_zero_units_per_em() -> None:
     fd = PDFontDescriptor()
     fd.set_font_file2(COSStream())
     font.set_font_descriptor(fd)
-    normalized = font.get_normalized_path(1)
+    normalized = font.get_normalized_path(1, None)
     # 0 upem returns the unscaled path verbatim.
     assert normalized[0] == ("moveto", 0, 0)
 

@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from typing import BinaryIO
 
     from pypdfbox.fontbox.ttf.cmap_subtable import CmapSubtable
+    from pypdfbox.pdmodel.pd_resource_cache import PDResourceCache
 
 _LOG = logging.getLogger(__name__)
 
@@ -42,8 +43,15 @@ class PDTrueTypeFont(PDSimpleFont):
     START_RANGE_F100 = 0xF100
     START_RANGE_F200 = 0xF200
 
-    def __init__(self, font_dict: COSDictionary | None = None) -> None:
-        super().__init__(font_dict)
+    def __init__(
+        self,
+        font_dict: COSDictionary | None = None,
+        resource_cache: PDResourceCache | None = None,
+    ) -> None:
+        # ``resource_cache`` (can be ``None``) mirrors upstream trunk's
+        # ``(COSDictionary, ResourceCache)`` constructor (PDFBOX-6175): it
+        # lets an indirect /FontDescriptor be shared through the cache.
+        super().__init__(font_dict, resource_cache)
         # Lazily-loaded embedded TTF — None means "not yet attempted",
         # ``False`` means "tried, no /FontFile2 or parse failed".
         self._ttf: TrueTypeFont | None | bool = None
@@ -1715,7 +1723,9 @@ def _embed_subset_bytes(
 
     # Update /BaseFont — prepend the six-letter tag if it isn't already
     # carrying one (mirrors :meth:`TTFSubsetter._apply_prefix`).
-    current_base = font.get_name()
+    # Read /BaseFont off the dictionary: ``font`` may be a PDTrueTypeFont or
+    # a PDCIDFontType2 descendant (no ``get_name`` since PDFBOX-6175).
+    current_base = font.get_cos_object().get_name_as_string(_BASE_FONT)
     if current_base:
         if (
             len(current_base) >= 7

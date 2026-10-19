@@ -21,7 +21,7 @@ in [`pypdfbox.fontbox`](fontbox.md), which this package depends on.
 | `PDType3Font` | Glyphs defined by content streams (a `PDType3CharProc` per glyph). Rendered via `pypdfbox.rendering` rather than fontbox. |
 | `PDType3CharProc` | One Type-3 glyph procedure. Contains its own content stream + resources. |
 | `PDType0Font` | Composite font: a CID-keyed font + a CMap. `encode(text)` runs through the CMap. |
-| `PDCIDFont` | Abstract CIDFont root used as `/DescendantFonts[0]` of `PDType0Font`. |
+| `PDCIDFont` | Abstract CIDFont root used as `/DescendantFonts[0]` of `PDType0Font`. Not a `PDFont` and holds no parent reference: per-glyph methods take the parent `PDType0Font` (`code_to_gid(code, parent)`), so one descendant can be shared through the resource cache. Prefer calling the parent font. |
 | `PDCIDFontType0` | CIDFontType0 (CFF/Type1-derived descendant font). |
 | `PDCIDFontType2` | CIDFontType2 (TrueType-derived descendant font). |
 | `PDCIDFontType2Embedder` | Embeds + subsets a TrueType file as a CIDFontType2. |

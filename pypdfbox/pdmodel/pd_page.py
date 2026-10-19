@@ -47,6 +47,8 @@ _METADATA: COSName = COSName.get_pdf_name("Metadata")
 _TABS: COSName = COSName.get_pdf_name("Tabs")
 _VP: COSName = COSName.get_pdf_name("VP")
 _DUR: COSName = COSName.get_pdf_name("Dur")
+_DESCENDANT_FONTS: COSName = COSName.get_pdf_name("DescendantFonts")
+_FONT_DESCRIPTOR: COSName = COSName.get_pdf_name("FontDescriptor")
 
 # PDFBOX-2818 box-clamp constants. The threshold is the true Java
 # ``Integer.MAX_VALUE`` (2**31 - 1); the assigned clamp value is that same
@@ -1125,6 +1127,13 @@ class PDPage:
         early-return guard. Indirect entries (``COSObject``) are forwarded
         to the cache's typed remover; direct entries (inline COS values)
         are not cached upstream and are silently skipped.
+
+        For every ``/Font`` entry that was actually evicted, the font's
+        cached internals are dropped too (PDFBOX-6175, trunk): for a
+        :class:`PDType0Font` the indirect descendant ``PDCIDFont`` and that
+        descendant's indirect ``/FontDescriptor`` (the descriptor of a Type 0
+        font lives on its descendant); for any other font its own indirect
+        ``/FontDescriptor``.
         """
         if resources is None or not isinstance(resources, COSDictionary):
             return
@@ -1150,7 +1159,43 @@ class PDPage:
             for entry in list(kind_dict.values()):
                 # Only indirect objects are cached upstream.
                 if isinstance(entry, COSObject):
-                    remover(entry)
+                    removed = remover(entry)
+                    if kind == "Font" and removed is not None:
+                        self._remove_font_internals(cache, removed)
+
+    @staticmethod
+    def _remove_font_internals(cache: Any, removed_font: Any) -> None:
+        """Evict the descendant ``PDCIDFont`` / ``PDFontDescriptor`` entries
+        of a font that was just removed from ``cache``. Mirrors the
+        ``/Font`` loop of upstream trunk ``PDPage.removeResources``
+        (PDFBOX-6175, commits ``b0715897`` and ``bf37c60d``). Direct
+        (inline) descendants and descriptors are never cached, so only
+        indirect entries are evicted."""
+        from .font.pd_type0_font import PDType0Font
+
+        font_dict = removed_font.get_cos_object()
+        if not isinstance(font_dict, COSDictionary):
+            return
+        if isinstance(removed_font, PDType0Font):
+            # remove PDCIDFont from cache
+            descendant_fonts = font_dict.get_dictionary_object(_DESCENDANT_FONTS)
+            if isinstance(descendant_fonts, COSArray) and descendant_fonts.size() > 0:
+                descendant_raw = descendant_fonts.get(0)
+                if isinstance(descendant_raw, COSObject):
+                    cache.remove_cid_font(descendant_raw)
+                # the font descriptor of a type0 font is part of the
+                # descendant font not of the parent font
+                desc_font = descendant_fonts.get_object(0)
+                if isinstance(desc_font, COSDictionary):
+                    fd_raw = desc_font.get_item(_FONT_DESCRIPTOR)
+                    # remove PDFontDescriptor from cache
+                    if isinstance(fd_raw, COSObject):
+                        cache.remove_font_descriptor(fd_raw)
+        else:
+            fd_raw = font_dict.get_item(_FONT_DESCRIPTOR)
+            # remove PDFontDescriptor from cache
+            if isinstance(fd_raw, COSObject):
+                cache.remove_font_descriptor(fd_raw)
 
     def get_indirect_resource_objects(
         self,

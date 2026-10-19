@@ -173,7 +173,7 @@ def test_get_default_position_vector_for_cid_uses_half_width_and_dw2_y() -> None
     font = PDCIDFontType2()
     font.set_dw(1000)
     # /DW2 defaults to (880, -1000); half-width is 500.
-    assert font.get_position_vector(7) == (500.0, 880.0)
+    assert font.get_position_vector(7, None) == (500.0, 880.0)
 
 
 # ---------- getAverageFontWidth (PDCIDFont.java line 350) ----------
@@ -239,10 +239,10 @@ def test_read_cid_to_gid_map_returns_none_for_identity_name() -> None:
 def test_has_explicit_width_true_only_when_w_covers_cid() -> None:
     font = PDCIDFontType2()
     font.set_w(COSArray([COSInteger.get(5), COSArray([COSInteger.get(700)])]))
-    assert font.has_explicit_width(5) is True
+    assert font.has_explicit_width(5, None) is True
     # /DW=1000 covers other CIDs but has_explicit_width must still be
     # False — it only reports /W coverage (PDCIDFont.java line 287).
-    assert font.has_explicit_width(99) is False
+    assert font.has_explicit_width(99, None) is False
 
 
 # ---------- abstract method guards (PDCIDFont.java lines 396-419) ----------
@@ -252,7 +252,7 @@ def test_code_to_gid_is_abstract_on_bare_pd_cid_font() -> None:
     # Upstream PDCIDFont.codeToGID is declared ``abstract`` (line 405).
     base = PDCIDFont(COSDictionary())
     with pytest.raises(NotImplementedError):
-        base.code_to_gid(0)
+        base.code_to_gid(0, None)
 
 
 def test_encode_glyph_id_is_abstract_on_bare_pd_cid_font() -> None:
@@ -268,4 +268,4 @@ def test_encode_is_abstract_on_bare_pd_cid_font() -> None:
     # (line 419).
     base = PDCIDFont(COSDictionary())
     with pytest.raises(NotImplementedError):
-        base.encode(0x41)
+        base.encode(0x41, None)

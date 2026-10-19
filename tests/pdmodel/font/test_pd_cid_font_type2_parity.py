@@ -63,16 +63,16 @@ def test_is_identity_cid_to_gid_map_false_for_stream() -> None:
 
 def test_code_to_gid_identity_when_no_cid_to_gid_map() -> None:
     font = PDCIDFontType2()
-    assert font.code_to_gid(0) == 0
-    assert font.code_to_gid(7) == 7
-    assert font.code_to_gid(0xABCD) == 0xABCD
+    assert font.code_to_gid(0, None) == 0
+    assert font.code_to_gid(7, None) == 7
+    assert font.code_to_gid(0xABCD, None) == 0xABCD
 
 
 def test_code_to_gid_identity_for_identity_name() -> None:
     font = PDCIDFontType2()
     font.set_cid_to_gid_map("Identity")
-    assert font.code_to_gid(0) == 0
-    assert font.code_to_gid(42) == 42
+    assert font.code_to_gid(0, None) == 0
+    assert font.code_to_gid(42, None) == 42
 
 
 def test_code_to_gid_uses_stream_for_explicit_map() -> None:
@@ -81,11 +81,11 @@ def test_code_to_gid_uses_stream_for_explicit_map() -> None:
     # CID 0 -> GID 0x0001, CID 1 -> GID 0x0002, CID 2 -> GID 0x0003
     stream.set_data(b"\x00\x01\x00\x02\x00\x03")
     font.set_cid_to_gid_map(stream)
-    assert font.code_to_gid(0) == 1
-    assert font.code_to_gid(1) == 2
-    assert font.code_to_gid(2) == 3
+    assert font.code_to_gid(0, None) == 1
+    assert font.code_to_gid(1, None) == 2
+    assert font.code_to_gid(2, None) == 3
     # CIDs past the table -> 0 (matches PDFBox embedded-font path).
-    assert font.code_to_gid(99) == 0
+    assert font.code_to_gid(99, None) == 0
 
 
 # ---------- code_to_cid (identity — parent CMap already mapped) ----------
@@ -93,9 +93,9 @@ def test_code_to_gid_uses_stream_for_explicit_map() -> None:
 
 def test_code_to_cid_default_identity() -> None:
     font = PDCIDFontType2()
-    assert font.code_to_cid(0) == 0
-    assert font.code_to_cid(257) == 257
-    assert font.code_to_cid(0xFFFF) == 0xFFFF
+    assert font.code_to_cid(0, None) == 0
+    assert font.code_to_cid(257, None) == 257
+    assert font.code_to_cid(0xFFFF, None) == 0xFFFF
 
 
 # ---------- is_embedded ----------

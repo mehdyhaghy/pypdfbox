@@ -33,8 +33,8 @@ def test_malformed_w_array_trailing_range_and_unknown_second_slots_are_ignored()
     )
 
     assert font.get_widths() == {}
-    assert font.get_width(5) == 333.0
-    assert font.code_to_cid("5") == 5  # type: ignore[arg-type]
+    assert font.get_width(5, None) == 333.0
+    assert font.code_to_cid("5", None) == 5  # type: ignore[arg-type]
 
 
 def test_w2_lookup_with_manual_empty_cache_and_no_ranges_returns_none() -> None:
@@ -63,8 +63,8 @@ def test_malformed_w2_array_trailing_and_unknown_entries_are_ignored() -> None:
     )
 
     assert font.get_widths2() == {}
-    assert font.get_height(9) == 0.0
-    assert font.get_position_vector(20) == (500.0, 880.0)
+    assert font.get_height(9, None) == 0.0
+    assert font.get_position_vector(20, None) == (500.0, 880.0)
 
 
 def test_get_program_returns_none_when_descriptor_has_no_font_files() -> None:
@@ -80,6 +80,6 @@ def test_base_cid_font_code_and_width_paths_use_identity_mapping() -> None:
     font.set_dw(640)
     font.set_w(COSArray([_ci(7), COSArray([_ci(500)])]))
 
-    assert font.code_to_cid(7) == 7
-    assert font.get_width(7) == 500.0
-    assert font.get_width(8) == 640.0
+    assert font.code_to_cid(7, None) == 7
+    assert font.get_width(7, None) == 500.0
+    assert font.get_width(8, None) == 640.0

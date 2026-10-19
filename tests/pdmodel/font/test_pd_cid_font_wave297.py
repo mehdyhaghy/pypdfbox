@@ -36,22 +36,22 @@ def test_set_w2_invalidates_parsed_vertical_width_cache() -> None:
     font = PDCIDFontType2()
     font.set_w2(_array(5, 5, 880, -250, -900))
 
-    assert font.get_height(5) == 880.0
-    assert font.get_position_vector(5) == (-250.0, -900.0)
+    assert font.get_height(5, None) == 880.0
+    assert font.get_position_vector(5, None) == (-250.0, -900.0)
 
     font.set_w2(_array(5, 5, 720, -200, -700))
 
-    assert font.get_height(5) == 720.0
-    assert font.get_position_vector(5) == (-200.0, -700.0)
+    assert font.get_height(5, None) == 720.0
+    assert font.get_position_vector(5, None) == (-200.0, -700.0)
 
 
 def test_set_w2_none_invalidates_parsed_vertical_width_cache() -> None:
     font = PDCIDFontType2()
     font.set_w2(_array(5, 5, 880, -250, -900))
 
-    assert font.get_height(5) == 880.0
+    assert font.get_height(5, None) == 880.0
 
     font.set_w2(None)
 
-    assert font.get_height(5) == 0.0
-    assert font.get_position_vector(5) == (500.0, 880.0)
+    assert font.get_height(5, None) == 0.0
+    assert font.get_position_vector(5, None) == (500.0, 880.0)

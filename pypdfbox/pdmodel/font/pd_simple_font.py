@@ -29,6 +29,7 @@ from .standard14_fonts import Standard14Fonts
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+    from pypdfbox.pdmodel.pd_resource_cache import PDResourceCache
 
 _FIRST_CHAR: COSName = COSName.get_pdf_name("FirstChar")
 _LAST_CHAR: COSName = COSName.get_pdf_name("LastChar")
@@ -88,8 +89,15 @@ class PDSimpleFont(PDFont):
     typed ``Encoding`` and the Adobe glyph list.
     """
 
-    def __init__(self, font_dict: COSDictionary | None = None) -> None:
-        super().__init__(font_dict)
+    def __init__(
+        self,
+        font_dict: COSDictionary | None = None,
+        resource_cache: PDResourceCache | None = None,
+    ) -> None:
+        # ``resource_cache`` (can be ``None``) mirrors upstream trunk's
+        # ``(COSDictionary, ResourceCache)`` constructor (PDFBOX-6175): it
+        # lets an indirect /FontDescriptor be shared through the cache.
+        super().__init__(font_dict, resource_cache)
         self._encoding_typed: Encoding | None = None
         self._encoding_resolved: bool = False
         # Track codes we have already warned about — avoids spamming the

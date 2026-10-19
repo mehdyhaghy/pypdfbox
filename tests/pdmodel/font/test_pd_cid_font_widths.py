@@ -206,10 +206,11 @@ def test_w2_range_form_smoke() -> None:
     font = PDCIDFontType2()
     # /W2 [10 12 880 -500 -1000] -> CIDs 10..12 share that triple
     font.set_w2(_nested(10, 12, 880, -500, -1000))
-    widths2 = font.get_widths2()
+    # cid-ranges are stored compactly (PDFBOX-6175, bcf78963)
+    assert font.get_widths2() == {}
     for cid in (10, 11, 12):
-        assert widths2[cid] == (880.0, -500.0, -1000.0)
-    assert 13 not in widths2
+        assert font._get_w2_metrics(cid) == (880.0, -500.0, -1000.0)
+    assert font._get_w2_metrics(13) is None
 
 
 def test_wave329_w2_large_range_is_compact_but_still_lookupable() -> None:
@@ -219,21 +220,21 @@ def test_wave329_w2_large_range_is_compact_but_still_lookupable() -> None:
     font.set_w2(_nested(0, 5000, 880, -500, -1000))
 
     assert font.get_widths2() == {}
-    assert font.get_height(4999) == 880.0
-    assert font.get_position_vector(4999) == (-500.0, -1000.0)
-    assert font.get_vertical_displacement_vector_y(4999) == 880.0
+    assert font.get_height(4999, None) == 880.0
+    assert font.get_position_vector(4999, None) == (-500.0, -1000.0)
+    assert font.get_vertical_displacement_vector_y(4999, None) == 880.0
 
 
 def test_wave329_set_w2_none_clears_compact_range_cache() -> None:
     font = PDCIDFontType2()
     font.set_w2(_nested(0, 5000, 880, -500, -1000))
-    assert font.get_position_vector(42) == (-500.0, -1000.0)
+    assert font.get_position_vector(42, None) == (-500.0, -1000.0)
 
     font.set_w2(None)
 
     assert font.get_widths2() == {}
-    assert font.get_position_vector(42) == (500.0, 880.0)
-    assert font.get_vertical_displacement_vector_y(42) == -1000.0
+    assert font.get_position_vector(42, None) == (500.0, 880.0)
+    assert font.get_vertical_displacement_vector_y(42, None) == -1000.0
 
 
 def test_w2_consecutive_multi_triple() -> None:

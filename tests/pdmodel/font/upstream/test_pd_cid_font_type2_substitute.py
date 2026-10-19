@@ -114,7 +114,7 @@ def test_encode_non_embedded_predefined_unicode_encoding(
     expected_gid = substitute_cmap.get_glyph_id(unicode)
     assert expected_gid != 0
 
-    data = cid_font.encode(unicode)
+    data = cid_font.encode(unicode, font)
     assert len(data) == 2
     code = (data[0] << 8) | data[1]
     # the code is the raw Unicode value (the UniGB-UTF16-H codespace) ...
@@ -122,7 +122,7 @@ def test_encode_non_embedded_predefined_unicode_encoding(
     # ... which decodes back to the substitute font's glyph for it; before
     # PDFBOX-5953 the substitute's own GID was written and decoded to a
     # wrong, arbitrary glyph
-    assert cid_font.code_to_gid(code) == expected_gid
+    assert cid_font.code_to_gid(code, font) == expected_gid
     # the Type0 entry point writes the same code
     assert font.encode(chr(unicode)) == data
 
@@ -136,7 +136,7 @@ def test_encode_non_embedded_identity_uses_substitute_gid(substitute_mapper: Any
     cid_font = font.get_descendant_font()
     gid = substitute.get_unicode_cmap_lookup(False).get_glyph_id(0x41)
     assert gid != 0x41
-    assert cid_font.encode(0x41) == gid.to_bytes(2, "big")
+    assert cid_font.encode(0x41, font) == gid.to_bytes(2, "big")
 
 
 def _otf_cff_bytes() -> bytes:
@@ -204,7 +204,7 @@ def test_pdfbox6251_cff_substitute_uses_cid_as_gid(substitute_mapper: Any) -> No
     assert not cid_font.is_embedded()
     assert font.to_unicode(7) == "A"
     # without PDFBOX-6251 this would be the cmap GID of "A" (1)
-    assert cid_font.code_to_gid(7) == 7
+    assert cid_font.code_to_gid(7, font) == 7
     assert font.code_to_gid(7) == 7
 
 
@@ -217,7 +217,7 @@ def test_truetype_substitute_resolves_through_to_unicode(substitute_mapper: Any)
     font = _build_type0("Identity-H", "Adobe", "Identity", to_unicode=_TO_UNICODE_7_TO_A)
     cid_font = font.get_descendant_font()
     gid_a = substitute.get_unicode_cmap_lookup(False).get_glyph_id(0x41)
-    assert cid_font.code_to_gid(7) == gid_a
-    assert cid_font.code_to_gid(9) == 9
-    assert cid_font.get_width_from_font(7) > 0.0
-    assert cid_font.get_path(7)
+    assert cid_font.code_to_gid(7, font) == gid_a
+    assert cid_font.code_to_gid(9, font) == 9
+    assert cid_font.get_width_from_font(7, font) > 0.0
+    assert cid_font.get_path(7, font)

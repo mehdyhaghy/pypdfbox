@@ -122,14 +122,12 @@ def test_create_cid_font_vertical_does_not_raise_attribute_error() -> None:
     the method-under-test without depending on a bundled CJK font.
     """
     doc = PDDocument()
-    parent = PDType0Font()
     dict_ = COSDictionary()
     embedder = PDCIDFontType2Embedder(
         doc,
         dict_,
         _load_ttf(),
         embed_subset=False,
-        parent=parent,
         vertical=True,
     )
     # Erase the binding the constructor created so we can prove the
@@ -159,9 +157,8 @@ def test_pd_cid_font_type2_constructor_accepts_ttf_argument() -> None:
     only took two positional arguments.
     """
     font_dict = COSDictionary()
-    parent = PDType0Font()
     fake_ttf = object()
-    cid_font = PDCIDFontType2(font_dict, parent, fake_ttf)
+    cid_font = PDCIDFontType2(font_dict, fake_ttf)
     # The supplied TTF object is cached so the lazy /FontFile2 parse
     # short-circuits — confirms the argument flows through.
     assert cid_font._ttf is fake_ttf
@@ -172,10 +169,9 @@ def test_embedder_get_cid_font_returns_pd_cid_font_type2() -> None:
     :class:`PDCIDFontType2` without raising. Pinning regression for the
     1-arg-vs-3-arg constructor mismatch."""
     doc = PDDocument()
-    parent = PDType0Font()
     dict_ = COSDictionary()
     embedder = PDCIDFontType2Embedder(
-        doc, dict_, _load_ttf(), embed_subset=False, parent=parent, vertical=False
+        doc, dict_, _load_ttf(), embed_subset=False, vertical=False
     )
     result = embedder.get_cid_font()
     assert isinstance(result, PDCIDFontType2)
@@ -186,8 +182,11 @@ def test_pd_cid_font_type2_constructor_zero_args_still_supported() -> None:
     no-arg constructor (and the original 2-arg form) keeps working."""
     cid_font = PDCIDFontType2()
     assert cid_font._ttf is None
-    cid_font_two = PDCIDFontType2(COSDictionary(), PDType0Font())
+    cid_font_two = PDCIDFontType2(COSDictionary(), None)
     assert cid_font_two._ttf is None
+    # The parent Type 0 font is no longer accepted (PDFBOX-6175).
+    with pytest.raises(TypeError):
+        PDCIDFontType2(COSDictionary(), PDType0Font())
 
 
 def test_pd_cid_font_type2_constructor_accepts_real_ttf_instance(
@@ -199,6 +198,6 @@ def test_pd_cid_font_type2_constructor_accepts_real_ttf_instance(
     raw = _LIB_SANS.read_bytes()
     ttf = TrueTypeFont.from_bytes(raw)
     assert ttf is not None
-    cid_font = PDCIDFontType2(COSDictionary(), PDType0Font(), ttf)
+    cid_font = PDCIDFontType2(COSDictionary(), ttf)
     # No /FontFile2 in the dict — but the seeded instance wins.
     assert cid_font.get_true_type_font() is ttf

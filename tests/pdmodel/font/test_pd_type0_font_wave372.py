@@ -90,6 +90,10 @@ class _FakeDescendant:
     def cid_to_gid(self, cid: int) -> int:
         return cid + 1
 
+    def code_to_gid(self, code: int, parent: PDType0Font) -> int:
+        # PDFBOX-6175: descendantFont.codeToGID(code, this)
+        return self.cid_to_gid(parent.code_to_cid(code))
+
 
 def test_set_gsub_features_deduplicates_preserving_order_and_reset() -> None:
     font = PDType0Font()

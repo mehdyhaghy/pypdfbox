@@ -36,7 +36,6 @@ from .true_type_embedder import _CID_NO_SUBSET_TABLES, TrueTypeEmbedder
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_document import PDDocument
 
-    from .pd_type0_font import PDType0Font
 
 _LOG = logging.getLogger(__name__)
 
@@ -62,7 +61,6 @@ class PDCIDFontType2Embedder(TrueTypeEmbedder):
         dict_: COSDictionary,
         ttf: Any,
         embed_subset: bool,
-        parent: PDType0Font,
         vertical: bool,
     ) -> None:
         # Mirror upstream constructor (Java line 76-101).
@@ -74,7 +72,6 @@ class PDCIDFontType2Embedder(TrueTypeEmbedder):
         self.set_no_subset_tables(_CID_NO_SUBSET_TABLES)
         self._document_ref: PDDocument = document
         self._dict: COSDictionary = dict_
-        self._parent: PDType0Font = parent
         self._vertical: bool = vertical
         dict_.set_item(COSName.SUBTYPE, COSName.get_pdf_name("Type0"))
         dict_.set_name(COSName.BASE_FONT, self.font_descriptor.get_font_name() or "")
@@ -581,7 +578,9 @@ class PDCIDFontType2Embedder(TrueTypeEmbedder):
         """
         from .pd_cid_font_type2 import PDCIDFontType2
 
-        return PDCIDFontType2(self._cid_font, self._parent, self._ttf)
+        # Upstream trunk (PDFBOX-6175): ``new PDCIDFontType2(cidFont, ttf,
+        # null)`` — the descendant no longer knows its parent Type 0 font.
+        return PDCIDFontType2(self._cid_font, self._ttf, None)
 
 
 def _to_cid_system_info(

@@ -20,10 +20,24 @@ import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.fontbox.cff.cff_font import CFFFont
+from pypdfbox.fontbox.ttf.true_type_font import TrueTypeFont
 from pypdfbox.pdmodel.font.pd_cid_font_type0 import PDCIDFontType0
 from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
 
 # ---------- fixture helpers ----------
+
+
+def _no_substitute(font):
+    """Pin the "no font program at all" state of a bare descendant.
+
+    Since PDFBOX-6175 a non-embedded descendant resolves a substitute (the
+    bundled last-resort font) even without a parent Type 0 font; mark the
+    substitute as resolved-to-nothing so the no-program fallback branches
+    stay covered.
+    """
+    font._substitute = (None, None, None)  # PDCIDFontType0
+    font._substitute_ttf = False  # PDCIDFontType2
+    return font
 
 
 def _build_cid_keyed_cff_bytes() -> bytes:
@@ -86,9 +100,13 @@ def _make_embedded_font() -> PDCIDFontType0:
 # ---------- get_font_box_font ----------
 
 
-def test_get_font_box_font_none_when_not_embedded() -> None:
+def test_get_font_box_font_is_substitute_when_not_embedded() -> None:
+    """PDFBOX-6175: a bare non-embedded descendant resolves its substitute
+    (here the bundled last-resort TrueType font) without a parent; it was
+    ``None`` while the substitute was gated on the parent Type 0 font."""
     font = PDCIDFontType0()
-    assert font.get_font_box_font() is None
+    assert font.get_cff_font() is None
+    assert isinstance(font.get_font_box_font(), TrueTypeFont)
 
 
 def test_get_font_box_font_returns_cff_program_when_embedded() -> None:
@@ -112,7 +130,7 @@ def test_get_font_box_font_caches_via_underlying_cff() -> None:
     assert first is second
 
 
-def test_get_font_box_font_none_after_failed_parse() -> None:
+def test_get_font_box_font_is_substitute_after_failed_parse() -> None:
     descriptor = PDFontDescriptor()
     stream = COSStream()
     stream.set_data(b"not a valid CFF font set")
@@ -123,7 +141,10 @@ def test_get_font_box_font_none_after_failed_parse() -> None:
         COSName.get_pdf_name("FontDescriptor"), descriptor.get_cos_object()
     )
     font = PDCIDFontType0(font_dict)
-    assert font.get_font_box_font() is None
+    # damaged /FontFile3: no CFF program, the substitute stands in
+    # (PDFBOX-6175: no parent gate any more; was ``None``)
+    assert font.get_cff_font() is None
+    assert isinstance(font.get_font_box_font(), TrueTypeFont)
 
 
 # ---------- get_type2_char_string ----------
@@ -170,8 +191,8 @@ def test_get_type2_char_string_returns_empty_wrapper_for_unmapped_cid() -> None:
 
 
 def test_get_normalized_path_empty_when_not_embedded() -> None:
-    font = PDCIDFontType0()
-    assert font.get_normalized_path(1) == []
+    font = _no_substitute(PDCIDFontType0())
+    assert font.get_normalized_path(1, None) == []
 
 
 def test_get_normalized_path_matches_get_glyph_path() -> None:
@@ -179,20 +200,20 @@ def test_get_normalized_path_matches_get_glyph_path() -> None:
     glyph path — no upem scaling needed since CFF expresses outlines
     in 1000 upem by default."""
     font = _make_embedded_font()
-    assert font.get_normalized_path(1) == font.get_glyph_path(1)
-    assert font.get_normalized_path(2) == font.get_glyph_path(2)
+    assert font.get_normalized_path(1, None) == font.get_glyph_path(1)
+    assert font.get_normalized_path(2, None) == font.get_glyph_path(2)
 
 
 def test_get_normalized_path_empty_for_unmapped_cid() -> None:
     font = _make_embedded_font()
-    assert font.get_normalized_path(9999) == []
+    assert font.get_normalized_path(9999, None) == []
 
 
 def test_get_normalized_path_empty_for_notdef_outline() -> None:
     """.notdef is a single ``endchar`` in our fixture — no draw
     commands emitted, so the normalized path is empty too."""
     font = _make_embedded_font()
-    assert font.get_normalized_path(0) == []
+    assert font.get_normalized_path(0, None) == []
 
 
 # ---------- encode_glyph_id (unsupported) ----------

@@ -14,18 +14,26 @@ class _Descendant:
         self.calls.append(cid)
         return cid + 500.0
 
-    def get_height(self, cid: int) -> float:
+    # PDFBOX-6175: the per-glyph descendant methods take the raw code plus
+    # the parent Type 0 font and resolve code -> CID through the parent.
+    def get_height(self, code: int, parent: PDType0Font) -> float:
+        cid = parent.code_to_cid(code)
         self.calls.append(cid)
         return cid + 700.0
 
-    def get_vertical_displacement_vector_y(self, code: int) -> float:
+    def get_vertical_displacement_vector_y(
+        self, code: int, parent: PDType0Font
+    ) -> float:
         # Upstream PDCIDFont.getVerticalDisplacementVectorY takes the raw
         # *code* and resolves code->CID itself, so the parent passes the
         # code through unchanged (no pre-resolution).
         self.calls.append(code)
         return code + 600.0
 
-    def get_position_vector(self, cid: int) -> tuple[float, float]:
+    def get_position_vector(
+        self, code: int, parent: PDType0Font
+    ) -> tuple[float, float]:
+        cid = parent.code_to_cid(code)
         self.calls.append(cid)
         return (cid + 10.0, cid + 20.0)
 
@@ -35,11 +43,13 @@ class _Descendant:
     def get_bounding_box(self) -> str:
         return "bbox"
 
-    def has_glyph(self, cid: int) -> bool:
+    def has_glyph(self, code: int, parent: PDType0Font) -> bool:
+        cid = parent.code_to_cid(code)
         self.calls.append(cid)
         return cid == 42
 
-    def get_width_from_font(self, cid: int) -> float:
+    def get_width_from_font(self, code: int, parent: PDType0Font) -> float:
+        cid = parent.code_to_cid(code)
         self.calls.append(cid)
         return cid + 300.0
 
@@ -130,7 +140,19 @@ def test_width_alias_font_matrix_and_string_width_wave458(
     monkeypatch.setattr(font, "get_glyph_width", lambda code: float(code))
 
     assert font.get_font_matrix() == [0.001, 0.0, 0.0, 0.001, 0.0, 0.0]
+    # PDFBOX-6175: get_width is descendantFont.getWidth(code, this), no
+    # longer an alias of get_glyph_width; no descendant -> 0.0
+    assert font.get_width(12) == 0.0
+    seen: list[tuple[int, object]] = []
+
+    class _WidthDescendant:
+        def get_width(self, code: int, parent: object) -> float:
+            seen.append((code, parent))
+            return float(code)
+
+    monkeypatch.setattr(font, "get_descendant_font", lambda: _WidthDescendant())
     assert font.get_width(12) == 12.0
+    assert seen == [(12, font)]
     assert font.get_string_width("abc") == 60.0
 
 

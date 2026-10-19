@@ -27,7 +27,6 @@ from pypdfbox.pdmodel.common import PDStream
 from pypdfbox.pdmodel.font.pd_cid_font_type2_embedder import (
     PDCIDFontType2Embedder,
 )
-from pypdfbox.pdmodel.font.pd_type0_font import PDType0Font
 from pypdfbox.pdmodel.pd_document import PDDocument
 
 _LIB_SANS = (
@@ -83,7 +82,6 @@ def _new_embedder() -> tuple[PDCIDFontType2Embedder, COSDictionary, int]:
         dict_,
         ttf,
         embed_subset=True,
-        parent=PDType0Font(),
         vertical=False,
     )
     return embedder, dict_, gid

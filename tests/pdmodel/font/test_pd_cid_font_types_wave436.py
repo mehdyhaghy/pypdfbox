@@ -150,8 +150,8 @@ def test_type0_glyph_width_prefers_w_then_cff_then_default_width() -> None:
     # the CID (CID as GID), mapped through the font matrix ([0.002 ...] * 1000)
     widths = {1: 1000.0, 2: 0.0}
     font.get_type2_char_string = lambda cid: _FakeCharString(widths[cid])  # type: ignore[method-assign]
-    assert font.get_width_from_font(1) == pytest.approx(2000.0)
-    assert font.get_width_from_font(2) == 0.0
+    assert font.get_width_from_font(1, None) == pytest.approx(2000.0)
+    assert font.get_width_from_font(2, None) == 0.0
 
 
 class _FakeCharString:
@@ -171,11 +171,11 @@ def test_type0_program_metrics_matrix_bbox_paths_and_charstrings() -> None:
     assert bbox is not None
     assert bbox.get_lower_left_x() == -10.0
     assert bbox.get_upper_right_y() == 900.0
-    assert font.get_height(1) == 1000.0
-    assert font.get_height(1) == 1000.0
+    assert font.get_height(1, None) == 1000.0
+    assert font.get_height(1, None) == 1000.0
     # get_normalized_path now takes the character code and, as upstream, is
     # get_path(code) (Type 2 charstring outline), not get_glyph_path(cid)
-    assert font.get_normalized_path(1) == font.get_path(1)
+    assert font.get_normalized_path(1, None) == font.get_path(1, None)
     assert font.get_type2_char_string(4) == ("charstring", 4)
 
 
@@ -187,11 +187,11 @@ def test_type0_handles_malformed_program_values_and_unsupported_encoding() -> No
     font = _type0_with_program(program)
     font.set_dw(444)
 
-    assert font.get_width_from_font(1) == 0.0
+    assert font.get_width_from_font(1, None) == 0.0
     assert font.get_average_font_width() == 444.0
     assert font.get_font_matrix() == (0.001, 0.0, 0.0, 0.001, 0.0, 0.0)
     assert font.get_bounding_box() is None
-    assert font.get_height(2) == 0.0
+    assert font.get_height(2, None) == 0.0
     assert font.get_glyph_path(99) == []
     with pytest.raises(NotImplementedError):
         font.encode_glyph_id(1)
@@ -219,8 +219,8 @@ def test_type2_cid_to_gid_negative_raw_bytes_and_identity_name() -> None:
     assert font.cid_to_gid(-1) == 0
     assert font.get_cid_to_gid_map_bytes() == b"\x00\x05\x00\x09"
     assert font.is_identity_cid_to_gid_map() is False
-    assert font.code_to_cid(12) == 12
-    assert font.code_to_gid(1) == 9
+    assert font.code_to_cid(12, None) == 12
+    assert font.code_to_gid(1, None) == 9
 
     font.set_cid_to_gid_map("Identity")
     assert font.get_cid_to_gid_map_bytes() is None
@@ -241,19 +241,19 @@ def test_type2_font_metrics_fallbacks_and_exception_paths() -> None:
     font = _type2_with_program(_FakeTTF(units_per_em=0, advance_widths=[0, 0]))
     font.set_dw(321)
 
-    assert font.get_width_from_font(1) == 0.0
+    assert font.get_width_from_font(1, None) == 0.0
     assert font.get_average_font_width() == 321.0
     assert font.get_font_matrix() == [0.001, 0.0, 0.0, 0.001, 0.0, 0.0]
 
     no_glyf = _type2_with_program(
         _FakeTTF(inner=_FakeTTInner([".notdef", "A"], {}, include_glyf=False))
     )
-    assert no_glyf.get_height(1) == 0.0
+    assert no_glyf.get_height(1, None) == 0.0
 
     missing_glyph = _type2_with_program(
         _FakeTTF(inner=_FakeTTInner([".notdef", "A"], {}, include_glyf=True))
     )
-    assert missing_glyph.get_height(1) == 0.0
+    assert missing_glyph.get_height(1, None) == 0.0
 
 
 def test_type2_paths_are_drawn_and_normalized_by_units_per_em() -> None:
@@ -272,7 +272,7 @@ def test_type2_paths_are_drawn_and_normalized_by_units_per_em() -> None:
         ("lineto", 1000.0, 500.0),
         ("closepath",),
     ]
-    assert font.get_normalized_path(1) == [
+    assert font.get_normalized_path(1, None) == [
         ("moveto", 0.0, 0.0),
         ("lineto", 500.0, 250.0),
         ("closepath",),
@@ -284,7 +284,7 @@ def test_type2_path_and_postscript_predicate_failure_paths() -> None:
     inner = _FakeTTInner([".notdef", "A"], {"A": raising})
     font = _type2_with_program(_FakeTTF(inner=inner, post_script=True))
     assert font.get_glyph_path(1) == []
-    assert font.get_normalized_path(1) == []
+    assert font.get_normalized_path(1, None) == []
     assert font.is_open_type_post_script() is True
 
     class _BadPredicateTTF(_FakeTTF):

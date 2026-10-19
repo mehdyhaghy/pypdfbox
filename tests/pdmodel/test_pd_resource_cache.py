@@ -4,6 +4,8 @@ import pytest
 
 from pypdfbox import PDDocument
 from pypdfbox.cos import COSDictionary, COSObject, COSStream
+from pypdfbox.pdmodel.font.pd_cid_font import PDCIDFont
+from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
 from pypdfbox.pdmodel.graphics.form import PDFormXObject
 from pypdfbox.pdmodel.pd_resource_cache import (
     DefaultResourceCache,
@@ -157,11 +159,11 @@ def test_register_true_type_font_for_closing_is_a_noop() -> None:
 # ---------- CID font / font descriptor: removed upstream (cab99713) ----------
 
 
-def test_cid_font_and_font_descriptor_cache_methods_are_absent() -> None:
-    """PDFBOX-6175 added ``getCIDFont`` / ``getFontDescriptor`` and their
-    ``put`` / ``remove`` companions; upstream reverted the whole extension
-    in cab99713 (shipped in 3.0.8) because a descendant font refers to its
-    parent and therefore can't be shared. The surface must stay gone."""
+def test_cid_font_and_font_descriptor_cache_methods_are_present() -> None:
+    """PDFBOX-6175 (upstream trunk ``b0715897``) added ``getCIDFont`` /
+    ``getFontDescriptor`` and their ``put`` / ``remove`` companions. The
+    3.0 branch reverted them; trunk kept them once the descendant font lost
+    its parent reference, and pypdfbox follows trunk."""
     for name in (
         "get_cid_font",
         "put_cid_font",
@@ -170,8 +172,40 @@ def test_cid_font_and_font_descriptor_cache_methods_are_absent() -> None:
         "put_font_descriptor",
         "remove_font_descriptor",
     ):
-        assert not hasattr(PDResourceCache, name)
-        assert not hasattr(DefaultResourceCache, name)
+        assert hasattr(PDResourceCache, name)
+        assert hasattr(DefaultResourceCache, name)
+    assert {
+        "get_cid_font",
+        "put_cid_font",
+        "get_font_descriptor",
+        "put_font_descriptor",
+    } <= PDResourceCache.__abstractmethods__
+
+
+def test_default_cache_cid_font_and_font_descriptor_round_trip() -> None:
+    cache = DefaultResourceCache()
+    ref = _ref(120)
+    cid_font = PDCIDFont(COSDictionary())
+    assert cache.get_cid_font(ref) is None
+    cache.put_cid_font(ref, cid_font)
+    assert cache.get_cid_font(ref) is cid_font
+    # no stable-cache guard: every removal drops the entry
+    assert cache.remove_cid_font(ref) is cid_font
+    assert cache.get_cid_font(ref) is None
+    assert cache.remove_cid_font(ref) is None
+
+    fd = PDFontDescriptor(COSDictionary())
+    assert cache.get_font_descriptor(ref) is None
+    cache.put(ref, fd)
+    assert cache.get_font_descriptor(ref) is fd
+    assert cache.remove_font_descriptor(ref) is fd
+    assert cache.get_font_descriptor(ref) is None
+
+    cache.put_cid_font(ref, cid_font)
+    cache.put_font_descriptor(ref, fd)
+    cache.clear()
+    assert cache.get_cid_font(ref) is None
+    assert cache.get_font_descriptor(ref) is None
 
 
 # ---------- removal hooks ----------
@@ -267,6 +301,18 @@ class _MinimalCache(PDResourceCache):
         return None
 
     def put_property_list(self, indirect: COSObject, property_list: Any) -> None:
+        pass
+
+    def get_cid_font(self, indirect: COSObject) -> Any:
+        return None
+
+    def put_cid_font(self, indirect: COSObject, cid_font: Any) -> None:
+        pass
+
+    def get_font_descriptor(self, indirect: COSObject) -> Any:
+        return None
+
+    def put_font_descriptor(self, indirect: COSObject, font_descriptor: Any) -> None:
         pass
 
 
@@ -498,7 +544,6 @@ def test_default_cache_put_dispatches_by_resource_type() -> None:
     ``put(COSObject, ...)`` overloads — each runtime type must land in the
     matching backing store."""
     from pypdfbox.cos import COSDictionary, COSStream
-    from pypdfbox.pdmodel.font.pd_cid_font import PDCIDFont
     from pypdfbox.pdmodel.graphics.color.pd_device_n import PDDeviceN
     from pypdfbox.pdmodel.graphics.form import PDFormXObject
     from pypdfbox.pdmodel.graphics.pattern.pd_shading_pattern import (
@@ -538,14 +583,16 @@ def test_default_cache_put_dispatches_by_resource_type() -> None:
     cache.put(_ref(86), prop)
     assert cache.get_property_list(_ref(86)) is prop
 
-    # cab99713 removed the dedicated CID slot: a PDCIDFont (a PDFont
-    # subclass in pypdfbox) now lands in the single font slot, matching
-    # upstream's lone ``put(COSObject, PDFont)`` overload.
-    cid_dict = COSDictionary()
-    cid_font = PDCIDFont.__new__(PDCIDFont)
-    cid_font.dict = cid_dict  # type: ignore[attr-defined]
+    # PDFBOX-6175 (trunk): a PDCIDFont has its own slot, matching the
+    # ``put(COSObject, PDCIDFont)`` overload; it is not a PDFont.
+    cid_font = PDCIDFont(COSDictionary())
     cache.put(_ref(87), cid_font)
-    assert cache.get_font(_ref(87)) is cid_font
+    assert cache.get_cid_font(_ref(87)) is cid_font
+    assert cache.get_font(_ref(87)) is None
+
+    fd = PDFontDescriptor(COSDictionary())
+    cache.put(_ref(88), fd)
+    assert cache.get_font_descriptor(_ref(88)) is fd
 
 
 def test_default_cache_put_rejects_unsupported_types() -> None:

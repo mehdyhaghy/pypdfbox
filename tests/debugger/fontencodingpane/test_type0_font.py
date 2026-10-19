@@ -227,7 +227,7 @@ class _StubCIDFont:
             return [("moveTo", 0, 0), ("lineTo", 1, 1)]
         return []
 
-    def get_name(self) -> str:
+    def get_base_font(self) -> str:
         return "StubCID"
 
     def is_embedded(self) -> bool:
@@ -337,7 +337,7 @@ class _StubCIDFontWithMap:
     def __init__(self) -> None:
         self._map_bytes = b"\x00\x00\x00\x01\x00\x02"
 
-    def get_name(self) -> str:
+    def get_base_font(self) -> str:
         return "StubCIDWithMap"
 
     def is_embedded(self) -> bool:
@@ -465,7 +465,7 @@ class _StubCIDFontWithBrokenMap:
     def get_path(self, _code: int):
         return []
 
-    def get_name(self) -> str:
+    def get_base_font(self) -> str:
         return "StubCIDBrokenMap"
 
     def is_embedded(self) -> bool:

@@ -386,14 +386,14 @@ def test_set_cid_to_gid_map_clears_cache() -> None:
 def test_normalized_path_unscaled_for_1000_upem() -> None:
     font = _make_cid_type2(upem=1000)
     raw = font.get_glyph_path(1)
-    norm = font.get_normalized_path(1)
+    norm = font.get_normalized_path(1, None)
     assert norm == raw  # no scaling for 1000-upem
 
 
 def test_normalized_path_scaled_for_2048_upem() -> None:
     font = _make_cid_type2(upem=2048)
     raw = font.get_glyph_path(1)
-    norm = font.get_normalized_path(1)
+    norm = font.get_normalized_path(1, None)
     assert _has_drawing(norm)
     scale = 1000.0 / 2048.0
     raw_lo, raw_hi = _y_extent(raw)
@@ -405,7 +405,7 @@ def test_normalized_path_scaled_for_2048_upem() -> None:
 def test_normalized_path_scaled_for_500_upem() -> None:
     font = _make_cid_type2(upem=500)
     raw = font.get_glyph_path(1)
-    norm = font.get_normalized_path(1)
+    norm = font.get_normalized_path(1, None)
     scale = 1000.0 / 500.0
     _, raw_hi = _y_extent(raw)
     _, norm_hi = _y_extent(norm)
@@ -414,15 +414,15 @@ def test_normalized_path_scaled_for_500_upem() -> None:
 
 def test_normalized_path_closepath_preserved_under_scaling() -> None:
     font = _make_cid_type2(upem=2048)
-    norm = font.get_normalized_path(1)
+    norm = font.get_normalized_path(1, None)
     assert any(cmd == ("closepath",) for cmd in norm)
 
 
 def test_normalized_path_empty_for_no_program() -> None:
     font = PDCIDFontType2()  # no /FontFile2
-    assert font.get_normalized_path(1) == []
+    assert font.get_normalized_path(1, None) == []
     assert font.get_glyph_path(1) == []
-    assert font.get_path(1) == []
+    assert font.get_path(1, None) == []
 
 
 # ===========================================================================
@@ -448,7 +448,7 @@ def test_composite_glyph_decomposes_components() -> None:
 def test_composite_glyph_normalized_scales_both_components() -> None:
     font = _make_cid_type2(upem=2048)
     raw = font.get_glyph_path(3)
-    norm = font.get_normalized_path(3)
+    norm = font.get_normalized_path(3, None)
     scale = 1000.0 / 2048.0
     _, raw_hi = _y_extent(raw)
     _, norm_hi = _y_extent(norm)
@@ -463,7 +463,7 @@ def test_composite_glyph_normalized_scales_both_components() -> None:
 def test_get_path_routes_to_glyf_for_truetype() -> None:
     font = _make_cid_type2()
     assert font.is_open_type_post_script() is False
-    assert font.get_path(1) == font.get_glyph_path(1)
+    assert font.get_path(1, None) == font.get_glyph_path(1)
 
 
 def test_glyph_path_returns_list_for_every_cid() -> None:
@@ -490,7 +490,7 @@ def test_otf_cff_program_is_open_type_post_script() -> None:
 def test_otf_cff_get_path_draws_via_cff_outlines() -> None:
     font = _make_cid_type2_otf()
     # CID 1 → GID 1 (glyph "A") via Identity (OTF-PS returns CID as GID).
-    path = font.get_path(1)
+    path = font.get_path(1, None)
     assert _has_drawing(path)
 
 
@@ -499,19 +499,19 @@ def test_otf_cff_normalized_path_not_empty() -> None:
     yielding [] for a CFF-only OTF. It must route through the CFF
     outline branch."""
     font = _make_cid_type2_otf()
-    norm = font.get_normalized_path(1)
+    norm = font.get_normalized_path(1, None)
     assert _has_drawing(norm)
 
 
 def test_otf_cff_path_from_outlines_matches_get_path() -> None:
     font = _make_cid_type2_otf()
-    assert font.get_path_from_outlines(1) == font.get_path(1)
+    assert font.get_path_from_outlines(1, None) == font.get_path(1, None)
 
 
 def test_otf_cff_notdef_path_from_outlines() -> None:
     font = _make_cid_type2_otf()
     # CID 0 → GID 0 (.notdef, empty charstring). Path is empty/None-ish.
-    out = font.get_path_from_outlines(0)
+    out = font.get_path_from_outlines(0, None)
     assert out is None or not _has_drawing(out)
 
 
@@ -540,7 +540,10 @@ def test_cid_type0_glyph_path_empty_for_unmapped_cid() -> None:
 def test_cid_type0_glyph_path_empty_without_program() -> None:
     font = PDCIDFontType0()
     assert font.get_glyph_path(1) == []
-    assert font.get_normalized_path(1) == []
+    # PDFBOX-6175: a bare non-embedded descendant now resolves its
+    # substitute font without a parent, so the normalized path comes
+    # from the substitute program rather than being empty.
+    assert _has_drawing(font.get_normalized_path(1, None))
 
 
 def test_cid_type0_normalized_path_is_glyph_path() -> None:
@@ -550,7 +553,7 @@ def test_cid_type0_normalized_path_is_glyph_path() -> None:
     program = font.get_cff_font()
     assert program is not None
     if program.has_glyph("cid00001"):
-        assert font.get_normalized_path(1) == font.get_glyph_path(1)
+        assert font.get_normalized_path(1, None) == font.get_glyph_path(1)
 
 
 def test_cid_type0_notdef_cid_zero() -> None:
@@ -568,7 +571,7 @@ def test_cid_type0_get_path_via_charstring() -> None:
     # get_path goes code -> CID -> Type2 charstring. With no parent CMap
     # the code passes through as the CID.
     if program.has_glyph("cid00001"):
-        assert _is_path(font.get_path(1))
+        assert _is_path(font.get_path(1, None))
 
 
 # ===========================================================================
@@ -585,6 +588,6 @@ def test_true_type_font_parsed_once_and_cached() -> None:
 
 def test_repeated_normalized_path_stable() -> None:
     font = _make_cid_type2(upem=2048)
-    a = font.get_normalized_path(1)
-    b = font.get_normalized_path(1)
+    a = font.get_normalized_path(1, None)
+    b = font.get_normalized_path(1, None)
     assert a == b

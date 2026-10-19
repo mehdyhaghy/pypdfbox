@@ -204,7 +204,7 @@ def test_cid_type2_metric_and_path_fallback_edges() -> None:
     font.cid_to_gid = lambda _cid: 1  # type: ignore[method-assign]
     font.get_true_type_font = lambda: _ZeroUnitsTTF()  # type: ignore[method-assign]
 
-    assert font.get_height(5) == 0.0
+    assert font.get_height(5, None) == 0.0
 
     font.get_true_type_font = lambda: _ZeroAdvanceTTF()  # type: ignore[method-assign]
     assert font.get_average_font_width() == font.get_default_width()
@@ -216,7 +216,7 @@ def test_cid_type2_metric_and_path_fallback_edges() -> None:
         raise RuntimeError("cid map unavailable")
 
     font.cid_to_gid = raise_gid  # type: ignore[method-assign]
-    assert font.get_normalized_path(5) == []
+    assert font.get_normalized_path(5, None) == []
 
 
 def test_cid_type0_cid_keyed_empty_charset_falls_back_to_gid_zero() -> None:
@@ -224,7 +224,7 @@ def test_cid_type0_cid_keyed_empty_charset_falls_back_to_gid_zero() -> None:
     program = _FakeCIDCFF([])
     font.get_cff_font = lambda: program  # type: ignore[method-assign]
 
-    assert font.code_to_gid(12) == 0
+    assert font.code_to_gid(12, None) == 0
     assert font.get_type2_char_string(12) is not None
     assert program.seen_gids == [0]
 

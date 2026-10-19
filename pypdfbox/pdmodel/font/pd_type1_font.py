@@ -16,6 +16,7 @@ _BASE_FONT_KEY = COSName.get_pdf_name("BaseFont")
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_document import PDDocument
     from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+    from pypdfbox.pdmodel.pd_resource_cache import PDResourceCache
 
     from .encoding.encoding import Encoding
 
@@ -94,8 +95,15 @@ class PDType1Font(PDSimpleFont):
     # for Helvetica.
     SUBSTITUTE_NOTDEF_WIDTH: float = 250.0
 
-    def __init__(self, font_dict: COSDictionary | None = None) -> None:
-        super().__init__(font_dict)
+    def __init__(
+        self,
+        font_dict: COSDictionary | None = None,
+        resource_cache: PDResourceCache | None = None,
+    ) -> None:
+        # ``resource_cache`` (can be ``None``) mirrors upstream trunk's
+        # ``(COSDictionary, ResourceCache)`` constructor (PDFBOX-6175): it
+        # lets an indirect /FontDescriptor be shared through the cache.
+        super().__init__(font_dict, resource_cache)
         # Lazily-loaded embedded Type 1 program. ``None`` means
         # "not yet attempted", ``False`` means "tried, no /FontFile or
         # parse failed".

@@ -131,22 +131,22 @@ def test_get_glyph_name_returns_notdef_when_to_unicode_empty() -> None:
     """Parent's ``to_unicode`` returns an empty string -> ``.notdef``
     (covers lines 589-591)."""
     font = PDCIDFontType0()
-    font._parent = _StubParent({0x41: ""})  # type: ignore[assignment]
-    assert font.get_glyph_name(0x41) == ".notdef"
+    parent = _StubParent({0x41: ""})
+    assert font.get_glyph_name(0x41, parent) == ".notdef"  # type: ignore[arg-type]
 
 
 def test_get_glyph_name_returns_notdef_when_to_unicode_none() -> None:
     font = PDCIDFontType0()
-    font._parent = _StubParent({})  # type: ignore[assignment]
-    assert font.get_glyph_name(0x41) == ".notdef"
+    parent = _StubParent({})
+    assert font.get_glyph_name(0x41, parent) == ".notdef"  # type: ignore[arg-type]
 
 
 def test_get_glyph_name_returns_synthesised_uni_when_to_unicode_resolves() -> None:
     """Happy path: parent maps code -> ``A``; we emit ``uni0041``
     (covers line 592)."""
     font = PDCIDFontType0()
-    font._parent = _StubParent({0x41: "A"})  # type: ignore[assignment]
-    assert font.get_glyph_name(0x41) == "uni0041"
+    parent = _StubParent({0x41: "A"})
+    assert font.get_glyph_name(0x41, parent) == "uni0041"  # type: ignore[arg-type]
 
 
 # ----------------------------------------------------------------------
@@ -171,7 +171,7 @@ def test_get_path_remaps_cid_via_cid_to_gid_map_stream() -> None:
     font = _make_font_with_embedded_cff()
     # Map every CID to GID 0 — so even our known CID 1 ends up at notdef.
     _attach_cid_to_gid_map(font, [0, 0, 0])
-    assert font.get_path(1) == []
+    assert font.get_path(1, None) == []
 
 
 # ----------------------------------------------------------------------
@@ -195,7 +195,7 @@ def test_get_path_swallows_charstring_exception(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(
         font, "get_type2_char_string", lambda _cid: _RaisingCharString()
     )
-    assert font.get_path(1) == []
+    assert font.get_path(1, None) == []
 
 
 def test_get_path_uses_program_charstring_when_lookup_returns_none(
@@ -210,8 +210,8 @@ def test_get_path_uses_program_charstring_when_lookup_returns_none(
     monkeypatch.setattr(font, "get_type2_char_string", lambda _cid: None)
     # FontBuilder emits no /ROS, so the "CID-keyed" fixture is name-keyed
     assert isinstance(program, CFFType1Font)
-    assert font.get_path(1)
-    assert font.get_path(1) == program.get_type2_char_string(1).get_path()
+    assert font.get_path(1, None)
+    assert font.get_path(1, None) == program.get_type2_char_string(1).get_path()
 
 
 # ----------------------------------------------------------------------
@@ -229,8 +229,8 @@ def test_has_glyph_uses_program_charstring_when_lookup_returns_none(
     program = font.get_cff_font()
     monkeypatch.setattr(font, "get_type2_char_string", lambda _cid: None)
     assert isinstance(program, CFFType1Font)
-    assert font.has_glyph(1) is True
-    assert font.has_glyph(0) is False
+    assert font.has_glyph(1, None) is True
+    assert font.has_glyph(0, None) is False
 
 
 def test_has_glyph_returns_false_when_get_gid_raises(
@@ -246,4 +246,4 @@ def test_has_glyph_returns_false_when_get_gid_raises(
     monkeypatch.setattr(
         font, "get_type2_char_string", lambda _cid: _GidRaising()
     )
-    assert font.has_glyph(1) is False
+    assert font.has_glyph(1, None) is False

@@ -63,7 +63,7 @@ def _new_embedder(
     parent = PDType0Font()
     dict_ = COSDictionary()
     embedder = PDCIDFontType2Embedder(
-        doc, dict_, ttf, embed_subset=embed_subset, parent=parent, vertical=vertical
+        doc, dict_, ttf, embed_subset=embed_subset, vertical=vertical
     )
     return embedder, dict_, doc, parent, ttf
 

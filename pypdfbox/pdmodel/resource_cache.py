@@ -17,13 +17,17 @@ class ResourceCache(PDResourceCache):
         of ``value`` to the matching ``put_*`` method on
         :class:`PDResourceCache`. Mirrors upstream
         ``ResourceCache.put`` (Java line 287)."""
-        from pypdfbox.pdmodel.font import PDFont
+        from pypdfbox.pdmodel.font import PDCIDFont, PDFont, PDFontDescriptor
         from pypdfbox.pdmodel.graphics.color.pd_color_space import PDColorSpace
         from pypdfbox.pdmodel.graphics.form import PDFormXObject
         from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
 
         if isinstance(value, PDFont):
             self.put_font(key, value)
+        elif isinstance(value, PDCIDFont):
+            self.put_cid_font(key, value)
+        elif isinstance(value, PDFontDescriptor):
+            self.put_font_descriptor(key, value)
         elif isinstance(value, PDColorSpace):
             self.put_color_space(key, value)
         elif isinstance(value, PDFormXObject):

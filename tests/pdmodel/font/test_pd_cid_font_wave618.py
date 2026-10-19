@@ -110,15 +110,16 @@ def test_w2_array_supports_array_form_range_form_and_malformed_entries() -> None
         )
     )
 
+    # cid-ranges are stored compactly, never expanded (PDFBOX-6175, bcf78963)
     assert font.get_widths2() == {
         5: (-900.0, 250.0, 880.0),
         7: (-901.0, 251.0, 881.0),
-        20: (-1000.0, 300.0, 900.0),
-        21: (-1000.0, 300.0, 900.0),
-        22: (-1000.0, 300.0, 900.0),
     }
-    assert font.get_position_vector(7) == (251.0, 881.0)
-    assert font.get_height(20) == -1000.0
+    ranges = font.get_vertical_displacement_ranges()
+    assert [(r.range_start, r.range_end) for r in ranges] == [(20, 22)]
+    assert font.get_position_vector(7, None) == (251.0, 881.0)
+    assert font.get_position_vector(21, None) == (300.0, 900.0)
+    assert font.get_height(20, None) == -1000.0
 
 
 def test_large_w2_range_is_kept_compact_but_lookup_still_works() -> None:
@@ -136,8 +137,8 @@ def test_large_w2_range_is_kept_compact_but_lookup_still_works() -> None:
     )
 
     assert font.get_widths2() == {}
-    assert font.get_position_vector(4096) == (250.0, 880.0)
-    assert font.get_vertical_displacement_vector_y(5000) == -900.0
+    assert font.get_position_vector(4096, None) == (250.0, 880.0)
+    assert font.get_vertical_displacement_vector_y(5000, None) == -900.0
 
 
 def test_dw2_defaults_and_partial_malformed_values() -> None:
@@ -145,7 +146,7 @@ def test_dw2_defaults_and_partial_malformed_values() -> None:
 
     assert font.get_default_position_vector() == (880.0, -1000.0)
     assert font.get_default_position_vector_for_cid(3) == (500.0, 880.0)
-    assert font.get_vertical_displacement_vector_y(3) == -1000.0
+    assert font.get_vertical_displacement_vector_y(3, None) == -1000.0
 
     font.set_dw2(COSArray([COSString("bad"), COSInteger.get(-1200)]))
     assert font.get_default_position_vector() == (880.0, -1200.0)
@@ -154,16 +155,18 @@ def test_dw2_defaults_and_partial_malformed_values() -> None:
 
 
 def test_has_glyph_and_explicit_width_distinguish_dw_fallback() -> None:
-    font = PDCIDFontType2()
+    # The /W + /DW heuristic is the base PDCIDFont answer (a subtype with a
+    # font program, embedded or substitute, asks the program instead).
+    font = PDCIDFont(COSDictionary())
     font.set_dw(0)
     font.set_w(COSArray([COSInteger.get(4), COSArray([COSInteger.get(0), COSInteger.get(222)])]))
 
-    assert font.has_explicit_width(4) is True
-    assert font.has_glyph(4) is False
-    assert font.has_explicit_width(5) is True
-    assert font.has_glyph(5) is True
-    assert font.has_explicit_width(6) is False
-    assert font.has_glyph(6) is False
+    assert font.has_explicit_width(4, None) is True
+    assert font.has_glyph(4, None) is False
+    assert font.has_explicit_width(5, None) is True
+    assert font.has_glyph(5, None) is True
+    assert font.has_explicit_width(6, None) is False
+    assert font.has_glyph(6, None) is False
 
 
 def test_cid_to_gid_map_identity_absent_stream_and_invalid_setter() -> None:

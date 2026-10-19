@@ -1,15 +1,30 @@
 from abc import abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName, COSNumber, COSStream
+from pypdfbox.cos import (
+    COSArray,
+    COSDictionary,
+    COSName,
+    COSNumber,
+    COSObject,
+    COSStream,
+)
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 from .pd_cid_system_info import PDCIDSystemInfo
-from .pd_font import PDFont
+from .vertical_displacement_range import VerticalDisplacementRange
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.pd_resource_cache import PDResourceCache
+
+    from .pd_font_descriptor import PDFontDescriptor
     from .pd_type0_font import PDType0Font
 
+_TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
+_SUBTYPE: COSName = COSName.SUBTYPE  # type: ignore[attr-defined]
+_FONT: COSName = COSName.get_pdf_name("Font")
+_BASE_FONT: COSName = COSName.get_pdf_name("BaseFont")
+_FONT_DESCRIPTOR: COSName = COSName.get_pdf_name("FontDescriptor")
 _CID_SYSTEM_INFO: COSName = COSName.get_pdf_name("CIDSystemInfo")
 _DW: COSName = COSName.get_pdf_name("DW")
 _DW2: COSName = COSName.get_pdf_name("DW2")
@@ -17,40 +32,74 @@ _W: COSName = COSName.get_pdf_name("W")
 _W2: COSName = COSName.get_pdf_name("W2")
 _CID_TO_GID_MAP: COSName = COSName.get_pdf_name("CIDToGIDMap")
 _IDENTITY: COSName = COSName.get_pdf_name("Identity")
-_W2_RANGE_EXPANSION_LIMIT: int = 4096
+_DEFAULT_FONT_MATRIX: tuple[float, ...] = (0.001, 0.0, 0.0, 0.001, 0.0, 0.0)
 
 
-class PDCIDFont(PDFont):
+class PDCIDFont:
     """Abstract CIDFont wrapper. Mirrors PDFBox ``PDCIDFont``.
 
     A CIDFont is the descendant of a composite ``PDType0Font``; although its
     ``/Type`` is ``/Font`` it is not directly usable as a font. Concrete
     subclasses (``PDCIDFontType0``, ``PDCIDFontType2``) set ``/Subtype``.
 
-    Lite — the ``PDFontLike`` / ``PDVectorFont`` mixins are deferred.
-    This wrapper exposes the COS-level accessors over the dictionary
-    entries enumerated in PDF 32000-1 §9.7.4 plus parsing of the ``/W``
-    and ``/W2`` width tables (§9.7.4.3) into ``CID -> width`` maps.
+    Mirrors upstream trunk (PDFBOX-6175): the class implements only
+    ``COSObjectable`` (structurally, through :meth:`get_cos_object`) and is
+    *not* a :class:`~pypdfbox.pdmodel.font.pd_font.PDFont` /
+    ``PDFontLike``. It holds no reference to its parent Type 0 font, so a
+    single instance can be shared by several Type 0 fonts through the
+    document :class:`~pypdfbox.pdmodel.pd_resource_cache.PDResourceCache`.
+    Every per-glyph method therefore takes the parent
+    :class:`~pypdfbox.pdmodel.font.pd_type0_font.PDType0Font` as an explicit
+    ``parent`` argument; callers normally go through the parent font
+    instead, which passes itself. Upstream declares those methods
+    ``protected``; pypdfbox keeps them public so the parent (a different
+    module) can call them. ``parent`` may be ``None`` for a bare descendant
+    (unit tests), in which case the character code is taken as the CID.
+
+    Besides the upstream surface this wrapper exposes the COS-level
+    accessors over the dictionary entries enumerated in PDF 32000-1 §9.7.4
+    plus parsing of the ``/W`` and ``/W2`` width tables (§9.7.4.3).
     """
+
+    SUB_TYPE: str | None = None
 
     def __init__(
         self,
         font_dict: COSDictionary | None = None,
-        parent_type0_font: PDType0Font | None = None,
+        resource_cache: PDResourceCache | None = None,
     ) -> None:
-        super().__init__(font_dict)
-        self._parent = parent_type0_font
+        from .pd_font import PDFont
+
+        if isinstance(resource_cache, PDFont):
+            raise TypeError(
+                "PDCIDFont: the second argument is a resource cache; the "
+                "parent Type 0 font is no longer passed to the descendant "
+                "(PDFBOX-6175)"
+            )
+        self._dict = font_dict if font_dict is not None else COSDictionary()
+        if self._dict.get_dictionary_object(_TYPE) is None:
+            self._dict.set_item(_TYPE, _FONT)
+        if font_dict is None and self.SUB_TYPE is not None:
+            self._dict.set_name(_SUBTYPE, self.SUB_TYPE)
+        # ResourceCache, can be ``None``. Mirrors the second argument of
+        # upstream trunk's ``PDCIDFont(COSDictionary, ResourceCache)``
+        # (PDFBOX-6175, bf37c60d): an indirect /FontDescriptor is shared
+        # through the cache (see :meth:`get_font_descriptor`).
+        self._resource_cache = resource_cache
         # Lazy caches for parsed /W and /W2 tables (PDF 32000-1 §9.7.4.3).
         self._widths: dict[int, float] | None = None
+        # /W2 individual values (``c [w1y v_x v_y ...]`` form)
         self._widths2: dict[int, tuple[float, float, float]] | None = None
-        self._w2_ranges: list[tuple[int, int, tuple[float, float, float]]] | None = (
-            None
-        )
-        # Per-code width memo — mirrors upstream ``codeToWidth``
-        # (PDFBOX-6287). Dropped whenever the width tables are re-primed
-        # through this API (``set_w`` / ``set_dw`` / ``read_widths`` /
-        # ``clear_widths_cache``).
-        self._cid_code_to_width: dict[int, float] = {}
+        # /W2 cid-ranges (``c1 c2 w1y v_x v_y`` form), stored compactly
+        # instead of expanded per CID (PDFBOX-6175, bcf78963).
+        self._w2_ranges: list[VerticalDisplacementRange] | None = None
+
+    # ---------- COS surface ----------
+
+    def get_cos_object(self) -> COSDictionary:
+        """Return the CIDFont dictionary. Mirrors upstream
+        ``PDCIDFont.getCOSObject``."""
+        return self._dict
 
     # ---------- subtype (abstract) ----------
 
@@ -62,27 +111,61 @@ class PDCIDFont(PDFont):
     def get_base_font(self) -> str | None:
         """``/BaseFont`` — the PostScript name of the CIDFont.
 
-        Mirrors upstream ``PDCIDFont.getBaseFont``. PDFBox surfaces this
-        in addition to ``getName`` (the latter aliases the former on
-        :class:`PDCIDFont`); we expose both so that ports of upstream
-        callers find the API they expect.
+        Mirrors upstream ``PDCIDFont.getBaseFont``. Upstream trunk dropped
+        ``getName`` together with the ``PDFontLike`` interface
+        (PDFBOX-6175); this is the only name accessor.
         """
-        return self._dict.get_name_as_string(COSName.get_pdf_name("BaseFont"))
+        return self._dict.get_name_as_string(_BASE_FONT)
 
-    # ---------- parent Type0 font ----------
+    # ---------- /FontDescriptor ----------
 
-    def get_parent(self) -> PDType0Font | None:
-        """Return the Type 0 font which is the parent of this font.
+    def get_font_descriptor(self) -> PDFontDescriptor | None:
+        """Return the font descriptor, may be ``None``.
 
-        Mirrors upstream ``PDCIDFont.getParent``.
-
-        .. deprecated:: upstream marked ``getParent`` deprecated in the
-           PDFBOX-6175 follow-up; it will be removed in a future release.
-           Reach the descendant through its parent
-           :class:`~pypdfbox.pdmodel.font.pd_type0_font.PDType0Font`
-           instead of navigating back up from the descendant.
+        Mirrors upstream trunk ``PDCIDFont.getFontDescriptor`` (PDFBOX-6175,
+        bf37c60d): when a resource cache was supplied at construction time
+        and ``/FontDescriptor`` is an *indirect* reference, the wrapper is
+        shared through the cache. Otherwise a fresh wrapper over the live
+        dictionary is returned on each call (pypdfbox descriptors are
+        stateless wrappers, so mutations of ``/FontDescriptor`` stay
+        visible).
         """
-        return self._parent
+        from .pd_font_descriptor import PDFontDescriptor
+
+        cache = self._resource_cache
+        fd_indirect = self._dict.get_item(_FONT_DESCRIPTOR)
+        if not isinstance(fd_indirect, COSObject):
+            fd_indirect = None
+        if fd_indirect is not None and cache is not None:
+            cached = cache.get_font_descriptor(fd_indirect)
+            if cached is not None:
+                return cached
+        fd = self._dict.get_dictionary_object(_FONT_DESCRIPTOR)
+        if not isinstance(fd, COSDictionary):
+            return None
+        descriptor = PDFontDescriptor(fd)
+        if cache is not None and fd_indirect is not None:
+            cache.put_font_descriptor(fd_indirect, descriptor)
+        return descriptor
+
+    def set_font_descriptor(self, font_descriptor: PDFontDescriptor | None) -> None:
+        """Write ``/FontDescriptor`` (``None`` removes it). pypdfbox
+        convenience; upstream has no setter."""
+        if font_descriptor is None:
+            self._dict.remove_item(_FONT_DESCRIPTOR)
+            return
+        self._dict.set_item(_FONT_DESCRIPTOR, font_descriptor.get_cos_object())
+
+    # ---------- font matrix ----------
+
+    def get_font_matrix(self) -> Any:
+        """Return the font matrix (glyph space to text space).
+
+        Upstream declares ``getFontMatrix`` ``protected abstract``; the
+        concrete subtypes override. The base returns the 1000-unit default
+        so a bare wrapper stays usable in tests.
+        """
+        return list(_DEFAULT_FONT_MATRIX)
 
     # ---------- /CIDSystemInfo ----------
 
@@ -107,7 +190,6 @@ class PDCIDFont(PDFont):
         """Set ``/DW`` (default glyph width). Passing ``None`` removes the
         entry, restoring the spec-default of ``1000``.
         """
-        self._cid_code_to_width.clear()
         if width is None:
             self._dict.remove_item(_DW)
             return
@@ -143,7 +225,6 @@ class PDCIDFont(PDFont):
 
     def set_w(self, arr: COSArray | None) -> None:
         self._widths = None
-        self._cid_code_to_width.clear()
         if arr is None:
             self._dict.remove_item(_W)
             return
@@ -226,7 +307,6 @@ class PDCIDFont(PDFont):
         if w is not None:
             self._parse_w_array(w, widths)
         self._widths = widths
-        self._cid_code_to_width.clear()
         return widths
 
     def read_vertical_displacements(
@@ -241,7 +321,7 @@ class PDCIDFont(PDFont):
         freshly-parsed map.
         """
         widths: dict[int, tuple[float, float, float]] = {}
-        ranges: list[tuple[int, int, tuple[float, float, float]]] = []
+        ranges: list[VerticalDisplacementRange] = []
         w2 = self.get_w2()
         if w2 is not None:
             self._parse_w2_array(w2, widths, ranges)
@@ -252,7 +332,6 @@ class PDCIDFont(PDFont):
     def clear_widths_cache(self) -> None:
         """Drop cached parsed ``/W`` and ``/W2`` tables."""
         self._widths = None
-        self._cid_code_to_width.clear()
         self._widths2 = None
         self._w2_ranges = None
 
@@ -351,14 +430,16 @@ class PDCIDFont(PDFont):
         * ``c1 c2 w1y v_x v_y`` — every CID in ``c1..c2`` gets the same
           triple.
 
-        Result is cached on first call. Oversized range-form entries are
-        retained compactly for lookup helpers instead of being expanded
-        into thousands of identical dictionary entries.
+        Result is cached on first call. Only the individual (array-form)
+        entries are returned: range-form entries are kept compactly as
+        :class:`VerticalDisplacementRange` records and consulted by the
+        lookup helpers after the individual values, exactly like upstream
+        (PDFBOX-6175, bcf78963, "store cid ranges more compact").
         """
         if self._widths2 is not None:
             return self._widths2
         widths: dict[int, tuple[float, float, float]] = {}
-        ranges: list[tuple[int, int, tuple[float, float, float]]] = []
+        ranges: list[VerticalDisplacementRange] = []
         w2 = self.get_w2()
         if w2 is not None:
             self._parse_w2_array(w2, widths, ranges)
@@ -366,23 +447,35 @@ class PDCIDFont(PDFont):
         self._w2_ranges = ranges
         return widths
 
+    def get_vertical_displacement_ranges(self) -> list[VerticalDisplacementRange]:
+        """Return the compact ``/W2`` cid-ranges (``c1 c2 w1y v_x v_y``
+        entries) in array order. Upstream keeps them in the private
+        ``displacementRanges`` list (PDFBOX-6175, bcf78963)."""
+        self.get_widths2()
+        return list(self._w2_ranges or [])
+
     def _get_w2_metrics(self, cid: int) -> tuple[float, float, float] | None:
-        """Return ``/W2`` metrics for ``cid`` without expanding large ranges."""
+        """Return ``/W2`` metrics ``(w1y, v_x, v_y)`` for ``cid``.
+
+        Individual values win; otherwise the first matching cid-range is
+        used, mirroring upstream's ``displacementRanges.stream().filter(
+        vdr -> vdr.rangeMatches(cid)).findFirst()``."""
         triple = self.get_widths2().get(cid)
         if triple is not None:
             return triple
         if self._w2_ranges is None:
             return None
-        for first, last, range_triple in self._w2_ranges:
-            if first <= cid <= last:
-                return range_triple
+        for vd_range in self._w2_ranges:
+            if vd_range.range_matches(cid):
+                v_x, v_y = vd_range.get_position_vector()
+                return (vd_range.get_vertical_displacement(), v_x, v_y)
         return None
 
     @staticmethod
     def _parse_w2_array(
         arr: COSArray,
         out: dict[int, tuple[float, float, float]],
-        ranges: list[tuple[int, int, tuple[float, float, float]]],
+        ranges: list[VerticalDisplacementRange],
     ) -> None:
         i = 0
         n = arr.size()
@@ -430,21 +523,16 @@ class PDCIDFont(PDFont):
                 ):
                     i += 5
                     continue
-                c2 = second.int_value()
-                triple = (
-                    third.float_value(),
-                    fourth.float_value(),
-                    fifth.float_value(),
+                # cid-range: stored compactly, never expanded per CID
+                # (PDFBOX-6175, bcf78963)
+                ranges.append(
+                    VerticalDisplacementRange(
+                        c,
+                        second.int_value(),
+                        (fourth.float_value(), fifth.float_value()),
+                        third.float_value(),
+                    )
                 )
-                count = c2 - c + 1
-                if count <= 0:
-                    i += 5
-                    continue
-                if count > _W2_RANGE_EXPANSION_LIMIT:
-                    ranges.append((c, c2, triple))
-                else:
-                    for cid in range(c, c2 + 1):
-                        out[cid] = triple
                 i += 5
             else:
                 i += 2
@@ -562,21 +650,39 @@ class PDCIDFont(PDFont):
             return sum(positive) / len(positive)
         return float(self.get_default_width())
 
-    # ---------- glyph queries ----------
+    # ---------- damage state ----------
 
-    def get_hinted_normalized_path(self, code: int, ppem: int) -> list[tuple] | None:
-        """Hinted normalized outline for ``code`` at ``ppem``; always ``None``.
+    def is_damaged(self) -> bool:
+        """``True`` when the embedded font file is damaged. Mirrors upstream
+        ``PDCIDFont.isDamaged``; the concrete subtypes override after their
+        parse step."""
+        return False
 
-        Mirrors the upstream ``PDVectorFont.getHintedNormalizedPath(int, int)``
-        default method (PDFBOX-3293), which this class inherits unchanged:
-        no hinting, so callers use the unhinted normalized path.
+    # ---------- per-glyph queries (parent passed explicitly) ----------
+    #
+    # Upstream trunk (PDFBOX-6175) removed the parent Type 0 font from
+    # PDCIDFont; these protected methods take it as an argument instead.
+
+    def get_hinted_normalized_path(
+        self, code: int, ppem: int, parent: PDType0Font | None
+    ) -> list[tuple] | None:
+        """Hinted normalized outline for ``code`` at ``ppem``; ``None`` here.
+
+        Mirrors upstream trunk ``PDCIDFont.getHintedNormalizedPath(int, int,
+        PDType0Font)``: only a descendant with embedded TrueType outlines
+        can hint (:class:`PDCIDFontType2` overrides), so callers use the
+        unhinted normalized path.
         """
         return None
 
-    def has_glyph(self, cid: int) -> bool:
-        """``True`` when ``cid`` resolves to a non-zero advance — either
-        explicitly via ``/W`` or via a non-zero ``/DW`` fallback.
+    def has_glyph(self, code: int, parent: PDType0Font | None) -> bool:
+        """``True`` when ``code`` resolves to a CID with a non-zero advance —
+        either explicitly via ``/W`` or via a non-zero ``/DW`` fallback.
+
+        Upstream declares ``hasGlyph(int, PDType0Font)`` abstract; this base
+        heuristic serves a bare wrapper. The concrete subtypes override.
         """
+        cid = self.code_to_cid(code, parent)
         widths = self.get_widths()
         w = widths.get(cid)
         if w is not None:
@@ -586,27 +692,23 @@ class PDCIDFont(PDFont):
     # ---------- displacement / vertical metrics ----------
 
     def get_displacement(self, cid: int) -> tuple[float, float]:
-        """Glyph displacement vector in em (1/1000 em scaled to em).
-
-        Horizontal default: ``(width/1000, 0)``. Subclasses (or future
-        vertical-writing wiring) may override.
-        """
+        """Glyph displacement vector for ``cid`` in em (1/1000 em scaled to
+        em). Horizontal default ``(width/1000, 0)``. pypdfbox helper; no
+        upstream counterpart on the descendant."""
         return (self.get_glyph_width(cid) / 1000.0, 0.0)
 
-    def get_position_vector(self, code: int) -> tuple[float, float]:
+    def get_position_vector(
+        self, code: int, parent: PDType0Font | None
+    ) -> tuple[float, float]:
         """Position vector ``(v_x, v_y)`` for character ``code`` in 1/1000 em.
 
-        Mirrors upstream ``PDCIDFont.getPositionVector(int code)``: it
-        resolves ``code -> CID`` via :meth:`code_to_cid` first, then looks
-        up the per-CID ``/W2`` triple ``(w1y, v_x, v_y)``. CIDs outside the
-        table fall back to upstream's default-position-vector formula
-        ``(widthForCID(cid)/2, dw2[0])`` — half the horizontal advance for
-        ``v_x`` and ``/DW2``'s position-vector-y (defaulting to ``880``)
-        for ``v_y``. The ``code -> CID`` resolution matters when the two
-        differ (a non-identity CMap, or out-of-range codes whose CMap
-        mapping is not the identity).
+        Mirrors upstream trunk ``PDCIDFont.getPositionVector(int,
+        PDType0Font)``: resolves ``code -> CID`` through the parent, then
+        looks up the per-CID ``/W2`` values, then the first matching
+        ``/W2`` cid-range, and finally falls back to the default position
+        vector ``(widthForCID(cid)/2, dw2[0])``.
         """
-        cid = self.code_to_cid(code)
+        cid = self.code_to_cid(code, parent)
         triple = self._get_w2_metrics(cid)
         if triple is not None:
             _, v_x, v_y = triple
@@ -615,12 +717,17 @@ class PDCIDFont(PDFont):
         # default position vector is (widthForCID(cid)/2, dw2[0]).
         return self.get_default_position_vector_for_cid(cid)
 
-    def get_height(self, cid: int) -> float:
-        """Vertical advance for ``cid`` (the ``w1y`` component of ``/W2``).
-
-        Returns ``0.0`` when the font has no ``/W2`` entry for ``cid`` —
-        matches PDFBox behaviour for horizontally-written CID fonts.
+    def get_height(self, code: int, parent: PDType0Font | None) -> float:
+        """Height of the glyph for ``code`` (approximate, deprecated
+        upstream). Mirrors upstream trunk ``PDCIDFont.getHeight(int,
+        PDType0Font)``, which is abstract; this base returns the ``w1y``
+        component of ``/W2`` for the resolved CID, or ``0.0`` when the font
+        has no ``/W2`` entry for it. The concrete subtypes override.
         """
+        return self._get_height_for_cid(self.code_to_cid(code, parent))
+
+    def _get_height_for_cid(self, cid: int) -> float:
+        """``w1y`` of ``/W2`` for ``cid``; ``0.0`` when not covered."""
         triple = self._get_w2_metrics(cid)
         if triple is None:
             return 0.0
@@ -629,29 +736,26 @@ class PDCIDFont(PDFont):
     # ---------- code -> CID ----------
 
     @abstractmethod
-    def code_to_cid(self, code: int) -> int:
-        """Map a character code to a CID.
+    def code_to_cid(self, code: int, parent: PDType0Font | None) -> int:
+        """Map a character code to a CID through the parent's encoding CMap.
 
-        Mirrors upstream ``PDCIDFont.codeToCID`` — declared abstract on
-        the Java side and overridden by :class:`PDCIDFontType0` and
-        :class:`PDCIDFontType2`. The base implementation here is an
-        identity fallback (the code is the CID) used when an
-        un-subtyped :class:`PDCIDFont` is wrapped directly for tests.
+        Mirrors upstream trunk ``PDCIDFont.codeToCID(int, PDType0Font)`` —
+        abstract on the Java side and overridden by :class:`PDCIDFontType0`
+        and :class:`PDCIDFontType2`. The base implementation here is an
+        identity fallback (the code is the CID) used when an un-subtyped
+        :class:`PDCIDFont` is wrapped directly for tests.
         """
         return int(code)
 
     # ---------- code -> GID (abstract) ----------
 
     @abstractmethod
-    def code_to_gid(self, code: int) -> int:
+    def code_to_gid(self, code: int, parent: PDType0Font | None) -> int:
         """Map a character code to a glyph index.
 
-        Mirrors upstream ``PDCIDFont.codeToGID`` (Java ``abstract``).
-        Subclasses (:class:`PDCIDFontType0` via the CFF charset,
-        :class:`PDCIDFontType2` via ``/CIDToGIDMap`` or a TrueType
-        ``cmap``) override. Bare ``PDCIDFont`` instances raise
-        ``NotImplementedError`` — the upstream is ``abstract`` so the
-        Java compiler enforces the same.
+        Mirrors upstream trunk ``PDCIDFont.codeToGID(int, PDType0Font)``
+        (Java ``abstract``). Subclasses override. Bare ``PDCIDFont``
+        instances raise ``NotImplementedError``.
         """
         raise NotImplementedError(
             "PDCIDFont.code_to_gid is abstract; "
@@ -665,89 +769,94 @@ class PDCIDFont(PDFont):
         """Encode a glyph index as its content-stream byte representation.
 
         Mirrors upstream ``PDCIDFont.encodeGlyphId(int glyphId)`` (Java
-        ``abstract``). For composite fonts the caller emits these bytes
-        directly into a ``Tj`` / ``TJ`` operand; the encoding is the
-        big-endian 16-bit GID for :class:`PDCIDFontType2` and is
-        unsupported for :class:`PDCIDFontType0` (which encodes through
-        the parent :class:`PDType0Font`).
+        ``abstract``). The encoding is the big-endian 16-bit GID for
+        :class:`PDCIDFontType2` and is unsupported for
+        :class:`PDCIDFontType0`.
         """
         raise NotImplementedError(
             "PDCIDFont.encode_glyph_id is abstract; "
             "subclasses must override."
         )
 
-    @abstractmethod
-    def encode(self, unicode_codepoint: int) -> bytes:
+    def encode(self, unicode_codepoint: int, parent: PDType0Font | None) -> bytes:
         """Encode a Unicode codepoint as PDF content-stream bytes.
 
-        Mirrors upstream ``PDCIDFont.encode(int unicode)`` (Java
-        ``protected abstract``). Used during embedding / form-field
-        filling to convert text runs to multi-byte CID-keyed sequences;
-        :class:`PDCIDFontType2` overrides via the parent
-        :class:`PDType0Font`'s ``ToUnicode`` CMap.
+        Mirrors upstream trunk ``PDCIDFont.encode(int, PDType0Font)``. Used
+        during embedding / form-field filling; :class:`PDCIDFontType2`
+        overrides and :class:`PDCIDFontType0` raises.
         """
         raise NotImplementedError(
             "PDCIDFont.encode is abstract; subclasses must override."
         )
 
-    # ---------- code -> width (PDFontLike contract) ----------
+    # ---------- code -> width ----------
 
-    def get_width(self, code: int) -> float:
+    def get_width(self, code: int, parent: PDType0Font | None) -> float:
         """Width of the glyph for character ``code`` in 1/1000 em.
 
-        Mirrors upstream ``PDCIDFont.getWidth(int code)``: resolves
-        ``code -> CID`` via :meth:`code_to_cid`, then looks up the CID's
-        advance through :meth:`get_glyph_width` (which honours ``/W``
-        with ``/DW`` fallback). Surfaced separately from
-        :meth:`get_glyph_width` because PDFBox callers commonly hold a
-        character code rather than a CID.
+        Mirrors upstream trunk ``PDCIDFont.getWidth(int, PDType0Font)``:
+        resolves ``code -> CID`` through the parent, then looks up the
+        CID's advance through :meth:`get_glyph_width` (``/W`` with ``/DW``
+        fallback). These widths are supposed to be consistent with the
+        actual widths given in the CIDFont program, but PDFBOX-563 shows
+        that when they are not, Acrobat overrides the embedded font widths
+        with the widths given in the font dictionary.
 
-        Results are memoised per code (upstream ``codeToWidth``,
-        PDFBOX-6287).
+        Upstream memoises the result per code on the descendant
+        (``codeToWidth``); pypdfbox keeps that memo on the parent
+        :class:`PDType0Font` instead, because a shared descendant may serve
+        parents whose encoding CMaps map the same code to different CIDs.
         """
-        width = self._cid_code_to_width.get(code)
-        if width is None:
-            # these widths are supposed to be consistent with the actual
-            # widths given in the CIDFont program, but PDFBOX-563 shows that
-            # when they are not, Acrobat overrides the embedded font widths
-            # with the widths given in the font dictionary
-            width = self.get_glyph_width(self.code_to_cid(code))
-            self._cid_code_to_width[code] = width
-        return width
+        return self.get_glyph_width(self.code_to_cid(code, parent))
 
-    def has_explicit_width(self, code: int) -> bool:
-        """``True`` when ``code`` resolves to a CID that has its own
-        entry in ``/W``. Mirrors upstream
-        ``PDCIDFont.hasExplicitWidth(int code)``.
-
-        Distinct from :meth:`has_glyph` — that method also returns
-        ``True`` when only ``/DW`` makes the CID renderable. This one
-        reports whether the ``/W`` table specifically carries the CID
-        (the renderer uses it to decide whether to override embedded
-        program widths per PDFBOX-563).
+    def has_explicit_width(self, code: int, parent: PDType0Font | None) -> bool:
+        """``True`` when ``code`` resolves to a CID that has its own entry
+        in ``/W``. Mirrors upstream trunk ``PDCIDFont.hasExplicitWidth(int,
+        PDType0Font)``.
         """
-        cid = self.code_to_cid(code)
+        cid = self.code_to_cid(code, parent)
         return cid in self.get_widths()
+
+    def get_width_from_font(self, code: int, parent: PDType0Font | None) -> float:
+        """Width of the glyph in the font program, in glyph space. Upstream
+        trunk declares ``getWidthFromFont(int, PDType0Font)`` abstract; the
+        base has no program and returns ``0.0``."""
+        return 0.0
+
+    def get_path(self, code: int, parent: PDType0Font | None) -> list[tuple]:
+        """Glyph path for ``code``. Upstream trunk declares
+        ``getPath(int, PDType0Font)`` abstract; the base has no program and
+        returns an empty path."""
+        return []
+
+    def get_normalized_path(
+        self, code: int, parent: PDType0Font | None
+    ) -> list[tuple]:
+        """Normalized glyph path for ``code``. Upstream trunk declares
+        ``getNormalizedPath(int, PDType0Font)`` abstract; the base has no
+        program and returns an empty path."""
+        return []
 
     # ---------- vertical displacement (PDF 32000-1 §9.7.4.3) ----------
 
-    def get_vertical_displacement_vector_y(self, code: int) -> float:
+    def get_vertical_displacement_vector_y(
+        self, code: int, parent: PDType0Font | None
+    ) -> float:
         """``w1y`` — the y-component of the vertical displacement vector
-        for ``code`` in 1/1000 em. Mirrors upstream
-        ``PDCIDFont.getVerticalDisplacementVectorY(int code)``.
+        for ``code`` in 1/1000 em. Mirrors upstream trunk
+        ``PDCIDFont.getVerticalDisplacementVectorY(int, PDType0Font)``.
 
-        Resolves ``code -> CID`` via :meth:`code_to_cid` and then looks
-        up the CID in the parsed ``/W2`` table. CIDs absent from ``/W2``
-        fall back to the ``displacementVectorY`` slot of ``/DW2``
+        Resolves ``code -> CID`` through the parent, then looks up the
+        per-CID ``/W2`` values and the ``/W2`` cid-ranges. CIDs absent from
+        ``/W2`` fall back to the ``displacementVectorY`` slot of ``/DW2``
         (which per spec defaults to ``-1000``).
         """
-        cid = self.code_to_cid(code)
+        cid = self.code_to_cid(code, parent)
         triple = self._get_w2_metrics(cid)
         if triple is not None:
             return triple[0]
         # /DW2 is [position_vector_y displacement_vector_y]; the second
-        # entry is what we want here. get_default_position_vector
-        # returns (v_y, v_x) — i.e. (position_vector_y, displacement_vector_y).
+        # entry is what we want here.
         _, displacement_vector_y = self.get_default_position_vector()
         return displacement_vector_y
 

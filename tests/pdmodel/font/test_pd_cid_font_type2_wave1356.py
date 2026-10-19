@@ -34,11 +34,11 @@ def test_get_path_from_outlines_returns_none_when_code_to_gid_raises() -> None:
     font = PDCIDFontType2()
     font.get_true_type_font = lambda: stub  # type: ignore[assignment,method-assign,return-value]
 
-    def _raise(_code: int) -> int:
+    def _raise(_code: int, _parent: Any) -> int:
         raise RuntimeError("forced")
 
     font.code_to_gid = _raise  # type: ignore[assignment,method-assign]
-    assert font.get_path_from_outlines(0x41) is None
+    assert font.get_path_from_outlines(0x41, None) is None
 
 
 # ---------- encode line 727 ------------------------------------------------
@@ -65,7 +65,7 @@ def test_encode_embedded_resets_cid_to_zero_when_minus_one_falls_through() -> No
             return None
 
     parent = _StubParent()
-    font = PDCIDFontType2(parent_type0_font=parent)
+    font = PDCIDFontType2()
 
     class _StubTTF:
         def get_unicode_cmap_subtable(self) -> Any:
@@ -83,4 +83,4 @@ def test_encode_embedded_resets_cid_to_zero_when_minus_one_falls_through() -> No
     # finds no ToUnicode map, then line 727 forces cid = 0 → ValueError
     # at line 736.
     with pytest.raises(ValueError, match="No glyph"):
-        font.encode(0x41)
+        font.encode(0x41, parent)

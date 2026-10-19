@@ -101,15 +101,27 @@ def test_get_cff_font_returns_cff_cid_font_for_cid_keyed_program() -> None:
         assert isinstance(program, CFFType1Font)
 
 
+def _no_substitute(font: PDCIDFontType0) -> PDCIDFontType0:
+    """Pin the "no font program at all" state.
+
+    Since PDFBOX-6175 a bare non-embedded descendant resolves a substitute
+    (the bundled last-resort font) even without a parent; mark the
+    substitute as already resolved-to-nothing so the no-program fallback
+    branches stay covered.
+    """
+    font._substitute = (None, None, None)
+    return font
+
+
 # ---------- code_to_gid ----------
 
 
 def test_code_to_gid_identity_when_no_program() -> None:
     """No embedded program → CID is GID."""
     font = PDCIDFontType0()
-    assert font.code_to_gid(0) == 0
-    assert font.code_to_gid(1) == 1
-    assert font.code_to_gid(99) == 99
+    assert font.code_to_gid(0, None) == 0
+    assert font.code_to_gid(1, None) == 1
+    assert font.code_to_gid(99, None) == 99
 
 
 def test_code_to_gid_uses_charset_for_cid_keyed_program() -> None:
@@ -122,11 +134,11 @@ def test_code_to_gid_uses_charset_for_cid_keyed_program() -> None:
     assert program is not None
     if isinstance(program, CFFCIDFont):
         # Charset order: .notdef, cid00001, cid00002 → gid 0, 1, 2.
-        assert font.code_to_gid(1) == 1
-        assert font.code_to_gid(2) == 2
+        assert font.code_to_gid(1, None) == 1
+        assert font.code_to_gid(2, None) == 2
     else:
         # Name-keyed branch: CID is GID.
-        assert font.code_to_gid(1) == 1
+        assert font.code_to_gid(1, None) == 1
 
 
 def test_code_to_gid_returns_zero_for_unmapped_cid_in_cid_keyed_program() -> None:
@@ -134,15 +146,15 @@ def test_code_to_gid_returns_zero_for_unmapped_cid_in_cid_keyed_program() -> Non
     font = _make_font_with_descriptor()
     program = font.get_cff_font()
     if isinstance(program, CFFCIDFont):
-        assert font.code_to_gid(9999) == 0
+        assert font.code_to_gid(9999, None) == 0
 
 
 # ---------- get_width_from_font ----------
 
 
 def test_get_width_from_font_returns_zero_when_no_program() -> None:
-    font = PDCIDFontType0()
-    assert font.get_width_from_font(1) == 0.0
+    font = _no_substitute(PDCIDFontType0())
+    assert font.get_width_from_font(1, None) == 0.0
 
 
 def test_get_width_from_font_returns_program_width_only() -> None:
@@ -152,13 +164,13 @@ def test_get_width_from_font_returns_program_width_only() -> None:
     w = COSArray([COSInteger.get(1), COSArray([COSInteger.get(999)])])
     font.set_w(w)
     # get_width_from_font ignores /W, so it returns the CFF program's value.
-    assert font.get_width_from_font(1) == 500.0
-    assert font.get_width_from_font(2) == 300.0
+    assert font.get_width_from_font(1, None) == 500.0
+    assert font.get_width_from_font(2, None) == 300.0
 
 
 def test_get_width_from_font_returns_zero_for_unmapped_cid() -> None:
     font = _make_font_with_descriptor()
-    assert font.get_width_from_font(99999) == 0.0
+    assert font.get_width_from_font(99999, None) == 0.0
 
 
 # ---------- get_height ----------
@@ -167,33 +179,33 @@ def test_get_width_from_font_returns_zero_for_unmapped_cid() -> None:
 def test_get_height_returns_zero_when_no_program_and_no_w2() -> None:
     """Falls back to PDCIDFont.get_height which returns 0 for unmapped cids."""
     font = PDCIDFontType0()
-    assert font.get_height(1) == 0.0
+    assert font.get_height(1, None) == 0.0
 
 
 def test_get_height_returns_outline_height_from_cff_program() -> None:
     """CID 1's box outline spans y=0..700 → height 700."""
     font = _make_font_with_descriptor()
-    assert font.get_height(1) == 700.0
+    assert font.get_height(1, None) == 700.0
     # CID 2's vertical stroke spans y=0..500.
-    assert font.get_height(2) == 500.0
+    assert font.get_height(2, None) == 500.0
 
 
 def test_get_height_caches_per_cid() -> None:
     font = _make_font_with_descriptor()
-    first = font.get_height(1)
-    second = font.get_height(1)
+    first = font.get_height(1, None)
+    second = font.get_height(1, None)
     assert first == second == 700.0
 
 
 def test_get_height_zero_for_notdef() -> None:
     """.notdef is a single endchar — no outline → height 0."""
     font = _make_font_with_descriptor()
-    assert font.get_height(0) == 0.0
+    assert font.get_height(0, None) == 0.0
 
 
 def test_get_height_zero_for_unmapped_cid_with_program() -> None:
     font = _make_font_with_descriptor()
-    assert font.get_height(99999) == 0.0
+    assert font.get_height(99999, None) == 0.0
 
 
 def test_get_height_falls_back_to_w2_when_no_program() -> None:
@@ -213,7 +225,7 @@ def test_get_height_falls_back_to_w2_when_no_program() -> None:
         ]
     )
     font.set_w2(w2)
-    assert font.get_height(5) == 750.0
+    assert font.get_height(5, None) == 750.0
 
 
 # ---------- get_average_font_width ----------
@@ -261,7 +273,7 @@ def test_get_average_font_width_falls_back_to_cff_default_when_no_w() -> None:
 
 def test_get_font_matrix_default_when_no_program() -> None:
     """No embedded CFF → CFF default matrix."""
-    font = PDCIDFontType0()
+    font = _no_substitute(PDCIDFontType0())
     matrix = font.get_font_matrix()
     assert matrix == (0.001, 0.0, 0.0, 0.001, 0.0, 0.0)
 
@@ -285,7 +297,7 @@ def test_get_font_matrix_returns_tuple_for_immutability() -> None:
 
 
 def test_get_bounding_box_none_when_no_program_and_no_descriptor() -> None:
-    font = PDCIDFontType0()
+    font = _no_substitute(PDCIDFontType0())
     assert font.get_bounding_box() is None
 
 
@@ -357,12 +369,12 @@ def test_has_glyph_falls_back_to_metric_heuristic_when_no_program() -> None:
     """No embedded CFF program → fall back to the parent ``/W``/``/DW``
     heuristic (upstream would defer to a substitute font's ``hasGlyph``,
     but the Python port stops at the metric table answer instead)."""
-    font = PDCIDFontType0()
+    font = _no_substitute(PDCIDFontType0())
     # /DW defaults to 1000 (positive) → heuristic answers True.
-    assert font.has_glyph(1) is True
+    assert font.has_glyph(1, None) is True
     # Explicit zero /DW reverts to "no glyph available".
     font.set_dw(0)
-    assert font.has_glyph(1) is False
+    assert font.has_glyph(1, None) is False
 
 
 def test_has_glyph_true_for_known_cid_with_program() -> None:
@@ -371,7 +383,7 @@ def test_has_glyph_true_for_known_cid_with_program() -> None:
     program = font.get_cff_font()
     assert program is not None
     # Our fixture's CID 1 / cid00001 lives at GID 1.
-    assert font.has_glyph(1) is True
+    assert font.has_glyph(1, None) is True
 
 
 def test_has_glyph_false_for_unmapped_cid() -> None:
@@ -379,22 +391,22 @@ def test_has_glyph_false_for_unmapped_cid() -> None:
     program = font.get_cff_font()
     if isinstance(program, CFFCIDFont):
         # CID-keyed branch returns GID 0 for an unmapped lookup.
-        assert font.has_glyph(9999) is False
+        assert font.has_glyph(9999, None) is False
 
 
 # ---------- get_path (Java line 318) ----------
 
 
 def test_get_path_empty_when_no_program() -> None:
-    font = PDCIDFontType0()
-    assert font.get_path(1) == []
+    font = _no_substitute(PDCIDFontType0())
+    assert font.get_path(1, None) == []
 
 
 def test_get_path_returns_outline_for_known_code() -> None:
     """``get_path`` mirrors upstream's renderer entry point: routes
     through code → CID → CharString outline."""
     font = _make_font_with_descriptor()
-    path = font.get_path(1)
+    path = font.get_path(1, None)
     assert len(path) >= 2
     assert path[0][0] == "moveto"
     assert path[-1] == ("closepath",)
@@ -403,7 +415,7 @@ def test_get_path_returns_outline_for_known_code() -> None:
 def test_get_path_empty_for_notdef() -> None:
     font = _make_font_with_descriptor()
     # .notdef in our fixture is a single endchar — no outline.
-    assert font.get_path(0) == []
+    assert font.get_path(0, None) == []
 
 
 # ---------- get_glyph_name (Java line 307, private) ----------
@@ -412,7 +424,7 @@ def test_get_path_empty_for_notdef() -> None:
 def test_get_glyph_name_returns_notdef_when_no_parent() -> None:
     """Without a parent ``PDType0Font`` there is no ToUnicode source."""
     font = PDCIDFontType0()
-    assert font.get_glyph_name(0x4E00) == ".notdef"
+    assert font.get_glyph_name(0x4E00, None) == ".notdef"
 
 
 # ---------- encode (Java line 396, throws UnsupportedOperationException) ----------
@@ -423,7 +435,7 @@ def test_encode_raises_not_implemented() -> None:
     CIDFontType0 has no ``/Encoding`` of its own."""
     font = PDCIDFontType0()
     with pytest.raises(NotImplementedError):
-        font.encode(0x4E00)
+        font.encode(0x4E00, None)
 
 
 def test_encode_raises_even_when_embedded() -> None:
@@ -431,7 +443,7 @@ def test_encode_raises_even_when_embedded() -> None:
     is embedded."""
     font = _make_font_with_descriptor()
     with pytest.raises(NotImplementedError):
-        font.encode(0x41)
+        font.encode(0x41, None)
 
 
 # ---------- generate_bounding_box (Java line 216, private) ----------

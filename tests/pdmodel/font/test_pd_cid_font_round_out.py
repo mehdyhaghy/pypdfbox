@@ -145,9 +145,9 @@ def test_get_position_vector_falls_back_through_per_cid_helper() -> None:
     arr.add(COSInteger.get(-1100))
     font.set_dw2(arr)
     expected = font.get_default_position_vector_for_cid(7)
-    assert font.get_position_vector(7) == expected
+    assert font.get_position_vector(7, None) == expected
     # And the value itself: width 800 / 2 = 400, v_y = 900
-    assert font.get_position_vector(7) == (400.0, 900.0)
+    assert font.get_position_vector(7, None) == (400.0, 900.0)
 
 
 # ---------- /CIDToGIDMap predicates ----------

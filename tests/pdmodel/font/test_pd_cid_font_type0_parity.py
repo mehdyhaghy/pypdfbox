@@ -90,10 +90,10 @@ def test_code_to_cid_is_identity_at_cid_layer() -> None:
     """At the CIDFontType0 layer the "code" arriving has already been
     CMap-decoded by the parent Type0 font, so this method is identity."""
     font = PDCIDFontType0()
-    assert font.code_to_cid(0) == 0
-    assert font.code_to_cid(1) == 1
-    assert font.code_to_cid(0x4E00) == 0x4E00
-    assert font.code_to_cid(65535) == 65535
+    assert font.code_to_cid(0, None) == 0
+    assert font.code_to_cid(1, None) == 1
+    assert font.code_to_cid(0x4E00, None) == 0x4E00
+    assert font.code_to_cid(65535, None) == 65535
 
 
 # ---------- get_cff_font ----------

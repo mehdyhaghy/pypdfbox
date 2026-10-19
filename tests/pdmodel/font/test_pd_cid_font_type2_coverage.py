@@ -185,7 +185,7 @@ def test_get_path_routes_to_outlines_for_postscript_program() -> None:
     stub = _StubOTFFont(is_ps=True, draw_callable=draw)
     font = PDCIDFontType2()
     font.get_true_type_font = lambda: stub  # type: ignore[assignment,method-assign,return-value]
-    path = font.get_path(1)
+    path = font.get_path(1, None)
     assert path
     assert drawn == ["yes"]
 
@@ -198,19 +198,19 @@ def test_get_path_returns_empty_when_outlines_returns_none() -> None:
     stub = _StubOTFFont(is_ps=True, draw_callable=draw_empty)
     font = PDCIDFontType2()
     font.get_true_type_font = lambda: stub  # type: ignore[assignment,method-assign,return-value]
-    assert font.get_path(1) == []
+    assert font.get_path(1, None) == []
 
 
 def test_get_path_from_outlines_returns_none_when_not_ps() -> None:
     stub = _StubOTFFont(is_ps=False)
     font = PDCIDFontType2()
     font.get_true_type_font = lambda: stub  # type: ignore[assignment,method-assign,return-value]
-    assert font.get_path_from_outlines(1) is None
+    assert font.get_path_from_outlines(1, None) is None
 
 
 def test_get_path_from_outlines_returns_none_when_no_program() -> None:
     font = PDCIDFontType2()
-    assert font.get_path_from_outlines(1) is None
+    assert font.get_path_from_outlines(1, None) is None
 
 
 def test_get_path_from_outlines_returns_none_on_draw_exception() -> None:
@@ -220,7 +220,7 @@ def test_get_path_from_outlines_returns_none_on_draw_exception() -> None:
     stub = _StubOTFFont(is_ps=True, draw_callable=draw_raises)
     font = PDCIDFontType2()
     font.get_true_type_font = lambda: stub  # type: ignore[assignment,method-assign,return-value]
-    assert font.get_path_from_outlines(1) is None
+    assert font.get_path_from_outlines(1, None) is None
 
 
 def test_get_path_from_outlines_returns_none_when_glyph_set_raises() -> None:
@@ -240,7 +240,7 @@ def test_get_path_from_outlines_returns_none_when_glyph_set_raises() -> None:
     stub = _BrokenOTF()
     font = PDCIDFontType2()
     font.get_true_type_font = lambda: stub  # type: ignore[assignment,method-assign,return-value]
-    assert font.get_path_from_outlines(1) is None
+    assert font.get_path_from_outlines(1, None) is None
 
 
 def test_get_path_from_outlines_returns_commands_when_present() -> None:
@@ -255,7 +255,7 @@ def test_get_path_from_outlines_returns_commands_when_present() -> None:
     stub = _StubOTFFont(is_ps=True, draw_callable=draw)
     font = PDCIDFontType2()
     font.get_true_type_font = lambda: stub  # type: ignore[assignment,method-assign,return-value]
-    path = font.get_path_from_outlines(1)
+    path = font.get_path_from_outlines(1, None)
     assert path is not None
     assert drew == ["ok"]
 
@@ -302,10 +302,11 @@ def _build_embedded_font(
     parent_cmap_name: str | None = None,
     ucs2_mapping: dict[int, int] | None = None,
     to_unicode: dict[str, bytes] | None = None,
-) -> PDCIDFontType2:
+) -> tuple[PDCIDFontType2, Any]:
     """Construct a font whose ``is_embedded()`` is True (with a real
     PDType0Font subclass parent and stub TTF) ready for :meth:`encode`
-    exercises."""
+    exercises. Returns ``(descendant, parent)``; the parent is passed
+    explicitly to the per-glyph calls (PDFBOX-6175)."""
     from pypdfbox.pdmodel.font.pd_type0_font import PDType0Font
 
     class _StubParent(PDType0Font):
@@ -331,7 +332,7 @@ def _build_embedded_font(
             return self._stub_to_unicode
 
     parent = _StubParent()
-    font = PDCIDFontType2(parent_type0_font=parent)
+    font = PDCIDFontType2()
 
     class _StubTTF:
         def get_unicode_cmap_subtable(self) -> Any:
@@ -342,43 +343,43 @@ def _build_embedded_font(
     stub_ttf = _StubTTF()
     font.get_true_type_font = lambda: stub_ttf  # type: ignore[assignment,method-assign,return-value]
     font.is_embedded = lambda: True  # type: ignore[assignment,method-assign,return-value]
-    return font
+    return font, parent
 
 
 def test_encode_embedded_identity_h_uses_unicode_cmap() -> None:
-    font = _build_embedded_font(
+    font, parent = _build_embedded_font(
         cmap_mapping={ord("A"): 0x41}, parent_cmap_name="Identity-H"
     )
-    assert font.encode(ord("A")) == b"\x00\x41"
+    assert font.encode(ord("A"), parent) == b"\x00\x41"
 
 
 def test_encode_embedded_predefined_cmap_uses_ucs2_to_cid() -> None:
-    font = _build_embedded_font(
+    font, parent = _build_embedded_font(
         cmap_mapping={ord("B"): 0},
         parent_cmap_name="GB-EUC-H",  # any non-Identity- name
         ucs2_mapping={ord("B"): 0x99},
     )
-    assert font.encode(ord("B")) == b"\x00\x99"
+    assert font.encode(ord("B"), parent) == b"\x00\x99"
 
 
 def test_encode_embedded_falls_back_to_to_unicode_cmap() -> None:
-    font = _build_embedded_font(
+    font, parent = _build_embedded_font(
         cmap_mapping={ord("C"): 0},
         parent_cmap_name="Identity-H",
         to_unicode={"C": b"\x12\x34"},
     )
     # Cmap returns 0 (notdef) → ToUnicode bytes returned directly.
-    assert font.encode(ord("C")) == b"\x12\x34"
+    assert font.encode(ord("C"), parent) == b"\x12\x34"
 
 
 def test_encode_embedded_raises_when_cid_zero_and_no_fallback() -> None:
-    font = _build_embedded_font(
+    font, parent = _build_embedded_font(
         cmap_mapping={ord("D"): 0},
         parent_cmap_name="Identity-H",
         to_unicode=None,
     )
     with pytest.raises(ValueError, match="No glyph"):
-        font.encode(ord("D"))
+        font.encode(ord("D"), parent)
 
 
 def test_encode_non_embedded_uses_cmap_subtable() -> None:
@@ -391,7 +392,7 @@ def test_encode_non_embedded_uses_cmap_subtable() -> None:
 
     # upstream: a non-embedded font encodes through its substitute's cmap
     font._resolve_program = lambda: _StubTTF()  # type: ignore[assignment,method-assign,return-value]
-    assert font.encode(ord("X")) == b"\x00\x88"
+    assert font.encode(ord("X"), None) == b"\x00\x88"
 
 
 def test_encode_non_embedded_raises_when_no_subtable() -> None:
@@ -403,8 +404,11 @@ def test_encode_non_embedded_raises_when_no_subtable() -> None:
             return None
 
     font.get_true_type_font = lambda: _StubTTF()  # type: ignore[assignment,method-assign,return-value]
+    # PDFBOX-6175: a bare descendant now resolves its substitute even
+    # without a parent, so pin the substitute program to the stub too.
+    font._resolve_program = lambda: _StubTTF()  # type: ignore[assignment,method-assign,return-value]
     with pytest.raises(ValueError, match="No glyph"):
-        font.encode(ord("Y"))
+        font.encode(ord("Y"), None)
 
 
 def test_encode_non_embedded_raises_when_subtable_returns_zero() -> None:
@@ -416,8 +420,11 @@ def test_encode_non_embedded_raises_when_subtable_returns_zero() -> None:
             return _FakeCmapSubtable({})
 
     font.get_true_type_font = lambda: _StubTTF()  # type: ignore[assignment,method-assign,return-value]
+    # PDFBOX-6175: a bare descendant now resolves its substitute even
+    # without a parent, so pin the substitute program to the stub too.
+    font._resolve_program = lambda: _StubTTF()  # type: ignore[assignment,method-assign,return-value]
     with pytest.raises(ValueError, match="No glyph"):
-        font.encode(ord("Z"))
+        font.encode(ord("Z"), None)
 
 
 # ---------- find_font_or_substitute -------------------------------------

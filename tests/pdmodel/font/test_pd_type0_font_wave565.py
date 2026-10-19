@@ -13,21 +13,32 @@ class _MetricDescendant:
         self.calls.append(("width", cid))
         return 640.0
 
-    def get_height(self, cid: int) -> float:
-        self.calls.append(("height", cid))
+    # PDFBOX-6175: per-glyph descendant methods take the raw code plus the
+    # parent Type 0 font and resolve code -> CID through the parent.
+    def get_height(self, code: int, parent: PDType0Font) -> float:
+        self.calls.append(("height", parent.code_to_cid(code)))
         return -880.0
 
-    def get_vertical_displacement_vector_y(self, code: int) -> float:
+    def get_width_from_font(self, code: int, parent: PDType0Font) -> float:
+        # no embedded program -> 0.0, as a real descendant answers
+        return 0.0
+
+    def get_vertical_displacement_vector_y(
+        self, code: int, parent: PDType0Font
+    ) -> float:
         # Upstream getVerticalDisplacementVectorY takes the raw *code* and
         # resolves code->CID itself; the parent passes the code through.
         self.calls.append(("vdvy", code))
         return -880.0
 
-    def get_position_vector(self, cid: int) -> tuple[float, float]:
-        self.calls.append(("vector", cid))
+    def get_position_vector(
+        self, code: int, parent: PDType0Font
+    ) -> tuple[float, float]:
+        self.calls.append(("vector", parent.code_to_cid(code)))
         return (120.0, -340.0)
 
-    def has_glyph(self, cid: int) -> bool:
+    def has_glyph(self, code: int, parent: PDType0Font) -> bool:
+        cid = parent.code_to_cid(code)
         self.calls.append(("glyph", cid))
         return cid == 42
 
@@ -136,7 +147,7 @@ def test_wave565_embedded_cmap_fallback_handles_bad_best_cmap_and_finds_match(
     monkeypatch.setattr(font, "get_descendant_font", lambda: descendant)
     monkeypatch.setattr(font, "code_to_cid", lambda code: code)
     monkeypatch.setattr(descendant, "is_embedded", lambda: True)
-    monkeypatch.setattr(descendant, "code_to_gid", lambda _cid: 1)
+    monkeypatch.setattr(descendant, "code_to_gid", lambda _code, _parent: 1)
 
     broken_inner = InnerTTF(
         cmap=SimpleNamespace(

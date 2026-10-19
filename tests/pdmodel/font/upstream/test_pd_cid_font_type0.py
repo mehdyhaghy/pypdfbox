@@ -108,8 +108,8 @@ def test_code_to_cid_is_identity() -> None:
     # The parent Type0 font has already CMap-decoded the code into a CID
     # by the time PDCIDFontType0.codeToCID is called; identity here
     # mirrors PDCIDFontType0.codeToCID upstream.
-    assert font.code_to_cid(1) == 1
-    assert font.code_to_cid(0) == 0
+    assert font.code_to_cid(1, None) == 1
+    assert font.code_to_cid(0, None) == 0
 
 
 # Upstream: testCodeToGID — when the embedded CFF is name-keyed
@@ -119,7 +119,7 @@ def test_code_to_gid_well_defined() -> None:
     font = _make_embedded_font()
     # Either path (CID-keyed charset lookup or name-keyed CID-as-GID)
     # yields a non-negative integer.
-    assert font.code_to_gid(1) >= 0
+    assert font.code_to_gid(1, None) >= 0
 
 
 # Upstream: testGetWidthFromFont — the embedded CFF program reports the
@@ -127,14 +127,14 @@ def test_code_to_gid_well_defined() -> None:
 def test_get_width_from_font_reads_program_advance() -> None:
     font = _make_embedded_font()
     # Our cid00001 charstring carries width 400.
-    assert font.get_width_from_font(1) == 400.0
+    assert font.get_width_from_font(1, None) == 400.0
 
 
 # Upstream: testGetGlyphHeight — height derived from outline bbox.
 def test_get_height_from_program_outline() -> None:
     font = _make_embedded_font()
     # cid00001's outline spans y=0..600 → height 600.
-    assert font.get_height(1) == 600.0
+    assert font.get_height(1, None) == 600.0
 
 
 # Upstream: testGetFontMatrix — embedded CFF Top DICT FontMatrix.
@@ -161,7 +161,7 @@ def test_has_glyph_well_defined() -> None:
     assert program is not None
     # Either the CID-keyed branch (GID = charset.index of cidNNNNN) or
     # the name-keyed branch (CID is GID) yields a non-zero GID for cid 1.
-    assert font.has_glyph(1) is True
+    assert font.has_glyph(1, None) is True
 
 
 # Upstream: testGetPath — outline matches what get_glyph_path emits.
@@ -169,7 +169,7 @@ def test_get_path_matches_get_glyph_path_for_simple_program() -> None:
     """For a CIDFontType0 without a /CIDToGIDMap stream, ``get_path``
     is a thin wrapper around the CharString outline lookup."""
     font = _make_embedded_font()
-    via_path = font.get_path(1)
+    via_path = font.get_path(1, None)
     via_glyph = font.get_glyph_path(1)
     # Both lookup paths point at the same CharString in our fixture.
     assert via_path == via_glyph
@@ -180,7 +180,7 @@ def test_get_path_matches_get_glyph_path_for_simple_program() -> None:
 def test_encode_unsupported() -> None:
     font = _make_embedded_font()
     with pytest.raises(NotImplementedError):
-        font.encode(0x41)
+        font.encode(0x41, None)
 
 
 # ---------------- skipped tests ----------------

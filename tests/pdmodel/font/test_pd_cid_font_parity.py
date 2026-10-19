@@ -12,6 +12,19 @@ from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 
+def _no_substitute(font):
+    """Pin the "no font program at all" state of a bare descendant.
+
+    Since PDFBOX-6175 a non-embedded descendant resolves a substitute (the
+    bundled last-resort font) even without a parent Type 0 font; mark the
+    substitute as resolved-to-nothing so the no-program fallback branches
+    stay covered.
+    """
+    font._substitute = (None, None, None)  # PDCIDFontType0
+    font._substitute_ttf = False  # PDCIDFontType2
+    return font
+
+
 def _bbox(*xs: float) -> COSArray:
     arr = COSArray()
     for x in xs:
@@ -138,40 +151,40 @@ def test_get_average_font_width_arithmetic_mean_of_w() -> None:
 
 
 def test_has_glyph_true_for_explicit_w_entry() -> None:
-    font = PDCIDFontType2()
+    font = _no_substitute(PDCIDFontType2())
     font.set_w(_w_range(10, 12, 800))
-    assert font.has_glyph(11) is True
+    assert font.has_glyph(11, None) is True
 
 
 def test_has_glyph_true_via_positive_dw_when_unmapped() -> None:
-    font = PDCIDFontType0()
+    font = _no_substitute(PDCIDFontType0())
     font.set_dw(500)
-    assert font.has_glyph(99999) is True
+    assert font.has_glyph(99999, None) is True
 
 
 def test_has_glyph_false_when_explicit_w_is_zero() -> None:
-    font = PDCIDFontType0()
+    font = _no_substitute(PDCIDFontType0())
     font.set_w(_w_range(7, 7, 0))
     font.set_dw(500)  # DW is irrelevant — explicit /W wins.
-    assert font.has_glyph(7) is False
+    assert font.has_glyph(7, None) is False
 
 
 def test_has_glyph_false_when_dw_is_zero_and_unmapped() -> None:
-    font = PDCIDFontType2()
+    font = _no_substitute(PDCIDFontType2())
     font.set_dw(0)
-    assert font.has_glyph(42) is False
+    assert font.has_glyph(42, None) is False
 
 
 # ---------- get_bounding_box ----------
 
 
 def test_get_bounding_box_none_when_no_descriptor() -> None:
-    font = PDCIDFontType0()
+    font = _no_substitute(PDCIDFontType0())
     assert font.get_bounding_box() is None
 
 
 def test_get_bounding_box_none_when_descriptor_has_no_bbox() -> None:
-    font = PDCIDFontType2()
+    font = _no_substitute(PDCIDFontType2())
     font.set_font_descriptor(PDFontDescriptor())
     assert font.get_bounding_box() is None
 
@@ -190,7 +203,7 @@ def test_get_bounding_box_returns_pdrectangle_when_present() -> None:
 
 
 def test_get_bounding_box_returns_none_for_short_array() -> None:
-    font = PDCIDFontType0()
+    font = _no_substitute(PDCIDFontType0())
     fd = PDFontDescriptor()
     fd.set_font_b_box(_bbox(0, 0, 100))  # only 3 entries
     font.set_font_descriptor(fd)
@@ -218,7 +231,7 @@ def test_get_displacement_falls_back_to_dw_for_unmapped() -> None:
 
 def test_get_height_zero_when_no_w2_entry() -> None:
     font = PDCIDFontType2()
-    assert font.get_height(0) == 0.0
+    assert font.get_height(0, None) == 0.0
 
 
 def test_get_height_returns_w1y_from_w2() -> None:
@@ -228,7 +241,7 @@ def test_get_height_returns_w1y_from_w2() -> None:
     for v in (5, 5, 880, -500, -1000):
         arr.add(COSInteger.get(v))
     font.set_w2(arr)
-    assert font.get_height(5) == 880.0
+    assert font.get_height(5, None) == 880.0
 
 
 def test_get_position_vector_falls_back_to_default_dw2() -> None:
@@ -237,7 +250,7 @@ def test_get_position_vector_falls_back_to_default_dw2() -> None:
     # ``(widthForCID(cid)/2, dw2[0])`` (PDCIDFont.getDefaultPositionVector).
     # With /DW unset (defaults to 1000) and dw2[0] defaulting to 880,
     # the result is (500, 880).
-    v_x, v_y = font.get_position_vector(0)
+    v_x, v_y = font.get_position_vector(0, None)
     assert v_x == 500.0
     assert v_y == 880.0
 
@@ -248,7 +261,7 @@ def test_get_position_vector_uses_w2_triple_when_present() -> None:
     for v in (5, 5, 880, -250, -900):
         arr.add(COSInteger.get(v))
     font.set_w2(arr)
-    assert font.get_position_vector(5) == (-250.0, -900.0)
+    assert font.get_position_vector(5, None) == (-250.0, -900.0)
 
 
 # ---------- code_to_cid ----------
@@ -256,9 +269,9 @@ def test_get_position_vector_uses_w2_triple_when_present() -> None:
 
 def test_code_to_cid_default_returns_code() -> None:
     font = PDCIDFontType0()
-    assert font.code_to_cid(0) == 0
-    assert font.code_to_cid(42) == 42
-    assert font.code_to_cid(0xFFFF) == 0xFFFF
+    assert font.code_to_cid(0, None) == 0
+    assert font.code_to_cid(42, None) == 42
+    assert font.code_to_cid(0xFFFF, None) == 0xFFFF
 
 
 # ---------- get_base_font ----------
@@ -278,7 +291,7 @@ def test_get_base_font_round_trip() -> None:
     font = PDCIDFontType2(raw)
     assert font.get_base_font() == "ArialMT"
     # Mirrors get_name on PDCIDFont (PDFont.get_name reads /BaseFont).
-    assert font.get_name() == "ArialMT"
+    assert font.get_base_font() == "ArialMT"
 
 
 # ---------- get_width (code -> width via CID) ----------
@@ -287,17 +300,17 @@ def test_get_base_font_round_trip() -> None:
 def test_get_width_returns_dw_when_no_w_table() -> None:
     font = PDCIDFontType0()
     font.set_dw(777)
-    assert font.get_width(5) == 777.0
+    assert font.get_width(5, None) == 777.0
 
 
 def test_get_width_uses_w_table_via_code_to_cid() -> None:
     font = PDCIDFontType0()
     font.set_w(_w_range(10, 12, 600))
-    assert font.get_width(10) == 600.0
-    assert font.get_width(11) == 600.0
-    assert font.get_width(12) == 600.0
+    assert font.get_width(10, None) == 600.0
+    assert font.get_width(11, None) == 600.0
+    assert font.get_width(12, None) == 600.0
     # Outside /W -> /DW (default 1000)
-    assert font.get_width(13) == 1000.0
+    assert font.get_width(13, None) == 1000.0
 
 
 # ---------- has_explicit_width ----------
@@ -306,9 +319,9 @@ def test_get_width_uses_w_table_via_code_to_cid() -> None:
 def test_has_explicit_width_true_for_w_entry() -> None:
     font = PDCIDFontType0()
     font.set_w(_w_range(5, 7, 500))
-    assert font.has_explicit_width(5) is True
-    assert font.has_explicit_width(6) is True
-    assert font.has_explicit_width(7) is True
+    assert font.has_explicit_width(5, None) is True
+    assert font.has_explicit_width(6, None) is True
+    assert font.has_explicit_width(7, None) is True
 
 
 def test_has_explicit_width_false_for_unmapped_cid_even_with_dw() -> None:
@@ -316,12 +329,12 @@ def test_has_explicit_width_false_for_unmapped_cid_even_with_dw() -> None:
     positive ``/DW`` does NOT make a CID 'explicitly' wide."""
     font = PDCIDFontType0()
     font.set_dw(900)
-    assert font.has_explicit_width(42) is False
+    assert font.has_explicit_width(42, None) is False
 
 
 def test_has_explicit_width_false_when_no_w() -> None:
     font = PDCIDFontType0()
-    assert font.has_explicit_width(0) is False
+    assert font.has_explicit_width(0, None) is False
 
 
 # ---------- get_vertical_displacement_vector_y ----------
@@ -331,8 +344,8 @@ def test_get_vertical_displacement_vector_y_default_dw2() -> None:
     """Spec default for /DW2 displacement_vector_y is -1000 when /DW2
     and /W2 are both absent."""
     font = PDCIDFontType0()
-    assert font.get_vertical_displacement_vector_y(0) == -1000.0
-    assert font.get_vertical_displacement_vector_y(42) == -1000.0
+    assert font.get_vertical_displacement_vector_y(0, None) == -1000.0
+    assert font.get_vertical_displacement_vector_y(42, None) == -1000.0
 
 
 def test_get_vertical_displacement_vector_y_uses_dw2_when_set() -> None:
@@ -341,7 +354,7 @@ def test_get_vertical_displacement_vector_y_uses_dw2_when_set() -> None:
     for v in (900, -880):
         dw2.add(COSInteger.get(v))
     font.set_dw2(dw2)
-    assert font.get_vertical_displacement_vector_y(0) == -880.0
+    assert font.get_vertical_displacement_vector_y(0, None) == -880.0
 
 
 def test_get_vertical_displacement_vector_y_uses_w2_when_present() -> None:
@@ -352,9 +365,9 @@ def test_get_vertical_displacement_vector_y_uses_w2_when_present() -> None:
     for v in (5, 5, -880, -500, 900):
         arr.add(COSInteger.get(v))
     font.set_w2(arr)
-    assert font.get_vertical_displacement_vector_y(5) == -880.0
+    assert font.get_vertical_displacement_vector_y(5, None) == -880.0
     # CID outside /W2 -> /DW2 displacement_vector_y default (-1000).
-    assert font.get_vertical_displacement_vector_y(6) == -1000.0
+    assert font.get_vertical_displacement_vector_y(6, None) == -1000.0
 
 
 # ---------- read_cid_to_gid_map ----------

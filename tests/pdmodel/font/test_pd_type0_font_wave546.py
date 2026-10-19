@@ -83,7 +83,7 @@ def test_wave546_code_to_cid_returns_cmap_zero_verbatim_for_unmapped_code(
     # Real descendant logic (PDCIDFontType2.code_to_cid): consult the
     # parent CMap and return its toCID result verbatim.
     descendant = SimpleNamespace(
-        code_to_cid=lambda code: cmap.to_cid(code),
+        code_to_cid=lambda code, parent: cmap.to_cid(code),
     )
     monkeypatch.setattr(font, "get_cmap", lambda: cmap)
     monkeypatch.setattr(font, "get_descendant_font", lambda: descendant)

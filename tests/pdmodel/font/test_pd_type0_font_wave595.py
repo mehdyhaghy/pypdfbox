@@ -80,7 +80,13 @@ def test_wave595_embedded_cmap_fallback_success_for_nonembedded_descendant(
     monkeypatch.setattr(font, "get_descendant_font", lambda: descendant)
     monkeypatch.setattr(font, "code_to_cid", lambda code: code + 10)
     monkeypatch.setattr(descendant, "is_embedded", lambda: False)
-    monkeypatch.setattr(descendant, "code_to_cid", lambda cid: 1 if cid == 15 else 0)
+    # PDFBOX-6175: the descendant gets the raw code plus the parent and
+    # resolves code -> CID through it
+    monkeypatch.setattr(
+        descendant,
+        "code_to_cid",
+        lambda code, parent: 1 if parent.code_to_cid(code) == 15 else 0,
+    )
     monkeypatch.setattr(
         descendant,
         "get_true_type_font",
@@ -96,20 +102,28 @@ def test_wave595_get_width_from_font_delegates_after_cid_resolution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     font = PDType0Font()
-    descendant = SimpleNamespace(get_width_from_font=lambda cid: cid + 0.5)
+    # PDFBOX-6175: descendantFont.getWidthFromFont(code, this)
+    descendant = SimpleNamespace(
+        get_width_from_font=lambda code, parent: parent.code_to_cid(code) + 0.5
+    )
     monkeypatch.setattr(font, "get_descendant_font", lambda: descendant)
     monkeypatch.setattr(font, "code_to_cid", lambda code: code + 2)
 
     assert font.get_width_from_font(7) == 9.5
 
 
-def test_wave595_get_width_from_font_without_callable_returns_zero(
+def test_wave595_get_width_from_font_without_callable_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """PDFBOX-6175 port: as upstream trunk, the call goes straight to
+    ``descendantFont.getWidthFromFont(code, this)``; the old pypdfbox
+    ``callable`` guard (answering 0.0) is gone, since a descendant is
+    always a PDCIDFont."""
     font = PDType0Font()
     monkeypatch.setattr(font, "get_descendant_font", lambda: object())
 
-    assert font.get_width_from_font(7) == 0.0
+    with pytest.raises(AttributeError):
+        font.get_width_from_font(7)
 
 
 def test_wave595_read_stream_seeks_back_overread(

@@ -239,10 +239,10 @@ Cluster #1 (PDDocument / PDPage / PDPageTree / PDDocumentCatalog / PDResources /
 |---|---|---|
 | `pypdfbox/pdmodel/pd_document.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDDocument.java` (cluster #1 surface — load / save / save_incremental / pages / version / encryption flags; signing, FDF, overlay, font subsetting deferred) |
 | `pypdfbox/pdmodel/pd_document_catalog.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDDocumentCatalog.java` (cluster #1 + follow-on waves — pages, version, language, page layout/mode defaults, structure/mark-info shortcuts, AcroForm cache/fixup overload, outlines, metadata, additional actions, names/dests, viewer preferences, page labels, output intents, threads, URI/base URI, requirements, associated files, developer extensions, piece info, needs-rendering, has_*/clear_* helpers; collection/perms/legal stay raw COS dictionaries until typed wrappers land) |
-| `pypdfbox/pdmodel/pd_page.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDPage.java` |
+| `pypdfbox/pdmodel/pd_page.py` | 4.0.0-SNAPSHOT (trunk, PDFBOX-6175; was 3.0.x) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDPage.java` |
 | `pypdfbox/pdmodel/pd_page_tree.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDPageTree.java` |
 | `pypdfbox/pdmodel/pd_resources.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDResources.java` (cluster #1 surface — resource-dict accessors; XObject / font / colorspace lookups stubbed for later clusters) |
-| `pypdfbox/pdmodel/pd_resource_cache.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/ResourceCache.java`, `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/DefaultResourceCache.java` (interface + default in-memory impl; soft-reference eviction not ported — explicit `clear()` instead, see `CHANGES.md`) |
+| `pypdfbox/pdmodel/pd_resource_cache.py` | 4.0.0-SNAPSHOT (trunk, PDFBOX-6175; was 3.0.x) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/ResourceCache.java`, `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/DefaultResourceCache.java` (interface + default in-memory impl; soft-reference eviction not ported — explicit `clear()` instead, see `CHANGES.md`) |
 | `pypdfbox/pdmodel/pd_rectangle.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDRectangle.java` |
 | `pypdfbox/pdmodel/missing_resource_exception.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/MissingResourceException.java` (extends `OSError` per the project's IOException→OSError mapping) |
 
@@ -386,13 +386,13 @@ Cluster #7 foundations (file specifications, generic name tree, optional content
 | `pypdfbox/pdmodel/graphics/color/pd_cal_gray.py` | 3.0.x + PDFBOX-6260 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDCalGray.java` |
 | `pypdfbox/pdmodel/graphics/color/pd_cal_rgb.py` | 3.0.x + PDFBOX-5079 + PDFBOX-6260 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDCalRGB.java` |
 | `pypdfbox/pdmodel/graphics/color/pd_lab.py` | 3.0.x + PDFBOX-6258 + PDFBOX-6260 + PDFBOX-6264 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDLab.java` |
-| `pypdfbox/pdmodel/font/pd_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDFont.java` (scaffold) |
-| `pypdfbox/pdmodel/font/pd_simple_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDSimpleFont.java` (scaffold) |
-| `pypdfbox/pdmodel/font/pd_type1_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType1Font.java` (scaffold) |
-| `pypdfbox/pdmodel/font/pd_true_type_font.py` | 3.0.x + PDFBOX-5960 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDTrueTypeFont.java` (scaffold + `get_glyph_width(code)` backed by `/Widths` first, then embedded `/FontFile2` hmtx scaled by `1000 / unitsPerEm`; full Type1 fallbacks / CIDToGIDMap deferred) |
-| `pypdfbox/pdmodel/font/pd_type0_font.py` | 3.0.x + PDFBOX-5953 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType0Font.java` (scaffold) |
+| `pypdfbox/pdmodel/font/pd_font.py` | 4.0.0-SNAPSHOT (trunk, PDFBOX-6175; was 3.0.x) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDFont.java` (scaffold) |
+| `pypdfbox/pdmodel/font/pd_simple_font.py` | 4.0.0-SNAPSHOT (trunk, PDFBOX-6175; was 3.0.x) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDSimpleFont.java` (scaffold) |
+| `pypdfbox/pdmodel/font/pd_type1_font.py` | 4.0.0-SNAPSHOT (trunk, PDFBOX-6175; was 3.0.x) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType1Font.java` (scaffold) |
+| `pypdfbox/pdmodel/font/pd_true_type_font.py` | 4.0.0-SNAPSHOT (trunk, PDFBOX-6175; was 3.0.x + PDFBOX-5960 (3.0 branch, unreleased 3.0.9)) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDTrueTypeFont.java` (scaffold + `get_glyph_width(code)` backed by `/Widths` first, then embedded `/FontFile2` hmtx scaled by `1000 / unitsPerEm`; full Type1 fallbacks / CIDToGIDMap deferred) |
+| `pypdfbox/pdmodel/font/pd_type0_font.py` | 4.0.0-SNAPSHOT (trunk, PDFBOX-6175; was 3.0.x + PDFBOX-5953 (3.0 branch, unreleased 3.0.9)) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType0Font.java` (scaffold) |
 | `pypdfbox/pdmodel/font/pd_font_descriptor.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDFontDescriptor.java` + `PDPanose.java` + `PDPanoseClassification.java` (full surface — flag bits, all Table 122 entries, /FontFile/FontFile2/FontFile3, /CharSet, /MissingWidth, /CIDSet, /Style→Panose 12-byte block) |
-| `pypdfbox/pdmodel/font/pd_font_factory.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDFontFactory.java` (Type1/TrueType/Type0 only; PDCIDFont/PDType3Font deferred) |
+| `pypdfbox/pdmodel/font/pd_font_factory.py` | 4.0.0-SNAPSHOT (trunk, PDFBOX-6175; was 3.0.x) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDFontFactory.java` (Type1/TrueType/Type0 only; PDCIDFont/PDType3Font deferred) |
 | `pypdfbox/pdmodel/font/pd_font_like.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDFontLike.java` (Java interface modelled as runtime-checkable `typing.Protocol`; method names snake_case per project rules) |
 | `pypdfbox/pdmodel/font/pd_vector_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDVectorFont.java` (Java interface modelled as runtime-checkable `typing.Protocol`; `GeneralPath` typed as `Any` since pypdfbox is AWT-free) |
 | `pypdfbox/pdmodel/interactive/digitalsignature/pd_signature.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/PDSignature.java` (lite — actual signing deferred) |
@@ -612,7 +612,7 @@ Tkinter/Ttk port of the upstream Swing-based debugger (PDF tree explorer / hex v
 | `pypdfbox/debugger/fontencodingpane/font_pane.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/fontencodingpane/FontPane.java` |
 | `pypdfbox/debugger/fontencodingpane/font_encoding_view.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/fontencodingpane/FontEncodingView.java` |
 | `pypdfbox/debugger/fontencodingpane/simple_font.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/fontencodingpane/SimpleFont.java` |
-| `pypdfbox/debugger/fontencodingpane/type0_font.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/fontencodingpane/Type0Font.java` |
+| `pypdfbox/debugger/fontencodingpane/type0_font.py` | 4.0.0-SNAPSHOT (trunk, PDFBOX-6175; was 3.0.x) | `debugger/src/main/java/org/apache/pdfbox/debugger/fontencodingpane/Type0Font.java` |
 | `pypdfbox/debugger/fontencodingpane/type3_font.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/fontencodingpane/Type3Font.java` |
 | `pypdfbox/debugger/fontencodingpane/font_encoding_pane_controller.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/fontencodingpane/FontEncodingPaneController.java` |
 | `pypdfbox/debugger/streampane/stream.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/streampane/Stream.java` |
@@ -889,13 +889,13 @@ Upstream PDFBox 3.0 ships **no** test classes for `Operator`, `OperatorName`, or
 
 | pypdfbox path | upstream PDFBox version | upstream Java path |
 |---|---|---|
-| `pypdfbox/pdmodel/font/pd_cid_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDCIDFont.java` (scaffold) |
-| `pypdfbox/pdmodel/font/pd_cid_font_type0.py` | 3.0.x + PDFBOX-6249 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDCIDFontType0.java` (scaffold; non-embedded substitute branch ported from 3.0.8, PDFBOX-6249 commit efa041c295) |
-| `pypdfbox/pdmodel/font/pd_cid_font_type2.py` | 3.0.x + PDFBOX-6251 + PDFBOX-5953 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDCIDFontType2.java` (scaffold) |
+| `pypdfbox/pdmodel/font/pd_cid_font.py` | 4.0.0-SNAPSHOT (trunk, PDFBOX-6175; was 3.0.x) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDCIDFont.java` (scaffold) |
+| `pypdfbox/pdmodel/font/pd_cid_font_type0.py` | 4.0.0-SNAPSHOT (trunk, PDFBOX-6175; was 3.0.x + PDFBOX-6249 (3.0 branch, unreleased 3.0.9)) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDCIDFontType0.java` (scaffold; non-embedded substitute branch ported from 3.0.8, PDFBOX-6249 commit efa041c295) |
+| `pypdfbox/pdmodel/font/pd_cid_font_type2.py` | 4.0.0-SNAPSHOT (trunk, PDFBOX-6175; was 3.0.x + PDFBOX-6251 + PDFBOX-5953 (3.0 branch, unreleased 3.0.9)) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDCIDFontType2.java` (scaffold) |
 | `pypdfbox/pdmodel/font/pd_cid_system_info.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDCIDSystemInfo.java` |
-| `pypdfbox/pdmodel/font/pd_type3_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType3Font.java` (lite — typed PDCharProc deferred) |
+| `pypdfbox/pdmodel/font/pd_type3_font.py` | 4.0.0-SNAPSHOT (trunk, PDFBOX-6175; was 3.0.x) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType3Font.java` (lite — typed PDCharProc deferred) |
 | `pypdfbox/pdmodel/font/pd_mm_type1_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDMMType1Font.java` (marker subclass) |
-| `pypdfbox/pdmodel/font/pd_type1c_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType1CFont.java` (marker subclass) |
+| `pypdfbox/pdmodel/font/pd_type1c_font.py` | 4.0.0-SNAPSHOT (trunk, PDFBOX-6175; was 3.0.x) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType1CFont.java` (marker subclass) |
 | `pypdfbox/pdmodel/common/function/pd_function.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/PDFunction.java` + `PDFunctionTypeIdentity.java` (Identity sentinel bundled in same module; eval dispatch + interpolate helper + /Type=/Function on stream construction) |
 | `pypdfbox/pdmodel/common/function/pd_function_type0.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/PDFunctionType0.java` (lite — sampled-table decoding deferred) |
 | `pypdfbox/pdmodel/common/function/pd_function_type2.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/PDFunctionType2.java` |
@@ -2323,7 +2323,7 @@ Backfill of upstream Java paths for source files added in earlier waves (mostly 
 | `pypdfbox/pdmodel/pd_abstract_content_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PdAbstractContentStream.java` |
 | `pypdfbox/pdmodel/pd_form_content_stream.py` | 3.0.7 | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDFormContentStream.java` |
 | `pypdfbox/pdmodel/pd_pattern_content_stream.py` | 3.0.7 | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDPatternContentStream.java` |
-| `pypdfbox/pdmodel/resource_cache.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/ResourceCache.java` |
+| `pypdfbox/pdmodel/resource_cache.py` | 4.0.0-SNAPSHOT (trunk, PDFBOX-6175; was 3.0.x) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/ResourceCache.java` |
 | `pypdfbox/pdmodel/resource_cache_create_function.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/ResourceCacheCreateFunction.java` |
 | `pypdfbox/pdmodel/resource_cache_factory.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/ResourceCacheFactory.java` |
 | `pypdfbox/pdmodel/search_context.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDPageTree.java (extracted inner class SearchContext)` |
@@ -2411,7 +2411,7 @@ Backfill of upstream Java paths for source files added in earlier waves (mostly 
 | `tests/pdmodel/font/test_font_mapper_impl_pdfbox6249.py` | 3.0 branch (unreleased 3.0.9) | hand-written tests for the PDFBOX-6249 `FontMapperImpl` changes (Identity-ordering charset match, regular-weight preference, Noto Sans CJK code page masks, DroidSansFallback skip, Panose scoring) with fake `FontInfo` objects |
 | `pypdfbox/pdmodel/font/font_match.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FontMapperImpl.java (extracted inner class FontMatch)` |
 | `pypdfbox/pdmodel/font/fs_font_info.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FileSystemFontProvider.java (extracted inner class FSFontInfo)` |
-| `pypdfbox/pdmodel/font/pd_cid_font_type2_embedder.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PdCidFontType2Embedder.java` |
+| `pypdfbox/pdmodel/font/pd_cid_font_type2_embedder.py` | 4.0.0-SNAPSHOT (trunk, PDFBOX-6175; was 3.0.x) | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PdCidFontType2Embedder.java` |
 | `pypdfbox/pdmodel/font/pd_true_type_font_embedder.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PdTrueTypeFontEmbedder.java` |
 | `pypdfbox/pdmodel/font/pd_type1_font_embedder.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PdType1FontEmbedder.java` |
 | `pypdfbox/pdmodel/font/subsetter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/Subsetter.java` |
@@ -4816,3 +4816,4 @@ License: SIL Open Font License 1.1 (permissive; on the project allow-list)
 | `tests/fontbox/ttf/upstream/test_hinting_smoke.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/HintingSmokeTest.java` (9 of 11 fonts skipped: SIL OFL or Maven-downloaded) |
 | `tests/fontbox/ttf/upstream/test_hinting_concurrency.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/HintingConcurrencyTest.java` |
 | `tests/fontbox/ttf/upstream/test_system_font_hinting.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/SystemFontHintingTest.java` (skips without Arial) |
+| `tests/pdmodel/font/test_resource_cache_wiring_wave1612.py` | 4.0.0-SNAPSHOT (trunk) | hand-written; PDFBOX-6175 descendant/descriptor sharing for `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/ResourceCache.java` and `pdmodel/font/PDType0Font.java` |

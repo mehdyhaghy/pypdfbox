@@ -183,32 +183,33 @@ def test_identity_substitute_resolves_glyphs_via_unicode(mapper: Any) -> None:
     d = _descendant(font)
     assert not d.is_embedded()
     assert isinstance(d.get_font_box_font(), CFFCIDFont)
-    assert d.code_to_cid(0x48) == _CID_H
+    assert d.code_to_cid(0x48, font) == _CID_H
     # GID 1 is 'H', found through toUnicode + the substitute's Unicode cmap
-    assert d.code_to_gid(0x48) == 1
-    assert d.code_to_gid(0x4E2D) == 2
-    assert d.has_glyph(0x48)
-    assert d.get_path(0x48) == d.get_type2_char_string(1).get_path()
-    assert d.get_normalized_path(0x48) == d.get_path(0x48)
-    assert d.get_width_from_font(0x48) == pytest.approx(700.0)
-    assert d.get_width_from_font(0x4E2D) == pytest.approx(900.0)
+    assert d.code_to_gid(0x48, font) == 1
+    assert d.code_to_gid(0x4E2D, font) == 2
+    assert d.has_glyph(0x48, font)
+    assert d.get_path(0x48, font) == d.get_type2_char_string(1).get_path()
+    assert d.get_normalized_path(0x48, font) == d.get_path(0x48, font)
+    assert d.get_width_from_font(0x48, font) == pytest.approx(700.0)
+    assert d.get_width_from_font(0x4E2D, font) == pytest.approx(900.0)
     # the Type 0 entry points forward the raw code
     assert font.code_to_gid(0x48) == 1
     assert font.has_glyph(0x48)
     assert font.get_width_from_font(0x48) == pytest.approx(700.0)
-    assert font.get_path(0x48) == d.get_path(0x48)
-    assert font.get_normalized_path(0x48) == d.get_path(0x48)
+    assert font.get_path(0x48) == d.get_path(0x48, font)
+    assert font.get_normalized_path(0x48) == d.get_path(0x48, font)
 
 
 def test_identity_substitute_unmapped_unicode_is_notdef(mapper: Any) -> None:
     mapper(CIDFontMapping(_identity_otf(), None, True))
-    d = _descendant(_type0())
+    font = _type0()
+    d = _descendant(font)
     # 'e' (U+0065) has a Unicode value but no glyph in the substitute
-    assert d.code_to_gid(0x65) == 0
-    assert not d.has_glyph(0x65)
+    assert d.code_to_gid(0x65, font) == 0
+    assert not d.has_glyph(0x65, font)
     notdef = d.get_type2_char_string(0)
-    assert d.get_path(0x65) == notdef.get_path()
-    assert d.get_width_from_font(0x65) == pytest.approx(notdef.get_width())
+    assert d.get_path(0x65, font) == notdef.get_path()
+    assert d.get_width_from_font(0x65, font) == pytest.approx(notdef.get_width())
 
 
 def test_identity_substitute_code_without_unicode_is_notdef(
@@ -219,11 +220,12 @@ def test_identity_substitute_code_without_unicode_is_notdef(
     mapper(CIDFontMapping(_identity_otf(), None, True))
     font = _type0()
     d = _descendant(font)
-    assert d.get_parent() is font
+    # PDFBOX-6175: the descendant holds no parent reference
+    assert not hasattr(d, "get_parent")
     monkeypatch.setattr(font, "to_unicode", lambda code: None)
-    assert d._code_to_substitute_gid(0x48) == -1
-    assert d.code_to_gid(0x48) == 0
-    assert not d.has_glyph(0x48)
+    assert d._code_to_substitute_gid(0x48, font) == -1
+    assert d.code_to_gid(0x48, font) == 0
+    assert not d.has_glyph(0x48, font)
 
 
 def test_matching_collection_substitute_uses_cids(mapper: Any) -> None:
@@ -231,12 +233,13 @@ def test_matching_collection_substitute_uses_cids(mapper: Any) -> None:
     through its charset (no Unicode cmap)."""
     otf = _build_cff_otf(("Adobe", "CNS1", 0), {f"cid{_CID_H:05d}": (0x48, 650)})
     mapper(CIDFontMapping(otf, None, False))
-    d = _descendant(_type0())
+    font = _type0()
+    d = _descendant(font)
     assert d._get_substitute_unicode_cmap() is None
-    assert d.code_to_gid(0x48) == 1  # charset index of cid00041
-    assert d.has_glyph(0x48)
-    assert d.get_width_from_font(0x48) == pytest.approx(650.0)
-    assert d.get_path(0x48) == d.get_type2_char_string(_CID_H).get_path()
+    assert d.code_to_gid(0x48, font) == 1  # charset index of cid00041
+    assert d.has_glyph(0x48, font)
+    assert d.get_width_from_font(0x48, font) == pytest.approx(650.0)
+    assert d.get_path(0x48, font) == d.get_type2_char_string(_CID_H).get_path()
 
 
 def test_non_identity_other_collection_keeps_cids(mapper: Any) -> None:
@@ -244,14 +247,16 @@ def test_non_identity_other_collection_keeps_cids(mapper: Any) -> None:
     Adobe-Japan1 substitute of an Adobe-CNS1 font still gets the CIDs."""
     otf = _build_cff_otf(("Adobe", "Japan1", 0), {"cid00001": (0x48, 700)})
     mapper(CIDFontMapping(otf, None, False))
-    d = _descendant(_type0())
+    font = _type0()
+    d = _descendant(font)
     assert d._get_substitute_unicode_cmap() is None
-    assert d.code_to_gid(0x48) == 0  # CID 41 is not in the charset
-    assert not d.has_glyph(0x48)
+    assert d.code_to_gid(0x48, font) == 0  # CID 41 is not in the charset
+    assert not d.has_glyph(0x48, font)
 
 
 def test_character_collection_match() -> None:
-    d = _descendant(_type0())
+    font = _type0()
+    d = _descendant(font)
     cns1 = CFFCIDFont()
     cns1.set_registry("Adobe")
     cns1.set_ordering("CNS1")
@@ -270,34 +275,36 @@ def test_name_keyed_cff_substitute_is_t1_font(mapper: Any) -> None:
     ``CFFType1Font``; its charstrings are addressed with the CID as GID."""
     otf = _build_cff_otf(None, {"H": (0x48, 600)})
     mapper(CIDFontMapping(otf, None, False))
-    d = _descendant(_type0())
+    font = _type0()
+    d = _descendant(font)
     assert isinstance(d.get_font_box_font(), CFFType1Font)
-    assert d.code_to_gid(0x48) == _CID_H
+    assert d.code_to_gid(0x48, font) == _CID_H
     # CID 41 as a GID is past the end of the two-glyph font: like upstream
     # ``CFFType1Font.getType2CharString(gid)``, the .notdef charstring is
     # used but keeps the requested GID, so hasGlyph (GID != 0) is true
     cs = d.get_type2_char_string(_CID_H)
     assert cs.get_gid() == _CID_H
-    assert d.has_glyph(0x48)
+    assert d.has_glyph(0x48, font)
 
 
 def test_true_type_substitute_uses_uni_glyph_names(mapper: Any) -> None:
     ttf = TrueTypeFont.from_bytes(_DEJAVU.read_bytes())
     mapper(CIDFontMapping(None, ttf, False))
-    d = _descendant(_type0())
+    font = _type0()
+    d = _descendant(font)
     assert d.get_font_box_font() is ttf
     assert d.get_type2_char_string(_CID_H) is None
     gid = ttf.name_to_gid("uni0048")
     assert gid > 0
     upem = ttf.get_units_per_em()
     assert d.get_font_matrix() == pytest.approx((1 / upem, 0.0, 0.0, 1 / upem, 0.0, 0.0))
-    assert d.has_glyph(0x48)
-    assert d.get_path(0x48)
-    assert d.get_width_from_font(0x48) == pytest.approx(
+    assert d.has_glyph(0x48, font)
+    assert d.get_path(0x48, font)
+    assert d.get_width_from_font(0x48, font) == pytest.approx(
         ttf.get_advance_width(gid) * 1000.0 / upem
     )
     # the CID is the GID for a TrueType substitute
-    assert d.code_to_gid(0x48) == _CID_H
+    assert d.code_to_gid(0x48, font) == _CID_H
 
 
 def test_default_mapper_uses_bundled_last_resort(
@@ -313,9 +320,9 @@ def test_default_mapper_uses_bundled_last_resort(
         d = _descendant(font)
         program = d.get_font_box_font()
         assert isinstance(program, TrueTypeFont)
-        assert d.has_glyph(0x48)
-        assert d.get_path(0x48)
-        assert d.get_width_from_font(0x48) > 0.0
+        assert d.has_glyph(0x48, font)
+        assert d.get_path(0x48, font)
+        assert d.get_width_from_font(0x48, font) > 0.0
         _descendant(font).get_font_box_font()
     warnings = [r for r in caplog.records if "Using fallback" in r.getMessage()]
     assert len(warnings) == 1
@@ -324,25 +331,34 @@ def test_default_mapper_uses_bundled_last_resort(
 
 def test_substitute_resolved_once_per_descendant(mapper: Any) -> None:
     m = mapper(CIDFontMapping(_identity_otf(), None, True))
-    d = _descendant(_type0())
-    d.has_glyph(0x48)
-    d.get_path(0x48)
-    d.get_width_from_font(0x48)
+    font = _type0()
+    d = _descendant(font)
+    d.has_glyph(0x48, font)
+    d.get_path(0x48, font)
+    d.get_width_from_font(0x48, font)
     assert m.calls == 1
 
 
-def test_bare_descendant_gets_no_substitute(mapper: Any) -> None:
+def test_bare_descendant_resolves_substitute(mapper: Any) -> None:
+    """PDFBOX-6175: the descendant no longer knows its parent, so a bare
+    non-embedded descendant resolves its substitute too (trunk has no
+    parent gate). Without a parent there is no ToUnicode, so the
+    Unicode-resolved Identity substitute answers ``.notdef`` (GID 0)."""
     m = mapper(CIDFontMapping(_identity_otf(), None, True))
     d = PDCIDFontType0(COSDictionary())
-    assert d.get_font_box_font() is None
-    assert d.get_path(1) == []
-    assert d.get_width_from_font(1) == 0.0
-    assert m.calls == 0
+    assert isinstance(d.get_font_box_font(), CFFCIDFont)
+    assert d.code_to_gid(1, None) == 0
+    assert not d.has_glyph(1, None)
+    notdef = d.get_type2_char_string(0)
+    assert d.get_path(1, None) == notdef.get_path()
+    assert d.get_width_from_font(1, None) == pytest.approx(notdef.get_width())
+    assert m.calls == 1
 
 
 def test_bounding_box_falls_back_to_substitute(mapper: Any) -> None:
     mapper(CIDFontMapping(_identity_otf(), None, True))
-    d = _descendant(_type0(bbox=[0, 0, 0, 0]))
+    font = _type0(bbox=[0, 0, 0, 0])
+    d = _descendant(font)
     rect = d.get_bounding_box()
     expected = [float(v) for v in d.get_font_box_font().get_font_b_box()]
     assert expected != [0.0, 0.0, 0.0, 0.0]
@@ -357,8 +373,9 @@ def test_bounding_box_falls_back_to_substitute(mapper: Any) -> None:
 def test_height_from_cff_substitute(mapper: Any) -> None:
     otf = _build_cff_otf(("Adobe", "CNS1", 0), {f"cid{_CID_H:05d}": (0x48, 650)})
     mapper(CIDFontMapping(otf, None, False))
-    d = _descendant(_type0())
-    assert d.get_height(_CID_H) == pytest.approx(650.0)
+    font = _type0()
+    d = _descendant(font)
+    assert d.get_height(0x48, font) == pytest.approx(650.0)
 
 
 # ---------- embedded / damaged ----------
@@ -366,21 +383,23 @@ def test_height_from_cff_substitute(mapper: Any) -> None:
 
 def test_damaged_font_file3_uses_substitute(mapper: Any) -> None:
     mapper(CIDFontMapping(_identity_otf(), None, True))
-    d = _descendant(_type0(font_file3=b"%!PS-AdobeFont-1.0 not a CFF"))
+    font = _type0(font_file3=b"%!PS-AdobeFont-1.0 not a CFF")
+    d = _descendant(font)
     assert d.is_damaged()
     assert not d.is_embedded()
-    assert d.has_glyph(0x48)
-    assert d.code_to_gid(0x48) == 1
+    assert d.has_glyph(0x48, font)
+    assert d.code_to_gid(0x48, font) == 1
 
 
 def test_embedded_font_ignores_mapper(mapper: Any) -> None:
     m = mapper(CIDFontMapping(_identity_otf(), None, True))
     otf = _build_cff_otf(("Adobe", "CNS1", 0), {f"cid{_CID_H:05d}": (0x48, 650)})
     cff_bytes = otf._tt.getTableData("CFF ")
-    d = _descendant(_type0(font_file3=cff_bytes))
+    font = _type0(font_file3=cff_bytes)
+    d = _descendant(font)
     assert d.is_embedded()
     assert not d.is_damaged()
-    assert d.has_glyph(0x48)
-    assert d.code_to_gid(0x48) == 1
-    assert d.get_width_from_font(0x48) == pytest.approx(650.0)
+    assert d.has_glyph(0x48, font)
+    assert d.code_to_gid(0x48, font) == 1
+    assert d.get_width_from_font(0x48, font) == pytest.approx(650.0)
     assert m.calls == 0

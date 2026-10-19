@@ -21,7 +21,9 @@ class _Descendant:
         self.calls.append("descriptor")
         return "descendant-descriptor"
 
-    def code_to_cid(self, code: int) -> int:
+    def code_to_cid(self, code: int, parent: PDType0Font | None) -> int:
+        # PDFBOX-6175: the parent Type 0 font is passed explicitly
+        assert isinstance(parent, PDType0Font)
         self.calls.append(("cid", code))
         return code + 100
 
@@ -161,7 +163,11 @@ def test_wave487_code_to_gid_handles_no_descendant_missing_cid_to_gid_and_gsub_f
 
     assert font.code_to_gid(4) == 5
 
-    descendant = SimpleNamespace()
+    # PDFBOX-6175: code_to_gid is descendantFont.codeToGID(code, this); the
+    # old fallback for a descendant without code_to_gid is gone
+    descendant = SimpleNamespace(
+        code_to_gid=lambda code, parent: parent.code_to_cid(code)
+    )
     gsub = SimpleNamespace(
         get_substitution=lambda *_args: (_ for _ in ()).throw(RuntimeError("bad"))
     )

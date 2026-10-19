@@ -143,7 +143,7 @@ def test_cid_type0_cid_keyed_empty_charset_uses_gid_zero() -> None:
     font = PDCIDFontType0()
     font.set_cff_font(program)
 
-    assert font.code_to_gid(12) == 0
+    assert font.code_to_gid(12, None) == 0
     assert font.get_type2_char_string(12) == ("charstring", 0)
     assert program.seen_gids == [0]
 

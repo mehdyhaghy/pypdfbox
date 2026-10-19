@@ -133,10 +133,10 @@ def test_code_to_gid_resolves_through_substitute(tmp_path: Path) -> None:
         for code in _CONTENT_CIDS:
             unicode = font.to_unicode(code)
             assert unicode is not None
-            assert descendant.code_to_gid(code) == lookup.get_glyph_id(
+            assert descendant.code_to_gid(code, font) == lookup.get_glyph_id(
                 ord(unicode[0])
             )
-            assert font.code_to_gid(code) == descendant.code_to_gid(code)
+            assert font.code_to_gid(code) == descendant.code_to_gid(code, font)
     finally:
         doc.close()
 
@@ -157,7 +157,7 @@ def test_width_lookup_uses_w_and_dw(tmp_path: Path) -> None:
         )
         # get_width_from_font reads the substitute program (upstream ttf
         # field), so it is no longer 0.0.
-        assert descendant.get_width_from_font(3) > 0.0
+        assert descendant.get_width_from_font(3, font) > 0.0
     finally:
         doc.close()
 

@@ -4,17 +4,16 @@
 Targets the under-covered defensive branches in
 ``pypdfbox/pdmodel/font/pd_type0_font.py``:
 
-* line 856 — ``get_path`` short-circuits when the descendant lacks a
-  callable ``get_glyph_path`` attribute;
-* line 873 — ``get_normalized_path`` same guard for
-  ``get_normalized_path``;
+* ``get_path`` / ``get_normalized_path`` forward the raw code and the
+  parent to the descendant (the old ``callable`` guards went away with
+  the PDFBOX-6175 port);
 * line 900 — ``get_cmap_lookup`` short-circuits when the descendant is
   not a ``PDCIDFontType2``;
 * lines 908-917 — ``get_cmap_lookup`` exception + fontTools fallback +
   ``"cmap"`` missing + ``getBestCmap`` raising;
 * line 949 — ``has_explicit_width`` returns ``False`` when descendant
   lacks the accessor;
-* line 952 — same path for a non-callable attribute;
+* ``has_explicit_width`` forwards the raw code and the parent;
 * line 1464 — ``subset()`` honours ``_subset_glyph_ids`` and forwards
   the registered raw GIDs to the subsetter.
 """
@@ -37,32 +36,43 @@ class _BareDescendant:
     monkey-patched so we never reach the accessor call."""
 
 
-def test_get_path_returns_empty_when_descendant_lacks_callable(
+def test_get_path_forwards_raw_code_and_parent_to_descendant(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Line 856: ``getattr(descendant, "get_glyph_path", None)`` returns
-    a non-callable (here, ``None``) — accessor short-circuits to ``[]``.
-    """
+    """PDFBOX-6175 port: the old ``callable`` guard is gone; as upstream
+    trunk, ``get_path`` is ``descendantFont.getPath(code, this)`` with the
+    raw code (a descendant is always a PDCIDFont)."""
     font = PDType0Font()
     descendant = _BareDescendant()
-    # Set the attribute to a non-callable to exercise the ``not callable``
-    # branch specifically (rather than the missing-attr default).
-    descendant.get_glyph_path = "not-callable"  # type: ignore[attr-defined]
+    seen: list[tuple[int, Any]] = []
+
+    def get_path(code: int, parent: Any) -> list[tuple]:
+        seen.append((code, parent))
+        return [("moveto", 1.0, 2.0)]
+
+    descendant.get_path = get_path  # type: ignore[attr-defined]
     monkeypatch.setattr(font, "get_descendant_font", lambda: descendant)
-    monkeypatch.setattr(font, "code_to_cid", lambda code: code)
-    assert font.get_path(0x41) == []
+    assert font.get_path(0x41) == [("moveto", 1.0, 2.0)]
+    assert seen == [(0x41, font)]
 
 
-def test_get_normalized_path_returns_empty_when_descendant_lacks_callable(
+def test_get_normalized_path_forwards_raw_code_and_parent_to_descendant(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Line 873: same defensive guard for ``get_normalized_path``."""
+    """PDFBOX-6175 port: no ``callable`` guard any more; the raw code and
+    the parent go to ``descendant.get_normalized_path(code, parent)``."""
     font = PDType0Font()
     descendant = _BareDescendant()
-    descendant.get_normalized_path = 42  # type: ignore[attr-defined]
+    seen: list[tuple[int, Any]] = []
+
+    def get_normalized_path(code: int, parent: Any) -> list[tuple]:
+        seen.append((code, parent))
+        return [("closepath",)]
+
+    descendant.get_normalized_path = get_normalized_path  # type: ignore[attr-defined]
     monkeypatch.setattr(font, "get_descendant_font", lambda: descendant)
-    monkeypatch.setattr(font, "code_to_cid", lambda code: code)
-    assert font.get_normalized_path(0x41) == []
+    assert font.get_normalized_path(0x41) == [("closepath",)]
+    assert seen == [(0x41, font)]
 
 
 # ---------- get_cmap_lookup branches -------------------------------------
@@ -180,15 +190,23 @@ def test_has_explicit_width_returns_false_without_descendant(
     assert font.has_explicit_width(65) is False
 
 
-def test_has_explicit_width_returns_false_when_descendant_lacks_callable(
+def test_has_explicit_width_forwards_raw_code_and_parent_to_descendant(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Line 952: ``has_explicit_width`` on descendant is non-callable."""
+    """PDFBOX-6175 port: no ``callable`` guard any more; the raw code and
+    the parent go to ``descendant.has_explicit_width(code, parent)``."""
     font = PDType0Font()
     descendant = _BareDescendant()
-    descendant.has_explicit_width = "not-callable"  # type: ignore[attr-defined]
+    seen: list[tuple[int, Any]] = []
+
+    def has_explicit_width(code: int, parent: Any) -> bool:
+        seen.append((code, parent))
+        return True
+
+    descendant.has_explicit_width = has_explicit_width  # type: ignore[attr-defined]
     monkeypatch.setattr(font, "get_descendant_font", lambda: descendant)
-    assert font.has_explicit_width(65) is False
+    assert font.has_explicit_width(65) is True
+    assert seen == [(65, font)]
 
 
 # ---------- subset() honours add_glyphs_to_subset ------------------------

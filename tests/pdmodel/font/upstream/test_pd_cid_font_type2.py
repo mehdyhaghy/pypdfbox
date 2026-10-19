@@ -101,10 +101,10 @@ def test_explicit_cid_to_gid_map_bytes_roundtrip() -> None:
     assert font.is_identity_cid_to_gid_map() is False
     assert font.get_cid_to_gid_map_bytes() == payload
     # CID 0 -> GID 0, CID 1 -> 16, CID 2 -> 32, CID 3 -> 48.
-    assert font.code_to_gid(0) == 0
-    assert font.code_to_gid(1) == 16
-    assert font.code_to_gid(2) == 32
-    assert font.code_to_gid(3) == 48
+    assert font.code_to_gid(0, None) == 0
+    assert font.code_to_gid(1, None) == 16
+    assert font.code_to_gid(2, None) == 32
+    assert font.code_to_gid(3, None) == 48
 
 
 def test_code_to_cid_is_identity() -> None:
@@ -112,7 +112,7 @@ def test_code_to_cid_is_identity() -> None:
     # /Encoding CMap has already converted the byte to a CID.
     font = PDCIDFontType2()
     for code in (0, 1, 65, 256, 0xFFFF):
-        assert font.code_to_cid(code) == code
+        assert font.code_to_cid(code, None) == code
 
 
 # ---------- isEmbedded ----------
@@ -204,12 +204,16 @@ def test_get_font_matrix_default_when_no_program() -> None:
 
 def test_get_bounding_box_none_when_neither_program_nor_descriptor() -> None:
     font = PDCIDFontType2()
+    # PDFBOX-6175: a bare non-embedded descendant now resolves a
+    # substitute font without a parent; pin "no substitute available"
+    # so this keeps exercising the no-program branch.
+    font._get_substitute_font = lambda: None  # type: ignore[method-assign]
     assert font.get_bounding_box() is None
 
 
 def test_get_height_zero_when_no_program_no_w2() -> None:
     font = PDCIDFontType2()
-    assert font.get_height(65) == 0.0
+    assert font.get_height(65, None) == 0.0
 
 
 def test_get_average_font_width_falls_through_to_dw() -> None:
@@ -220,7 +224,11 @@ def test_get_average_font_width_falls_through_to_dw() -> None:
 
 def test_get_width_from_font_zero_when_no_program() -> None:
     font = PDCIDFontType2()
-    assert font.get_width_from_font(65) == 0.0
+    # PDFBOX-6175: a bare non-embedded descendant now resolves a
+    # substitute font without a parent; pin "no substitute available"
+    # so this keeps exercising the no-program branch.
+    font._get_substitute_font = lambda: None  # type: ignore[method-assign]
+    assert font.get_width_from_font(65, None) == 0.0
 
 
 # ---------- glyph-path entry points (no embedded program) ----------
@@ -231,14 +239,18 @@ def test_get_path_empty_when_no_program() -> None:
     # program cannot be located — pypdfbox returns the equivalent empty
     # command list.
     font = PDCIDFontType2()
-    assert font.get_path(65) == []
+    # PDFBOX-6175: a bare non-embedded descendant now resolves a
+    # substitute font without a parent; pin "no substitute available"
+    # so this keeps exercising the no-program branch.
+    font._get_substitute_font = lambda: None  # type: ignore[method-assign]
+    assert font.get_path(65, None) == []
 
 
 def test_get_path_from_outlines_none_when_not_open_type_post_script() -> None:
     # The CFF charstring branch only fires when otf != null && isPostScript().
     # No embedded program → no OTF → guard returns None.
     font = PDCIDFontType2()
-    assert font.get_path_from_outlines(65) is None
+    assert font.get_path_from_outlines(65, None) is None
 
 
 # ---------- find_font_or_substitute ----------
@@ -265,8 +277,12 @@ def test_encode_raises_when_no_glyph_available() -> None:
     # pypdfbox surfaces ValueError. Here the font has no embedded program
     # and no parent / cmap, so no glyph can be located for any codepoint.
     font = PDCIDFontType2()
+    # PDFBOX-6175: a bare non-embedded descendant now resolves a
+    # substitute font without a parent; pin "no substitute available"
+    # so this keeps exercising the no-program branch.
+    font._get_substitute_font = lambda: None  # type: ignore[method-assign]
     with pytest.raises(ValueError, match=r"No glyph for U\+0041"):
-        font.encode(0x41)
+        font.encode(0x41, None)
 
 
 # ---------- get_parser (TTF vs OTF SFNT-magic dispatch) ----------
@@ -322,6 +338,10 @@ def test_generate_bounding_box_uses_descriptor_when_non_zero() -> None:
 
 def test_generate_bounding_box_none_when_no_sources() -> None:
     font = PDCIDFontType2()
+    # PDFBOX-6175: a bare non-embedded descendant now resolves a
+    # substitute font without a parent; pin "no substitute available"
+    # so this keeps exercising the no-program branch.
+    font._get_substitute_font = lambda: None  # type: ignore[method-assign]
     assert font.generate_bounding_box() is None
 
 
@@ -357,10 +377,10 @@ def test_horizontal_metrics_via_cmap() -> None:
     upem = font.get_true_type_font().get_units_per_em()
     raw_advance_a = font.get_true_type_font().get_advance_width(gid_a)
     expected_a = raw_advance_a * 1000.0 / upem
-    assert font.get_width_from_font(gid_a) == pytest.approx(expected_a)
+    assert font.get_width_from_font(gid_a, None) == pytest.approx(expected_a)
 
     # /A/ is a capital letter — its glyph yMax must exceed yMin.
-    assert font.get_height(gid_a) > 0.0
+    assert font.get_height(gid_a, None) > 0.0
 
     # Average width pulls from the embedded program (positive advances
     # only); for Liberation Sans Regular this is well above zero.
@@ -413,7 +433,7 @@ def test_cid_to_gid_map_with_glyphs_through_load() -> None:
     expected_advance = (
         ttf.get_advance_width(gid_upper) * 1000.0 / ttf.get_units_per_em()
     )
-    assert font.get_width_from_font(1) == pytest.approx(expected_advance)
+    assert font.get_width_from_font(1, None) == pytest.approx(expected_advance)
 
 
 # ---------- noMapping field (warning-dedup set) ----------

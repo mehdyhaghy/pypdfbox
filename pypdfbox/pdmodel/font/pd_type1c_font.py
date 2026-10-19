@@ -8,6 +8,7 @@ from .pd_type1_font import PDType1Font
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+    from pypdfbox.pdmodel.pd_resource_cache import PDResourceCache
 
     from .encoding.encoding import Encoding
 
@@ -53,8 +54,15 @@ class PDType1CFont(PDType1Font):
 
     SUB_TYPE = "Type1"
 
-    def __init__(self, font_dict: COSDictionary | None = None) -> None:
-        super().__init__(font_dict)
+    def __init__(
+        self,
+        font_dict: COSDictionary | None = None,
+        resource_cache: PDResourceCache | None = None,
+    ) -> None:
+        # ``resource_cache`` (can be ``None``) mirrors upstream trunk's
+        # ``(COSDictionary, ResourceCache)`` constructor (PDFBOX-6175): it
+        # lets an indirect /FontDescriptor be shared through the cache.
+        super().__init__(font_dict, resource_cache)
         # Lazily-loaded embedded CFF program. ``None`` means
         # "not yet attempted", ``False`` means "tried, no /FontFile3 or
         # parse failed".

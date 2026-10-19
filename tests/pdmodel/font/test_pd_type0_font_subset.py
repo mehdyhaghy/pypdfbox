@@ -98,7 +98,7 @@ def test_subset_tags_parent_and_descendant_base_font(
     assert parent.get_name() == "ABCDEF+LiberationSans"
     descendant = parent.get_descendant_font()
     assert descendant is not None
-    assert descendant.get_name() == "ABCDEF+LiberationSans"
+    assert descendant.get_base_font() == "ABCDEF+LiberationSans"
 
 
 def test_subset_random_tag_when_no_prefix(liberation_bytes: bytes) -> None:

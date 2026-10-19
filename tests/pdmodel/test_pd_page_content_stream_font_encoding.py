@@ -146,7 +146,7 @@ def test_type0_subset_round_trip_keeps_glyphs_and_extracts_text() -> None:
         # Every shown code resolves to a real glyph with a real width.
         for ch, code in codes.items():
             if ch != " ":
-                assert descendant.code_to_gid(code) > 0
+                assert descendant.code_to_gid(code, loaded) > 0
             assert loaded.get_width(code) > 0
     doc.close()
 

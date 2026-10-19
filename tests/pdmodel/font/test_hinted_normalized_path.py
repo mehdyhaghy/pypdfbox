@@ -89,7 +89,7 @@ def test_type0_hinted_path_uses_descendant_command_shape(
 ) -> None:
     with PDDocument() as doc:
         font = PDType0Font.load(doc, _LIBERATION, embed_subset=False)
-        gid = font.get_descendant_font().code_to_gid(43)
+        gid = font.get_descendant_font().code_to_gid(43, font)
         path = font.get_hinted_normalized_path(43, 16)
         assert path is not None
         assert path[0] == ("moveto", 0.0, 0.0)
@@ -109,7 +109,7 @@ def test_type0_without_descendant_returns_none() -> None:
 
 def test_non_hinting_fonts_default_to_none() -> None:
     assert PDType1Font().get_hinted_normalized_path(ord("H"), 16) is None
-    assert PDCIDFont.get_hinted_normalized_path(None, 1, 16) is None  # type: ignore[arg-type]
+    assert PDCIDFont.get_hinted_normalized_path(None, 1, 16, None) is None  # type: ignore[arg-type]
 
 
 def test_protocol_default_is_not_a_structural_member() -> None:

@@ -1,7 +1,15 @@
 import re
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName, COSStream
+from pypdfbox.cos import (
+    COSArray,
+    COSDictionary,
+    COSFloat,
+    COSInteger,
+    COSName,
+    COSObject,
+    COSStream,
+)
 
 from .standard14_fonts import Standard14Fonts
 
@@ -9,6 +17,7 @@ if TYPE_CHECKING:
     from pypdfbox.fontbox.cmap.cmap import CMap
     from pypdfbox.fontbox.encoding.glyph_list import GlyphList
     from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+    from pypdfbox.pdmodel.pd_resource_cache import PDResourceCache
 
     from .afm_loader import AfmMetrics
     from .pd_font_descriptor import PDFontDescriptor
@@ -58,8 +67,18 @@ class PDFont:
     # on the dictionary; CIDFonts inherit through their parent Type 0 font.
     DEFAULT_FONT_MATRIX: tuple[float, ...] = _DEFAULT_FONT_MATRIX
 
-    def __init__(self, font_dict: COSDictionary | None = None) -> None:
+    def __init__(
+        self,
+        font_dict: COSDictionary | None = None,
+        resource_cache: PDResourceCache | None = None,
+    ) -> None:
         self._dict = font_dict if font_dict is not None else COSDictionary()
+        # Optional resource cache, can be ``None``. Mirrors upstream trunk
+        # ``PDFont(COSDictionary, ResourceCache)`` (PDFBOX-6175): an
+        # *indirect* ``/FontDescriptor`` wrapper is shared through the cache
+        # (see :meth:`load_font_descriptor`), so fonts referencing the same
+        # descriptor object get the same :class:`PDFontDescriptor`.
+        self._resource_cache = resource_cache
         if self._dict.get_dictionary_object(_TYPE) is None:
             self._dict.set_item(_TYPE, _FONT)
         if font_dict is None and self.SUB_TYPE is not None:
@@ -160,13 +179,28 @@ class PDFont:
         than eagerly cached at construction time — pypdfbox's font
         descriptor objects are stateless wrappers, so a fresh instance is
         cheap and avoids stale caching when callers mutate the underlying
-        ``COSDictionary``.
+        ``COSDictionary``. Exception (PDFBOX-6175, trunk): when a resource
+        cache was supplied at construction time and ``/FontDescriptor`` is
+        an *indirect* reference, the wrapper is shared through the cache.
+        It still wraps the same live ``COSDictionary``, so mutations stay
+        visible; only the wrapper allocation is shared.
         """
         from .pd_font_descriptor import PDFontDescriptor
 
+        cache = self._resource_cache
+        fd_indirect = self._dict.get_item(_FONT_DESCRIPTOR)
+        if not isinstance(fd_indirect, COSObject):
+            fd_indirect = None
+        if fd_indirect is not None and cache is not None:
+            cached = cache.get_font_descriptor(fd_indirect)
+            if cached is not None:
+                return cached
         fd = self._dict.get_dictionary_object(_FONT_DESCRIPTOR)
         if isinstance(fd, COSDictionary):
-            return PDFontDescriptor(fd)
+            descriptor = PDFontDescriptor(fd)
+            if cache is not None and fd_indirect is not None:
+                cache.put_font_descriptor(fd_indirect, descriptor)
+            return descriptor
         # Standard 14 fallback — synthesize from the AFM. Matches
         # upstream PDFont.loadFontDescriptor's ``else if (afmStandard14
         # != null)`` branch (PDFont.java:140-144).

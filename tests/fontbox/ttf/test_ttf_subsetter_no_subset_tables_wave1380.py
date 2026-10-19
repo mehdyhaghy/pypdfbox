@@ -207,19 +207,16 @@ def _make_cid_embedder() -> Any:
     from pypdfbox.pdmodel.font.pd_cid_font_type2_embedder import (
         PDCIDFontType2Embedder,
     )
-    from pypdfbox.pdmodel.font.pd_type0_font import PDType0Font
     from pypdfbox.pdmodel.pd_document import PDDocument
 
     document = PDDocument()
     tt = ttLib.TTFont(os.fspath(_FIXTURE_TTF))
     dict_ = COSDictionary()
-    parent = PDType0Font.__new__(PDType0Font)  # bypass __init__ for unit test
     return PDCIDFontType2Embedder(
         document,
         dict_,
         tt,
         embed_subset=True,
-        parent=parent,
         vertical=False,
     )
 

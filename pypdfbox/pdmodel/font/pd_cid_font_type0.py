@@ -11,6 +11,8 @@ from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from .pd_cid_font import PDCIDFont
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.pd_resource_cache import PDResourceCache
+
     from .pd_type0_font import PDType0Font
 
 _LOG = logging.getLogger(__name__)
@@ -105,9 +107,12 @@ class PDCIDFontType0(PDCIDFont):
     def __init__(
         self,
         font_dict: COSDictionary | None = None,
-        parent_type0_font: PDType0Font | None = None,
+        resource_cache: PDResourceCache | None = None,
     ) -> None:
-        super().__init__(font_dict, parent_type0_font)
+        # ``resource_cache`` (can be ``None``) mirrors upstream trunk's
+        # ``PDCIDFontType0(COSDictionary, ResourceCache)`` (PDFBOX-6175);
+        # the descendant no longer knows its parent Type 0 font.
+        super().__init__(font_dict, resource_cache)
         # Lazily-loaded embedded CFF program. ``None`` = not yet
         # attempted; ``False`` = tried, no /FontFile3 or parse failed.
         self._cff: CFFFont | None | bool = None
@@ -131,17 +136,16 @@ class PDCIDFontType0(PDCIDFont):
 
     # ---------- code -> CID ----------
 
-    def code_to_cid(self, code: int) -> int:  # type: ignore[override]
+    def code_to_cid(self, code: int, parent: PDType0Font | None) -> int:
         """Map a character ``code`` to a CID via the parent's encoding CMap.
 
-        Mirrors upstream ``PDCIDFontType0.codeToCID``:
-        ``parent.getCMap().toCID(code)`` — the CMap's mapping is returned
-        verbatim, including the ``0`` (`.notdef`) result for a code the
-        CMap does not map. When the descendant has no parent / the parent
-        carries no encoding CMap (a bare wrapper, as in unit tests) the
-        code passes through unchanged.
+        Mirrors upstream trunk ``PDCIDFontType0.codeToCID(int,
+        PDType0Font)``: ``parent.getCMap().toCID(code)`` — the CMap's
+        mapping is returned verbatim, including the ``0`` (`.notdef`) result
+        for a code the CMap does not map. When there is no parent / the
+        parent carries no encoding CMap (a bare wrapper, as in unit tests)
+        the code passes through unchanged.
         """
-        parent = self.get_parent()
         if parent is None:
             return int(code)
         cmap = parent.get_cmap()
@@ -151,11 +155,11 @@ class PDCIDFontType0(PDCIDFont):
 
     # ---------- code -> GID ----------
 
-    def code_to_gid(self, code: int) -> int:
+    def code_to_gid(self, code: int, parent: PDType0Font | None) -> int:
         """Return the GID for the character ``code``.
 
-        Mirrors upstream ``PDCIDFontType0.codeToGID`` (3.0 branch, including
-        PDFBOX-6249):
+        Mirrors upstream trunk ``PDCIDFontType0.codeToGID(int, PDType0Font)``
+        (including PDFBOX-6249):
 
         * A non-embedded font whose substitute is a CID-keyed font of a
           different character collection with an ``Identity`` ordering
@@ -165,9 +169,9 @@ class PDCIDFontType0(PDCIDFont):
           CID through its charset (CID 40 may well be GID 10).
         * Otherwise the CID is used directly as the GID.
         """
-        cid = self.code_to_cid(code)
+        cid = self.code_to_cid(code, parent)
         if self._get_substitute_unicode_cmap() is not None:
-            return max(self._code_to_substitute_gid(code), 0)
+            return max(self._code_to_substitute_gid(code, parent), 0)
         cid_font = self._get_cid_font()
         if cid_font is not None:
             # The CIDs shall be used to determine the GID value for the
@@ -209,8 +213,7 @@ class PDCIDFontType0(PDCIDFont):
         The default pypdfbox mapper has no CID font scanner and answers
         ``None``; upstream's mapper always ends with a last-resort font,
         so the bundled last-resort font is used then (as for
-        :class:`PDCIDFontType2`). A bare descendant (no parent Type 0
-        font) gets no substitute. Returns ``(cid_font, t1_font,
+        :class:`PDCIDFontType2`). Returns ``(cid_font, t1_font,
         unicode_cmap)`` with every slot ``None`` for an embedded font or
         when nothing could be found. Never raises.
         """
@@ -219,7 +222,7 @@ class PDCIDFontType0(PDCIDFont):
         cid_font: CFFCIDFont | None = None
         t1_font: Any | None = None
         unicode_cmap: Any | None = None
-        if self.get_cff_font() is None and self.get_parent() is not None:
+        if self.get_cff_font() is None:
             mapping = self._find_cid_font_mapping()
             font: Any | None = None
             if mapping is not None:
@@ -272,7 +275,7 @@ class PDCIDFontType0(PDCIDFont):
             if not callable(get_cid_font):
                 return None
             return get_cid_font(
-                self.get_base_font() or self.get_name() or "",
+                self.get_base_font() or "",
                 self.get_font_descriptor(),
                 self.get_cid_system_info(),
             )
@@ -328,12 +331,11 @@ class PDCIDFontType0(PDCIDFont):
             and ros.get_ordering() == substitute.get_ordering()
         )
 
-    def _code_to_substitute_gid(self, code: int) -> int:
+    def _code_to_substitute_gid(self, code: int, parent: PDType0Font | None) -> int:
         """GID in the substitute for the given code, via Unicode; -1 if
         unmapped. The substitute's Identity charset makes GIDs address its
         charstrings directly. Mirrors upstream private
         ``codeToSubstituteGID`` (PDFBOX-6249)."""
-        parent = self.get_parent()
         unicodes = parent.to_unicode(code) if parent is not None else None
         if not unicodes:
             return -1
@@ -429,7 +431,7 @@ class PDCIDFontType0(PDCIDFont):
             else:
                 self._cff = CFFType1Font.from_cff_font(base)
         except Exception:
-            _LOG.exception("failed to parse /FontFile3 for %s", self.get_name())
+            _LOG.exception("failed to parse /FontFile3 for %s", self.get_base_font())
             self._cff = False
             return None
         return self._cff
@@ -518,13 +520,13 @@ class PDCIDFontType0(PDCIDFont):
             return program_width
         return self.get_default_width()
 
-    def get_width_from_font(self, code: int) -> float:
+    def get_width_from_font(self, code: int, parent: PDType0Font | None) -> float:
         """Width of the glyph for the character ``code`` taken *only* from
         the font program (embedded, or the substitute for a non-embedded
         font), in 1/1000 em. Returns ``0.0`` when no program is available.
 
-        Mirrors upstream ``PDCIDFontType0.getWidthFromFont`` (3.0 branch,
-        including PDFBOX-6249):
+        Mirrors upstream trunk ``PDCIDFontType0.getWidthFromFont(int,
+        PDType0Font)`` (including PDFBOX-6249):
 
         * Unicode-resolved Identity substitute: the advance of the
           substitute glyph found via ``toUnicode``;
@@ -536,12 +538,12 @@ class PDCIDFontType0(PDCIDFont):
         The advance is mapped through the font matrix (scaled by 1000).
         Distinct from :meth:`get_glyph_width`, which prefers ``/W``.
         """
-        cid = self.code_to_cid(code)
+        cid = self.code_to_cid(code, parent)
         try:
             cid_font = self._get_cid_font()
             if self._get_substitute_unicode_cmap() is not None and cid_font is not None:
                 # the Identity charset makes the GID address the charstring
-                gid = max(self._code_to_substitute_gid(code), 0)
+                gid = max(self._code_to_substitute_gid(code, parent), 0)
                 width = float(cid_font.get_width(gid))
             elif cid_font is not None:
                 # ``CFFCIDFont.get_width(cid)`` is the width of the CID's
@@ -554,7 +556,7 @@ class PDCIDFontType0(PDCIDFont):
                 t1_font = self._get_t1_font()
                 if t1_font is None:
                     return 0.0
-                width = float(t1_font.get_width(self.get_glyph_name(code)))
+                width = float(t1_font.get_width(self.get_glyph_name(code, parent)))
         except Exception:
             _LOG.debug("width lookup failed for code %d", code, exc_info=True)
             return 0.0
@@ -612,10 +614,12 @@ class PDCIDFontType0(PDCIDFont):
         # comment). Surface that only when /DW is itself a useless zero.
         return dw if dw > 0.0 else 500.0
 
-    def get_height(self, cid: int) -> float:  # type: ignore[override]
-        """Height of the glyph at ``cid`` in *font units*.
+    def _get_height_for_cid(self, cid: int) -> float:
+        """Height of the glyph at ``cid`` in *font units*; backs
+        :meth:`PDCIDFont.get_height` ``(code, parent)``.
 
-        Mirrors upstream ``PDCIDFontType0.getHeight(int code)`` — derived
+        Mirrors upstream trunk ``PDCIDFontType0.getHeight(int code,
+        PDType0Font parent)`` — derived
         from the CFF outline's bounding box (max-y minus min-y) when an
         embedded CFF program is available. Falls back to the parent
         :meth:`PDCIDFont.get_height` (which reads ``/W2``) when no
@@ -632,7 +636,7 @@ class PDCIDFontType0(PDCIDFont):
         if program is None:
             cs = self.get_type2_char_string(cid)
             if cs is None:
-                return super().get_height(cid)
+                return super()._get_height_for_cid(cid)
             cached = self._glyph_heights.get(cid)
             if cached is not None:
                 return cached
@@ -866,7 +870,7 @@ class PDCIDFontType0(PDCIDFont):
 
     # ---------- glyph name / path / hasGlyph (upstream-named) ----------
 
-    def get_glyph_name(self, code: int) -> str:
+    def get_glyph_name(self, code: int, parent: PDType0Font | None) -> str:
         """Synthesise a glyph name for ``code`` via the parent's ToUnicode
         mapping.
 
@@ -883,7 +887,6 @@ class PDCIDFontType0(PDCIDFont):
         despite being marked private upstream because the rendering /
         text-extraction layer needs the same hook.
         """
-        parent = self.get_parent()
         if parent is None:
             return ".notdef"
         unicodes = parent.to_unicode(code)
@@ -891,11 +894,11 @@ class PDCIDFontType0(PDCIDFont):
             return ".notdef"
         return _uni_name_of_code_point(ord(unicodes[0]))
 
-    def get_path(self, code: int) -> list[tuple]:
+    def get_path(self, code: int, parent: PDType0Font | None) -> list[tuple]:
         """Glyph outline for the character ``code`` in *font units*.
 
-        Mirrors upstream ``PDCIDFontType0.getPath(int)`` (3.0 branch,
-        including PDFBOX-6249). Resolution order:
+        Mirrors upstream trunk ``PDCIDFontType0.getPath(int, PDType0Font)``
+        (including PDFBOX-6249). Resolution order:
 
         1. A non-embedded font with a Unicode-resolved Identity substitute
            draws the substitute glyph found via ``toUnicode`` (``.notdef``
@@ -911,10 +914,10 @@ class PDCIDFontType0(PDCIDFont):
         Returns ``[]`` when no program is available or the glyph cannot be
         drawn, matching upstream's ``new GeneralPath()`` empty fallback.
         """
-        cid = self.code_to_cid(code)
+        cid = self.code_to_cid(code, parent)
         try:
             if self._get_substitute_unicode_cmap() is not None:
-                gid = max(self._code_to_substitute_gid(code), 0)
+                gid = max(self._code_to_substitute_gid(code, parent), 0)
                 cs = self.get_type2_char_string(gid)
                 return list(cs.get_path()) if cs is not None else []
             if self.is_embedded() and self.has_cid_to_gid_map_stream():
@@ -931,12 +934,14 @@ class PDCIDFontType0(PDCIDFont):
                 return []
             if self.is_embedded() and isinstance(t1_font, CFFType1Font):
                 return list(t1_font.get_type2_char_string(cid).get_path())
-            return _font_box_font_path(t1_font, self.get_glyph_name(code))
+            return _font_box_font_path(t1_font, self.get_glyph_name(code, parent))
         except Exception:
             _LOG.debug("glyph path failed for code %d", code, exc_info=True)
             return []
 
-    def get_normalized_path(self, code: int) -> list[tuple]:
+    def get_normalized_path(
+        self, code: int, parent: PDType0Font | None
+    ) -> list[tuple]:
         """Glyph outline for the character ``code``.
 
         Mirrors upstream ``PDCIDFontType0.getNormalizedPath``, which simply
@@ -944,14 +949,14 @@ class PDCIDFontType0(PDCIDFont):
         CFF program already uses a 1000-unit em by default). Distinct from
         the :class:`PDCIDFontType2` override, which scales TTF outlines.
         """
-        return self.get_path(code)
+        return self.get_path(code, parent)
 
-    def has_glyph(self, code: int) -> bool:  # type: ignore[override]
+    def has_glyph(self, code: int, parent: PDType0Font | None) -> bool:
         """``True`` when the character ``code`` resolves to a
         non-``.notdef`` glyph.
 
-        Mirrors upstream ``PDCIDFontType0.hasGlyph(int)`` (3.0 branch,
-        including PDFBOX-6249): a Unicode-resolved Identity substitute
+        Mirrors upstream trunk ``PDCIDFontType0.hasGlyph(int, PDType0Font)``
+        (including PDFBOX-6249): a Unicode-resolved Identity substitute
         must map the code's Unicode value to a GID above 0; a CFF program
         (embedded or substitute) must resolve the CID's Type 2 charstring
         to a GID other than 0; a TrueType substitute must have the
@@ -961,27 +966,27 @@ class PDCIDFontType0(PDCIDFont):
         embedded program), the parent :meth:`PDCIDFont.has_glyph`
         ``/W``/``/DW`` heuristic answers instead.
         """
-        cid = self.code_to_cid(code)
+        cid = self.code_to_cid(code, parent)
         try:
             if self._get_substitute_unicode_cmap() is not None:
-                return self._code_to_substitute_gid(code) > 0
+                return self._code_to_substitute_gid(code, parent) > 0
             cs = self.get_type2_char_string(cid)
             if cs is not None:
                 return cs.get_gid() != 0
             t1_font = self._get_t1_font()
             if t1_font is None:
-                return super().has_glyph(cid)
+                return super().has_glyph(code, parent)
             if self.is_embedded() and isinstance(t1_font, CFFType1Font):
                 return t1_font.get_type2_char_string(cid).get_gid() != 0
-            return bool(t1_font.has_glyph(self.get_glyph_name(code)))
+            return bool(t1_font.has_glyph(self.get_glyph_name(code, parent)))
         except Exception:
             return False
 
-    def encode(self, unicode_codepoint: int) -> bytes:  # type: ignore[override]
+    def encode(self, unicode_codepoint: int, parent: PDType0Font | None) -> bytes:
         """Encoding by Unicode codepoint is unsupported for a CFF CIDFont.
 
-        Mirrors upstream ``PDCIDFontType0.encode(int unicode)`` which
-        throws ``UnsupportedOperationException``: the CIDFontType0 has
+        Mirrors upstream trunk ``PDCIDFont.encode(int, PDType0Font)``, which
+        throws ``UnsupportedOperationException`` for a ``PDCIDFontType0``: the CIDFontType0 has
         no ``/Encoding`` of its own and cannot synthesise a CID for a
         unicode codepoint without going through the parent
         :class:`PDType0Font`'s CMap. Callers that need encoding should

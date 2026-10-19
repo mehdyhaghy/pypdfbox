@@ -260,7 +260,7 @@ def test_subset_tag_propagates_to_descendant(liberation_bytes: bytes) -> None:
     assert font.get_name() == "ABCDEF+LiberationSans"
     descendant = font.get_descendant_font()
     assert descendant is not None
-    assert descendant.get_name() == "ABCDEF+LiberationSans"
+    assert descendant.get_base_font() == "ABCDEF+LiberationSans"
 
 
 def test_get_base_font_returns_postscript_name(liberation_bytes: bytes) -> None:

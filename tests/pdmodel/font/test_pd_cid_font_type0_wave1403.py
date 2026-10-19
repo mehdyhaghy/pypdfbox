@@ -15,7 +15,6 @@ from typing import Any
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.font.pd_cid_font_type0 import PDCIDFontType0
-from pypdfbox.pdmodel.font.pd_type0_font import PDType0Font
 
 # ---------- 458->462 : CFF program with no /FontBBox ----------
 
@@ -53,14 +52,14 @@ def test_get_path_skips_remap_when_cid_out_of_map_range() -> None:
     cid_to_gid.set_data(b"\x00\x05")  # CID 0 -> GID 5
     font_dict.set_item(COSName.get_pdf_name("CIDToGIDMap"), cid_to_gid)
 
-    parent = PDType0Font()
-    font = PDCIDFontType0(font_dict, parent)
+    # PDFBOX-6175: no parent on the descendant; per-glyph calls take it
+    font = PDCIDFontType0(font_dict)
     # Force the embedded + stream gate True, and a CID beyond the map.
     font.is_embedded = lambda: True  # type: ignore[assignment,method-assign,return-value]
-    font.code_to_cid = lambda _code: 7  # type: ignore[assignment,method-assign,return-value]
+    font.code_to_cid = lambda _code, _parent: 7  # type: ignore[assignment,method-assign,return-value]
     font.get_cff_font = lambda: None  # type: ignore[assignment,method-assign,return-value]
     # No substitute either (a non-embedded font now resolves one through the
     # font mapper, like upstream; pin the "no program at all" case).
     font._get_substitute = lambda: (None, None, None)  # type: ignore[method-assign]
     # CID 7 is out of the 1-entry map -> 614 false -> 616; no program -> [].
-    assert font.get_path(7) == []
+    assert font.get_path(7, None) == []

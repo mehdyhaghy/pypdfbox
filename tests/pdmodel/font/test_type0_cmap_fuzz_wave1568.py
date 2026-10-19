@@ -309,7 +309,7 @@ def test_cid_to_gid_stream_odd_trailing_byte_ignored():
 def test_code_to_gid_equals_cid_to_gid():
     f = _type2({"CIDToGIDMap": _cid_to_gid_stream([0, 11, 22, 33])})
     for cid in (0, 1, 2, 3):
-        assert f.code_to_gid(cid) == f.cid_to_gid(cid)
+        assert f.code_to_gid(cid, None) == f.cid_to_gid(cid)
 
 
 # ---------- /W width lookup: both array forms + /DW default ----------
@@ -372,8 +372,8 @@ def test_dw_explicit_override():
 def test_has_explicit_width_distinguishes_w_from_dw():
     f = _type2({"DW": COSInteger.get(500), "W": _w_form1(8, [600])})
     # /W carries CID 8 explicitly; CID 9 only has the /DW fallback.
-    assert f.has_explicit_width(8)
-    assert not f.has_explicit_width(9)
+    assert f.has_explicit_width(8, None)
+    assert not f.has_explicit_width(9, None)
 
 
 # ---------- /W2 vertical width forms ----------
@@ -393,17 +393,22 @@ def test_w2_form1_consecutive_triples():
 
 def test_w2_form2_range():
     f = _type2({"W2": _ints(10, 12, -1100, 200, 900)})
-    assert f.get_widths2() == {
-        10: (-1100.0, 200.0, 900.0),
-        11: (-1100.0, 200.0, 900.0),
-        12: (-1100.0, 200.0, 900.0),
-    }
+    # PDFBOX-6175: cid-ranges are stored compactly as
+    # VerticalDisplacementRange records, never expanded into get_widths2().
+    assert f.get_widths2() == {}
+    ranges = f.get_vertical_displacement_ranges()
+    assert len(ranges) == 1
+    for cid in (10, 11, 12):
+        assert ranges[0].range_matches(cid)
+        assert f._get_w2_metrics(cid) == (-1100.0, 200.0, 900.0)
+    assert not ranges[0].range_matches(13)
+    assert f._get_w2_metrics(13) is None
 
 
 def test_w2_vertical_displacement_default_dw2():
     # No /W2 for the CID → fall back to /DW2 displacement-vector-y (-1000).
     f = _type2({})
-    assert f.get_vertical_displacement_vector_y(0x41) == -1000.0
+    assert f.get_vertical_displacement_vector_y(0x41, None) == -1000.0
 
 
 # ---------- Type2 code_to_cid through the parent encoding CMap ----------
@@ -417,16 +422,16 @@ class _StubParent:
         return self._cmap
 
 
-def _type2_with_parent_cmap(cmap: CMap) -> PDCIDFontType2:
-    f = _type2({})
-    f._parent = _StubParent(cmap)  # type: ignore[attr-defined]
-    return f
+def _type2_with_parent_cmap(cmap: CMap) -> tuple[PDCIDFontType2, _StubParent]:
+    # PDFBOX-6175: the descendant holds no parent; the parent is passed
+    # explicitly to each per-glyph call.
+    return _type2({}), _StubParent(cmap)
 
 
 def test_type2_code_to_cid_cid_cmap():
-    f = _type2_with_parent_cmap(_identity_h_cmap())
-    assert f.code_to_cid(0x0041) == 0x41
-    assert f.code_to_cid(0xFFFF) == 0xFFFF
+    f, parent = _type2_with_parent_cmap(_identity_h_cmap())
+    assert f.code_to_cid(0x0041, parent) == 0x41
+    assert f.code_to_cid(0xFFFF, parent) == 0xFFFF
 
 
 def test_type2_code_to_cid_unicode_only_cmap():
@@ -435,14 +440,14 @@ def test_type2_code_to_cid_unicode_only_cmap():
     c = CMap("ucs2-style")
     c.add_codespace_range(b"\x00\x00", b"\xff\xff")
     c.add_base_font_character(b"\x00\x41", "A")
-    f = _type2_with_parent_cmap(c)
-    assert f.code_to_cid(0x41) == ord("A")  # 65
-    assert f.code_to_cid(0xFFFF) == 0       # no unicode, no cid -> 0
+    f, parent = _type2_with_parent_cmap(c)
+    assert f.code_to_cid(0x41, parent) == ord("A")  # 65
+    assert f.code_to_cid(0xFFFF, parent) == 0       # no unicode, no cid -> 0
 
 
 def test_type2_code_to_cid_no_parent_passthrough():
     f = _type2({})
-    assert f.code_to_cid(0x1234) == 0x1234
+    assert f.code_to_cid(0x1234, None) == 0x1234
 
 
 # ---------- encode_glyph_id round-trip ----------

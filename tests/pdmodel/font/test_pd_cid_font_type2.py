@@ -117,7 +117,11 @@ def _make_font_with_stub_ttf(stub: _StubTTF) -> PDCIDFontType2:
 
 def test_get_width_from_font_zero_when_no_program() -> None:
     font = PDCIDFontType2()
-    assert font.get_width_from_font(0) == 0.0
+    # PDFBOX-6175: a bare non-embedded descendant now resolves a
+    # substitute font without a parent; pin "no substitute available"
+    # so this keeps exercising the no-program branch.
+    font._get_substitute_font = lambda: None  # type: ignore[method-assign]
+    assert font.get_width_from_font(0, None) == 0.0
 
 
 def test_get_width_from_font_uses_embedded_hmtx_scaled_to_1000() -> None:
@@ -130,9 +134,9 @@ def test_get_width_from_font_uses_embedded_hmtx_scaled_to_1000() -> None:
     )
     font = _make_font_with_stub_ttf(stub)
     # Identity /CIDToGIDMap → cid == gid. CID 0 → 500, CID 1 → 1000, CID 3 → 2000.
-    assert font.get_width_from_font(0) == pytest.approx(500.0)
-    assert font.get_width_from_font(1) == pytest.approx(1000.0)
-    assert font.get_width_from_font(3) == pytest.approx(2000.0)
+    assert font.get_width_from_font(0, None) == pytest.approx(500.0)
+    assert font.get_width_from_font(1, None) == pytest.approx(1000.0)
+    assert font.get_width_from_font(3, None) == pytest.approx(2000.0)
 
 
 def test_get_width_from_font_zero_for_zero_units_per_em() -> None:
@@ -143,7 +147,7 @@ def test_get_width_from_font_zero_for_zero_units_per_em() -> None:
         glyphs={},
     )
     font = _make_font_with_stub_ttf(stub)
-    assert font.get_width_from_font(0) == 0.0
+    assert font.get_width_from_font(0, None) == 0.0
 
 
 # ---------- get_height (embedded glyf yMax-yMin scaled) ----------
@@ -162,8 +166,8 @@ def test_get_height_uses_embedded_glyf_extent_scaled_to_1000() -> None:
         glyphs=glyphs,
     )
     font = _make_font_with_stub_ttf(stub)
-    assert font.get_height(1) == pytest.approx(500.0)
-    assert font.get_height(2) == pytest.approx(625.0)
+    assert font.get_height(1, None) == pytest.approx(500.0)
+    assert font.get_height(2, None) == pytest.approx(625.0)
 
 
 def test_get_height_zero_for_notdef_when_no_w2() -> None:
@@ -176,7 +180,7 @@ def test_get_height_zero_for_notdef_when_no_w2() -> None:
     )
     font = _make_font_with_stub_ttf(stub)
     # GID 0 -> falls back to /W2 (empty) -> 0.0.
-    assert font.get_height(0) == 0.0
+    assert font.get_height(0, None) == 0.0
 
 
 def test_get_height_falls_back_to_w2_when_no_program() -> None:
@@ -189,9 +193,9 @@ def test_get_height_falls_back_to_w2_when_no_program() -> None:
     arr.add(COSFloat(500))  # v_x
     arr.add(COSFloat(880))  # v_y
     font.set_w2(arr)
-    assert font.get_height(5) == pytest.approx(900.0)
+    assert font.get_height(5, None) == pytest.approx(900.0)
     # Out-of-range -> 0.0 (parent default).
-    assert font.get_height(99) == 0.0
+    assert font.get_height(99, None) == 0.0
 
 
 # ---------- get_average_font_width ----------
@@ -349,6 +353,10 @@ def test_get_bounding_box_falls_back_to_descriptor_when_no_program() -> None:
 
 def test_get_bounding_box_none_when_neither_source() -> None:
     font = PDCIDFontType2()
+    # PDFBOX-6175: a bare non-embedded descendant now resolves a
+    # substitute font without a parent; pin "no substitute available"
+    # so this keeps exercising the no-program branch.
+    font._get_substitute_font = lambda: None  # type: ignore[method-assign]
     assert font.get_bounding_box() is None
 
 
@@ -371,6 +379,10 @@ def test_generate_bounding_box_skips_all_zero_descriptor() -> None:
     # generate_bounding_box is the resolve hook used by the cache —
     # exercise it directly so the all-zero short-circuit is testable.
     font = PDCIDFontType2()
+    # PDFBOX-6175: a bare non-embedded descendant now resolves a
+    # substitute font without a parent; pin "no substitute available"
+    # so this keeps exercising the no-program branch.
+    font._get_substitute_font = lambda: None  # type: ignore[method-assign]
     fd = PDFontDescriptor()
     bbox_arr = COSArray()
     for v in (0, 0, 0, 0):
@@ -522,8 +534,8 @@ def test_has_glyph_true_for_non_zero_gid_when_embedded() -> None:
     )
     font = _make_font_with_stub_ttf(stub)
     # Identity map -> cid 1 -> gid 1 -> True; cid 0 -> gid 0 -> False.
-    assert font.has_glyph(1) is True
-    assert font.has_glyph(0) is False
+    assert font.has_glyph(1, None) is True
+    assert font.has_glyph(0, None) is False
 
 
 # ---------- get_no_mapping (warning-dedup set) ----------

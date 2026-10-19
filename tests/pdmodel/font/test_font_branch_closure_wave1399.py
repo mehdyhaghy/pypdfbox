@@ -1103,7 +1103,8 @@ def test_unicode_from_embedded_cmap_uses_non_embedded_descendant_cid(
         def is_embedded(self) -> bool:
             return False
 
-        def code_to_cid(self, code: int) -> int:
+        def code_to_cid(self, code: int, parent: Any) -> int:
+            assert parent is font
             self.calls.append(f"cid({code})")
             return code
 
@@ -1142,36 +1143,11 @@ def test_get_path_returns_empty_list_when_no_descendant(
     assert font.get_path(0x41) == []
 
 
-def test_get_path_returns_empty_when_descendant_lacks_get_glyph_path(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Descendant present but ``get_glyph_path`` non-callable — line 856."""
-    font = _build_minimal_type0()
-
-    class _NoGlyphPath:
-        get_glyph_path = "not callable"
-
-    monkeypatch.setattr(font, "get_descendant_font", lambda: _NoGlyphPath())
-    assert font.get_path(0x41) == []
-
-
 def test_get_normalized_path_returns_empty_when_no_descendant(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     font = _build_minimal_type0()
     monkeypatch.setattr(font, "get_descendant_font", lambda: None)
-    assert font.get_normalized_path(0x41) == []
-
-
-def test_get_normalized_path_returns_empty_when_descendant_lacks_method(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    font = _build_minimal_type0()
-
-    class _NoNorm:
-        get_normalized_path = None
-
-    monkeypatch.setattr(font, "get_descendant_font", lambda: _NoNorm())
     assert font.get_normalized_path(0x41) == []
 
 
@@ -1183,8 +1159,11 @@ def test_get_normalized_path_delegates_to_descendant(
     expected = [("moveTo", (0.0, 0.0)), ("closePath", ())]
 
     class _Norm:
-        def get_normalized_path(self, cid: int) -> list[tuple[Any, ...]]:
-            assert cid == 0x41
+        def get_normalized_path(
+            self, code: int, parent: Any
+        ) -> list[tuple[Any, ...]]:
+            assert code == 0x41
+            assert parent is font
             return list(expected)
 
     monkeypatch.setattr(font, "get_descendant_font", lambda: _Norm())
@@ -1342,19 +1321,6 @@ def test_has_explicit_width_returns_false_when_no_descendant(
     assert font.has_explicit_width(0x41) is False
 
 
-def test_has_explicit_width_returns_false_when_has_method_missing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Descendant has no callable ``has_explicit_width`` (line 951-952)."""
-    font = _build_minimal_type0()
-
-    class _NoHas:
-        has_explicit_width = 42  # not callable
-
-    monkeypatch.setattr(font, "get_descendant_font", lambda: _NoHas())
-    assert font.has_explicit_width(0x41) is False
-
-
 def test_has_explicit_width_delegates_when_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1362,7 +1328,8 @@ def test_has_explicit_width_delegates_when_available(
     font = _build_minimal_type0()
 
     class _Has:
-        def has_explicit_width(self, code: int) -> bool:
+        def has_explicit_width(self, code: int, parent: Any) -> bool:
+            assert parent is font
             return code == 0x41
 
     monkeypatch.setattr(font, "get_descendant_font", lambda: _Has())
@@ -1468,7 +1435,8 @@ def test_get_path_delegates_to_descendant_callable(
     expected = [("moveTo", (0.0, 0.0)), ("closePath", ())]
 
     class _Good:
-        def get_glyph_path(self, _cid: int) -> list[tuple[Any, ...]]:
+        def get_path(self, _code: int, parent: Any) -> list[tuple[Any, ...]]:
+            assert parent is font
             return list(expected)
 
     monkeypatch.setattr(font, "get_descendant_font", lambda: _Good())

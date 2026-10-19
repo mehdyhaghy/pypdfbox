@@ -1,3 +1,5 @@
+import pytest
+
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSStream
 from pypdfbox.pdmodel.font.pd_cid_font import PDCIDFont
 from pypdfbox.pdmodel.font.pd_cid_font_type0 import PDCIDFontType0
@@ -194,8 +196,8 @@ def test_cid_font_type2_identity_cid_to_gid_map_uses_cid_as_gid() -> None:
     assert font.has_cid_to_gid_map() is False
     assert font.cid_to_gid(0) == 0
     assert font.cid_to_gid(42) == 42
-    assert font.code_to_gid(42) == 42
-    assert font._code_to_gid(42) == 42
+    assert font.code_to_gid(42, None) == 42
+    assert font._code_to_gid(42, None) == 42
 
 
 def test_cid_font_type2_absent_cid_to_gid_map_defaults_to_identity() -> None:
@@ -247,16 +249,14 @@ def test_cid_font_type2_cid_to_gid_cache_can_be_cleared() -> None:
 # ---------- parent Type0 wiring ----------
 
 
-def test_cid_font_parent_passthrough() -> None:
+def test_cid_font_has_no_parent_reference() -> None:
+    """PDFBOX-6175 (trunk): the descendant holds no parent Type 0 font."""
     from pypdfbox.pdmodel.font.pd_type0_font import PDType0Font
 
-    parent = PDType0Font()
-    cid = PDCIDFontType2(parent_type0_font=parent)
-    assert cid.get_parent() is parent
-
-
-def test_cid_font_no_parent_default() -> None:
-    assert PDCIDFontType0().get_parent() is None
+    with pytest.raises(TypeError):
+        PDCIDFontType2(None, PDType0Font())
+    assert not hasattr(PDCIDFontType0(), "get_parent")
+    assert not hasattr(PDCIDFontType2(), "get_parent")
 
 
 def test_type0_descendant_type2_preserves_cid_to_gid_lookup() -> None:
@@ -273,7 +273,7 @@ def test_type0_descendant_type2_preserves_cid_to_gid_lookup() -> None:
     parent = PDType0Font(parent_dict)
     cid = parent.get_descendant_font()
     assert isinstance(cid, PDCIDFontType2)
-    assert cid.get_parent() is parent
+    assert parent.get_descendant_font() is cid
     assert cid.cid_to_gid(1) == 13
 
 
@@ -281,8 +281,11 @@ def test_type0_descendant_type2_preserves_cid_to_gid_lookup() -> None:
 
 
 def test_cid_font_inheritance_chain() -> None:
+    # PDFBOX-6175 (trunk): PDCIDFont implements only COSObjectable
+    from pypdfbox.pdmodel.common.cos_objectable import COSObjectable
     from pypdfbox.pdmodel.font.pd_font import PDFont
 
-    assert issubclass(PDCIDFont, PDFont)
+    assert not issubclass(PDCIDFont, PDFont)
+    assert isinstance(PDCIDFontType2(), COSObjectable)
     assert issubclass(PDCIDFontType0, PDCIDFont)
     assert issubclass(PDCIDFontType2, PDCIDFont)

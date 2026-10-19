@@ -11,6 +11,7 @@ from pypdfbox.pdmodel.font.pd_cid_font_type0 import PDCIDFontType0
 from pypdfbox.pdmodel.font.pd_cid_font_type2 import PDCIDFontType2
 from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
 from pypdfbox.pdmodel.font.pd_type0_font import PDType0Font
+from pypdfbox.pdmodel.pd_resource_cache import DefaultResourceCache
 
 _TYPE = COSName.TYPE  # type: ignore[attr-defined]
 _SUBTYPE = COSName.SUBTYPE  # type: ignore[attr-defined]
@@ -43,19 +44,30 @@ def test_create_descendant_font_returns_cid_type2_for_cid_font_type2_subtype() -
     assert font.get_cos_object() is d
 
 
-def test_create_descendant_font_forwards_parent_to_subclass() -> None:
-    parent = PDType0Font()
+def test_create_descendant_font_forwards_resource_cache_to_subclass() -> None:
+    """PDFBOX-6175: the second argument is the resource cache (it was the
+    parent Type 0 font); the descendant holds no parent reference."""
+    cache = DefaultResourceCache()
     d = _descendant_dict("CIDFontType2")
-    font = PDFontFactory.create_descendant_font(d, parent)
+    font = PDFontFactory.create_descendant_font(d, cache)
     assert isinstance(font, PDCIDFontType2)
-    assert font.get_parent() is parent
+    assert font._resource_cache is cache
+    assert not hasattr(font, "get_parent")
 
 
-def test_create_descendant_font_parent_defaults_to_none() -> None:
+def test_create_descendant_font_resource_cache_defaults_to_none() -> None:
     d = _descendant_dict("CIDFontType0")
     font = PDFontFactory.create_descendant_font(d)
     assert isinstance(font, PDCIDFontType0)
-    assert font.get_parent() is None
+    assert font._resource_cache is None
+    assert not hasattr(font, "get_parent")
+
+
+def test_create_descendant_font_rejects_parent_type0_font() -> None:
+    """Passing the parent Type 0 font in the old position is an error."""
+    d = _descendant_dict("CIDFontType2")
+    with pytest.raises(TypeError):
+        PDFontFactory.create_descendant_font(d, PDType0Font())  # type: ignore[arg-type]
 
 
 # ---------- error / edge cases ----------
@@ -114,7 +126,7 @@ def test_create_descendant_font_returns_same_subclass_as_type0_resolution() -> N
     arr.add(d)
     parent_dict.set_item(COSName.get_pdf_name("DescendantFonts"), arr)
 
-    via_factory = PDFontFactory.create_descendant_font(d, parent)
+    via_factory = PDFontFactory.create_descendant_font(d)
     via_parent = parent.get_descendant_font()
 
     assert type(via_factory) is type(via_parent)

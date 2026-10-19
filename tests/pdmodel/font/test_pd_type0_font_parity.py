@@ -110,8 +110,8 @@ def test_get_descendant_font_round_trip_for_cid_font_type2() -> None:
     wrapper = font.get_descendant_font()
     assert isinstance(wrapper, PDCIDFontType2)
     assert wrapper.get_cos_object() is desc
-    # Parent linkage preserved.
-    assert wrapper.get_parent() is font
+    # PDFBOX-6175: the descendant holds no parent reference any more.
+    assert not hasattr(wrapper, "get_parent")
 
 
 def test_get_descendant_font_round_trip_for_cid_font_type0() -> None:

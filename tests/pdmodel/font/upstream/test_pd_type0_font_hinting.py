@@ -88,6 +88,6 @@ def test_non_embedded_font_does_not_hint() -> None:
     """Only an embedded outline carries bytecode we can execute."""
     font = _non_embedded()
     assert not font.get_descendant_font().is_embedded(), "font should not be embedded"
-    gid = font.get_descendant_font().code_to_gid(ord("H"))
+    gid = font.get_descendant_font().code_to_gid(ord("H"), font)
     assert font.get_normalized_path(gid), "expected the substitute font to produce an outline"
     assert font.get_hinted_normalized_path(gid, 16) is None

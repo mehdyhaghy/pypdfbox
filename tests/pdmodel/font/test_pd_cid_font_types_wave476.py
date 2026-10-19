@@ -94,10 +94,10 @@ def test_type0_cid_keyed_program_maps_cids_through_charset() -> None:
     font = PDCIDFontType0()
     font.set_cff_font(_SyntheticCIDCFF())
 
-    assert font.code_to_gid(7) == 1
-    assert font.code_to_gid(9) == 2
-    assert font.code_to_gid(8) == 0
-    assert font.get_width_from_font(9) == 900.0
+    assert font.code_to_gid(7, None) == 1
+    assert font.code_to_gid(9, None) == 2
+    assert font.code_to_gid(8, None) == 0
+    assert font.get_width_from_font(9, None) == 900.0
     assert font.get_type2_char_string(9) == ("gid", 2)
     assert font.get_type2_char_string(8) == ("gid", 0)
 
@@ -150,8 +150,8 @@ def test_type2_embedded_notdef_path_is_drawn_and_scaled() -> None:
     font.get_true_type_font = lambda: _TTF()  # type: ignore[method-assign]
     font.set_font_descriptor(_descriptor_with_file3(b"ignored", "OpenType"))
 
-    assert font.get_width_from_font(0) == 250.0
-    assert font.get_normalized_path(0) == [
+    assert font.get_width_from_font(0, None) == 250.0
+    assert font.get_normalized_path(0, None) == [
         ("moveto", 5.0, 10.0),
         ("lineto", 15.0, 20.0),
         ("closepath",),

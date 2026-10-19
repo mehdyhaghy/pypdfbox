@@ -64,14 +64,14 @@ def test_wave599_width_from_font_returns_zero_when_advance_lookup_fails() -> Non
     font = PDCIDFontType2()
     font.get_true_type_font = lambda: _BrokenAdvanceTTF()  # type: ignore[method-assign]
 
-    assert font.get_width_from_font(7) == 0.0
+    assert font.get_width_from_font(7, None) == 0.0
 
 
 def test_wave599_normalized_path_scales_coordinates_and_preserves_closepath() -> None:
     font = PDCIDFontType2()
     font.get_true_type_font = lambda: _PathTTF()  # type: ignore[method-assign]
 
-    assert font.get_normalized_path(1) == [
+    assert font.get_normalized_path(1, None) == [
         ("moveto", pytest.approx(5.0), pytest.approx(10.0)),
         ("lineto", pytest.approx(15.0), pytest.approx(20.0)),
         ("closepath",),

@@ -86,14 +86,14 @@ def test_identity_name_after_stream_restores_identity_mapping() -> None:
 def test_get_height_returns_zero_when_embedded_font_has_no_glyf_table() -> None:
     font = _font_with_stub_ttf(_StubTTF(_NoGlyphTableInner()))
 
-    assert font.get_height(1) == 0.0
+    assert font.get_height(1, None) == 0.0
 
 
 def test_get_height_returns_zero_when_gid_is_outside_glyph_order() -> None:
     font = _font_with_stub_ttf(_StubTTF(_SparseGlyphInner()))
     font.set_cid_to_gid_map(_stream(b"\x00\x02"))
 
-    assert font.get_height(0) == 0.0
+    assert font.get_height(0, None) == 0.0
 
 
 def test_get_width_from_font_swallows_metric_lookup_errors() -> None:
@@ -103,7 +103,7 @@ def test_get_width_from_font_swallows_metric_lookup_errors() -> None:
 
     font = _font_with_stub_ttf(BrokenMetricsTTF(_NoGlyphTableInner()))
 
-    assert font.get_width_from_font(1) == 0.0
+    assert font.get_width_from_font(1, None) == 0.0
 
 
 def test_get_average_font_width_falls_back_when_advances_unreadable() -> None:

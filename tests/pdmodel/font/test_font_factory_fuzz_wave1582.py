@@ -42,6 +42,7 @@ from pypdfbox.pdmodel.font.pd_type0_font import PDType0Font
 from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
 from pypdfbox.pdmodel.font.pd_type1c_font import PDType1CFont
 from pypdfbox.pdmodel.font.pd_type3_font import PDType3Font
+from pypdfbox.pdmodel.pd_resource_cache import DefaultResourceCache
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _SUBTYPE: COSName = COSName.SUBTYPE  # type: ignore[attr-defined]
@@ -345,10 +346,18 @@ def test_create_descendant_font_dispatch(subtype: str, expected: type) -> None:
     assert isinstance(out, PDCIDFont)
 
 
-def test_create_descendant_font_forwards_parent() -> None:
-    parent = PDType0Font()
-    out = PDFontFactory.create_descendant_font(_descendant_dict("CIDFontType2"), parent)
-    assert out.get_parent() is parent
+def test_create_descendant_font_forwards_resource_cache() -> None:
+    # PDFBOX-6175: the second argument is the resource cache (was the
+    # parent Type 0 font); the descendant holds no parent reference
+    cache = DefaultResourceCache()
+    out = PDFontFactory.create_descendant_font(_descendant_dict("CIDFontType2"), cache)
+    assert out._resource_cache is cache
+    assert not hasattr(out, "get_parent")
+    with pytest.raises(TypeError):
+        PDFontFactory.create_descendant_font(
+            _descendant_dict("CIDFontType2"),
+            PDType0Font(),  # type: ignore[arg-type]
+        )
 
 
 def test_create_descendant_font_none_returns_none() -> None:
