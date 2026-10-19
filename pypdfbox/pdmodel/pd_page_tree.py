@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import (
     COSArray,
@@ -172,7 +172,7 @@ class PDPageTree:
         """
         if not _is_page_tree_node(node):
             if node.get_dictionary_object(_TYPE) == _PAGE:
-                yield PDPage(node)
+                yield PDPage(node, self._resource_cache())
             return
 
         for kid in self.get_kids(node):
@@ -227,7 +227,14 @@ class PDPageTree:
             index += sum(1 for _ in self)
         dict_ = self._get_cos(index + 1, self._root, 0, self._page_set)
         self._sanitize_type(dict_)
-        return PDPage(dict_)
+        return PDPage(dict_, self._resource_cache())
+
+    def _resource_cache(self) -> Any:
+        """The owning document's resource cache, or ``None`` without a
+        document. Upstream builds every page with
+        ``new PDPage(dict, document.getResourceCache())``."""
+        document = self._document
+        return document.get_resource_cache() if document is not None else None
 
     def _get_cos(
         self,
