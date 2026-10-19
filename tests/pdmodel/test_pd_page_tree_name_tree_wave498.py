@@ -3,7 +3,7 @@ import logging
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString
-from pypdfbox.pdmodel import PDPage, PDPageTree
+from pypdfbox.pdmodel import PDDocument, PDPage, PDPageTree
 from pypdfbox.pdmodel.common.pd_string_name_tree_node import PDStringNameTreeNode
 
 _KIDS = COSName.KIDS  # type: ignore[attr-defined]
@@ -39,8 +39,8 @@ def _raw_name_leaf(name: str, value: str) -> COSDictionary:
 
 
 def test_page_tree_get_document_and_iterator_aliases() -> None:
-    document = object()
-    tree = PDPageTree(document=document)  # type: ignore[arg-type]
+    document = PDDocument()
+    tree = PDPageTree(document=document)
     tree.add(_page("first"))
     tree.add(_page("second"))
 

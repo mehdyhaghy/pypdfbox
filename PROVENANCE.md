@@ -4816,3 +4816,4 @@ License: SIL Open Font License 1.1 (permissive; on the project allow-list)
 | `tests/fontbox/ttf/upstream/test_hinting_smoke.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/HintingSmokeTest.java` (9 of 11 fonts skipped: SIL OFL or Maven-downloaded) |
 | `tests/fontbox/ttf/upstream/test_hinting_concurrency.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/HintingConcurrencyTest.java` |
 | `tests/fontbox/ttf/upstream/test_system_font_hinting.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/SystemFontHintingTest.java` (skips without Arial) |
+| `tests/pdmodel/test_pd_page_tree_resource_cache_wave1613.py` | 3.0.8 | hand-written; page resource-cache threading in `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDPageTree.java` |
