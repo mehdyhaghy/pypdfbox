@@ -209,7 +209,7 @@ def test_wave1349_to_rgb_image_returns_black_image_when_palette_empty() -> None:
     assert img.size == (2, 2)
     assert img.mode == "RGB"
     # Every pixel reads back as (0, 0, 0).
-    assert set(img.getdata()) == {(0, 0, 0)}
+    assert set(img.get_flattened_data()) == {(0, 0, 0)}
 
 
 # ---------- to_rgb_image: oversized raster truncation (line 403) ----------
@@ -228,7 +228,7 @@ def test_wave1349_to_rgb_image_truncates_oversized_raster() -> None:
     img = cs.to_rgb_image(b"\x00\x01\xff\xfe", 2, 1)
 
     assert img.size == (2, 1)
-    assert list(img.getdata()) == [(255, 0, 0), (0, 0, 255)]
+    assert list(img.get_flattened_data()) == [(255, 0, 0), (0, 0, 255)]
 
 
 def test_wave1349_to_rgb_image_clamps_oversized_indices_against_actual_max() -> None:
@@ -248,4 +248,4 @@ def test_wave1349_to_rgb_image_clamps_oversized_indices_against_actual_max() -> 
 
     # Pixel 0 → red, pixel 1 → green, pixel 2 (255 out of range) →
     # clamped to last slot (green).
-    assert list(img.getdata()) == [(255, 0, 0), (0, 255, 0), (0, 255, 0)]
+    assert list(img.get_flattened_data()) == [(255, 0, 0), (0, 255, 0), (0, 255, 0)]

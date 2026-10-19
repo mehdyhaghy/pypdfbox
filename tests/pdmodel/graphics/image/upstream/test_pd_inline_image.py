@@ -163,7 +163,7 @@ def test_inline_image_get_image_decodes_stencil_bilevel() -> None:
     assert out.size == (8, 1)
     # /CS defaults to gray for a stencil; all-1 bits with default decode
     # map to white (255) — matching PDFBox's stencil getImage() output.
-    assert list(out.convert("L").getdata()) == [255] * 8
+    assert list(out.convert("L").get_flattened_data()) == [255] * 8
 
 
 def test_inline_image_get_raw_image_decodes_stencil_bilevel() -> None:
