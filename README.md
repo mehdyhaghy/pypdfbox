@@ -85,6 +85,8 @@ Also: `listbookmarks`, `pdfdebugger` (interactive structure viewer),
 - [Guides](https://github.com/mehdyhaghy/pypdfbox/blob/main/docs/guides/)
   — text extraction, merging, rendering, forms, encryption, signing,
   tagged PDF, embedded files
+- [Versioning](https://github.com/mehdyhaghy/pypdfbox/blob/main/docs/versioning.md)
+  — Semantic Versioning policy and how pypdfbox versions map to PDFBox
 - [Install notes](https://github.com/mehdyhaghy/pypdfbox/blob/main/docs/install.md)
   · [Changes](https://github.com/mehdyhaghy/pypdfbox/blob/main/CHANGES.md)
   · [Examples](https://github.com/mehdyhaghy/pypdfbox/tree/main/pypdfbox/examples/)

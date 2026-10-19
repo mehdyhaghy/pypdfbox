@@ -77,6 +77,8 @@ operations, and a Python quick start.
 - [API reference](api/index.md) — module-by-module surface,
   generated from in-source docstrings. Useful to confirm the
   snake_case spelling of a specific upstream method.
+- [Versioning](versioning.md) — Semantic Versioning policy and how
+  pypdfbox versions map to Apache PDFBox versions.
 - [Changelog index](changelog.md) — release notes and the log of
   deliberate behavioral deviations from upstream
   ([`CHANGES.md`](../CHANGES.md)).
