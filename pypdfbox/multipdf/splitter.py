@@ -32,6 +32,7 @@ _V: COSName = COSName.get_pdf_name("V")
 _ACROFORM: COSName = COSName.get_pdf_name("AcroForm")
 _SIG_FLAGS: COSName = COSName.get_pdf_name("SigFlags")
 _FIELDS: COSName = COSName.get_pdf_name("Fields")
+_DESTS: COSName = COSName.get_pdf_name("Dests")
 
 # struct-tree clone helpers
 _K: COSName = COSName.get_pdf_name("K")
@@ -125,6 +126,9 @@ class Splitter:
         self._destination_documents: list[PDDocument] = []
         self._page_dict_map: dict[int, COSDictionary] = {}
         self._page_dict_maps: list[dict[int, COSDictionary]] = []
+        # pageToDocNumMap mirror (PDFBOX-6283): {id(source page dict):
+        # index of the destination document that received the page}.
+        self._page_to_doc_num_map: dict[int, int] = {}
         self._annot_dict_map: dict[int, COSDictionary] = {}
         self._annot_dict_maps: list[dict[int, COSDictionary]] = []
         # struct-tree clone state, reset per chunk
@@ -374,6 +378,7 @@ class Splitter:
         self._destination_documents = []
         self._source_document = document
         self._page_dict_maps = []
+        self._page_to_doc_num_map = {}
         self._annot_dict_maps = []
         self._dest_to_fix_per_chunk = []
         self._dest_to_link_map_per_chunk = []
@@ -436,10 +441,190 @@ class Splitter:
                     "may persist in chunk catalog",
                     index,
                 )
+        # PDFBOX-6283: carry the named destinations (/Names /Dests name tree
+        # and legacy /Root/Dests) over to the chunks that own their pages.
+        try:
+            self.fix_name_destinations()
+        except Exception:
+            _LOG.exception(
+                "named destinations fix-up failed; chunks will ship "
+                "without /Names /Dests"
+            )
+        try:
+            self.fix_name_destinations2()
+        except Exception:
+            _LOG.exception(
+                "named destinations fix-up failed; chunks will ship "
+                "without /Root/Dests"
+            )
         # Release the shared source-/ParentTree flatten (can be large) once
         # every chunk has been cloned.
         self._src_number_tree_map = None
         return self._destination_documents
+
+    # ---------- named destinations (PDFBOX-6283) ----------
+
+    def fix_name_destinations(self) -> None:
+        """PDFBOX-6283: fix the destinations in ``/Root/Names/Dests`` by
+        creating clones only for the destinations that are in the
+        destination documents.
+
+        Mirrors upstream ``Splitter.fixNameDestinations``. Each entry of the
+        source name tree whose target page went into a chunk is cloned (shallow
+        array copy), retargeted at that chunk's imported page, and written to
+        a fresh ``/Names /Dests`` name tree on that chunk. Entries pointing to
+        pages outside the split, and broken entries, are dropped.
+        """
+        from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
+            PDDestination,
+        )
+        from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination_name_tree_node import (  # noqa: E501
+            PDDestinationNameTreeNode,
+        )
+        from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: E501
+            PDPageDestination,
+        )
+        from pypdfbox.pdmodel.pd_document_name_dictionary import (
+            PDDocumentNameDictionary,
+        )
+
+        src_names = self.get_source_document().get_document_catalog().get_names()
+        if src_names is None:
+            return
+        src_dests = src_names.get_dests()
+        if src_dests is None:
+            return
+
+        dst_tree_as_map_list: list[dict[str, PDPageDestination]] = [
+            {} for _ in self._destination_documents
+        ]
+
+        # map all named destinations to the pages in the new documents
+        src_tree_as_map = src_dests.get_tree_as_map()
+        for key, value in src_tree_as_map.items():
+            if value is None:
+                # happens with file 000671.pdf, entry "Raff1"
+                continue
+            page_in_tree_dest = value.get_page()
+            # find out in which destination document this should be added
+            doc_index = (
+                None
+                if page_in_tree_dest is None
+                else self._page_to_doc_num_map.get(id(page_in_tree_dest))
+            )
+            if doc_index is None:
+                # wasn't part of the split
+                continue
+            # get appropriate mapping
+            self._page_dict_map = self._page_dict_maps[doc_index]
+            dst_page_dict = self._page_dict_map.get(id(page_in_tree_dest))
+
+            # clone destination
+            src_array = value.get_cos_object()
+            cloned_destination_array = COSArray(
+                [src_array.get(i) for i in range(src_array.size())]
+            )
+            dst_destination = PDDestination.create(cloned_destination_array)
+            dst_destination.set_page(dst_page_dict)
+
+            # add to the tree map of the appropriate destination document
+            dst_tree_as_map_list[doc_index][key] = dst_destination
+
+        # Assign all non empty tree maps to the new documents
+        for i, dst_tree_as_map in enumerate(dst_tree_as_map_list):
+            if not dst_tree_as_map:
+                continue
+            destination_document = self._destination_documents[i]
+            dst_document_catalog = destination_document.get_document_catalog()
+            dst_document_name_dictionary = PDDocumentNameDictionary(
+                dst_document_catalog
+            )
+            dst_dests = PDDestinationNameTreeNode()
+            dst_document_name_dictionary.set_dests(dst_dests)
+            dst_document_catalog.set_names(dst_document_name_dictionary)
+            dst_dests.set_names(dst_tree_as_map)
+
+    def fix_name_destinations2(self) -> None:
+        """PDFBOX-6283: fix the destinations in ``/Root/Dests`` by creating
+        clones only for the destinations that are in the destination
+        documents.
+
+        Mirrors upstream ``Splitter.fixNameDestinations2``. Page
+        destinations are cloned and retargeted at the chunk that received
+        their page (dropped when the page is outside the split); any other
+        resolvable destination doesn't reference a specific page and is
+        added to every chunk.
+        """
+        from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
+            PDDestination,
+        )
+        from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: E501
+            PDPageDestination,
+        )
+        from pypdfbox.pdmodel.pd_document_name_destination_dictionary import (
+            PDDocumentNameDestinationDictionary,
+        )
+
+        name_destination_dictionary = (
+            self.get_source_document().get_document_catalog().get_dests()
+        )
+        if (
+            name_destination_dictionary is None
+            or name_destination_dictionary.get_cos_object().size() == 0
+        ):
+            return
+
+        dst_dests: list[COSDictionary] = [
+            COSDictionary() for _ in self._destination_documents
+        ]
+
+        # map all named destinations to the pages in the new documents
+        for key in list(name_destination_dictionary.get_cos_object().key_set()):
+            dest = name_destination_dictionary.get_destination(key.get_name())
+            if isinstance(dest, PDPageDestination):
+                page_in_tree_dest = dest.get_page()
+                # find out in which destination document this should be added
+                doc_index = (
+                    None
+                    if page_in_tree_dest is None
+                    else self._page_to_doc_num_map.get(id(page_in_tree_dest))
+                )
+                if doc_index is None:
+                    # wasn't part of the split
+                    continue
+                # get appropriate mapping
+                self._page_dict_map = self._page_dict_maps[doc_index]
+                dst_page_dict = self._page_dict_map.get(id(page_in_tree_dest))
+
+                # clone destination
+                src_array = dest.get_cos_object()
+                cloned_destination_array = COSArray(
+                    [src_array.get(i) for i in range(src_array.size())]
+                )
+                dst_destination = PDDestination.create(cloned_destination_array)
+                dst_destination.set_page(dst_page_dict)
+
+                # add to the dictionary of the appropriate destination document
+                dst_dests[doc_index].set_item(
+                    key, dst_destination.get_cos_object()
+                )
+            elif dest is not None:
+                # add it everywhere, it doesn't reference a specific page
+                for dst_dict in dst_dests:
+                    dst_dict.set_item(key, dest.get_cos_object())
+
+        # Assign all non empty dictionaries to the new documents
+        for i, dst_dict in enumerate(dst_dests):
+            if dst_dict.size() == 0:
+                continue
+            destination_document = self._destination_documents[i]
+            dst_document_catalog = destination_document.get_document_catalog()
+            # catalog.setDests() doesn't exist upstream, maybe because it
+            # feels obsolete
+            dst_document_catalog.get_cos_object().set_item(
+                _DESTS,
+                PDDocumentNameDestinationDictionary(dst_dict).get_cos_object(),
+            )
 
     # ---------- pagination loop ----------
 
@@ -612,6 +797,9 @@ class Splitter:
             )
 
         self._page_dict_map[id(page.get_cos_object())] = imported.get_cos_object()
+        self._page_to_doc_num_map[id(page.get_cos_object())] = (
+            len(self._destination_documents) - 1
+        )
 
     def get_source_document(self) -> PDDocument:
         assert self._source_document is not None
@@ -1208,12 +1396,15 @@ class Splitter:
         remember it for the :meth:`fix_destinations` post-pass.
 
         Mirrors upstream's ``destToFixMap`` book-keeping. Named
-        destinations are resolved up front via the source catalog's
-        ``find_named_destination_page`` (mirrors upstream's
-        ``findNamedDestinationPage`` — ``/Names /Dests`` name-tree first,
-        then legacy catalog ``/Dests`` flat dictionary) so the cloned
-        destination is a concrete :class:`PDPageDestination` rather than
-        a name that won't resolve in the chunk's name tree.
+        destinations are kept as-is (PDFBOX-6283: the chunk's named
+        destinations are rebuilt by :meth:`fix_name_destinations` /
+        :meth:`fix_name_destinations2`), except when the name contains a
+        NUL character (a "broken string", e.g. 0xAD decoded to 0 in
+        PDFBOX-5840-410609.pdf): those are resolved via the source catalog's
+        ``find_named_destination_page`` (``/Names /Dests`` name tree first,
+        then legacy catalog ``/Dests``) into a concrete
+        :class:`PDPageDestination`, because the name would no longer match
+        the entry in the chunk's name tree.
 
         ``source_link_dict`` is the *un-deep-copied* link annot dict from
         the source document. When supplied, the destination's target page
@@ -1279,31 +1470,35 @@ class Splitter:
                     link.set_action(None)
                     src_destination = None
 
-        # Resolve a named destination through the source catalog's
-        # /Names /Dests name-tree (then legacy /Dests) so it becomes a
-        # PDPageDestination. Upstream comment (Splitter.java ~876):
-        # "we do not use the named destination anymore because names get
-        # modified, e.g. 0xAD becomes 0, see file 410609.pdf where the
-        # name no longer matches with the entry in the new name tree".
+        # PDFBOX-5840 / PDFBOX-6283: keep the named destination (the chunk's
+        # /Names /Dests and /Root/Dests are rebuilt by
+        # ``fix_name_destinations`` / ``fix_name_destinations2``). In a few
+        # cases, e.g. in PDFBOX-5840-410609.pdf, 0xAD becomes 0 so the name
+        # would no longer match the entry in the new name tree, so we replace
+        # the name with the actual destination.
         #
         # PDActionGoTo.get_destination() / PDAnnotationLink.get_destination()
         # return a ``PDNamedDestination`` for a name/string ``/D`` (upstream
-        # parity — see wave 1491). Resolve it through the catalog's
-        # /Names /Dests name tree so it becomes a concrete PDPageDestination.
-        # (A bare ``str`` is tolerated defensively for any caller still
-        # handing one in.)
+        # parity — see wave 1491). (A bare ``str`` is tolerated defensively
+        # for any caller still handing one in.)
         if isinstance(src_destination, str):
             src_destination = PDNamedDestination(src_destination)
         if isinstance(src_destination, PDNamedDestination):
-            try:
-                src_catalog = self.get_source_document().get_document_catalog()
-                resolved = src_catalog.find_named_destination_page(src_destination)
-            except Exception:
-                resolved = None
-            src_destination = resolved
+            named_destination_string = src_destination.get_named_destination()
+            if (
+                named_destination_string is not None
+                and "\x00" in named_destination_string
+            ):
+                try:
+                    src_catalog = self.get_source_document().get_document_catalog()
+                    src_destination = src_catalog.find_named_destination_page(
+                        src_destination
+                    )
+                except Exception:
+                    src_destination = None
 
-        # Skip non-page destinations (anything we couldn't resolve to a
-        # concrete PDPageDestination — including unresolved named refs).
+        # Skip non-page destinations — including kept named destinations,
+        # which the cloned link already carries verbatim.
         if not isinstance(src_destination, PDPageDestination):
             return
 

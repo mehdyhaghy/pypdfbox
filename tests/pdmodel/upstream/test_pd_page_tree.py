@@ -5,6 +5,8 @@ Upstream baseline: PDFBox 3.0.
 
 from pathlib import Path
 
+import pytest
+
 from pypdfbox import PDDocument, PDPage
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel import PDPageTree
@@ -113,3 +115,15 @@ def test_node_loop() -> None:
     # get_resources() returns None per upstream PDPage.getResources()'s
     # strict-null contract (was an empty-bag wrapper pre-1491).
     assert page.get_resources() is None
+
+
+def test_get_valid_page_after_out_of_bounds_lookup() -> None:
+    """``getValidPageAfterOutOfBoundsLookup`` / PDFBOX-6286."""
+    with PDDocument() as document:
+        page = PDPage()
+        document.add_page(page)
+        pages = document.get_pages()
+
+        with pytest.raises(IndexError):
+            pages.get(1)
+        assert pages.get(0).get_cos_object() is page.get_cos_object()

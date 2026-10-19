@@ -445,12 +445,12 @@ class PDDocument:
         fresh recursion-guard ``pageSet``) on every call, so each
         ``getPage`` lookup starts from an empty set. pypdfbox caches the
         page-tree wrapper in :attr:`_pages` for iteration / mutation reuse,
-        but that cache also persists the tree's ``_page_set``, which
-        ``PDPageTree.__getitem__`` never clears on the out-of-bounds path.
-        Reusing the cached tree here therefore leaked node identities
-        between successive ``get_page`` calls — a second out-of-range lookup
-        spuriously tripped the recursion guard (``RuntimeError``) where
-        upstream raises ``IndexError``. Routing through the catalog's fresh
+        but that cache also persists the tree's ``_page_set``. Before the
+        PDFBOX-6286 forward-port the out-of-bounds path did not clear it, so
+        reusing the cached tree leaked node identities between successive
+        ``get_page`` calls — a second out-of-range lookup spuriously tripped
+        the recursion guard (``RuntimeError``) where upstream raises
+        ``IndexError``. Routing through the catalog's fresh
         tree restores upstream-faithful per-lookup isolation while leaving
         the cached wrapper (and its within-a-single-lookup recursion
         semantics) untouched for every other caller."""

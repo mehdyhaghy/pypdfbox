@@ -162,9 +162,9 @@ def test_encode_codepoint_raises_when_name_not_in_inverted_code_map(
         def get_encoding_name(self) -> str:
             return real_encoding.get_encoding_name()
 
-        def get_name_to_code_map(self) -> dict[str, int]:
+        def get_code(self, name: str) -> int | None:
             # Strip the entry the round-trip would otherwise resolve.
-            return {}
+            return None
 
     monkeypatch.setattr(font, "get_encoding_typed", lambda: _MaskedEncoding())
     with pytest.raises(ValueError, match="not available"):

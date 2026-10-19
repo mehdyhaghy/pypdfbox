@@ -634,6 +634,24 @@ def test_pdf_box_5198_3(tmp_path) -> None:
 # --------------------------------------------------------------------------
 
 
+def test_illegal_splitting() -> None:
+    # IllegalArgumentException -> ValueError
+    splitter = Splitter()
+    with pytest.raises(ValueError) as ex:
+        splitter.set_split_at_page(0)
+    assert str(ex.value) == "Number of pages is smaller than one"
+    with pytest.raises(ValueError) as ex:
+        splitter.set_start_page(0)
+    assert str(ex.value) == "Start page is smaller than one"
+    with pytest.raises(ValueError) as ex:
+        splitter.set_end_page(0)
+    assert str(ex.value) == "End page is smaller than one"
+    splitter.set_start_page(2)
+    with pytest.raises(ValueError) as ex:
+        splitter.set_end_page(1)
+    assert str(ex.value) == "End page is smaller than startPage"
+
+
 def test_split_with_structure_tree() -> None:
     with PDDocument.load(str(_FIXTURE_DIR / "PDFBOX-4417-001031.pdf")) as doc:
         splitter = Splitter()
@@ -1216,3 +1234,156 @@ def test_page_labels() -> None:
 
         labels = doc2.get_document_catalog().get_page_labels().get_labels_by_page_indices()
         assert labels == ["1", "2", "3", "RO III", "RO IV", "1"]
+
+
+def _three_page_fit_dests(document: PDDocument) -> list:
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_fit_destination import (  # noqa: E501
+        PDPageFitDestination,
+    )
+
+    dests = []
+    for i in range(3):
+        dest = PDPageFitDestination()
+        dest.set_page(document.get_page(i))
+        dests.append(dest)
+    return dests
+
+
+def test_split_copies_named_destinations() -> None:
+    """PDFBOX-6283: Verifies that named destinations (/Names /Dests) pointing
+    to a page are copied to the split document that contains that page,
+    remapped to the imported page, and that destinations pointing to other
+    pages are not carried over."""
+    from pypdfbox.pdmodel.common import PDRectangle
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination_name_tree_node import (  # noqa: E501
+        PDDestinationNameTreeNode,
+    )
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (
+        PDNamedDestination,
+    )
+    from pypdfbox.pdmodel.pd_document_name_dictionary import (
+        PDDocumentNameDictionary,
+    )
+
+    document = PDDocument()
+    for i in range(3):
+        page = PDPage()
+        document.add_page(page)
+        ann_link = PDAnnotationLink()
+        ann_link.set_destination(PDNamedDestination(f"dest{i}"))
+        ann_link.set_rectangle(PDRectangle(10, 600, 100, 100))
+        page.set_annotations([ann_link])
+
+    dest0, dest1, dest2 = _three_page_fit_dests(document)
+    dest_names = {"dest0": dest0, "dest1": dest1, "dest2": dest2}
+
+    names = PDDocumentNameDictionary(document.get_document_catalog())
+    dests = PDDestinationNameTreeNode()
+    dests.set_names(dest_names)
+    names.set_dests(dests)
+    document.get_document_catalog().set_names(names)
+
+    split = Splitter().split(document)
+    try:
+        _check_split_copies_named_destinations(split)
+    finally:
+        for split_document in split:
+            split_document.close()
+        document.close()
+
+
+def _check_split_copies_named_destinations(split: list) -> None:
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (
+        PDNamedDestination,
+    )
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_fit_destination import (  # noqa: E501
+        PDPageFitDestination,
+    )
+
+    assert len(split) == 3
+
+    for i, split_document in enumerate(split):
+        split_names = split_document.get_document_catalog().get_names()
+        assert split_names is not None, (
+            f"split document {i} should have a name dictionary"
+        )
+        assert split_names.get_dests() is not None, (
+            f"split document {i} should have a dests node"
+        )
+
+        copied_names = split_names.get_dests().get_names()
+        assert copied_names is not None
+        # only the destination pointing to this page should be present
+        assert len(copied_names) == 1
+
+        expected_name = f"dest{i}"
+        copied = copied_names.get(expected_name)
+        assert isinstance(copied, PDPageFitDestination)
+        # the destination must point to the imported page of the split document
+        # (pypdfbox's get_page() returns the page COSDictionary directly)
+        imported_page = copied.get_page()
+        assert split_document.get_page(0).get_cos_object() is imported_page
+        ann_link = PDPage(imported_page).get_annotations()[0]
+        assert isinstance(ann_link, PDAnnotationLink)
+        named_destination = ann_link.get_destination()
+        assert isinstance(named_destination, PDNamedDestination)
+        assert named_destination.get_named_destination() == expected_name
+
+
+def test_split_copies_named_destinations2() -> None:
+    """PDFBOX-6283: Verifies that named destinations in Root/Dests pointing
+    to a page are copied to the split document that contains that page,
+    remapped to the imported page, and that destinations pointing to other
+    pages are not carried over."""
+    from pypdfbox.cos import COSDictionary, COSName
+    from pypdfbox.pdmodel.pd_document_name_destination_dictionary import (
+        PDDocumentNameDestinationDictionary,
+    )
+
+    document = PDDocument()
+    for _ in range(3):
+        document.add_page(PDPage())
+
+    dest0, dest1, dest2 = _three_page_fit_dests(document)
+
+    dest_dict = COSDictionary()
+    dest_dict.set_item("dest0", dest0.get_cos_object())
+    dest_dict.set_item("dest1", dest1.get_cos_object())
+    dest_dict.set_item("dest2", dest2.get_cos_object())
+
+    document.get_document_catalog().get_cos_object().set_item(
+        COSName.get_pdf_name("Dests"),
+        PDDocumentNameDestinationDictionary(dest_dict).get_cos_object(),
+    )
+
+    split = Splitter().split(document)
+    try:
+        _check_split_copies_named_destinations2(split)
+    finally:
+        for split_document in split:
+            split_document.close()
+        document.close()
+
+
+def _check_split_copies_named_destinations2(split: list) -> None:
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_fit_destination import (  # noqa: E501
+        PDPageFitDestination,
+    )
+
+    assert len(split) == 3
+
+    for i, split_document in enumerate(split):
+        name_destination_dictionary = split_document.get_document_catalog().get_dests()
+        assert name_destination_dictionary is not None, (
+            f"split document {i} should have a dests dictionary"
+        )
+
+        # only the destination pointing to this page should be present
+        assert name_destination_dictionary.get_cos_object().size() == 1
+
+        expected_name = f"dest{i}"
+        copied = name_destination_dictionary.get_destination(expected_name)
+        assert isinstance(copied, PDPageFitDestination)
+        # the destination must point to the imported page of the split document
+        imported_page = copied.get_page()
+        assert split_document.get_page(0).get_cos_object() is imported_page

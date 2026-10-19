@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections.abc import Iterable
 
 from .cos_base import COSBase
@@ -24,12 +26,27 @@ class COSUpdateState:
         *,
         dereferencing: bool = False,
     ) -> None:
-        if self._origin_document_state is not None or origin_document_state is None:
+        """Link this state and every reachable substructure to
+        ``origin_document_state``.
+
+        Mirrors upstream ``COSUpdateState#setOriginDocumentState``. Already
+        linked states are skipped (and so is their subtree). Unless
+        ``dereferencing``, each newly linked state is also marked updated.
+
+        PDFBOX-6200: the structure is traversed with an explicit stack instead
+        of recursion, as it may be nested deeper than the call stack allows.
+        """
+        if origin_document_state is None:
             return
-        self._origin_document_state = origin_document_state
-        if not dereferencing:
-            self.update()
-        self._propagate_origin_to_children(dereferencing=dereferencing)
+        pending: list[COSUpdateState] = [self]
+        while pending:
+            state = pending.pop()
+            if state._origin_document_state is not None:
+                continue
+            state._origin_document_state = origin_document_state
+            if not dereferencing:
+                state.update()
+            state._push_substructures(pending)
 
     def get_origin_document_state(self) -> COSDocumentState | None:
         return self._origin_document_state
@@ -85,7 +102,7 @@ class COSUpdateState:
         if state is not None:
             state().set_origin_document_state(self._origin_document_state)
 
-    def _propagate_origin_to_children(self, *, dereferencing: bool) -> None:
+    def _push_substructures(self, pending: list[COSUpdateState]) -> None:
         # Local imports avoid hard module cycles at import time.
         from .cos_array import COSArray
         from .cos_dictionary import COSDictionary
@@ -93,28 +110,20 @@ class COSUpdateState:
 
         update_info = self._update_info
         if isinstance(update_info, COSDictionary):
-            for child in update_info.values():
-                self._set_child_origin(child, dereferencing=dereferencing)
+            for entry in update_info.values():
+                self._push_update_state(pending, entry)
         elif isinstance(update_info, COSArray):
-            for child in update_info:
-                self._set_child_origin(child, dereferencing=dereferencing)
+            for entry in update_info:
+                self._push_update_state(pending, entry)
         elif isinstance(update_info, COSObject) and update_info.is_dereferenced():
-            self._set_child_origin(
-                update_info.get_object(),
-                dereferencing=dereferencing,
-            )
+            self._push_update_state(pending, update_info.get_object())
 
-    def _set_child_origin(
-        self,
-        child: COSBase | None,
-        *,
-        dereferencing: bool,
+    @staticmethod
+    def _push_update_state(
+        pending: list[COSUpdateState], base: COSBase | None
     ) -> None:
-        if child is None:
+        if base is None:
             return
-        state = getattr(child, "get_update_state", None)
+        state = getattr(base, "get_update_state", None)
         if state is not None:
-            state().set_origin_document_state(
-                self._origin_document_state,
-                dereferencing=dereferencing,
-            )
+            pending.append(state())

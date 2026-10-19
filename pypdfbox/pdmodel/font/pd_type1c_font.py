@@ -835,7 +835,13 @@ class PDType1CFont(PDType1Font):
         :meth:`PDFont.encode(text)` string-level entry point — see
         ``encode_codepoint`` on :class:`PDFont` and CHANGES.md for the
         rationale.
+
+        Successful results are memoised in the shared
+        :attr:`PDFont._codepoint_encoding` cache (PDFBOX-6287).
         """
+        encoded_codepoint = self._codepoint_encoding.get(unicode)
+        if encoded_codepoint is not None:
+            return encoded_codepoint
         encoding = self.get_encoding_typed()
         if encoding is None:
             msg = (
@@ -858,14 +864,16 @@ class PDType1CFont(PDType1Font):
         ):
             msg = f"No glyph for U+{unicode:04X} in font {self.get_name()}"
             raise ValueError(msg)
-        code = encoding.get_name_to_code_map().get(name)
+        code = encoding.get_code(name)
         if code is None:
             msg = (
                 f"U+{unicode:04X} ({name!r}) has no code in font "
                 f"{self.get_name()} encoding"
             )
             raise ValueError(msg)
-        return bytes([code & 0xFF])
+        encoded_codepoint = bytes([code & 0xFF])
+        self._codepoint_encoding[unicode] = encoded_codepoint
+        return encoded_codepoint
 
 
 __all__ = ["PDType1CFont"]

@@ -258,7 +258,10 @@ class PDPageTree:
         ``IllegalStateException`` to ``RuntimeError`` per the project-wide
         Java-exception convention.
         """
+        # PDFBOX-6286: every raise path clears ``seen`` so a failed lookup
+        # does not poison the next one with a false "Possible recursion".
         if page_num < 1:
+            seen.clear()
             raise IndexError(f"Index out of bounds: {page_num}")
         if id(node) in seen:
             seen.clear()
@@ -308,10 +311,12 @@ class PDPageTree:
                         encountered += 1
                         if page_num == encountered:
                             return self._get_cos(page_num, kid, encountered, seen)
+                seen.clear()
                 raise RuntimeError(f"1-based index not found: {page_num}")
-            raise IndexError(f"1-based index out of bounds: {page_num}")
-        if encountered == page_num:
             seen.clear()
+            raise IndexError(f"1-based index out of bounds: {page_num}")
+        seen.clear()
+        if encountered == page_num:
             return node
         raise RuntimeError(f"1-based index not found: {page_num}")
 

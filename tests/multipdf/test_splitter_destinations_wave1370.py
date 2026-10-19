@@ -234,12 +234,13 @@ def test_split_chunk_save_with_link_round_trips(tmp_path: Path) -> None:
         assert len(annots) == 1
 
 
-# ---------- legacy /Dests not propagated ----------
+# ---------- legacy /Dests (PDFBOX-6283) ----------
 
 
-def test_splitter_does_not_copy_catalog_dests_flat_dict() -> None:
-    """A legacy catalog ``/Dests`` flat dictionary on the source is NOT
-    cloned onto chunk catalogs."""
+def test_splitter_copies_catalog_dests_flat_dict_to_owning_chunk() -> None:
+    """PDFBOX-6283: a legacy catalog ``/Dests`` entry is cloned only onto
+    the chunk that owns its target page, retargeted at the imported page;
+    chunks without a matching entry get no ``/Dests``."""
     src = _make_doc(2)
     legacy_dests = COSDictionary()
     page_dest = COSArray()
@@ -252,13 +253,18 @@ def test_splitter_does_not_copy_catalog_dests_flat_dict() -> None:
 
     chunks = Splitter().split(src)
     try:
-        for chunk in chunks:
-            assert (
-                chunk.get_document_catalog().get_cos_object().get_dictionary_object(
-                    COSName.get_pdf_name("Dests")
-                )
-                is None
-            )
+        dests_key = COSName.get_pdf_name("Dests")
+        first = chunks[0].get_document_catalog().get_cos_object()
+        first_dests = first.get_dictionary_object(dests_key)
+        assert isinstance(first_dests, COSDictionary)
+        entry = first_dests.get_dictionary_object(
+            COSName.get_pdf_name("LegacyEntry")
+        )
+        assert isinstance(entry, COSArray)
+        assert entry is not page_dest
+        assert entry.get_object(0) is chunks[0].get_page(0).get_cos_object()
+        second = chunks[1].get_document_catalog().get_cos_object()
+        assert second.get_dictionary_object(dests_key) is None
     finally:
         for c in chunks:
             c.close()

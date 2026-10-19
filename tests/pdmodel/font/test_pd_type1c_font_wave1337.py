@@ -393,7 +393,7 @@ def test_encode_codepoint_raises_when_program_lacks_glyph() -> None:
 
 def test_encode_codepoint_raises_when_name_has_no_code_in_encoding() -> None:
     """A glyph name that's present in the encoding's name set but absent
-    from ``get_name_to_code_map`` → raises (lines 765-769).
+    from the reverse map (``get_code`` returns ``None``) → raises.
 
     This can happen when ``Encoding`` includes a name through
     ``Differences`` but the name-to-code reverse map is broken / empty.
@@ -403,7 +403,7 @@ def test_encode_codepoint_raises_when_name_has_no_code_in_encoding() -> None:
     assert encoding is not None
     # Wedge the encoding's name-to-code map to return None for our target.
     with (
-        patch.object(encoding, "get_name_to_code_map", return_value={"X": 88}),
+        patch.object(encoding, "get_code", return_value=None),
         patch.object(encoding, "__contains__", return_value=True),
         pytest.raises(ValueError, match="has no code"),
     ):

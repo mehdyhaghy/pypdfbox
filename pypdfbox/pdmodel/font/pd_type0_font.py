@@ -1295,6 +1295,12 @@ class PDType0Font(PDFont):
         (``get_codes_from_unicode``) is consulted. For embedded
         non-Identity CMaps without a reverse mapping the codepoint is
         replaced with the bytes of CID 0 (``.notdef``).
+
+        Per-codepoint results are memoised in the shared
+        :attr:`PDFont._codepoint_encoding` cache (PDFBOX-6287). The lenient
+        ``.notdef`` substitutions (where upstream raises instead) are not
+        cached, so a later ``/ToUnicode`` or CMap change can still resolve
+        them.
         """
         cmap = self.get_cmap()
         # Embedded Identity-keyed fonts (the ones produced by load_ttf /
@@ -1307,26 +1313,44 @@ class PDType0Font(PDFont):
         # a freshly embedded font renders the wrong glyphs because the
         # content-stream codes would be Unicode codepoints, not glyph ids.
         use_embedded = self._use_embedded_encode(cmap)
-        if not use_embedded and self._use_predefined_unicode_encode():
-            # PDFBOX-5953 (3.0 branch): a non-embedded CIDFontType2 under a
-            # predefined "Uni..." CMap writes the raw Unicode value; delegate
-            # to the descendant exactly as upstream's encode(int) does.
-            descendant = self.get_descendant_font()
-            if isinstance(text, int):
-                return descendant.encode(text)
-            return b"".join(descendant.encode(ord(ch)) for ch in text)
+        # PDFBOX-5953 (3.0 branch): a non-embedded CIDFontType2 under a
+        # predefined "Uni..." CMap writes the raw Unicode value; delegate
+        # to the descendant exactly as upstream's encode(int) does.
+        use_predefined = not use_embedded and self._use_predefined_unicode_encode()
         if isinstance(text, int):
-            if use_embedded:
-                return self._encode_embedded_codepoint(text, cmap)
-            return self._encode_codepoint(text, cmap)
+            return self._encode_unicode(text, cmap, use_embedded, use_predefined)
         out = bytearray()
         for ch in text:
-            cp = ord(ch)
-            if use_embedded:
-                out.extend(self._encode_embedded_codepoint(cp, cmap))
-            else:
-                out.extend(self._encode_codepoint(cp, cmap))
+            out.extend(
+                self._encode_unicode(ord(ch), cmap, use_embedded, use_predefined)
+            )
         return bytes(out)
+
+    def _encode_unicode(
+        self,
+        cp: int,
+        cmap: CMap | None,
+        use_embedded: bool,
+        use_predefined: bool,
+    ) -> bytes:
+        """Encode one codepoint through the shared ``codepointEncoding``
+        cache (upstream ``PDType0Font.encode(int)``, PDFBOX-6287)."""
+        encoded = self._codepoint_encoding.get(cp)
+        if encoded is not None:
+            return encoded
+        if use_predefined:
+            encoded = self.get_descendant_font().encode(cp)
+        elif use_embedded:
+            encoded = self._lookup_embedded_codepoint(cp)
+            if encoded is None:
+                # Lenient .notdef substitution (intentional divergence).
+                return (0).to_bytes(2, "big")
+        else:
+            encoded = self._lookup_codepoint(cp, cmap)
+            if encoded is None:
+                return self._notdef_bytes(cmap)
+        self._codepoint_encoding[cp] = encoded
+        return encoded
 
     def _use_embedded_encode(self, cmap: CMap | None) -> bool:
         """``True`` when this font should encode codepoints through the
@@ -1401,6 +1425,15 @@ class PDType0Font(PDFont):
         The CID is always emitted as a 16-bit big-endian value
         (``encodeGlyphId``).
         """
+        encoded = self._lookup_embedded_codepoint(cp)
+        if encoded is None:
+            # Lenient .notdef substitution (intentional divergence).
+            return (0).to_bytes(2, "big")
+        return encoded
+
+    def _lookup_embedded_codepoint(self, cp: int) -> bytes | None:
+        """Steps 1-2 of :meth:`_encode_embedded_codepoint`; ``None`` when
+        both the embedded cmap and the ``/ToUnicode`` reverse lookup miss."""
         cid = -1
         gid_lookup = self._embedded_cmap_lookup()
         if gid_lookup is not None:
@@ -1421,8 +1454,7 @@ class PDType0Font(PDFont):
                     codes = None
                 if codes is not None:
                     return bytes(codes)
-            # Lenient .notdef substitution (intentional divergence).
-            cid = 0
+            return None
         return (cid & 0xFFFF).to_bytes(2, "big")
 
     def _embedded_cmap_lookup(self) -> Any | None:
@@ -1500,6 +1532,15 @@ class PDType0Font(PDFont):
         miss we emit the bytes of CID 0 (``.notdef``) at the codespace's
         natural byte length.
         """
+        encoded = PDType0Font._lookup_codepoint(cp, cmap)
+        if encoded is None:
+            return PDType0Font._notdef_bytes(cmap)
+        return encoded
+
+    @staticmethod
+    def _lookup_codepoint(cp: int, cmap: CMap | None) -> bytes | None:
+        """Reverse-lookup half of :meth:`_encode_codepoint`; ``None`` when
+        only the CID 0 last resort would apply."""
         if cmap is None:
             return cp.to_bytes(2, "big")
         # Try the CMap's own reverse mapping first.
@@ -1513,8 +1554,12 @@ class PDType0Font(PDFont):
         name = cmap.get_name() or ""
         if name in ("Identity-H", "Identity-V") or name.startswith("Identity"):
             return (cp & 0xFFFF).to_bytes(2, "big")
-        # Last resort — emit the bytes of CID 0 at the natural length.
-        length = cmap.code_length_at(0) or 2
+        return None
+
+    @staticmethod
+    def _notdef_bytes(cmap: CMap | None) -> bytes:
+        """Last resort — the bytes of CID 0 at the codespace's natural length."""
+        length = (cmap.code_length_at(0) if cmap is not None else 0) or 2
         return bytes(length)
 
     def decode(self, data: bytes) -> int:

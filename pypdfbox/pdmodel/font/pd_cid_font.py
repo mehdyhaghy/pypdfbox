@@ -46,6 +46,11 @@ class PDCIDFont(PDFont):
         self._w2_ranges: list[tuple[int, int, tuple[float, float, float]]] | None = (
             None
         )
+        # Per-code width memo — mirrors upstream ``codeToWidth``
+        # (PDFBOX-6287). Dropped whenever the width tables are re-primed
+        # through this API (``set_w`` / ``set_dw`` / ``read_widths`` /
+        # ``clear_widths_cache``).
+        self._cid_code_to_width: dict[int, float] = {}
 
     # ---------- subtype (abstract) ----------
 
@@ -102,6 +107,7 @@ class PDCIDFont(PDFont):
         """Set ``/DW`` (default glyph width). Passing ``None`` removes the
         entry, restoring the spec-default of ``1000``.
         """
+        self._cid_code_to_width.clear()
         if width is None:
             self._dict.remove_item(_DW)
             return
@@ -137,6 +143,7 @@ class PDCIDFont(PDFont):
 
     def set_w(self, arr: COSArray | None) -> None:
         self._widths = None
+        self._cid_code_to_width.clear()
         if arr is None:
             self._dict.remove_item(_W)
             return
@@ -219,6 +226,7 @@ class PDCIDFont(PDFont):
         if w is not None:
             self._parse_w_array(w, widths)
         self._widths = widths
+        self._cid_code_to_width.clear()
         return widths
 
     def read_vertical_displacements(
@@ -244,6 +252,7 @@ class PDCIDFont(PDFont):
     def clear_widths_cache(self) -> None:
         """Drop cached parsed ``/W`` and ``/W2`` tables."""
         self._widths = None
+        self._cid_code_to_width.clear()
         self._widths2 = None
         self._w2_ranges = None
 
@@ -683,8 +692,19 @@ class PDCIDFont(PDFont):
         with ``/DW`` fallback). Surfaced separately from
         :meth:`get_glyph_width` because PDFBox callers commonly hold a
         character code rather than a CID.
+
+        Results are memoised per code (upstream ``codeToWidth``,
+        PDFBOX-6287).
         """
-        return self.get_glyph_width(self.code_to_cid(code))
+        width = self._cid_code_to_width.get(code)
+        if width is None:
+            # these widths are supposed to be consistent with the actual
+            # widths given in the CIDFont program, but PDFBOX-563 shows that
+            # when they are not, Acrobat overrides the embedded font widths
+            # with the widths given in the font dictionary
+            width = self.get_glyph_width(self.code_to_cid(code))
+            self._cid_code_to_width[code] = width
+        return width
 
     def has_explicit_width(self, code: int) -> bool:
         """``True`` when ``code`` resolves to a CID that has its own

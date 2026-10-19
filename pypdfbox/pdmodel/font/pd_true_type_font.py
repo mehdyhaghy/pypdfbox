@@ -1292,7 +1292,13 @@ class PDTrueTypeFont(PDSimpleFont):
         can be found — matches upstream's ``IllegalArgumentException``
         for the same conditions, mapped to ``ValueError`` per the
         project's Java→Python exception convention.
+
+        Successful results are memoised in the shared
+        :attr:`PDFont._codepoint_encoding` cache (PDFBOX-6287).
         """
+        encoded_codepoint = self._codepoint_encoding.get(unicode)
+        if encoded_codepoint is not None:
+            return encoded_codepoint
         encoding = self.get_encoding_typed()
         glyph_list = self.get_glyph_list()
         name = glyph_list.code_point_to_name(unicode)
@@ -1311,15 +1317,16 @@ class PDTrueTypeFont(PDSimpleFont):
                     raise ValueError(
                         f"No glyph for U+{unicode:04X} in font {self.get_name()}"
                     )
-            inverted = encoding.get_name_to_code_map()
             assert name is not None
-            code = inverted.get(name)
+            code = encoding.get_code(name)
             if code is None:
                 raise ValueError(
                     f"U+{unicode:04X} is not available in font {self.get_name()} "
                     f"encoding"
                 )
-            return bytes([code & 0xFF])
+            encoded_codepoint = bytes([code & 0xFF])
+            self._codepoint_encoding[unicode] = encoded_codepoint
+            return encoded_codepoint
         # No /Encoding — round-trip through the gid-to-code map.
         if ttf is None or name is None:
             raise ValueError(
@@ -1335,7 +1342,9 @@ class PDTrueTypeFont(PDSimpleFont):
             raise ValueError(
                 f"U+{unicode:04X} is not available in font {self.get_name()} encoding"
             )
-        return bytes([code & 0xFF])
+        encoded_codepoint = bytes([code & 0xFF])
+        self._codepoint_encoding[unicode] = encoded_codepoint
+        return encoded_codepoint
 
 
 class _CmapPlatformView:

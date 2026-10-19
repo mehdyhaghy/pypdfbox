@@ -59,7 +59,7 @@ def test_encode_caches_bytes_per_codepoint() -> None:
 
     first = font.encode("A")
     # Cache should now hold the entry.
-    assert ord("A") in font._code_to_bytes
+    assert ord("A") in font._codepoint_encoding
     second = font.encode("A")
     assert first == second == b"\x41"
 
@@ -73,8 +73,8 @@ def test_encode_cache_does_not_cross_codepoints() -> None:
     assert font.encode("A") == b"\x41"
     assert font.encode("B") == b"\x42"
     # Both cached, distinctly.
-    assert font._code_to_bytes[ord("A")] == b"\x41"
-    assert font._code_to_bytes[ord("B")] == b"\x42"
+    assert font._codepoint_encoding[ord("A")] == b"\x41"
+    assert font._codepoint_encoding[ord("B")] == b"\x42"
 
 
 def test_encode_empty_string_yields_empty_bytes() -> None:
@@ -90,7 +90,7 @@ def test_encode_multi_character_string() -> None:
     font.get_cos_object().set_item(_ENCODING, _WIN_ANSI)
     encoded = font.encode("ABC")
     assert encoded == b"ABC"
-    assert {ord("A"), ord("B"), ord("C")} <= set(font._code_to_bytes.keys())
+    assert {ord("A"), ord("B"), ord("C")} <= set(font._codepoint_encoding.keys())
 
 
 # ---------- AFM-aware get_height ----------

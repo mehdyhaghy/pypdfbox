@@ -23,6 +23,22 @@ Trivial naming changes (camelCase → snake_case) are not listed.
 
 Divergences that remain live (will affect observable behaviour vs Java PDFBox):
 
+- **`Splitter` keeps named destinations and rebuilds `/Names /Dests` and `/Root/Dests` per split document (PDFBOX-6283).** Forward-port from the unreleased PDFBox 3.0.9 (3.0 branch commits 158b5c4c, 1c34620c, 6fdcde7a and follow-ups): link and GoTo named destinations are kept as-is, and only resolved to page destinations when the name contains a NUL (broken string). New `fix_name_destinations` / `fix_name_destinations2` run at the end of `split()`. Unlike upstream, a malformed destination tree is logged and skipped rather than aborting `split()`, consistent with the existing post-pass error handling.
+  upstream: PDFBox 3.0 branch `pdfbox/src/main/java/org/apache/pdfbox/multipdf/Splitter.java`
+  reason: forward-port of a settled upstream fix ahead of the 3.0.9 release.
+
+- **`PDPageTree.get()` no longer reports false recursion after a failed lookup (PDFBOX-6286).** Forward-port from the unreleased PDFBox 3.0.9 (3.0 branch commit d765cb36): the visited-node set is cleared on every error path.
+  upstream: PDFBox 3.0 branch `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDPageTree.java`
+  reason: forward-port of a settled upstream fix ahead of the 3.0.9 release.
+
+- **`COSUpdateState.set_origin_document_state` links substructures iteratively (PDFBOX-6200).** Forward-port from the unreleased PDFBox 3.0.9 (3.0 branch commit b369d233): deeply nested COS structures no longer hit the recursion limit.
+  upstream: PDFBox 3.0 branch `pdfbox/src/main/java/org/apache/pdfbox/cos/COSUpdateState.java`
+  reason: forward-port of a settled upstream fix ahead of the 3.0.9 release.
+
+- **Shared codepoint encode cache on `PDFont` (PDFBOX-6287).** Forward-port from the unreleased PDFBox 3.0.9 (3.0 branch commits f54dcea5, 2925e90d): the Type 1 encode cache moves to `PDFont` and is used by TrueType, Type 1C and Type0 fonts; `PDCIDFont` gains a per-code width cache. Two deviations: `PDType0Font` does not cache its lenient `.notdef` (CID 0) fallbacks, where upstream throws; and the `PDCIDFont` width cache is cleared by `set_w` / `set_dw` / `read_widths` / `clear_widths_cache` so pypdfbox's re-primable width API stays correct.
+  upstream: PDFBox 3.0 branch `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDFont.java`, `PDCIDFont.java`
+  reason: forward-port of a settled upstream fix ahead of the 3.0.9 release; the cache resets keep existing pypdfbox-only setters correct.
+
 - **Patterns inside a transparency group are anchored to the group's own space (PDFBOX-5250).** Forward-port from the unreleased PDFBox 3.0.9 (3.0 branch commits cef6ad0785, a020b030f5, 170695a823): the stream's initial matrix that a pattern's `/Matrix` is relative to now includes the transparency group's `/Matrix`, exactly like a plain form. In pypdfbox's renderer this initial matrix (`PDFRenderer._pattern_base_ctm`) is now tracked at all: previously every tiling and shading pattern was anchored to the page's default space, even inside plain forms and annotation appearances (where 3.0.8 already used the form CTM and the appearance matrix), so that part restores 3.0.8 parity. The transparency-group part DIVERGES from the 3.0.8 baseline and oracle jar, which still anchor such patterns to the parent space.
   upstream: PDFBox 3.0 branch `pdfbox/src/main/java/org/apache/pdfbox/contentstream/PDFStreamEngine.java#processTransparencyGroup`
   reason: forward-port of a settled upstream fix ahead of the 3.0.9 release.

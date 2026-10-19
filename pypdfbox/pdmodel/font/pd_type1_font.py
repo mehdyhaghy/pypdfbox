@@ -105,10 +105,6 @@ class PDType1Font(PDSimpleFont):
         # / :meth:`get_font_matrix`.
         self._bbox_cache: PDRectangle | None = None
         self._font_matrix_cache: list[float] | None = None
-        # Mirrors upstream ``codeToBytesMap`` — caches per-codepoint
-        # encoded bytes so repeated :meth:`encode` calls for the same
-        # unicode value don't re-walk the encoding's name->code table.
-        self._code_to_bytes: dict[int, bytes] = {}
 
     @classmethod
     def load(
@@ -370,8 +366,8 @@ class PDType1Font(PDSimpleFont):
         """Encode a Python string to the font's raw byte representation.
 
         Mirrors upstream ``PDType1Font.encode``: a Type-1-specific
-        override that adds (a) a per-codepoint cache identical to
-        upstream's ``codeToBytesMap`` field, and (b) ``ALT_NAMES``
+        override that adds (a) a per-codepoint cache (upstream's
+        ``PDFont.codepointEncoding``, PDFBOX-6287), and (b) ``ALT_NAMES``
         ligature spelling fallback so a writer asking for ``ff`` still
         round-trips to a glyph the embedded program can render. Calls
         for which the cache misses delegate to
@@ -386,7 +382,7 @@ class PDType1Font(PDSimpleFont):
         out = bytearray()
         for ch in text:
             unicode_value = ord(ch)
-            cached = self._code_to_bytes.get(unicode_value)
+            cached = self._codepoint_encoding.get(unicode_value)
             if cached is not None:
                 out.extend(cached)
                 continue
@@ -395,7 +391,7 @@ class PDType1Font(PDSimpleFont):
             # encodings always yield exactly one byte per codepoint per
             # PDF 32000-1 §9.6.6.4. Mirrors upstream's ``new byte[] { code }``
             # cache shape.
-            self._code_to_bytes[unicode_value] = bytes(piece)
+            self._codepoint_encoding[unicode_value] = bytes(piece)
             out.extend(piece)
         return bytes(out)
 

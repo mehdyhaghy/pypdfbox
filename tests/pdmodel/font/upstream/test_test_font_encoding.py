@@ -32,8 +32,8 @@ def test_add() -> None:
     was wiped when a derived encoding overlaid a base. The two
     encoding singletons must continue to advertise ``space`` → 32.
     """
-    assert WinAnsiEncoding.INSTANCE.get_name_to_code_map().get("space") == 32
-    assert MacRomanEncoding.INSTANCE.get_name_to_code_map().get("space") == 32
+    assert WinAnsiEncoding.INSTANCE.get_code("space") == 32
+    assert MacRomanEncoding.INSTANCE.get_code("space") == 32
 
 
 def test_overwrite() -> None:
@@ -54,11 +54,10 @@ def test_overwrite() -> None:
     dict_encoding_dict.set_item(COSName.get_pdf_name("Differences"), differences)
 
     dict_encoding = DictionaryEncoding(font_encoding=dict_encoding_dict)
-    name_to_code = dict_encoding.get_name_to_code_map()
     # The base-encoding "space" → 32 mapping is shadowed by /Differences.
-    assert name_to_code.get("space") is None
+    assert dict_encoding.get_code("space") is None
     # /Differences [32 /a] re-maps code 32 to glyph name "a".
-    assert name_to_code.get("a") == 32
+    assert dict_encoding.get_code("a") == 32
 
 
 @pytest.mark.skip(

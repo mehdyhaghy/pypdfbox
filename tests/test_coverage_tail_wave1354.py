@@ -252,14 +252,16 @@ def test_cos_string_repr_shows_bytes_and_hex_flag() -> None:
 # ---------- cos/cos_update_state.py: forward_origin_to with None child ----
 
 
-def test_cos_update_state_set_child_origin_with_none_is_noop() -> None:
-    """Line 116 — ``_set_child_origin(None, ...)`` short-circuits."""
+def test_cos_update_state_push_update_state_with_none_is_noop() -> None:
+    """``_push_update_state(pending, None)`` short-circuits."""
     from pypdfbox.cos.cos_document_state import COSDocumentState
     from pypdfbox.cos.cos_update_state import COSUpdateState
 
     state = COSUpdateState(None)  # type: ignore[arg-type]
     state.set_origin_document_state(COSDocumentState())
-    state._set_child_origin(None, dereferencing=False)  # type: ignore[arg-type]
+    pending: list[COSUpdateState] = []
+    COSUpdateState._push_update_state(pending, None)
+    assert pending == []
 
 
 # ---------- filter/jbig2_filter.py: log_levigo_donated branch + guard ----

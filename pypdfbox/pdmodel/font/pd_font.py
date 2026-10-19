@@ -71,6 +71,10 @@ class PDFont:
         # Per-code width cache — mirrors upstream's ``codeToWidthMap``.
         # Populated on first call to :meth:`get_width` per code.
         self._code_to_width: dict[int, float] = {}
+        # Per-codepoint encoded-bytes cache — mirrors upstream's protected
+        # ``codepointEncoding`` (PDFBOX-6287, moved up from PDType1Font's
+        # ``codeToBytesMap`` so every font subtype's encoder can share it).
+        self._codepoint_encoding: dict[int, bytes] = {}
         # Per-code ``to_unicode`` cache — same shape as ``_code_to_width``
         # but keyed only for the default (``custom_glyph_list is None``)
         # call so the common per-glyph text-extraction path does not
