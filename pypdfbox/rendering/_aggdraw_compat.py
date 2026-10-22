@@ -592,6 +592,78 @@ class Draw:
                 i * width4 : (i + 1) * width4
             ]
 
+    def _region_view(self, bbox: tuple[int, int, int, int]) -> Any:
+        """Return a writable numpy view of the backing RGBA buffer
+        restricted to the integer-aligned region ``bbox``."""
+        import numpy as np
+
+        x0, y0, x1, y1 = bbox
+        state = self._state
+        height = state.size[1]
+        rows = np.frombuffer(state.pixels, dtype=np.uint8).reshape(
+            height, state.row_bytes,
+        )
+        return rows[y0:y1, x0 * 4 : x1 * 4]
+
+    def paint_region_bytes(
+        self,
+        bbox: tuple[int, int, int, int],
+        paint: Any,
+    ) -> bytes:
+        """Run ``paint(self)`` restricted to the integer-aligned
+        device-space ``bbox`` = ``(x0, y0, x1, y1)``, return the region's
+        raw RGBA bytes, then clear the region back to transparent.
+
+        Generalisation of :meth:`path_region_bytes` (no aggdraw
+        counterpart) for callbacks that issue several draws with their own
+        :meth:`settransform` calls (a vector fill under the CTM followed by
+        a device-space stroke). The same contract applies: the
+        :class:`Draw` must wrap an all-transparent scratch image. The
+        pixel-aligned non-antialiased ``clipRect`` set before ``paint``
+        survives ``settransform`` (skia keeps the clip in device space), so
+        coverage inside the region is bit-identical to an unclipped
+        full-canvas draw while nothing outside the region is touched.
+        """
+        x0, y0, x1, y1 = bbox
+        canvas = self._canvas
+        canvas.save()
+        try:
+            canvas.clipRect(
+                skia.Rect.MakeLTRB(float(x0), float(y0), float(x1), float(y1))
+            )
+            paint(self)
+            self._surface.flushAndSubmit()
+            return self._region_view(bbox).tobytes()
+        finally:
+            canvas.clear(skia.ColorTRANSPARENT)
+            canvas.restore()
+
+    def read_region(self, bbox: tuple[int, int, int, int]) -> bytes:
+        """Return the raw RGBA bytes of the backing buffer for the
+        integer-aligned region ``bbox`` (no aggdraw counterpart).
+
+        The buffer is the ground truth for everything drawn since the
+        last :meth:`flush` (and equals the wrapped image's pixels, promoted
+        to RGBA, everywhere else), so a caller can composite against the
+        live canvas without the full-canvas blit a ``flush`` costs.
+        """
+        self._surface.flushAndSubmit()
+        return self._region_view(bbox).tobytes()
+
+    def write_region(self, bbox: tuple[int, int, int, int], data: bytes) -> None:
+        """Overwrite the backing buffer's region ``bbox`` with raw RGBA
+        ``data`` and mark the draw dirty so the next :meth:`flush` blits it
+        to the wrapped image (no aggdraw counterpart). Counterpart of
+        :meth:`read_region`."""
+        import numpy as np
+
+        x0, y0, x1, y1 = bbox
+        view = self._region_view(bbox)
+        view[...] = np.frombuffer(data, dtype=np.uint8).reshape(
+            y1 - y0, (x1 - x0) * 4,
+        )
+        self._dirty = True
+
     # The remaining methods below are NOT exercised by the renderer at
     # the time of porting (the audit in wave 1329 confirmed it), but
     # they're part of the aggdraw public API and the implementation is

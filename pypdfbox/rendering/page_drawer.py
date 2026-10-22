@@ -424,6 +424,11 @@ class PageDrawer(PDFGraphicsStreamEngine):
 
         prev_image = rdr._image
         prev_draw = rdr._draw
+        # The parent draw's pixel buffer may hold paints not yet blitted to
+        # ``image``; commit them so the group composites over the live
+        # backdrop (and a later flush cannot clobber the composite).
+        if prev_draw is not None:
+            prev_draw.flush()
         rdr._image = group_canvas
         rdr._draw = aggdraw.Draw(group_canvas)
         rdr._draw.setantialias(True)
@@ -462,6 +467,10 @@ class PageDrawer(PDFGraphicsStreamEngine):
                 blend_mode=group_blend_mode,
                 soft_mask_alpha=soft_mask_alpha,
             )
+            # Re-sync the parent draw's buffer with the composited image.
+            if prev_draw is not None and prev_draw._pil is image:
+                width, height = image.size
+                prev_draw.reseed_region((0, 0, width, height))
         finally:
             # Always restore the parent draw target (the try body restores
             # it on the happy path before compositing; this catches the
@@ -675,6 +684,10 @@ class PageDrawer(PDFGraphicsStreamEngine):
                 rdr._draw = aggdraw.Draw(graphics)
                 rdr._draw.setantialias(True)
             self.show_form(form)
+            # Commit paints still pending in the target draw's buffer.
+            current = rdr._draw
+            if current is not None and current is not prev_draw:
+                current.flush()
         finally:
             rdr._image = prev_image
             rdr._draw = prev_draw
