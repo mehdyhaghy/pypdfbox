@@ -64,6 +64,11 @@ class COSDocument(COSBase):
         # to avoid double-encrypting on save (it must produce ciphertext
         # again from the now-plaintext object graph).
         self._is_decrypted: bool = False
+        # Security handler the parser applies to each object it later reads
+        # from a direct file offset (set by ``PDDocument.decrypt``). Mirrors
+        # upstream ``COSParser.securityHandler``, which deciphers objects as
+        # ``parseObjectDynamically`` loads them instead of eagerly.
+        self._object_security_handler: Any = None
         # Hybrid-xref marker: ``True`` for documents that ship BOTH a plain
         # cross-reference table AND a cross-reference stream (PDF 1.5+
         # backward-compat trick). Mirrors PDFBox's ``hasHybridXRef`` flag.

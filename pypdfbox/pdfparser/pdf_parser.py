@@ -1791,9 +1791,11 @@ class PDFParser:
             return None
         cos_obj = self._document.get_object_from_pool(key)
         try:
-            return self._load_indirect_object_at(offset, cos_obj)
+            body = self._load_indirect_object_at(offset, cos_obj)
         except PDFParseError:
             return None
+        self._decrypt_file_object(body, cos_obj)
+        return body
 
     def _brute_force_offsets(self) -> dict[COSObjectKey, int]:
         """Cached brute-force object scan for the lenient free/missing
@@ -2436,11 +2438,54 @@ class PDFParser:
 
         def _loader(obj: COSObject) -> COSBase | None:
             try:
-                return self._load_indirect_object_at(offset, obj)
+                body = self._load_indirect_object_at(offset, obj)
             except PDFParseError as exc:
                 raise OSError(str(exc)) from exc
+            self._decrypt_file_object(body, obj)
+            return body
 
         return _loader
+
+    def _decrypt_file_object(self, body: COSBase | None, obj: COSObject) -> None:
+        """Decipher an object just read from a direct file offset when the
+        document has been decrypted. Mirrors upstream
+        ``COSParser#parseObjectDynamically``, which calls
+        ``securityHandler.decrypt`` on each file object as it is parsed
+        (object-stream members are never passed through it)."""
+        document = self._document
+        handler = getattr(document, "_object_security_handler", None)
+        if handler is None or body is None:
+            return
+        from pypdfbox.pdmodel.encryption.security_handler import (
+            _decrypt_file_object,
+        )
+
+        # The /Encrypt dictionary is key material, never ciphertext. Compare
+        # by reference key: resolving it here while it is itself being
+        # loaded would see the in-flight (still unresolved) placeholder.
+        trailer = document.get_trailer()  # type: ignore[union-attr]
+        encrypt_ref = (
+            trailer.get_item(COSName.ENCRYPT)  # type: ignore[attr-defined]
+            if trailer is not None
+            else None
+        )
+        if isinstance(encrypt_ref, COSObject):
+            if (
+                encrypt_ref.get_object_number() == obj.get_object_number()
+                and encrypt_ref.get_generation_number()
+                == obj.get_generation_number()
+            ):
+                return
+            encrypt_dict = encrypt_ref.get_object()
+        else:
+            encrypt_dict = encrypt_ref
+        _decrypt_file_object(
+            handler,
+            body,
+            obj.get_object_number(),
+            obj.get_generation_number(),
+            encrypt_dict,
+        )
 
     def _load_compressed_object(
         self, objstm_obj_num: int, inner_index: int, obj: COSObject

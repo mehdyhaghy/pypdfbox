@@ -990,3 +990,52 @@ _ = _io
 
 
 __all__ = ["SecurityHandler"]
+
+
+def _decrypt_file_object(
+    handler: Any,
+    actual: object,
+    obj_num: int,
+    gen_num: int,
+    encrypt_dict: object = None,
+) -> None:
+    """Apply ``handler`` to one object read from a direct file offset.
+
+    Mirrors the ``securityHandler.decrypt(parsedObject, objNr, objGenNr)``
+    call upstream ``COSParser#parseObjectDynamically`` makes for every
+    object parsed at a file offset (never for object-stream members, whose
+    container is decrypted instead). A stream gets the lazy body-decrypt
+    hook plus a string pass over its dictionary; any other object gets its
+    strings decrypted in place. The ``/Encrypt`` dictionary holds key
+    material, not ciphertext, and is left alone. Tolerates stub handlers
+    that only expose part of the surface.
+    """
+    from pypdfbox.cos.cos_array import COSArray
+    from pypdfbox.cos.cos_dictionary import COSDictionary
+    from pypdfbox.cos.cos_stream import COSStream
+    from pypdfbox.cos.cos_string import COSString
+
+    if actual is None or actual is encrypt_dict:
+        return
+    objects_seen = getattr(handler, "_objects_seen", None)
+    seen_ids = objects_seen() if callable(objects_seen) else None
+    if isinstance(actual, COSStream):
+        if seen_ids is not None and id(actual) in seen_ids:
+            return
+        actual.set_security_handler(handler, obj_num, gen_num)
+        if seen_ids is None:
+            return
+        # Pre-seed the stream identity so the dictionary walk below does
+        # not re-enter the body (owned by the lazy hook just attached).
+        seen_ids.add(id(actual))
+        decrypt_dict = getattr(handler, "_decrypt_dictionary", None)
+        if callable(decrypt_dict):
+            decrypt_dict(actual, obj_num, gen_num)
+        return
+    if seen_ids is None:
+        return
+    decrypt_dispatch = getattr(handler, "decrypt", None)
+    if callable(decrypt_dispatch) and isinstance(
+        actual, (COSDictionary, COSArray, COSString)
+    ):
+        decrypt_dispatch(actual, obj_num, gen_num)

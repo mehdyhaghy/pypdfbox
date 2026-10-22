@@ -23,6 +23,10 @@ Trivial naming changes (camelCase → snake_case) are not listed.
 
 Divergences that remain live (will affect observable behaviour vs Java PDFBox):
 
+- **Loading an encrypted PDF with no password tries the empty password, and keeps returning the document encrypted when that fails (fix).** `Loader.load_pdf` / `PDDocument.load` with no password used to skip decryption, so blank-user-password files (e.g. the ISO 32000-1 spec PDF, RC4 R3) extracted ciphertext and `set_all_security_to_be_removed` saved a corrupt file. They are now decrypted on load like upstream's `Loader.loadPDF(File)` (which passes `""`); objects are deciphered lazily as the parser loads them, as upstream does, instead of force-parsing the whole pool. Upstream raises `InvalidPasswordException` when `""` is rejected; pypdfbox still returns the encrypted document so callers can `decrypt` it later.
+  upstream: PDFBox 3.0.8 `pdfbox/src/main/java/org/apache/pdfbox/Loader.java` (`loadPDF(File)`), `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/COSParser.java` (`parseObjectDynamically`)
+  reason: bug fix toward parity; the no-raise fallback keeps the existing pypdfbox contract for password-protected files loaded without a password.
+
 - **Pages of a loaded document share the document's resource cache (fix, wave 1613).** `PDPageTree` now builds every page with the owning document's `get_resource_cache()`, as upstream's `new PDPage(dict, document.getResourceCache())` does; before, pages had no cache, so an indirect font, image or color space used on many pages was parsed again for each page. A page tree without a document still gives pages no cache.
   upstream: PDFBox 3.0.8 `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDPageTree.java` (`iterator().next()`, `get(int)`)
   reason: bug fix toward parity (performance and object identity).
