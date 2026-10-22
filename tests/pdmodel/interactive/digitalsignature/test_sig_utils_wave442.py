@@ -185,7 +185,7 @@ def test_compute_signed_digest_accepts_bytearray_and_named_algorithm() -> None:
 
 
 def test_compute_signed_digest_rejects_unknown_algorithm_after_validation() -> None:
-    with pytest.raises(ValueError, match="unsupported hash type"):
+    with pytest.raises(ValueError, match="unsupported hash (type|algorithm)"):
         compute_signed_digest(b"HEADxxxxTAIL", [0, 4, 8, 4], algorithm="nope")
 
 

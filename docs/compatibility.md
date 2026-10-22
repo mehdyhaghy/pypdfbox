@@ -48,7 +48,7 @@ Behavioural deviations from upstream are recorded in
 
 ## Platforms
 
-Wheels cover CPython 3.14 on macOS (x86_64 + arm64), Linux/glibc
+Wheels cover CPython 3.14 and 3.15 on macOS (x86_64 + arm64), Linux/glibc
 (x86_64 + aarch64), and Windows (x86_64).
 
 Not supported: Alpine/musl and Windows ARM64 — upstream wheels for two

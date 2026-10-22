@@ -45,7 +45,7 @@ with PDDocument.load("input.pdf") as doc:
 | **No environment friction** | Pure Python plus wheels. Same behaviour in a container, a CI runner, or a sandbox. |
 | **A familiar API** | A Python-native port of [Apache PDFBox](https://pdfbox.apache.org/) 3.0.x — same class names, same object model, same behaviour, with Java `camelCase` mapped to `snake_case`. PDFBox answers usually translate directly. |
 
-Requires CPython 3.14+. Wheels cover macOS (x86_64 + arm64),
+Requires CPython 3.14+ (tested on 3.14 and 3.15). Wheels cover macOS (x86_64 + arm64),
 Linux/glibc (x86_64 + aarch64), and Windows (x86_64).
 
 ## Command line
