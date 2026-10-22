@@ -1,6 +1,8 @@
 import contextlib
 import logging
+import re
 from collections import OrderedDict
+from operator import itemgetter
 from typing import Any
 
 from pypdfbox.cos import (
@@ -75,6 +77,19 @@ _HEADER_WHITESPACE_INTS = frozenset(b"\x00\t\n\x0c\r ")
 # Delimiter bytes (§7.2.3); a regular character is neither whitespace nor
 # delimiter. Used to find the end of the ``obj`` keyword token.
 _HEADER_DELIMITER_INTS = frozenset(b"()<>[]{}/%")
+
+# Size of the sequential blocks read when validating every xref offset at
+# load (see :meth:`PDFParser._find_bad_xref_offsets`) and when parsing the
+# fixed-width rows of a traditional xref table. One bulk read per block
+# replaces one seek + small read (or one ``read()`` per byte) per entry
+# through the generic RandomAccessRead layer.
+_BULK_READ_BLOCK: int = 1 << 20
+
+# Traditional xref table rows are 20-byte records (PDF 32000-1 §7.5.4); used
+# to size the bulk read for a subsection of ``count`` rows.
+_XREF_ROW_BYTES: int = 20
+# First EOL byte (CR or LF) — the stop condition of BaseParser.read_until_eol.
+_EOL_RE = re.compile(rb"[\r\n]")
 
 # Upstream system-property name that lets callers override the EOF lookup
 # range without code changes (``-Dorg.apache.pdfbox.pdfparser…``). Exposed
@@ -1593,23 +1608,8 @@ class PDFParser:
                 broke_early = True
                 break
             first_obj, count = header
-            for i in range(count):
-                # Defensive stop: an entry line that turns out to be the
-                # 'trailer' keyword (an over-long declared count) must not be
-                # consumed as an entry. Upstream guards with the same peek.
-                self._base.skip_whitespace()
-                p = self._base.peek_byte()
-                if p == 0x74 or p == RandomAccessRead.EOF:  # 't' / EOF
-                    break
-                try:
-                    self._read_xref_entry(first_obj + i)
-                except PDFParseError:
-                    # Malformed entry row (wrong field count / unknown type
-                    # char): upstream's "Unexpected XRefTable Entry" break.
-                    # Stop this subsection and recover the rest by brute force.
-                    broke_early = True
-                    break
-            if broke_early:
+            if self._read_xref_subsection_entries(first_obj, count):
+                broke_early = True
                 break
         if broke_early:
             self._xref_table_recovery_needed = True
@@ -1659,6 +1659,129 @@ class PDFParser:
                 return
             raise
         self._resolver.set_trailer(trailer)
+
+    def _read_xref_subsection_entries(self, first_obj: int, count: int) -> bool:
+        """Read the ``count`` entry rows of one xref subsection.
+
+        Returns ``True`` when a malformed row broke the subsection early
+        (upstream's "Unexpected XRefTable Entry" break). Per row this is
+        ``skip_whitespace``, a stop on ``t`` (``trailer``) or EOF, then
+        :meth:`_read_xref_entry`; the rows are decoded from bulk reads by
+        :meth:`_read_xref_rows_fast`, which hands back to the per-byte loop
+        below at the first row it cannot decode byte-identically."""
+        i = self._read_xref_rows_fast(first_obj, count)
+        if i < 0:
+            return True
+        base = self._base
+        while i < count:
+            # Defensive stop: an entry line that turns out to be the
+            # 'trailer' keyword (an over-long declared count) must not be
+            # consumed as an entry. Upstream guards with the same peek.
+            base.skip_whitespace()
+            p = base.peek_byte()
+            if p == 0x74 or p == RandomAccessRead.EOF:  # 't' / EOF
+                return False
+            try:
+                self._read_xref_entry(first_obj + i)
+            except PDFParseError:
+                # Malformed entry row (wrong field count / unknown type
+                # char): upstream's "Unexpected XRefTable Entry" break.
+                # Stop this subsection and recover the rest by brute force.
+                return True
+            i += 1
+        return False
+
+    def _read_xref_rows_fast(self, first_obj: int, count: int) -> int:
+        """Decode xref rows from bulk reads, mirroring the per-row reader
+        sequence of :meth:`_read_xref_subsection_entries` exactly.
+
+        Returns the number of rows consumed with the source positioned after
+        them (the caller continues per byte from there), ``count`` when the
+        subsection is done (all rows read, or a ``t`` / EOF stop with the
+        cursor left on it), or ``-1`` after a malformed row (cursor after
+        that row, as :meth:`_read_xref_entry` leaves it). Rows it cannot
+        decide from the buffered bytes alone (a ``%``-comment, a row or EOL
+        straddling the buffer end without progress) are left to the caller.
+        """
+        src = self._src
+        length = src.length()
+        pos = src.get_position()
+        set_entry = self._resolver.set_entry
+        ws = _HEADER_WHITESPACE_INTS
+        table = XrefType.TABLE
+        find_eol = _EOL_RE.search
+        i = 0
+        while i < count:
+            want = min((count - i) * _XREF_ROW_BYTES + 64, _BULK_READ_BLOCK)
+            block = self._read_block_at(pos, want)
+            n = len(block)
+            at_eof = pos + n >= length
+            j = 0
+            while i < count:
+                row_start = j
+                while j < n and block[j] in ws:
+                    j += 1
+                if j >= n:
+                    if at_eof:
+                        # skip_whitespace ran to EOF; peek is EOF -> stop.
+                        src.seek(pos + n)
+                        return count
+                    j = row_start
+                    break  # whitespace may continue past the block
+                b = block[j]
+                if b == 0x74:  # 't' — trailer keyword; leave cursor on it
+                    src.seek(pos + j)
+                    return count
+                if b == 0x25:  # '%' comment — per-byte path handles it
+                    src.seek(pos + row_start)
+                    return i
+                m = find_eol(block, j)
+                if m is None:
+                    if not at_eof:
+                        j = row_start
+                        break  # row may continue past the block
+                    line = block[j:n]
+                    end = n
+                elif block[e := m.start()] == 0x0D:
+                    if e + 1 < n:
+                        end = e + 2 if block[e + 1] == 0x0A else e + 1
+                    elif at_eof:
+                        end = e + 1
+                    else:
+                        j = row_start
+                        break  # CR at block end: LF may follow
+                    line = block[j:e]
+                else:
+                    line = block[j:e]
+                    end = e + 1
+                j = end
+                try:
+                    offset, generation, flag = _parse_xref_entry_line(line)
+                except PDFParseError:
+                    src.seek(pos + end)
+                    return -1
+                if flag == "n":
+                    if offset > 0:  # upstream skips 0 offsets
+                        set_entry(
+                            COSObjectKey(first_obj + i, generation),
+                            XrefEntry(type=table, offset=offset),
+                        )
+                elif flag == "f":
+                    set_entry(
+                        COSObjectKey(first_obj + i, generation),
+                        XrefEntry(type=table, offset=offset, compressed_index=-1),
+                    )
+                else:
+                    src.seek(pos + end)
+                    return -1
+                i += 1
+            if j == 0:
+                # No progress from a fresh block: let the per-byte path decide.
+                src.seek(pos)
+                return i
+            pos += j
+        src.seek(pos)
+        return i
 
     def _read_xref_subsection_header(self) -> tuple[int, int] | None:
         """Read one ``<first> <count>`` subsection header.
@@ -1710,6 +1833,11 @@ class PDFParser:
         self._base.skip_eol()
         offset, generation, flag = _parse_xref_entry_line(line)
         if flag == "n":
+            # Upstream COSParser.parseXrefTable skips in-use rows whose offset
+            # is 0 ("skip 0 offsets"): no xref entry is registered, so the
+            # key is absent from the table (oracle-confirmed on eu-001.pdf).
+            if offset <= 0:
+                return
             self._resolver.set_entry(
                 COSObjectKey(object_number, generation),
                 XrefEntry(type=XrefType.TABLE, offset=offset),
@@ -2239,12 +2367,19 @@ class PDFParser:
         assert self._cos_parser is not None
         assert self._document is not None
         xref = self._resolver.get_xref_table()
+        # Header checks are side-effect free, so they are batched up front in
+        # file order (see _find_bad_xref_offsets); the repair loop below still
+        # walks the xref in its own order, so the brute-force trigger and the
+        # corrected-entry order are unchanged.
+        bad = self._find_bad_xref_offsets(xref)
+        if not bad:
+            return
         bf_offsets: dict[COSObjectKey, int] | None = None
         corrected: dict[COSObjectKey, int] = {}
         for key, entry in xref.items():
             if entry.type is XrefType.COMPRESSED or entry.compressed_index == -1:
                 continue
-            if self._object_header_matches(entry.offset, key):
+            if key not in bad:
                 continue
             # Offset is wrong — locate the object by brute force.
             if bf_offsets is None:
@@ -2267,6 +2402,74 @@ class PDFParser:
                 )
             )
         self._document.add_xref_table(corrected)
+
+    def _find_bad_xref_offsets(
+        self, xref: dict[COSObjectKey, XrefEntry]
+    ) -> set[COSObjectKey]:
+        """Return the keys of the in-use, uncompressed xref entries whose
+        offset does not point at a matching ``n g obj`` header.
+
+        Equivalent to calling :meth:`_object_header_matches` once per entry,
+        but the offsets are visited in ascending order and the header windows
+        are sliced out of :data:`_BULK_READ_BLOCK`-sized sequential reads, so
+        a large table costs one read per block instead of a seek, a small
+        read and two position round-trips per entry. Each window is judged by
+        the same :meth:`_scan_object_header` / slow-path pair, with the same
+        ``n`` / ``truncated`` inputs the per-entry method computes. The
+        source position is restored."""
+        src = self._src
+        length = src.length()
+        window = _OBJ_HEADER_SCAN_WINDOW
+        scan = self._scan_object_header
+        todo: list[tuple[int, COSObjectKey]] = []
+        bad: set[COSObjectKey] = set()
+        for key, entry in xref.items():
+            if entry.type is XrefType.COMPRESSED or entry.compressed_index == -1:
+                continue
+            offset = entry.offset
+            if offset < 0 or offset >= length:
+                bad.add(key)
+            else:
+                todo.append((offset, key))
+        if not todo:
+            return bad
+        todo.sort(key=itemgetter(0))
+        saved = src.get_position()
+        try:
+            block = b""
+            block_start = 0
+            block_end = 0
+            for offset, key in todo:
+                if offset + window > block_end and block_end < length:
+                    block_start = offset
+                    block = self._read_block_at(offset, _BULK_READ_BLOCK)
+                    block_end = offset + len(block)
+                rel = offset - block_start
+                buf = block[rel : rel + window]
+                n = len(buf)
+                verdict = scan(buf, n, offset + n < length, key.object_number)
+                if verdict is None:
+                    verdict = self._object_header_matches_slow(offset, key)
+                if not verdict:
+                    bad.add(key)
+        finally:
+            src.seek(saved)
+        return bad
+
+    def _read_block_at(self, position: int, size: int) -> bytes:
+        """Read up to ``size`` bytes starting at ``position`` (fewer only at
+        EOF). Leaves the source positioned after the bytes read."""
+        src = self._src
+        src.seek(position)
+        buf = bytearray(size)
+        n = 0
+        while n < size:
+            r = src.read_into(buf, n, size - n)
+            if r <= 0:
+                break
+            n += r
+        del buf[n:]
+        return bytes(buf)
 
     def _object_header_matches(self, offset: int, key: COSObjectKey) -> bool:
         """Return ``True`` when ``offset`` seeks to an ``n g obj`` header

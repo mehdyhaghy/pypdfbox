@@ -1080,8 +1080,9 @@ class COSParser(BaseParser):
                     # First-write wins so chained /Prev sections (parsed
                     # newest-first by walkers above this layer) don't get
                     # overwritten by older entries when they happen to be
-                    # parsed in the wrong order.
-                    xref_table.setdefault(key, offset)
+                    # parsed in the wrong order. Upstream skips 0 offsets.
+                    if offset > 0:
+                        xref_table.setdefault(key, offset)
                 elif flag == "f":
                     xref_table.setdefault(key, -1)
                 else:

@@ -172,6 +172,10 @@ class XrefTrailerResolver:
         key anywhere in the chain, so ``populate_document`` still skips a
         truly-free slot while a free-over-in-use slot keeps the in-use
         offset (PDFBox parity — see test_prev_chain_oracle)."""
+        if len(self._sections) == 1:
+            # A single section has one entry per key, so there is nothing to
+            # merge: a plain copy is the same map.
+            return dict(self._sections[0].entries)
         merged: dict[COSObjectKey, XrefEntry] = {}
         # Walk OLDEST → NEWEST so newer entries overwrite older ones.
         for section in reversed(self._sections):
