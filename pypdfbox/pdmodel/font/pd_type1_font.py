@@ -5,6 +5,10 @@ from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.fontbox.type1.type1_font import Type1Font
 
 from .afm_loader import AfmMetrics
+from .encoding.dictionary_encoding import DictionaryEncoding
+from .encoding.standard_encoding import StandardEncoding
+from .encoding.symbol_encoding import SymbolEncoding
+from .encoding.zapf_dingbats_encoding import ZapfDingbatsEncoding
 from .pd_simple_font import PDSimpleFont
 from .standard14_fonts import Standard14Fonts
 
@@ -277,15 +281,6 @@ class PDType1Font(PDSimpleFont):
             # without the fall-through, AcroForm widget appearance text
             # on unembedded Helvetica with /Differences painted
             # nothing).
-            from .encoding.dictionary_encoding import (
-                DictionaryEncoding,
-            )
-            from .encoding.standard_encoding import StandardEncoding
-            from .encoding.symbol_encoding import SymbolEncoding
-            from .encoding.zapf_dingbats_encoding import (
-                ZapfDingbatsEncoding,
-            )
-
             canonical = Standard14Fonts.get_mapped_font_name(base_font)
             if canonical == "Symbol":
                 default_encoding = SymbolEncoding.INSTANCE
