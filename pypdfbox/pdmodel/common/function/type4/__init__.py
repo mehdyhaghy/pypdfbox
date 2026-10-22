@@ -20,12 +20,29 @@ porting code/tests against ``org.apache.pdfbox.pdmodel.common.function.type4``
 finds the expected names.
 """
 
-from .execution_context import ExecutionContext
-from .instruction_sequence import InstructionSequence
-from .instruction_sequence_builder import InstructionSequenceBuilder
-from .operator import Operator
-from .operators import Operators
-from .parser import Parser
+from typing import TYPE_CHECKING
+
+from pypdfbox._lazy_exports import attach as _attach
+
+if TYPE_CHECKING:
+    from .execution_context import ExecutionContext
+    from .instruction_sequence import InstructionSequence
+    from .instruction_sequence_builder import InstructionSequenceBuilder
+    from .operator import Operator
+    from .operators import Operators
+    from .parser import Parser
+
+__getattr__, __dir__ = _attach(
+    __name__,
+    {
+        "ExecutionContext": ".execution_context",
+        "InstructionSequence": ".instruction_sequence",
+        "InstructionSequenceBuilder": ".instruction_sequence_builder",
+        "Operator": ".operator",
+        "Operators": ".operators",
+        "Parser": ".parser",
+    },
+)
 
 __all__ = [
     "ExecutionContext",

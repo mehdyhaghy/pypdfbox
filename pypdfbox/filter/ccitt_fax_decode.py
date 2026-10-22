@@ -3,8 +3,7 @@ import os
 import struct
 from typing import Any, BinaryIO, cast
 
-from PIL import Image
-
+from pypdfbox._lazy_exports import lazy_modules
 from pypdfbox.cos import COSArray, COSDictionary
 
 from .decode_result import DecodeResult
@@ -220,6 +219,8 @@ class CCITTFaxDecode(Filter):
         parameters: COSDictionary | None = None,
         index: int = 0,
     ) -> DecodeResult:
+        from PIL import Image
+
         decode_params = _resolve_decode_params(parameters, index)
 
         k = decode_params.get_int(_K, 0)
@@ -438,6 +439,8 @@ class CCITTFaxDecode(Filter):
         framing under PDF §7.4.9 (the ``K`` parameter governs decoding,
         not the precise encoder line-batching).
         """
+        from PIL import Image
+
         decode_params = _resolve_decode_params(parameters, 0)
 
         k = decode_params.get_int(_K, -1)
@@ -577,3 +580,5 @@ def _estimate_rows(encoded_bytes: bytes, columns: int) -> int:
 
 
 FilterFactory.register("CCITTFaxDecode", CCITTFaxDecode())
+
+__getattr__ = lazy_modules(__name__, {"Image": "PIL.Image"})

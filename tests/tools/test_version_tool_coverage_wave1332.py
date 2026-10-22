@@ -30,7 +30,13 @@ def test_get_version_returns_known_version() -> None:
 def test_get_version_returns_unknown_when_version_attr_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    def _missing(name: str) -> object:
+        raise AttributeError(name)
+
+    # ``pypdfbox.__version__`` resolves lazily through the package
+    # ``__getattr__``; stub that out too so the attribute is truly absent.
     monkeypatch.delattr(pypdfbox, "__version__", raising=False)
+    monkeypatch.setattr(pypdfbox, "__getattr__", _missing)
     assert Version().get_version() == ["unknown"]
 
 

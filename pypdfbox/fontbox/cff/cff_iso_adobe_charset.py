@@ -11,7 +11,8 @@ spec's predefined ISOAdobe charset (where SID == GID for the first 229
 glyphs).
 """
 
-from fontTools.cffLib import cffISOAdobeStrings
+
+from pypdfbox._lazy_exports import lazy_modules
 
 from .cff_charset_type1 import CFFCharsetType1
 
@@ -22,6 +23,8 @@ class CFFISOAdobeCharset(CFFCharsetType1):
     _instance: CFFISOAdobeCharset | None = None
 
     def __init__(self) -> None:
+        from fontTools.cffLib import cffISOAdobeStrings
+
         super().__init__()
         # Upstream lines 264-268: gid increments while sid is read from the
         # table. ISOAdobe is a predefined charset where GID == SID for the
@@ -36,3 +39,5 @@ class CFFISOAdobeCharset(CFFCharsetType1):
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
+
+__getattr__ = lazy_modules(__name__, {"cffISOAdobeStrings": "fontTools.cffLib:cffISOAdobeStrings"})

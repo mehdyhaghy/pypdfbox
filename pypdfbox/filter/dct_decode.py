@@ -1,9 +1,7 @@
 import io
 from typing import BinaryIO
 
-import imagecodecs
-from PIL import Image
-
+from pypdfbox._lazy_exports import lazy_modules
 from pypdfbox.cos import COSDictionary
 
 from .decode_result import DecodeResult
@@ -71,6 +69,8 @@ class DCTDecode(Filter):
         # multi-component. Falls back to Pillow on any decode failure so
         # we keep coverage of Adobe-marker / progressive / unusual variants
         # the upstream JPEG codec may handle differently.
+        import imagecodecs
+
         try:
             array = imagecodecs.jpeg8_decode(encoded_bytes)
         except Exception:
@@ -84,6 +84,8 @@ class DCTDecode(Filter):
         else:
             # Pillow fallback path — used when imagecodecs declines the
             # codestream (rare; e.g. some Adobe-marker variants).
+            from PIL import Image
+
             try:
                 with Image.open(io.BytesIO(encoded_bytes)) as image:
                     image.load()
@@ -145,3 +147,5 @@ class DCTDecode(Filter):
 
 
 FilterFactory.register("DCTDecode", DCTDecode())
+
+__getattr__ = lazy_modules(__name__, {"imagecodecs": "imagecodecs", "Image": "PIL.Image"})

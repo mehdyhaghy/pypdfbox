@@ -19,8 +19,7 @@ extracts from the SOF ``numFrameComponents`` attribute.
 import io
 from typing import TYPE_CHECKING, BinaryIO
 
-from PIL import Image, UnidentifiedImageError
-
+from pypdfbox._lazy_exports import lazy_modules
 from pypdfbox.cos import COSName, COSStream
 from pypdfbox.pdmodel.graphics.color import (
     PDColorSpace,
@@ -29,6 +28,9 @@ from pypdfbox.pdmodel.graphics.color import (
     PDDeviceRGB,
 )
 from pypdfbox.pdmodel.graphics.image.pd_image_x_object import PDImageXObject
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_document import PDDocument
@@ -214,6 +216,8 @@ class JPEGFactory:
         ``/SMask`` when it carries an alpha channel. Modes ``L``,
         ``RGB``, and ``CMYK`` are encoded directly.
         """
+        from PIL import Image
+
         if not isinstance(image, Image.Image):
             raise TypeError(
                 f"image must be a PIL.Image.Image, got {type(image).__name__}"
@@ -239,6 +243,8 @@ class JPEGFactory:
         header sniff without decoding, so the metadata + raster
         fallback collapse into one fast path.
         """
+        from PIL import Image, UnidentifiedImageError
+
         if isinstance(stream, (bytes, bytearray, memoryview)):
             jpeg_bytes = bytes(stream)
         else:
@@ -295,6 +301,8 @@ class JPEGFactory:
         equivalent is ``mode == "1"`` paired with the ``transparency``
         info entry, which we reject the same way.
         """
+        from PIL import Image
+
         if not isinstance(image, Image.Image):
             raise TypeError(
                 f"image must be a PIL.Image.Image, got {type(image).__name__}"
@@ -324,6 +332,8 @@ class JPEGFactory:
         ``ColorConvertOp``. PIL's ``Image.convert("RGB")`` is the
         direct analogue.
         """
+        from PIL import Image
+
         if not isinstance(image, Image.Image):
             raise TypeError(
                 f"image must be a PIL.Image.Image, got {type(image).__name__}"
@@ -360,6 +370,8 @@ class JPEGFactory:
         raises ``NotImplementedError`` matching upstream's
         ``UnsupportedOperationException("color space not implemented")``.
         """
+        from PIL import Image
+
         if not isinstance(image, Image.Image):
             raise TypeError(
                 f"image must be a PIL.Image.Image, got {type(image).__name__}"
@@ -386,6 +398,8 @@ class JPEGFactory:
         Callers should treat the return value as opaque -- the
         contract is "non-null encoder", not a specific type.
         """
+        from PIL import Image
+
         return Image
 
     @staticmethod
@@ -404,6 +418,8 @@ class JPEGFactory:
         ``dpi=(x, y)`` save kwarg. PIL's quality scale is ``[1, 95]``
         while upstream's is ``[0.0, 1.0]``, so we rescale.
         """
+        from PIL import Image
+
         if not isinstance(image, Image.Image):
             raise TypeError(
                 f"image must be a PIL.Image.Image, got {type(image).__name__}"
@@ -441,6 +457,8 @@ class JPEGFactory:
         ``PDImageXObject``, and recursively encodes any alpha band as
         the soft mask.
         """
+        from PIL import Image
+
         if not isinstance(image, Image.Image):
             raise TypeError(
                 f"image must be a PIL.Image.Image, got {type(image).__name__}"
@@ -480,3 +498,11 @@ _retrieve_dimensions = JPEGFactory.retrieve_dimensions
 
 
 __all__ = ["JPEGFactory"]
+
+__getattr__ = lazy_modules(
+    __name__,
+    {
+        "Image": "PIL.Image",
+        "UnidentifiedImageError": "PIL:UnidentifiedImageError",
+    },
+)

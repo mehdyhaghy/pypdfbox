@@ -55,7 +55,7 @@ def _decode_all(encoded: bytes, predictor: int, columns: int, colors: int, bpc: 
 @pytest.mark.parametrize("colors", COLORS)
 @pytest.mark.parametrize("bpc", BITS)
 @pytest.mark.parametrize("columns", COLUMNS)
-def test_numpy_matches_pure_python(predictor, colors, bpc, columns):
+def test_numpy_matches_pure_python(predictor, colors, bpc, columns, monkeypatch):
     """numpy fast path and pure-Python fallback decode to identical bytes."""
     rb = _row_bytes(columns, colors, bpc)
     if rb == 0:
@@ -63,8 +63,11 @@ def test_numpy_matches_pure_python(predictor, colors, bpc, columns):
     raw = _make_raw(columns, colors, bpc)
     encoded = predict(raw, predictor, columns, colors, bpc)
 
-    # numpy path (default: _HAS_NP is True in this environment)
+    # numpy path (default: _HAS_NP is True in this environment). Short rows
+    # normally stay on the faster pure-Python loop; lower the cutoff so the
+    # numpy helpers run for every geometry in the matrix.
     assert _predictor._HAS_NP is True
+    monkeypatch.setattr(_predictor, "_NP_MIN_ROW", 0)
     np_bulk, np_stream = _decode_all(encoded, predictor, columns, colors, bpc)
 
     # force the pure-Python fallback and re-decode
@@ -88,3 +91,22 @@ def test_round_trip_up_and_tiff_8bit():
         encoded = predict(raw, predictor, columns, colors, bpc)
         assert unpredict(encoded, predictor, columns, colors, bpc) == raw
         assert _stream_decode(encoded, predictor, columns, colors, bpc) == raw
+
+
+def test_short_rows_skip_numpy_import():
+    """Decoding short predictor rows (e.g. xref streams) must not load numpy."""
+    import subprocess
+    import sys
+
+    code = (
+        "import sys\n"
+        "from pypdfbox.filter._predictor import predict, unpredict\n"
+        "raw = bytes(range(5)) * 20\n"
+        "for p in (11, 12):\n"
+        "    assert unpredict(predict(raw, p, 5, 1, 8), p, 5, 1, 8) == raw\n"
+        "print('numpy' in sys.modules)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip() == "False"

@@ -2,8 +2,7 @@ import io
 import zlib
 from typing import TYPE_CHECKING
 
-from PIL import Image
-
+from pypdfbox._lazy_exports import lazy_modules
 from pypdfbox.cos import (
     COSArray,
     COSBase,
@@ -17,6 +16,9 @@ from pypdfbox.filter import CCITTFaxDecode
 from pypdfbox.pdmodel.graphics.color import PDColorSpace
 
 from .pd_image_x_object import PDImageXObject
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_document import PDDocument
@@ -119,6 +121,8 @@ class LosslessFactory:
         :raises OSError: on flate-encoding failure (re-raised from
             :mod:`zlib`).
         """
+        from PIL import Image
+
         if not isinstance(image, Image.Image):
             raise TypeError(
                 f"image must be a PIL.Image.Image, got {type(image).__name__}"
@@ -181,6 +185,8 @@ class LosslessFactory:
         ``"RGBA"``, ``"PA"``) and modes carrying chroma (``"RGB"``, ``"P"``,
         ``"CMYK"`` …) do not.
         """
+        from PIL import Image
+
         if not isinstance(image, Image.Image):
             return False
         mode = image.mode
@@ -210,6 +216,8 @@ class LosslessFactory:
         public :meth:`create_from_image` keeps Pythonic ``document, image``
         order.
         """
+        from PIL import Image
+
         if not isinstance(image, Image.Image):
             raise TypeError(
                 f"image must be a PIL.Image.Image, got {type(image).__name__}"
@@ -240,6 +248,8 @@ class LosslessFactory:
         upstream falls back to "8-bit sRGB and might lose color
         information" for unknown layouts.
         """
+        from PIL import Image
+
         if not isinstance(image, Image.Image):
             raise TypeError(
                 f"image must be a PIL.Image.Image, got {type(image).__name__}"
@@ -411,6 +421,8 @@ def _create_from_rgb(document: PDDocument, image: Image.Image) -> PDImageXObject
 
 
 def _create_from_rgba(document: PDDocument, image: Image.Image) -> PDImageXObject:
+    from PIL import Image
+
     width, height = image.size
     # Split into R,G,B,A — interleave RGB without alpha for the body,
     # use the A band raw for the SMask. Upstream does the same split via
@@ -643,3 +655,5 @@ def _prepare_image_x_object(
 
 
 __all__ = ["LosslessFactory"]
+
+__getattr__ = lazy_modules(__name__, {"Image": "PIL.Image"})

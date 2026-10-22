@@ -12,8 +12,8 @@ resolves the SID through the CFF Standard Strings table shipped with
 fontTools (``fontTools.cffLib.cffStandardStrings``).
 """
 
-from fontTools.cffLib import cffStandardStrings  # type: ignore[import-untyped]
 
+from pypdfbox._lazy_exports import lazy_modules
 from pypdfbox.fontbox.encoding.encoding import Encoding
 
 
@@ -83,9 +83,13 @@ def _name_for_sid(sid: int) -> str:
     ``CFFStandardString.getName(int)`` which throws on negative SIDs but
     we follow Python conventions here.
     """
+    from fontTools.cffLib import cffStandardStrings
+
     if 0 <= sid < len(cffStandardStrings):
         return cffStandardStrings[sid]
     return ".notdef"
 
 
 __all__ = ["CFFEncoding"]
+
+__getattr__ = lazy_modules(__name__, {"cffStandardStrings": "fontTools.cffLib:cffStandardStrings"})

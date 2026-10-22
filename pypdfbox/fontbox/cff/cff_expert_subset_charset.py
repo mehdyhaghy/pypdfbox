@@ -8,7 +8,8 @@ The 87-entry table is supplied by fontTools
 (``cffExpertSubsetStrings`` + ``cffStandardStringMapping``).
 """
 
-from fontTools.cffLib import cffExpertSubsetStrings, cffStandardStringMapping
+
+from pypdfbox._lazy_exports import lazy_modules
 
 from .cff_charset_type1 import CFFCharsetType1
 
@@ -19,6 +20,8 @@ class CFFExpertSubsetCharset(CFFCharsetType1):
     _instance: CFFExpertSubsetCharset | None = None
 
     def __init__(self) -> None:
+        from fontTools.cffLib import cffExpertSubsetStrings, cffStandardStringMapping
+
         super().__init__()
         # Upstream lines 123-127: iterate ``cffExpertSubsetCharsetTable``
         # in row order, assigning GID = row index, SID = row[0],
@@ -35,3 +38,11 @@ class CFFExpertSubsetCharset(CFFCharsetType1):
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
+
+__getattr__ = lazy_modules(
+    __name__,
+    {
+        "cffExpertSubsetStrings": "fontTools.cffLib:cffExpertSubsetStrings",
+        "cffStandardStringMapping": "fontTools.cffLib:cffStandardStringMapping",
+    },
+)

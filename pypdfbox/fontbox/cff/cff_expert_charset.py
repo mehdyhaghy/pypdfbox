@@ -10,7 +10,8 @@ transcribed by hand. The (SID, name) pairs match upstream's
 ``cffExpertCharsetTable`` and the CFF spec's predefined Expert charset.
 """
 
-from fontTools.cffLib import cffIExpertStrings, cffStandardStringMapping
+
+from pypdfbox._lazy_exports import lazy_modules
 
 from .cff_charset_type1 import CFFCharsetType1
 
@@ -21,6 +22,8 @@ class CFFExpertCharset(CFFCharsetType1):
     _instance: CFFExpertCharset | None = None
 
     def __init__(self) -> None:
+        from fontTools.cffLib import cffIExpertStrings, cffStandardStringMapping
+
         super().__init__()
         # Upstream lines 201-205: iterate the table assigning sequential
         # GIDs while pulling SID/name from each row. fontTools'
@@ -38,3 +41,11 @@ class CFFExpertCharset(CFFCharsetType1):
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
+
+__getattr__ = lazy_modules(
+    __name__,
+    {
+        "cffIExpertStrings": "fontTools.cffLib:cffIExpertStrings",
+        "cffStandardStringMapping": "fontTools.cffLib:cffStandardStringMapping",
+    },
+)
