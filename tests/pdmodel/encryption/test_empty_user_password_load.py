@@ -128,7 +128,7 @@ def test_user_password_protected_document_stays_encrypted() -> None:
     # The empty password does not open it; without a password the
     # document comes back still encrypted and can be decrypted later.
     data = _build_protected(user_password="user", key_length=128)
-    with PDDocument.load(data) as doc:
+    with pytest.warns(DeprecationWarning, match="pypdfbox 3.0"), PDDocument.load(data) as doc:
         assert doc.is_encrypted()
         assert not doc.get_current_access_permission().can_extract_content()
         doc.decrypt("user")
@@ -144,3 +144,61 @@ def test_wrong_explicit_password_still_raises() -> None:
     data = _build_protected(user_password="user", key_length=128)
     with pytest.raises(InvalidPasswordException):
         PDDocument.load(data, "nope")
+
+
+def test_implicit_password_failure_warns_at_caller() -> None:
+    # 2.x keeps returning the document encrypted but warns that 3.0 will
+    # raise InvalidPasswordException like upstream; the warning points at
+    # the caller's file, not at pypdfbox internals.
+    data = _build_protected(user_password="user", key_length=128)
+    with pytest.warns(DeprecationWarning, match="pypdfbox 3.0") as record:
+        doc = PDDocument.load(data)
+    doc.close()
+    assert record[0].filename == __file__
+
+
+@pytest.mark.parametrize("source", ["empty_user_password", "plain"])
+def test_no_warning_when_load_succeeds(source: str) -> None:
+    import warnings
+
+    if source == "plain":
+        doc = PDDocument()
+        doc.add_page(PDPage())
+        sink = io.BytesIO()
+        doc.save(sink)
+        doc.close()
+        data = sink.getvalue()
+    else:
+        data = _FIXTURE.read_bytes()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        PDDocument.load(data).close()
+
+
+def test_explicit_empty_password_raises_like_upstream() -> None:
+    from pypdfbox.pdmodel.encryption.invalid_password_exception import (
+        InvalidPasswordException,
+    )
+
+    data = _build_protected(user_password="user", key_length=128)
+    with pytest.raises(InvalidPasswordException):
+        PDDocument.load(data, password="")
+
+
+def test_tools_and_examples_do_not_warn(tmp_path: Path) -> None:
+    import warnings
+
+    from pypdfbox.examples.pdmodel.create_bookmarks import CreateBookmarks
+    from pypdfbox.examples.util.remove_all_text import RemoveAllText
+    from pypdfbox.tools.encrypt import encrypt_pdf
+
+    src = tmp_path / "locked.pdf"
+    src.write_bytes(_build_protected(user_password="user", key_length=128))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        encrypt_pdf(src, tmp_path / "out.pdf", owner_password="o", user_password="u")
+        RemoveAllText.strip(str(src), str(tmp_path / "stripped.pdf"))
+        with pytest.raises(SystemExit):
+            CreateBookmarks.main([str(src), str(tmp_path / "bm.pdf")])
+    assert not (tmp_path / "out.pdf").exists()
+    assert not (tmp_path / "stripped.pdf").exists()

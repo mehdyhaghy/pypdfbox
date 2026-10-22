@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from pypdfbox.pdmodel import PDDocument
 from pypdfbox.pdmodel.encryption import (
     AccessPermission,
+    InvalidPasswordException,
     PublicKeyProtectionPolicy,
     PublicKeyRecipient,
     StandardProtectionPolicy,
@@ -170,7 +171,10 @@ def encrypt_pdf(
     ap = permissions if permissions is not None else AccessPermission()
 
     cert_list = list(cert_files)
-    doc = PDDocument.load(input_path)
+    try:
+        doc = PDDocument.load(input_path, password="")
+    except InvalidPasswordException:
+        return  # Encrypted with a user password: already encrypted.
     try:
         if doc.is_encrypted():
             return  # Upstream prints to stderr and falls through to no save.
@@ -211,7 +215,12 @@ def run(args: argparse.Namespace) -> int:
     # with the same code upstream would have returned (0 — upstream prints
     # the message and returns success).
     try:
-        with PDDocument.load(src) as probe:
+        try:
+            probe = PDDocument.load(src, password="")
+        except InvalidPasswordException:
+            print("encrypt: Error: Document is already encrypted.", flush=True)
+            return 0
+        with probe:
             if probe.is_encrypted():
                 print("encrypt: Error: Document is already encrypted.", flush=True)
                 return 0

@@ -5,6 +5,7 @@ Adds one bookmark for every page of a PDF.
 
 import sys
 
+from pypdfbox.pdmodel.encryption import InvalidPasswordException
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     pd_page_fit_width_destination as _fitwidth,
 )
@@ -35,12 +36,18 @@ class CreateBookmarks:
         if len(argv) != 2:
             CreateBookmarks.usage()
             return
-        with PDDocument.load(argv[0]) as document:
-            if document.is_encrypted():
-                sys.stderr.write(
-                    "Error: Cannot add bookmarks to encrypted document.\n",
-                )
-                raise SystemExit(1)
+        try:
+            document = PDDocument.load(argv[0], password="")
+        except InvalidPasswordException:
+            document = None
+        if document is None or document.is_encrypted():
+            if document is not None:
+                document.close()
+            sys.stderr.write(
+                "Error: Cannot add bookmarks to encrypted document.\n",
+            )
+            raise SystemExit(1)
+        with document:
             outline = PDDocumentOutline()
             document.get_document_catalog().set_document_outline(outline)
             pages_outline = PDOutlineItem()

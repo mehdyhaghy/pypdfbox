@@ -157,7 +157,8 @@ def _build_encrypted_document(
 
 def test_is_encrypted_after_parsing_encrypted_pdf() -> None:
     pdf, _ = _build_encrypted_document("hunter2", b"hello cipher")
-    cos_doc = Loader.load_pdf(pdf)
+    with pytest.warns(DeprecationWarning, match="pypdfbox 3.0"):
+        cos_doc = Loader.load_pdf(pdf)
     try:
         assert cos_doc.is_encrypted() is True
         with PDDocument(cos_doc) as pd:
@@ -186,7 +187,7 @@ def test_decrypt_via_pddocument_round_trip() -> None:
     payload = b"manual decrypt path"
     pdf, stream_key = _build_encrypted_document("pw", payload)
     # Load encrypted, then decrypt via PDDocument.
-    with PDDocument.load(pdf) as pd:
+    with pytest.warns(DeprecationWarning, match="pypdfbox 3.0"), PDDocument.load(pdf) as pd:
         assert pd.is_encrypted() is True
         pd.decrypt("pw")
         stream_obj = pd.get_document().get_object_from_pool(stream_key).get_object()
@@ -230,7 +231,7 @@ def test_set_all_security_to_be_removed_strips_encryption_on_save() -> None:
 
 def test_get_encryption_returns_pd_encryption_for_encrypted_doc() -> None:
     pdf, _ = _build_encrypted_document("k", b"x")
-    with PDDocument.load(pdf) as pd:
+    with pytest.warns(DeprecationWarning, match="pypdfbox 3.0"), PDDocument.load(pdf) as pd:
         enc = pd.get_encryption()
         assert isinstance(enc, PDEncryption)
         assert enc.get_filter() == "Standard"

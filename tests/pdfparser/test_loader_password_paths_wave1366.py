@@ -125,7 +125,8 @@ def test_load_encrypted_without_password_returns_encrypted() -> None:
     COSDocument is reported as encrypted (no auto-decrypt). Streams stay
     locked until the caller drives ``PDDocument.decrypt``."""
     pdf, _ = _build_encrypted_pdf("k")
-    cos = Loader.load_pdf(pdf)
+    with pytest.warns(DeprecationWarning, match="pypdfbox 3.0"):
+        cos = Loader.load_pdf(pdf)
     try:
         assert cos.is_encrypted() is True
     finally:

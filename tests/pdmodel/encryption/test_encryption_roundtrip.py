@@ -108,7 +108,8 @@ def test_round_trip_with_user_password() -> None:
 
     # is_encrypted before decrypt: load WITHOUT a password to capture the
     # parser-level state, then close before re-loading with credentials.
-    encrypted_doc = Loader.load_pdf(saved)
+    with pytest.warns(DeprecationWarning, match="pypdfbox 3.0"):
+        encrypted_doc = Loader.load_pdf(saved)
     try:
         assert encrypted_doc.is_encrypted() is True
     finally:

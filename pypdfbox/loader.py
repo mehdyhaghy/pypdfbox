@@ -1,5 +1,6 @@
 import logging
 import os
+import warnings
 from typing import TYPE_CHECKING, Any, BinaryIO, TypeGuard
 
 from pypdfbox.cos import COSDocument
@@ -16,6 +17,9 @@ if TYPE_CHECKING:
     from pypdfbox.pdmodel.fdf import FDFDocument
 
 _LOG = logging.getLogger(__name__)
+
+# Attribute deprecation warnings to the first caller outside pypdfbox.
+_PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Type alias for everything Loader.load_pdf accepts. Mirrors the overloads
 # of org.apache.pdfbox.Loader.loadPDF (file, byte[], RandomAccessRead,
@@ -144,8 +148,9 @@ class Loader:
         # empty password, so a blank-user-password document (the common
         # "restrictions only" case) is decrypted on load. With no password
         # given we do the same, but keep returning the document still
-        # encrypted when the empty password is rejected (upstream raises),
-        # so callers can ``decrypt`` it later.
+        # encrypted when the empty password is rejected, so callers can
+        # ``decrypt`` it later. Upstream raises there; 2.x warns and 3.0
+        # will raise.
         implicit_password = password is None
         if implicit_password and document.is_encrypted():
             password = ""
@@ -163,8 +168,20 @@ class Loader:
             pd._owns_document = False
             try:
                 pd.decrypt(password)
-            except OSError:
+            except OSError as exc:
                 if implicit_password:
+                    from pypdfbox.pdmodel.encryption import InvalidPasswordException
+
+                    if isinstance(exc, InvalidPasswordException):
+                        warnings.warn(
+                            "Loading an encrypted PDF that the empty password does "
+                            "not open returns it still encrypted; pypdfbox 3.0 will "
+                            "raise InvalidPasswordException instead, as PDFBox does. "
+                            "Pass the password to the loader, or catch "
+                            "InvalidPasswordException after passing password=''.",
+                            DeprecationWarning,
+                            skip_file_prefixes=(_PACKAGE_DIR,),
+                        )
                     _LOG.debug(
                         "empty password did not decrypt the document; "
                         "returning it encrypted",

@@ -16,6 +16,7 @@ import contextlib
 import sys
 from typing import Any
 
+from pypdfbox.pdmodel.encryption import InvalidPasswordException
 from pypdfbox.pdmodel.pd_document import PDDocument
 
 
@@ -42,12 +43,18 @@ class RemoveAllText:
     def strip(src: str, dst: str) -> None:
         """Open ``src``, strip every text-showing operator from every
         page's content stream, save the result to ``dst``."""
-        with PDDocument.load(src) as document:
-            if document.is_encrypted():
-                sys.stderr.write(
-                    "Error: Encrypted documents are not supported for this example.\n",
-                )
-                return
+        try:
+            document = PDDocument.load(src, password="")
+        except InvalidPasswordException:
+            document = None
+        if document is None or document.is_encrypted():
+            if document is not None:
+                document.close()
+            sys.stderr.write(
+                "Error: Encrypted documents are not supported for this example.\n",
+            )
+            return
+        with document:
             for page in document.get_pages():
                 new_tokens = RemoveAllText.create_tokens_without_text(page)
                 try:
