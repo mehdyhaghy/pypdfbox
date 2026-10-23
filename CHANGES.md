@@ -23,6 +23,10 @@ Trivial naming changes (camelCase → snake_case) are not listed.
 
 Divergences that remain live (will affect observable behaviour vs Java PDFBox):
 
+- **RC4 documents with 48 to 120-bit keys decrypt (fix).** The `cryptography` ARC4 binding only accepts 5, 7, 8, 10, 16, 20, 24 and 32-byte keys, so files whose file or per-object keys had another length (for example a 48-bit file key, which gives 11-byte object keys) failed with `ValueError`. Those sizes now go through the ported `RC4Cipher`, as PDFBox handles them (PDFBOX-5955). Checked against PDFBox 3.0.8 for every key length from 40 to 128 bits in steps of 8.
+  upstream: PDFBox 3.0.8 `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/RC4Cipher.java`, `SecurityHandler.java`
+  reason: bug fix toward parity.
+
 - **`PDDocument.import_page` is a shallow copy, like upstream (fix, behavior change).** It used to deep-copy everything the page reached and promote widget field roots into the destination `/AcroForm /Fields`. It now copies the page dictionary shallowly (minus `/Parent`), so resources and annotations are shared with the source; re-embeds the decoded `/Contents` as one FlateDecode stream; resets imported object keys; sets the resolved CropBox, MediaBox and Rotate; and only logs a warning for inherited resources. No AcroForm is created. Code that edits an imported page's resources now changes the source document too, as in PDFBox. Split output shrinks accordingly: a 100-page chunk of the ISO 32000 spec went from 2.02 MB (544 font dictionaries) to 0.80 MB (15, as upstream), and split chunks of form PDFs no longer carry a stray `/AcroForm`. `Splitter.process_page` no longer re-applies the page geometry itself.
   upstream: PDFBox 3.0.8 `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDDocument.java` (`importPage`)
   reason: bug fix toward parity.

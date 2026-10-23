@@ -15,7 +15,6 @@ import os as _os
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
-from cryptography.hazmat.primitives import padding as _padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 try:
@@ -24,6 +23,12 @@ try:
     from cryptography.hazmat.decrepit.ciphers.algorithms import ARC4 as _ARC4
 except ImportError:  # pragma: no cover — older cryptography releases
     from cryptography.hazmat.primitives.ciphers.algorithms import ARC4 as _ARC4
+
+from pypdfbox.cos.cos_array import COSArray as _COSArray
+from pypdfbox.cos.cos_dictionary import COSDictionary as _COSDictionary
+from pypdfbox.cos.cos_name import COSName as _COSName
+from pypdfbox.cos.cos_stream import COSStream as _COSStream
+from pypdfbox.cos.cos_string import COSString as _COSString
 
 if TYPE_CHECKING:
     from .access_permission import AccessPermission
@@ -35,6 +40,63 @@ _AES_SALT = b"sAlT"
 
 _LOG = logging.getLogger(__name__)
 
+# Dictionary keys consulted by the decrypt walk.
+_N_CF = _COSName.get_pdf_name("CF")
+_N_TYPE = _COSName.get_pdf_name("Type")
+_N_CONTENTS = _COSName.get_pdf_name("Contents")
+_N_BYTE_RANGE = _COSName.get_pdf_name("ByteRange")
+
+# ``decrypt`` dispatch kinds, in the order the isinstance chain tests them
+# (COSStream before COSDictionary: a stream is a dictionary subclass).
+_LEAF = 0
+_STRING = 1
+_STREAM = 2
+_DICT = 3
+_ARRAY = 4
+
+# type -> dispatch kind. Filled lazily by ``_kind_of``.
+_KIND_CACHE: dict[type, int] = {}
+
+# Exact dictionary classes the fast walk handles (subclasses that might
+# override the accessors take the generic path).
+_FAST_DICT_TYPES = frozenset({_COSDictionary, _COSStream})
+
+# Dispatch hooks whose override (on a subclass or an instance) disables the
+# inlined walk. ``_BASE_HOOKS`` holds the base functions, in this order.
+_WALK_HOOK_NAMES = (
+    "decrypt",
+    "_decrypt_string_if_absent",
+    "_decrypt_stream_if_absent",
+    "_decrypt_dictionary",
+    "_decrypt_array",
+    "_objects_seen",
+)
+_WALK_HOOKS = frozenset(_WALK_HOOK_NAMES)
+
+
+def _kind_of(obj: object) -> int:
+    """Classify ``obj`` exactly like the ``decrypt`` isinstance chain.
+
+    The verdict is cached per type, except for objects that report a
+    ``__class__`` other than their real type (e.g. spec'd mocks), whose
+    isinstance answer is not a property of the type.
+    """
+    if isinstance(obj, _COSString):
+        kind = _STRING
+    elif isinstance(obj, _COSStream):
+        kind = _STREAM
+    elif isinstance(obj, _COSDictionary):
+        kind = _DICT
+    elif isinstance(obj, _COSArray):
+        kind = _ARRAY
+    else:
+        kind = _LEAF
+    # The size cap only guards against unbounded growth from throwaway types
+    # (e.g. one mock class per instance); real documents use a handful.
+    if obj.__class__ is type(obj) and len(_KIND_CACHE) < 512:
+        _KIND_CACHE[type(obj)] = kind
+    return kind
+
 
 class SecurityHandler(ABC):
     """Lite port of ``SecurityHandler``.
@@ -43,6 +105,11 @@ class SecurityHandler(ABC):
     string / stream cipher dispatch. RC4 and AES-CBC primitives come from the
     ``cryptography`` package — we never roll our own block cipher.
     """
+
+    # (file-key bytes, MD5 state after absorbing them) — see
+    # :meth:`compute_object_key`. A class-level default keeps subclasses that
+    # skip ``__init__`` working.
+    _file_key_md5: tuple[bytes, Any] | None = None
 
     def __init__(self) -> None:
         self._encryption_key: bytes | None = None
@@ -273,28 +340,31 @@ class SecurityHandler(ABC):
                 "encryption_key not set — call prepare_for_decryption first"
             )
 
+        file_key = self._encryption_key
         if self._revision >= 5:
-            return self._encryption_key
+            return file_key
 
-        n = len(self._encryption_key)
-        md5 = hashlib.md5(usedforsecurity=False)
-        md5.update(self._encryption_key)
+        # The MD5 state after absorbing the file key is shared by every
+        # object; cache it (keyed on the key bytes) and fork it per object.
+        cached = self._file_key_md5
+        if cached is None or cached[0] != file_key:
+            cached = (
+                bytes(file_key),
+                hashlib.md5(file_key, usedforsecurity=False),
+            )
+            self._file_key_md5 = cached
+        md5 = cached[1].copy()
+        # obj_num low 3 bytes then gen_num low 2 bytes, little-endian.
         md5.update(
-            bytes(
-                [
-                    obj_num & 0xFF,
-                    (obj_num >> 8) & 0xFF,
-                    (obj_num >> 16) & 0xFF,
-                    gen_num & 0xFF,
-                    (gen_num >> 8) & 0xFF,
-                ]
+            ((obj_num & 0xFFFFFF) | ((gen_num & 0xFFFF) << 24)).to_bytes(
+                5, "little"
             )
         )
         use_aes = self._aes if aes is None else aes
         if use_aes:
             md5.update(_AES_SALT)
         digest = md5.digest()
-        return digest[: min(n + 5, 16)]
+        return digest[: min(len(file_key) + 5, 16)]
 
     # Upstream alias — ``calcFinalKey`` is the Java-internal name (line 248).
     def calc_final_key(self, obj_num: int, gen_num: int) -> bytes:
@@ -453,22 +523,39 @@ class SecurityHandler(ABC):
         array decryption helper. Non-COS objects (or anything not in the
         dispatch table) are returned unchanged.
         """
-        # Lazy imports — these submodules import COS types which live below
-        # the encryption package in the dependency order.
-        from pypdfbox.cos.cos_array import COSArray
-        from pypdfbox.cos.cos_dictionary import COSDictionary
-        from pypdfbox.cos.cos_stream import COSStream
-        from pypdfbox.cos.cos_string import COSString
-
-        if isinstance(obj, COSString):
+        kind = _KIND_CACHE.get(type(obj))
+        if kind is None:
+            kind = _kind_of(obj)
+        if kind is _LEAF:
+            return obj
+        if kind is _STRING:
             return self._decrypt_string_if_absent(obj, obj_num, gen_num)
-        if isinstance(obj, COSStream):
+        if kind is _STREAM:
             return self._decrypt_stream_if_absent(obj, obj_num, gen_num)
-        if isinstance(obj, COSDictionary):
+        if kind is _DICT:
             return self._decrypt_dictionary(obj, obj_num, gen_num)
-        if isinstance(obj, COSArray):
-            return self._decrypt_array(obj, obj_num, gen_num)
-        return obj
+        return self._decrypt_array(obj, obj_num, gen_num)
+
+    def _fast_walk(self) -> bool:
+        """``True`` when the walk may bypass :meth:`decrypt` dispatch.
+
+        The dictionary / array walkers inline the base dispatch (skipping
+        leaf values and deciphering plain ``COSString`` values directly).
+        That is only equivalent while none of the dispatch hooks is
+        overridden, by a subclass or on the instance.
+        """
+        cls = type(self)
+        if (
+            cls.decrypt is not _BASE_HOOKS[0]
+            or cls._decrypt_string_if_absent is not _BASE_HOOKS[1]
+            or cls._decrypt_stream_if_absent is not _BASE_HOOKS[2]
+            or cls._decrypt_dictionary is not _BASE_HOOKS[3]
+            or cls._decrypt_array is not _BASE_HOOKS[4]
+            or cls._objects_seen is not _BASE_HOOKS[5]
+        ):
+            return False
+        inst = getattr(self, "__dict__", None)
+        return not inst or _WALK_HOOKS.isdisjoint(inst)
 
     def _objects_seen(self) -> set[int]:
         # IdentityHashMap-equivalent — we use id(obj) so distinct-but-equal
@@ -592,6 +679,9 @@ class SecurityHandler(ABC):
         self, dictionary: object, obj_num: int, gen_num: int
     ) -> object:
         """Mirror ``SecurityHandler#decryptDictionary`` (line 623)."""
+        if type(dictionary) in _FAST_DICT_TYPES and self._fast_walk():
+            self._walk_dictionary(dictionary, obj_num, gen_num)
+            return dictionary
         # /CF dictionaries should be left alone (PDFBOX-2936).
         get_item = getattr(dictionary, "get_item", None)
         if callable(get_item):
@@ -646,6 +736,9 @@ class SecurityHandler(ABC):
         self, array: object, obj_num: int, gen_num: int
     ) -> object:
         """Mirror ``SecurityHandler#decryptArray`` (line 727)."""
+        if type(array) is _COSArray and self._fast_walk():
+            self._walk_values(array, obj_num, gen_num)
+            return array
         size = len(array)  # type: ignore[arg-type]
         setter = getattr(array, "set", None)
         for i in range(size):
@@ -657,6 +750,102 @@ class SecurityHandler(ABC):
                 else:
                     array[i] = replaced  # type: ignore[index]
         return array
+
+    def _walk_dictionary(
+        self, dictionary: Any, obj_num: int, gen_num: int
+    ) -> None:
+        """Fast-path :meth:`_decrypt_dictionary` for exact COS dictionaries.
+
+        Same checks and visiting order as the generic path, with the COS
+        lookups bound directly (no ``str`` → ``COSName`` key conversion, no
+        per-value :meth:`decrypt` call for leaf values).
+        """
+        get_item = dictionary.get_item
+        # /CF dictionaries should be left alone (PDFBOX-2936).
+        if get_item(_N_CF) is not None:
+            return
+        # Detect signature dicts so we don't re-encrypt /Contents.
+        type_val = get_item(_N_TYPE)
+        if type_val is None or type(type_val) is _COSName:
+            is_signature = (
+                type_val is not None
+                and type_val.get_name() in ("Sig", "DocTimeStamp")
+            ) or (
+                isinstance(get_item(_N_CONTENTS), _COSString)
+                and isinstance(get_item(_N_BYTE_RANGE), _COSArray)
+            )
+        else:
+            # Any other /Type value: the generic path's exact semantics,
+            # including its broad catch (e.g. ``COSDictionary.get_name``
+            # needs a key, so calling it bare raises → not a signature).
+            try:
+                type_name = (
+                    getattr(type_val, "get_name", lambda: None)()
+                    if type_val
+                    else None
+                )
+                if type_name in ("Sig", "DocTimeStamp"):
+                    is_signature = True
+                else:
+                    is_signature = isinstance(
+                        get_item(_N_CONTENTS), _COSString
+                    ) and isinstance(get_item(_N_BYTE_RANGE), _COSArray)
+            except Exception:
+                is_signature = False
+        if is_signature:
+            values = [
+                value
+                for key, value in list(dictionary.entry_set())
+                if key.get_name() != "Contents"
+            ]
+        else:
+            # Snapshot, like the generic path's ``list(entry_set())``.
+            values = list(dictionary.values())
+        self._walk_values(values, obj_num, gen_num)
+
+    def _walk_values(
+        self, values: Any, obj_num: int, gen_num: int
+    ) -> None:
+        """Decipher each value the way the base :meth:`decrypt` would.
+
+        Only called when :meth:`_fast_walk` holds, so every base dispatch
+        target returns its argument and no container slot is replaced.
+        """
+        seen: set[int] | None = None
+        string_identity: bool | None = None
+        kinds = _KIND_CACHE
+        for value in values:
+            kind = kinds.get(type(value))
+            if kind is None:
+                kind = _kind_of(value)
+            if kind is _LEAF:
+                continue
+            if kind is _STRING:
+                if type(value) is not _COSString:
+                    self._decrypt_string_if_absent(value, obj_num, gen_num)
+                    continue
+                # Inlined ``_decrypt_string_if_absent``.
+                if seen is None:
+                    seen = self._objects_seen()
+                vid = id(value)
+                if vid in seen:
+                    continue
+                if string_identity is None:
+                    name = self._string_filter_name
+                    string_identity = name is not None and _is_identity(name)
+                if string_identity:
+                    seen.add(vid)
+                    continue
+                value.set_value(
+                    self.decrypt_string(value.get_bytes(), obj_num, gen_num)
+                )
+                seen.add(vid)
+            elif kind is _STREAM:
+                self._decrypt_stream_if_absent(value, obj_num, gen_num)
+            elif kind is _DICT:
+                self._decrypt_dictionary(value, obj_num, gen_num)
+            else:
+                self._decrypt_array(value, obj_num, gen_num)
 
     # Public-name parity wrappers for upstream's private helpers. They keep
     # subclasses + tests one method-name lookup away from the upstream Java
@@ -881,9 +1070,13 @@ class SecurityHandler(ABC):
 
 
 def _rc4(key: bytes, data: bytes) -> bytes:
-    cipher = Cipher(_ARC4(key), mode=None)
-    enc = cipher.encryptor()
-    return enc.update(data) + enc.finalize()
+    # RC4 is a stream cipher: ``finalize()`` never emits bytes, so the single
+    # ``update`` is the whole output.
+    if len(key) not in _ARC4_KEY_SIZES:
+        # The binding only takes some key sizes; PDF allows 1..32 bytes
+        # (a 48-bit file key gives 11-byte object keys, PDFBOX-5955).
+        return _rc4_cipher_transform(key, data)
+    return Cipher(_ARC4(key), None).encryptor().update(data)
 
 
 def _aes_cbc_decrypt(
@@ -909,48 +1102,53 @@ def _aes_cbc_decrypt(
           → ``Cipher.update``+``doFinal``): a bad final block raises
           (``IOException`` upstream → :class:`OSError`).
     """
-    if len(data) == 0:
+    n = len(data)
+    if n == 0:
         return b""
-    if len(data) < 16:
+    if n < 16:
         raise OSError(
             "AES initialization vector not fully read: only "
-            f"{len(data)} bytes read instead of 16"
+            f"{n} bytes read instead of 16"
         )
-    iv, ct = data[:16], data[16:]
-    if len(ct) == 0:
+    if n == 16:
         # IV present but no ciphertext: the JCE doFinal()/CipherInputStream
         # close on an empty payload yields empty output (no padding to strip).
         return b""
-    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
-    dec = cipher.decryptor()
-    if len(ct) % 16 != 0:
+    # Slice the IV / ciphertext through a memoryview: no copy of the body.
+    view = memoryview(data)
+    dec = Cipher(algorithms.AES(key), modes.CBC(view[:16])).decryptor()
+    tail = (n - 16) % 16
+    if tail:
         # A non-block-multiple tail can't form a final CBC block.
         if tolerant_padding:
             # CipherInputStream emits only the full blocks it could decrypt and
             # silently drops the incomplete remainder on close.
-            whole = ct[: len(ct) - (len(ct) % 16)]
-            return dec.update(whole) + dec.finalize()
+            return dec.update(view[16 : n - tail])
         raise OSError("AES ciphertext is not a multiple of the block size")
-    padded = dec.update(ct) + dec.finalize()
-    unpadder = _padding.PKCS7(128).unpadder()
-    try:
-        return unpadder.update(padded) + unpadder.finalize()
-    except ValueError as exc:
-        if tolerant_padding:
-            # CipherInputStream streams out every block via update() but holds
-            # the final block for doFinal(); a BadPaddingException there is
-            # swallowed, so the caller sees everything EXCEPT the last block.
-            return padded[:-16] if len(padded) >= 16 else b""
-        raise OSError("AES padding is invalid") from exc
+    padded = dec.update(view[16:])
+    # PKCS#7 check, identical to ``padding.PKCS7(128).unpadder()``: the last
+    # byte p must be 1..16 and the last p bytes must all equal p.
+    pad = padded[-1]
+    if 0 < pad <= 16 and padded[-pad:] == _PKCS7_BLOCKS[pad]:
+        return padded[:-pad]
+    if tolerant_padding:
+        # CipherInputStream streams out every block via update() but holds
+        # the final block for doFinal(); a BadPaddingException there is
+        # swallowed, so the caller sees everything EXCEPT the last block.
+        return padded[:-16]
+    raise OSError("AES padding is invalid")
 
 
 def _aes_cbc_encrypt(key: bytes, data: bytes) -> bytes:
     iv = _os.urandom(16)
-    padder = _padding.PKCS7(128).padder()
-    padded = padder.update(data) + padder.finalize()
-    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
-    enc = cipher.encryptor()
-    return iv + enc.update(padded) + enc.finalize()
+    enc = Cipher(algorithms.AES(key), modes.CBC(iv)).encryptor()
+    # PKCS#7: 1..16 bytes of value p, identical to ``PKCS7(128).padder()``.
+    pad = _PKCS7_BLOCKS[16 - len(data) % 16]
+    return b"".join((iv, enc.update(data), enc.update(pad)))
+
+
+# ``_PKCS7_BLOCKS[p]`` is the PKCS#7 pad of length p (index 0 unused).
+_PKCS7_BLOCKS = tuple(bytes((p,)) * p for p in range(17))
 
 
 # Default secure-random source: a tiny shim with a ``read(n)`` method so
@@ -991,6 +1189,8 @@ _ = _io
 
 __all__ = ["SecurityHandler"]
 
+_BASE_HOOKS = tuple(SecurityHandler.__dict__[name] for name in _WALK_HOOK_NAMES)
+
 
 def _decrypt_file_object(
     handler: Any,
@@ -1010,16 +1210,11 @@ def _decrypt_file_object(
     material, not ciphertext, and is left alone. Tolerates stub handlers
     that only expose part of the surface.
     """
-    from pypdfbox.cos.cos_array import COSArray
-    from pypdfbox.cos.cos_dictionary import COSDictionary
-    from pypdfbox.cos.cos_stream import COSStream
-    from pypdfbox.cos.cos_string import COSString
-
     if actual is None or actual is encrypt_dict:
         return
     objects_seen = getattr(handler, "_objects_seen", None)
     seen_ids = objects_seen() if callable(objects_seen) else None
-    if isinstance(actual, COSStream):
+    if isinstance(actual, _COSStream):
         if seen_ids is not None and id(actual) in seen_ids:
             return
         actual.set_security_handler(handler, obj_num, gen_num)
@@ -1036,6 +1231,22 @@ def _decrypt_file_object(
         return
     decrypt_dispatch = getattr(handler, "decrypt", None)
     if callable(decrypt_dispatch) and isinstance(
-        actual, (COSDictionary, COSArray, COSString)
+        actual, (_COSDictionary, _COSArray, _COSString)
     ):
         decrypt_dispatch(actual, obj_num, gen_num)
+
+
+# Key sizes (bytes) the ``cryptography`` ARC4 binding accepts.
+_ARC4_KEY_SIZES = frozenset((5, 7, 8, 10, 16, 20, 24, 32))
+
+
+def _rc4_cipher_transform(key: bytes, data: bytes) -> bytes:
+    import io
+
+    from pypdfbox.pdmodel.encryption.rc4_cipher import RC4Cipher
+
+    cipher = RC4Cipher()
+    cipher.set_key(key)
+    out = io.BytesIO()
+    cipher.write(data, out)
+    return out.getvalue()

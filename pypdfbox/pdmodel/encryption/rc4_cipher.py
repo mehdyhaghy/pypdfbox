@@ -88,14 +88,45 @@ class RC4Cipher:
         and 144); collapsed into a single Python method.
         """
         if isinstance(data, (bytes, bytearray, memoryview)):
-            output.write(bytes(self.encrypt(b) for b in bytes(data)))
+            output.write(self._transform(bytes(data)))
             return
         # Treat as an input stream (mirrors PDFBox's 1024-byte buffer).
         while True:
             chunk = data.read(1024)
             if not chunk:
                 break
-            output.write(bytes(self.encrypt(b) for b in chunk))
+            output.write(self._transform(chunk))
+
+    def _transform(self, chunk: bytes | bytearray | memoryview) -> bytes:
+        """Run the PRGA over ``chunk``; same result as ``encrypt`` per byte.
+
+        The loop is inlined with the state in locals. A subclass that
+        overrides :meth:`encrypt` or :meth:`swap` keeps the per-byte calls.
+        """
+        cls = type(self)
+        if (
+            cls.encrypt is not RC4Cipher.encrypt
+            or cls.swap is not RC4Cipher.swap
+            or "encrypt" in self.__dict__
+            or "swap" in self.__dict__
+        ):
+            encrypt = self.encrypt
+            return bytes(encrypt(b) for b in chunk)
+        salt = self.salt
+        b = self.b
+        c = self.c
+        out = bytearray(len(chunk))
+        for i, value in enumerate(chunk):
+            b = (b + 1) & 0xFF
+            sb = salt[b]
+            c = (sb + c) & 0xFF
+            sc = salt[c]
+            salt[b] = sc
+            salt[c] = sb
+            out[i] = value ^ salt[(sc + sb) & 0xFF]
+        self.b = b
+        self.c = c
+        return bytes(out)
 
 
 __all__ = ["RC4Cipher"]

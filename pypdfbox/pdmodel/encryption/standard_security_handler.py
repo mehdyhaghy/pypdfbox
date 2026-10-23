@@ -29,7 +29,6 @@ import os
 import struct
 from typing import TYPE_CHECKING
 
-from cryptography.hazmat.primitives import padding as _aes_padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 try:
@@ -41,7 +40,11 @@ from .access_permission import AccessPermission
 from .decryption_material import DecryptionMaterial
 from .invalid_password_exception import InvalidPasswordException
 from .sasl_prep import SaslPrep
-from .security_handler import SecurityHandler
+from .security_handler import (
+    SecurityHandler,
+    _aes_cbc_decrypt,
+    _aes_cbc_encrypt,
+)
 
 if TYPE_CHECKING:
     from .pd_encryption import PDEncryption
@@ -2297,9 +2300,12 @@ class StandardSecurityHandler(SecurityHandler):
 
 
 def _rc4(key: bytes, data: bytes) -> bytes:
-    cipher = Cipher(_ARC4(key), mode=None)
-    enc = cipher.encryptor()
-    return enc.update(data) + enc.finalize()
+    # Stream cipher: ``finalize()`` never emits bytes.
+    if len(key) not in _ARC4_KEY_SIZES:
+        # The binding only takes some key sizes; PDF allows 1..32 bytes
+        # (a 48-bit file key gives 11-byte object keys, PDFBOX-5955).
+        return _rc4_cipher_transform(key, data)
+    return Cipher(_ARC4(key), None).encryptor().update(data)
 
 
 def _aes128_cbc_encrypt(key: bytes, data: bytes) -> bytes:
@@ -2309,12 +2315,7 @@ def _aes128_cbc_encrypt(key: bytes, data: bytes) -> bytes:
     bytes) per-object cipher dispatch. Mirrors the on-disk layout that
     ``SecurityHandler`` already produces for the V<4 legacy path.
     """
-    iv = os.urandom(16)
-    padder = _aes_padding.PKCS7(128).padder()
-    padded = padder.update(data) + padder.finalize()
-    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
-    enc = cipher.encryptor()
-    return iv + enc.update(padded) + enc.finalize()
+    return _aes_cbc_encrypt(key, data)
 
 
 def _aes128_cbc_decrypt(key: bytes, data: bytes) -> bytes:
@@ -2336,32 +2337,9 @@ def _aes128_cbc_decrypt(key: bytes, data: bytes) -> bytes:
     :class:`OSError` ("AES initialization vector not fully read"); an IV with no
     ciphertext yields empty output.
     """
-    if len(data) == 0:
-        return b""
-    if len(data) < 16:
-        raise OSError(
-            "AES initialization vector not fully read: only "
-            f"{len(data)} bytes read instead of 16"
-        )
-    iv, ct = data[:16], data[16:]
-    if len(ct) == 0:
-        return b""
-    tolerant = len(key) == 32  # AESV3 wraps a CipherInputStream
-    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
-    dec = cipher.decryptor()
-    if len(ct) % 16 != 0:
-        if tolerant:
-            whole = ct[: len(ct) - (len(ct) % 16)]
-            return dec.update(whole) + dec.finalize()
-        raise OSError("AES ciphertext is not a multiple of the block size")
-    padded = dec.update(ct) + dec.finalize()
-    unpadder = _aes_padding.PKCS7(128).unpadder()
-    try:
-        return unpadder.update(padded) + unpadder.finalize()
-    except ValueError as exc:
-        if tolerant:
-            return padded[:-16] if len(padded) >= 16 else b""
-        raise OSError("AES padding is invalid") from exc
+    # Same IV / padding contract as the base handler's helper; AESV3 (32-byte
+    # file key) wraps a CipherInputStream and so tolerates a bad final block.
+    return _aes_cbc_decrypt(key, data, tolerant_padding=len(key) == 32)
 
 
 def _aes_cbc_no_padding_encrypt(key: bytes, iv: bytes, data: bytes) -> bytes:
@@ -2407,3 +2385,19 @@ __all__ = [
     "StandardDecryptionMaterial",
     "StandardSecurityHandler",
 ]
+
+
+# Key sizes (bytes) the ``cryptography`` ARC4 binding accepts.
+_ARC4_KEY_SIZES = frozenset((5, 7, 8, 10, 16, 20, 24, 32))
+
+
+def _rc4_cipher_transform(key: bytes, data: bytes) -> bytes:
+    import io
+
+    from pypdfbox.pdmodel.encryption.rc4_cipher import RC4Cipher
+
+    cipher = RC4Cipher()
+    cipher.set_key(key)
+    out = io.BytesIO()
+    cipher.write(data, out)
+    return out.getvalue()
