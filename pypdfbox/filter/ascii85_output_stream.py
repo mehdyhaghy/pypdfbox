@@ -18,6 +18,7 @@ against the live PDFBox 3.0.7 oracle. Notably:
     ``base64.a85encode`` which would frame the empty body).
 """
 
+import base64
 import contextlib
 import io
 from typing import BinaryIO
@@ -108,9 +109,59 @@ class ASCII85OutputStream(io.RawIOBase):
             self._write_byte(b)
             return 1
         view = bytes(b)
-        for byte in view:
-            self._write_byte(byte)
-        return len(view)
+        total = len(view)
+        pos = 0
+        # Top up a partially buffered group byte by byte first.
+        while self._count and pos < total:
+            self._write_byte(view[pos])
+            pos += 1
+        full = (total - pos) & ~3
+        if full:
+            # Bulk path for whole 4-byte groups: ``base64.a85encode`` (default
+            # flags) emits exactly ``transform_into_out``'s 5 digits per group,
+            # or the single b'z' for an all-zero group, with no padding,
+            # framing or wrapping; ``_emit`` then applies the running
+            # line-break counter just as the per-group loop does.
+            self._flushed = False
+            self._emit(base64.a85encode(view[pos : pos + full]))
+            pos += full
+        while pos < total:
+            self._write_byte(view[pos])
+            pos += 1
+        return total
+
+    def _emit(self, chars: bytes) -> None:
+        # Write ``chars`` as consecutive output characters, inserting a
+        # newline each time the running ``_line_break`` counter hits 0 and
+        # resetting it to ``_max_line``. Byte-identical to decrementing the
+        # counter once per character.
+        n = len(chars)
+        line_break = self._line_break
+        if line_break <= 0 or n < line_break:
+            # The counter cannot reach 0 within this chunk (a non-positive
+            # counter only moves further away from 0).
+            self._out.write(chars)
+            self._line_break = line_break - n
+            return
+        parts = [chars[:line_break]]
+        pos = line_break
+        max_line = self._max_line
+        if max_line <= 0:
+            # After the reset the counter starts non-positive and never
+            # reaches 0 again: one newline, then the rest unwrapped.
+            parts.append(chars[pos:])
+            self._out.write(b"\n".join(parts))
+            self._line_break = max_line - (n - pos)
+            return
+        while n - pos >= max_line:
+            parts.append(chars[pos : pos + max_line])
+            pos += max_line
+        rest = chars[pos:]
+        parts.append(rest)
+        # ``parts`` ends with the (possibly empty) unfinished line, so the
+        # join puts a newline after every completed line.
+        self._out.write(b"\n".join(parts))
+        self._line_break = max_line - len(rest)
 
     def flush(self) -> None:
         if self._flushed:

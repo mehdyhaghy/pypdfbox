@@ -1,3 +1,4 @@
+import re
 from typing import Any, BinaryIO
 
 from .cos_base import COSBase
@@ -23,7 +24,7 @@ class COSName(COSBase):
     _common_name_map: dict[bytes, COSName] = {}
     _name_map: dict[bytes, COSName] = {}
 
-    __slots__ = ("_bytes", "_direct", "_needs_to_be_updated")
+    __slots__ = ("_bytes", "_direct", "_needs_to_be_updated", "_token")
 
     def __new__(
         cls,
@@ -56,6 +57,9 @@ class COSName(COSBase):
             return
         super().__init__()
         self._bytes = self._coerce_name_bytes(name)
+        # Serialized ``/Name`` token, built on first ``write_pdf``. Safe to
+        # cache: ``_bytes`` never changes after construction.
+        self._token: bytes | None = None
 
     @staticmethod
     def _coerce_name_bytes(name: str | bytes | bytearray | memoryview) -> bytes:
@@ -98,13 +102,11 @@ class COSName(COSBase):
         return len(self._bytes) == 0
 
     def write_pdf(self, output: BinaryIO) -> None:
-        output.write(b"/")
-        for b in self._bytes:
-            if _is_printable_name_byte(b):
-                output.write(bytes((b,)))
-            else:
-                output.write(b"#")
-                output.write(f"{b:02X}".encode("ascii"))
+        token = self._token
+        if token is None:
+            token = b"/" + _NAME_ESCAPE_RE.sub(_escape_name_byte, self._bytes)
+            self._token = token
+        output.write(token)
 
     def accept(self, visitor: ICOSVisitor) -> Any:
         return visitor.visit_from_name(self)
@@ -204,6 +206,16 @@ class COSName(COSBase):
 
     def __str__(self) -> str:
         return f"/{self.get_name()}"
+
+
+# Any byte outside the printable allowlist below (A-Z a-z 0-9 and
+# ``+ - _ @ * $ ; .``). ``write_pdf`` escapes a whole name in one ``re.sub``
+# pass; kept in sync with ``_is_printable_name_byte``.
+_NAME_ESCAPE_RE = re.compile(rb"[^A-Za-z0-9+\-_@*$;.]")
+
+
+def _escape_name_byte(match: re.Match[bytes]) -> bytes:
+    return b"#%02X" % match.group()[0]
 
 
 def _is_printable_name_byte(b: int) -> bool:

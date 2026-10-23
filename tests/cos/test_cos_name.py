@@ -205,3 +205,17 @@ def test_clear_resources_preserves_predefined_constants() -> None:
     finally:
         COSName._name_map.clear()
         COSName._name_map.update(saved)
+
+
+def test_write_pdf_bulk_escape_matches_per_byte_rule() -> None:
+    import io
+
+    from pypdfbox.cos.cos_name import _is_printable_name_byte
+
+    for b in range(256):
+        name = COSName.get_pdf_name(bytes([b, 0x41, b]))
+        expected_byte = bytes([b]) if _is_printable_name_byte(b) else b"#%02X" % b
+        for _ in range(2):  # second write hits the cached token
+            out = io.BytesIO()
+            name.write_pdf(out)
+            assert out.getvalue() == b"/" + expected_byte + b"A" + expected_byte
