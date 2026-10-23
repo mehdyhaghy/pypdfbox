@@ -1,4 +1,6 @@
 import contextlib
+import operator
+import re
 from collections.abc import Callable
 from typing import ClassVar
 
@@ -18,10 +20,133 @@ from pypdfbox.cos import (
     COSStream,
     COSString,
 )
-from pypdfbox.io import RandomAccessRead, RandomAccessReadBuffer
+from pypdfbox.io import (
+    RandomAccessRead,
+    RandomAccessReadBuffer,
+    RandomAccessReadBufferedFile,
+    RandomAccessReadMemoryMapped,
+    RandomAccessReadMemoryMappedFile,
+)
 
 from .base_parser import BaseParser
 from .parse_error import PDFParseError
+
+# ---------------------------------------------------------------------------
+# Buffer-scanning fast path for ``COSParser.parse_direct_object``.
+#
+# The byte-at-a-time tokenizer below is the reference implementation. The fast
+# path scans a ``bytes`` window of the source with compiled regexes instead of
+# one ``read()`` / ``peek()`` call per byte, but only for token shapes whose
+# result it can reproduce exactly. Every other leaf token (escaped or nested
+# literal strings, hex strings with stray bytes, names with ``#`` escapes,
+# exponent-shaped numbers, misspelt keywords) is handed to the very same slow
+# method the reference dispatcher would call, positioned at the same byte. Any
+# structural anomaly (EOF, a stray byte where a name or value must start, a
+# broken ``>>``, the nesting limit) abandons the fast attempt and re-parses the
+# whole object with the reference code, so error recovery and error messages
+# are unchanged. The only side effects performed before such a restart are
+# object-pool lookups and name interning, which the reference parse repeats in
+# the same order.
+# ---------------------------------------------------------------------------
+
+# ``BaseParser.skip_whitespace``: PDF whitespace plus ``%`` comments, where a
+# comment runs to EOF or through one CR, LF or CRLF. The patterns that are
+# embedded in larger ones use possessive quantifiers: the byte readers never
+# give bytes back, so a backtracking match (``120 R`` read as ``1`` ``20 R``,
+# or a comment cut short) would not be the reference tokenization.
+_FP_WS_PATTERN = rb"(?:[\x00\t\n\x0c\r ]++|%[^\r\n]*+(?:\r\n?+|\n)?+)*+"
+_FP_WS = re.compile(_FP_WS_PATTERN).match
+# ``BaseParser.read_name_bytes`` without ``#`` escapes: everything up to an
+# ``is_end_of_name`` byte. A following ``#`` sends the name to the slow reader.
+_FP_NAME_PATTERN = rb"/([^\x00\t\n\x0c\r ()<>\[\]/%#]*+)"
+_FP_NAME = re.compile(_FP_NAME_PATTERN).match
+# The common dictionary values and array elements in one match, each only in
+# a shape whose reference reading is unambiguous:
+#
+# * groups 1-2: ``<int> <int> R`` whose ``R`` is followed by a non-regular
+#   byte (exactly when ``read_keyword`` returns ``R``);
+# * group 3: a name followed by a byte other than ``#``;
+# * group 4: a real (``.`` but no exponent) followed by a byte that does not
+#   extend it;
+# * group 5: an integer the reference lookahead rejects: its next
+#   non-whitespace byte is not a digit (and it does not continue as a real),
+#   or the integer after it is not followed by an ``R``;
+# * group 6: a literal string without parentheses or backslashes.
+#
+# Every alternative needs a byte after its token, so a token that touches the
+# end of the window never matches here and takes the general path.
+_FP_SIMPLE_VALUE_PATTERN = (
+    rb"(?:([+-]?[0-9]++)" + _FP_WS_PATTERN + rb"([0-9]++)" + _FP_WS_PATTERN
+    + rb"R(?=[\x00\t\n\x0c\r ()<>\[\]{}/%])"
+    + rb"|" + _FP_NAME_PATTERN + rb"(?=[^#])"
+    + rb"|([+-]?(?:[0-9]++\.[0-9]*+|\.[0-9]++))(?=[^.eE])"
+    + rb"|([+-]?[0-9]++)(?=" + _FP_WS_PATTERN + rb"(?:[^0-9.eE]|[0-9]++"
+    + _FP_WS_PATTERN + rb"[^R]))"
+    + rb"|\(([^()\\]*+)\))"
+)
+# One dictionary entry: whitespace, the key (group 1), whitespace, then a
+# simple value (groups 2-7, the groups above shifted by one).
+_FP_DICT_ENTRY = re.compile(
+    _FP_WS_PATTERN + _FP_NAME_PATTERN + rb"(?=[^#])" + _FP_WS_PATTERN
+    + _FP_SIMPLE_VALUE_PATTERN
+).match
+# One array element: whitespace, then a simple value (groups 1-6).
+_FP_ARRAY_ITEM = re.compile(_FP_WS_PATTERN + _FP_SIMPLE_VALUE_PATTERN).match
+# ``BaseParser.read_number`` without an exponent. The byte after the match is
+# checked separately: ``.``, ``e`` or ``E`` there means a shape the regex does
+# not model, so the token goes to the slow reader.
+_FP_NUMBER = re.compile(rb"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)").match
+_FP_DIGITS = re.compile(rb"[0-9]+").match
+_FP_KEYWORD = re.compile(rb"true|false|null").match
+# ``BaseParser.read_literal_string`` for a string with no parentheses or
+# backslashes: the first ``)`` closes it (``check_for_end_of_string(0)`` is a
+# no-op at depth zero).
+_FP_LITERAL = re.compile(rb"\(([^()\\]*)\)").match
+# ``BaseParser.read_hex_string`` for a string holding only hex digits and the
+# whitespace bytes it skips (space, LF, HT, CR, BS, FF).
+_FP_HEX = re.compile(rb"<([0-9A-Fa-f \n\t\r\x08\x0c]*)>").match
+_FP_HEX_WS = b" \n\t\r\x08\x0c"
+# Bytes that end a keyword (``read_keyword`` stops at a non-regular byte).
+_FP_NON_REGULAR = frozenset(b"\x00\t\n\x0c\r ()<>[]{}/%")
+# Bytes after a clean number token that the regex does not model.
+_FP_NUMBER_TAIL = frozenset(b".eE")
+_FP_NUMBER_START = frozenset(b"+-.0123456789")
+# Longest digit run converted directly; CPython refuses ``int()`` on strings
+# beyond ``sys.get_int_max_str_digits()`` (4300 by default), which the slow
+# reader turns into a parse error.
+_FP_MAX_DIGITS = 4000
+# ``COSNumber.get`` maps an integer literal inside Java's ``long`` range to
+# ``COSInteger.get(value)``; outside it, to the out-of-range sentinels.
+_FP_LONG_MIN = -(1 << 63)
+_FP_LONG_MAX = (1 << 63) - 1
+# Source types whose ``seek`` / ``read_into`` give random access to the bytes
+# with no side effects. ``RandomAccessReadBuffer`` exposes its whole backing
+# ``bytes`` object directly; the file-backed readers are read in windows.
+_FP_WINDOW_SOURCES = (
+    RandomAccessReadBufferedFile,
+    RandomAccessReadMemoryMapped,
+    RandomAccessReadMemoryMappedFile,
+)
+_FP_FIRST_WINDOW = 4096
+_FP_MAX_WINDOW = 1 << 26
+
+
+def _fp_integer(token: bytes) -> COSBase:
+    """``COSNumber.get`` for a ``[+-]?[0-9]+`` literal (as the reference
+    ``_wrap_number`` calls it), skipping its string re-validation for the
+    common in-range case."""
+    value = int(token)
+    if _FP_LONG_MIN <= value <= _FP_LONG_MAX:
+        return COSInteger.get(value)
+    return COSNumber.get(token.decode("ascii"))
+
+
+class _FastNeedMore(Exception):
+    """The fast path reached the end of its window before the source EOF."""
+
+
+class _FastAbort(Exception):
+    """The fast path met input it does not model; use the reference parser."""
 
 
 class COSParser(BaseParser):
@@ -176,6 +301,10 @@ class COSParser(BaseParser):
         number. Array and dictionary value parsers keep the default and
         recognize the full indirect-reference token sequence.
         """
+        if self._fast_path_applies():
+            result = self._fast_parse_direct_object(allow_indirect_reference)
+            if result is not None:
+                return result
         self.skip_whitespace()
         b = self.peek_byte()
         if b == RandomAccessRead.EOF:
@@ -207,6 +336,387 @@ class COSParser(BaseParser):
             f"unexpected byte {b:#04x} ({chr(b)!r}) at start of object",
             position=self.position,
         )
+
+    # ---------- buffer-scanning fast path ----------
+    #
+    # See the module-level notes above ``_FP_WS``. The ``_fp_*`` methods take
+    # the window ``data`` (source bytes from absolute offset ``base``), the
+    # index ``i`` into it, ``n == len(data)`` and ``eof`` (whether the window
+    # ends at the source EOF), and return ``(object, index_after_object)``.
+
+    def _fast_path_applies(self) -> bool:
+        """Whether this parser runs the reference dispatch unchanged. A
+        subclass (or a patch) that replaces any method the fast path stands
+        in for, as ``PDFStreamParser`` does, keeps the reference code."""
+        if _FP_GUARD(type(self)) != _FP_REFERENCE:
+            return False
+        src_type = type(self._src)
+        return src_type is RandomAccessReadBuffer or src_type in _FP_WINDOW_SOURCES
+
+    def _fast_parse_direct_object(
+        self, allow_indirect_reference: bool
+    ) -> COSBase | None:
+        """Parse one object from a byte window. Returns ``None`` (with the
+        source back at its starting position) when the reference parser must
+        handle the object instead."""
+        src = self._src
+        start = src.get_position()
+        depth = self._recursion_depth
+        size = _FP_FIRST_WINDOW
+        while True:
+            if type(src) is RandomAccessReadBuffer:
+                data = src._buf.getvalue()
+                base = 0
+                eof = True
+                clamped = True
+            else:
+                remaining = src.length() - start
+                if type(src) is RandomAccessReadBufferedFile:
+                    # Stay one byte short of EOF so ``BufferedReader`` keeps
+                    # its buffer (see ``BaseParser._fast_chunk``); an object
+                    # that runs into the last byte takes the reference path.
+                    remaining -= 1
+                    clamped = size >= remaining
+                    eof = False
+                else:
+                    clamped = False
+                    eof = size >= remaining
+                buf = bytearray(max(min(size, remaining), 0))
+                got = src.read_into(buf) if buf else 0
+                if got < len(buf):
+                    # The file shrank underneath us; let the reference path
+                    # deal with it.
+                    src.seek(start)
+                    return None
+                data = bytes(buf)
+                base = start
+                src.seek(start)
+            try:
+                obj, i = self._fp_value(
+                    data, start - base, len(data), eof, base,
+                    allow_indirect_reference,
+                )
+            except _FastNeedMore:
+                self._recursion_depth = depth
+                src.seek(start)
+                if size >= _FP_MAX_WINDOW or clamped:
+                    return None
+                size *= 8
+                continue
+            except (_FastAbort, RecursionError):
+                self._recursion_depth = depth
+                src.seek(start)
+                return None
+            except BaseException:
+                self._recursion_depth = depth
+                raise
+            src.seek(base + i)
+            return obj
+
+    def _fp_slow(
+        self, method: Callable[[], COSBase], i: int, n: int, eof: bool, base: int
+    ) -> tuple[COSBase, int]:
+        """Run the reference leaf reader ``method`` at window index ``i``."""
+        src = self._src
+        src.seek(base + i)
+        obj = method()
+        j = src.get_position() - base
+        if j > n and not eof:
+            raise _FastNeedMore
+        return obj, j
+
+    def _fp_value(
+        self,
+        data: bytes,
+        i: int,
+        n: int,
+        eof: bool,
+        base: int,
+        allow_ref: bool,
+    ) -> tuple[COSBase, int]:
+        """Mirror of the :meth:`parse_direct_object` dispatch."""
+        i = _FP_WS(data, i).end()
+        if i >= n:
+            if eof:
+                raise _FastAbort
+            raise _FastNeedMore
+        c = data[i]
+        if c == 0x2F:  # '/'
+            m = _FP_NAME(data, i)
+            k = m.end()
+            if k >= n:
+                if not eof:
+                    raise _FastNeedMore
+            elif data[k] == 0x23:  # '#' escape
+                return self._fp_slow(self._fp_name_slow, i, n, eof, base)
+            return COSName.get_pdf_name(m.group(1)), k
+        if c in _FP_NUMBER_START:
+            return self._fp_number(data, i, n, eof, base, allow_ref)
+        if c == 0x3C:  # '<'
+            if i + 1 >= n:
+                if eof:
+                    raise _FastAbort
+                raise _FastNeedMore
+            if data[i + 1] == 0x3C:
+                return self._fp_dictionary(data, i, n, eof, base, True)
+            m = _FP_HEX(data, i)
+            if m is None:
+                return self._fp_slow(self._read_cos_hex_string, i, n, eof, base)
+            digits = m.group(1).translate(None, _FP_HEX_WS)
+            if len(digits) % 2:
+                digits += b"0"
+            s = COSString(bytes.fromhex(digits.decode("ascii")))
+            s.set_force_hex_form(True)
+            return s, m.end()
+        if c == 0x5B:  # '['
+            return self._fp_array(data, i, n, eof, base)
+        if c == 0x28:  # '('
+            m = _FP_LITERAL(data, i)
+            if m is None:
+                return self._fp_slow(self._read_cos_literal_string, i, n, eof, base)
+            return COSString(m.group(1)), m.end()
+        if c == 0x74 or c == 0x66 or c == 0x6E:  # 't', 'f', 'n'
+            m = _FP_KEYWORD(data, i)
+            if m is not None:
+                k = m.end()
+                if k >= n:
+                    if not eof:
+                        raise _FastNeedMore
+                elif data[k] not in _FP_NON_REGULAR:
+                    return self._fp_slow(self._parse_keyword_value, i, n, eof, base)
+                kw = m.group()
+                if kw == b"true":
+                    return COSBoolean.TRUE, k
+                if kw == b"false":
+                    return COSBoolean.FALSE, k
+                return COSNull.NULL, k
+            return self._fp_slow(self._parse_keyword_value, i, n, eof, base)
+        raise _FastAbort
+
+    def _fp_simple_value(self, m: re.Match[bytes], off: int) -> COSBase | None:
+        """Build the object for a ``_FP_SIMPLE_VALUE_PATTERN`` match whose
+        groups start after ``off`` leading groups. Returns ``None`` for the
+        rare shapes left to the general path (an out-of-range digit run, a
+        negative first reference number)."""
+        kind = m.lastindex - off
+        if kind == 3:
+            return COSName.get_pdf_name(m.group(3 + off))
+        if kind == 2:
+            first_token = m.group(1 + off)
+            second_token = m.group(2 + off)
+            if (
+                len(first_token) > _FP_MAX_DIGITS
+                or len(second_token) > _FP_MAX_DIGITS
+            ):
+                return None
+            first = int(first_token)
+            if first < 0:
+                return None
+            return self._make_indirect_reference(first, int(second_token))
+        if kind == 5:
+            token = m.group(5 + off)
+            if len(token) > _FP_MAX_DIGITS:
+                return None
+            return _fp_integer(token)
+        if kind == 4:
+            return COSFloat(m.group(4 + off).decode("ascii"))
+        return COSString(m.group(6 + off))
+
+    def _fp_name_slow(self) -> COSName:
+        return COSName.get_pdf_name(self.read_name_bytes())
+
+    def _fp_number_slow(self) -> COSBase:
+        start = self.position
+        return self._wrap_number(self.read_number(), start)
+
+    def _fp_number(
+        self,
+        data: bytes,
+        i: int,
+        n: int,
+        eof: bool,
+        base: int,
+        allow_ref: bool,
+    ) -> tuple[COSBase, int]:
+        """Mirror of :meth:`_parse_number_or_indirect_reference` (or of the
+        plain number read when references are not allowed)."""
+        slow = (
+            self._parse_number_or_indirect_reference
+            if allow_ref
+            else self._fp_number_slow
+        )
+        m = _FP_NUMBER(data, i)
+        if m is None:
+            return self._fp_slow(slow, i, n, eof, base)
+        k = m.end()
+        if k >= n:
+            if not eof:
+                raise _FastNeedMore
+        elif data[k] in _FP_NUMBER_TAIL:
+            return self._fp_slow(slow, i, n, eof, base)
+        token = m.group()
+        if len(token) > _FP_MAX_DIGITS:
+            return self._fp_slow(slow, i, n, eof, base)
+        if 0x2E in token:  # '.'
+            return COSFloat(token.decode("ascii")), k
+        if allow_ref:
+            first = int(token)
+            if first >= 0:
+                # ``<int> <int> R`` lookahead, as in the reference reader.
+                j = _FP_WS(data, k).end()
+                if j >= n:
+                    if not eof:
+                        raise _FastNeedMore
+                elif 0x30 <= data[j] <= 0x39:
+                    m2 = _FP_DIGITS(data, j)
+                    k2 = m2.end()
+                    if k2 >= n:
+                        if not eof:
+                            raise _FastNeedMore
+                    elif data[k2] in _FP_NUMBER_TAIL:
+                        return self._fp_slow(slow, i, n, eof, base)
+                    second_token = m2.group()
+                    if len(second_token) > _FP_MAX_DIGITS:
+                        return self._fp_slow(slow, i, n, eof, base)
+                    j2 = _FP_WS(data, k2).end()
+                    if j2 >= n:
+                        if not eof:
+                            raise _FastNeedMore
+                    elif data[j2] == 0x52:  # 'R'
+                        j3 = j2 + 1
+                        if j3 >= n:
+                            if not eof:
+                                raise _FastNeedMore
+                            is_ref = True
+                        else:
+                            is_ref = data[j3] in _FP_NON_REGULAR
+                        if is_ref:
+                            return (
+                                self._make_indirect_reference(
+                                    first, int(second_token)
+                                ),
+                                j3,
+                            )
+        return _fp_integer(token), k
+
+    def _fp_array(
+        self, data: bytes, i: int, n: int, eof: bool, base: int
+    ) -> tuple[COSArray, int]:
+        """Mirror of :meth:`parse_cos_array`; ``data[i]`` is ``[``."""
+        if self._recursion_depth >= self.MAX_RECURSION_DEPTH:
+            raise _FastAbort
+        self._recursion_depth += 1
+        items: list[COSBase] = []
+        append = items.append
+        value = self._fp_value
+        simple = self._fp_simple_value
+        get_name = COSName.get_pdf_name
+        make_reference = self._make_indirect_reference
+        item = _FP_ARRAY_ITEM
+        i += 1
+        while True:
+            m = item(data, i)
+            if m is not None:
+                # Inlined ``_fp_simple_value(m, 0)`` for the three most common
+                # element kinds.
+                kind = m.lastindex
+                if kind == 3:
+                    append(get_name(m.group(3)))
+                    i = m.end()
+                    continue
+                if kind == 4:
+                    append(COSFloat(m.group(4).decode("ascii")))
+                    i = m.end()
+                    continue
+                if kind == 2:
+                    first_token, second_token = m.group(1, 2)
+                    if (
+                        first_token[0] != 0x2D  # '-'
+                        and len(first_token) <= _FP_MAX_DIGITS
+                        and len(second_token) <= _FP_MAX_DIGITS
+                    ):
+                        append(make_reference(int(first_token), int(second_token)))
+                        i = m.end()
+                        continue
+                obj = simple(m, 0)
+                if obj is not None:
+                    append(obj)
+                    i = m.end()
+                    continue
+            i = _FP_WS(data, i).end()
+            if i >= n:
+                if eof:
+                    raise _FastAbort
+                raise _FastNeedMore
+            if data[i] == 0x5D:  # ']'
+                self._recursion_depth -= 1
+                return COSArray(items), i + 1
+            obj, i = value(data, i, n, eof, base, True)
+            append(obj)
+
+    def _fp_dictionary(
+        self, data: bytes, i: int, n: int, eof: bool, base: int, is_direct: bool
+    ) -> tuple[COSDictionary, int]:
+        """Mirror of :meth:`parse_cos_dictionary`; ``data[i:i + 2]`` is
+        ``<<``."""
+        if self._recursion_depth >= self.MAX_RECURSION_DEPTH:
+            raise _FastAbort
+        self._recursion_depth += 1
+        d = COSDictionary()
+        d.set_direct(is_direct)
+        set_item = d.set_item
+        value = self._fp_value
+        get_name = COSName.get_pdf_name
+        simple = self._fp_simple_value
+        entry = _FP_DICT_ENTRY
+        i += 2
+        while True:
+            m = entry(data, i)
+            if m is not None:
+                key = get_name(m.group(1))
+                # Inlined ``_fp_simple_value(m, 1)`` for name values.
+                if m.lastindex == 4:
+                    set_item(key, get_name(m.group(4)))
+                    i = m.end()
+                    continue
+                obj = simple(m, 1)
+                if obj is not None:
+                    set_item(key, obj)
+                    i = m.end()
+                    continue
+                # Re-parse the value through the general path below; the key
+                # is re-read there (name interning is idempotent).
+            i = _FP_WS(data, i).end()
+            if i >= n:
+                if eof:
+                    raise _FastAbort
+                raise _FastNeedMore
+            c = data[i]
+            if c == 0x3E:  # '>'
+                if i + 1 >= n:
+                    if eof:
+                        raise _FastAbort
+                    raise _FastNeedMore
+                if data[i + 1] != 0x3E:
+                    raise _FastAbort
+                self._recursion_depth -= 1
+                return d, i + 2
+            if c != 0x2F:  # '/'
+                raise _FastAbort
+            m = _FP_NAME(data, i)
+            k = m.end()
+            if k >= n:
+                if not eof:
+                    raise _FastNeedMore
+                key = COSName.get_pdf_name(m.group(1))
+            elif data[k] == 0x23:  # '#' escape
+                key, k = self._fp_slow(self._fp_name_slow, i, n, eof, base)
+            else:
+                key = COSName.get_pdf_name(m.group(1))
+            obj, i = value(data, k, n, eof, base, True)
+            if isinstance(obj, (COSArray, COSDictionary)):
+                obj.set_direct(True)
+            set_item(key, obj)
 
     # ---------- arrays ----------
 
@@ -2576,6 +3086,48 @@ class COSParser(BaseParser):
         instance so callers can chain the brute-force methods directly."""
         return self
 
+
+# Every parser method the reference ``parse_direct_object`` path can reach and
+# the fast path bypasses. ``_fast_path_applies`` compares the parser class's
+# attributes against this snapshot, so an override in a subclass (or a
+# monkeypatch on ``COSParser``) disables the fast path.
+_FP_GUARD = operator.attrgetter(
+    "parse_direct_object",
+    "parse_cos_dictionary",
+    "parse_cos_array",
+    "_parse_number_or_indirect_reference",
+    "_next_byte_starts_unsigned_int",
+    "_wrap_number",
+    "_make_indirect_reference",
+    "_parse_keyword_value",
+    "_read_cos_literal_string",
+    "_read_cos_hex_string",
+    "_peek_two_bytes",
+    "_enter_recursion",
+    "_leave_recursion",
+    "read_name_bytes",
+    "read_number",
+    "read_keyword",
+    "read_literal_string",
+    "read_hex_string",
+    "read_expected",
+    "read_byte",
+    "peek_byte",
+    "skip_whitespace",
+    "_skip_to_eol",
+    "position",
+    "seek",
+    "check_for_end_of_string",
+    "_check_for_end_of_string",
+    "_consume_escape",
+    "is_digit",
+    "is_end_of_name",
+    "is_hex_digit",
+    "is_regular",
+    "is_whitespace",
+    "_fast_chunk",
+)
+_FP_REFERENCE = _FP_GUARD(COSParser)
 
 def _validate_xref_index_pair(first_obj_num: int, count: int) -> None:
     """Reject negative xref-stream /Index values before key construction."""

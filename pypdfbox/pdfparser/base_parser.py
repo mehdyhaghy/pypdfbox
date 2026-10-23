@@ -1,7 +1,13 @@
 import logging
+import operator
+import re
 from typing import TYPE_CHECKING, ClassVar
 
-from pypdfbox.io import RandomAccessRead
+from pypdfbox.io import (
+    RandomAccessRead,
+    RandomAccessReadBuffer,
+    RandomAccessReadBufferedFile,
+)
 
 from .parse_error import PDFParseError
 
@@ -26,6 +32,29 @@ _LOG = logging.getLogger(__name__)
 # faster). ``-1`` (EOF) and any other out-of-range int simply miss the set.
 _WHITESPACE_INTS = frozenset(b"\x00\t\n\x0c\r ")
 _DELIMITER_INTS = frozenset(b"()<>[]{}/%")
+
+# Chunk-scanning fast paths for the token readers below. For the two stock
+# sources (an in-memory buffer and a buffered file) the readers match a
+# compiled regex against the bytes ahead of the cursor instead of calling
+# ``read()`` / ``rewind()`` once per byte. A fast path only commits when the
+# match is complete and ends before the end of the scanned chunk (or at the
+# source EOF); anything else falls through to the byte-at-a-time loop, which
+# stays the reference implementation.
+#
+# ``skip_whitespace``: whitespace and ``%`` comments (to EOF or through one CR,
+# LF or CRLF).
+_FAST_WS = re.compile(rb"(?:[\x00\t\n\x0c\r ]++|%[^\r\n]*+(?:\r\n?+|\n)?+)*+").match
+# ``read_int``: optional sign and a digit run.
+_FAST_INT = re.compile(rb"[+-]?[0-9]+").match
+# ``read_keyword``: an ASCII letter followed by regular bytes.
+_FAST_KEYWORD = re.compile(rb"[A-Za-z][^\x00\t\n\x0c\r ()<>\[\]{}/%]*").match
+# ``read_string``: bytes up to the next whitespace byte.
+_FAST_TOKEN = re.compile(rb"[^\x00\t\n\x0c\r ]*").match
+# Bytes scanned per fast-path attempt on a buffered file.
+_FAST_FILE_CHUNK = 128
+# Longest digit run handed to ``int()`` directly; longer runs take the
+# reference loop (CPython caps ``int()`` string conversion at 4300 digits).
+_FAST_MAX_DIGITS = 4000
 
 
 class BaseParser:
@@ -215,6 +244,43 @@ class BaseParser:
             raise PDFParseError("unexpected EOF", position=self.position)
         return b
 
+    def _fast_chunk(self) -> tuple[bytes, int, int, bool] | None:
+        """Bytes ahead of the cursor for the chunk-scanning fast paths.
+
+        Returns ``(data, index, base, complete)``: the cursor sits at
+        ``data[index]``, ``data[0]`` is source offset ``base`` and
+        ``complete`` says whether ``data`` runs to the source EOF (never
+        claimed for a buffered file, see below). Returns
+        ``None`` when the source is not one of the stock readers (or is
+        closed), in which case the caller uses its reference loop."""
+        src = self._src
+        src_type = type(src)
+        if _FAST_GUARD(type(self)) != _FAST_REFERENCE:
+            return None
+        if src_type is RandomAccessReadBuffer:
+            if src._closed:
+                return None
+            buf = src._buf
+            return buf.getvalue(), buf.tell(), 0, True
+        if src_type is RandomAccessReadBufferedFile:
+            if src._closed:
+                return None
+            buf = src._buf
+            pos = buf.tell()
+            # Stop one byte short of the recorded EOF. ``BufferedReader``
+            # drops its buffer when it is seeked with nothing left in it (or
+            # after a short read at EOF), which the byte-at-a-time reference
+            # loop only does on reaching EOF itself. Keeping the buffer state
+            # the same matters when the file is rewritten while still open: a
+            # ``PDDocument`` saved over its own source keeps reading lazily
+            # from the bytes it has already buffered. A token that reaches the
+            # last byte therefore always takes the reference loop.
+            remaining = src._length - pos - 1
+            data = buf.read(min(_FAST_FILE_CHUNK, remaining)) if remaining > 0 else b""
+            buf.seek(pos)
+            return data, 0, pos, False
+        return None
+
     # ---------- character classification ----------
 
     @classmethod
@@ -309,6 +375,14 @@ class BaseParser:
 
     def skip_whitespace(self) -> None:
         """Skip whitespace bytes and ``%``-comments. Comments run to EOL."""
+        chunk = self._fast_chunk()
+        if chunk is not None:
+            data, index, base, complete = chunk
+            end = _FAST_WS(data, index).end()
+            if end < len(data) or complete:
+                if end != index:
+                    self._src._buf.seek(base + end)
+                return
         # Hot loop: hoist attribute lookups out of the per-byte iteration.
         src = self._src
         read = src.read
@@ -439,6 +513,15 @@ class BaseParser:
         digit run so callers may rely on the same behaviour as Java.
         """
         self.skip_whitespace()
+        chunk = self._fast_chunk()
+        if chunk is not None:
+            data, index, base, complete = chunk
+            m = _FAST_INT(data, index)
+            if m is not None:
+                end = m.end()
+                if (end < len(data) or complete) and end - index <= _FAST_MAX_DIGITS:
+                    self._src._buf.seek(base + end)
+                    return int(m.group())
         start_pos = self.position
         sign = 1
         b = self._src.read()
@@ -798,6 +881,15 @@ class BaseParser:
         """Read a keyword-like regular token with an alphabetic start. Used for
         ``true``/``false``/``null``/``obj``/``endobj``/``stream``/
         ``endstream``/``R``/``xref``/``trailer``/``startxref``."""
+        chunk = self._fast_chunk()
+        if chunk is not None:
+            data, index, base, complete = chunk
+            m = _FAST_KEYWORD(data, index)
+            if m is not None:
+                end = m.end()
+                if end < len(data) or complete:
+                    self._src._buf.seek(base + end)
+                    return m.group()
         start_pos = self.position
         out = bytearray()
         b = self._src.read()
@@ -830,6 +922,19 @@ class BaseParser:
         the wave497 callers in ``tests/pdfparser/``) keep working. The
         function still terminates on the full PDF whitespace set, so
         downstream behaviour after a leading skip is upstream-equivalent."""
+        chunk = self._fast_chunk()
+        if chunk is not None:
+            data, index, base, complete = chunk
+            m = _FAST_TOKEN(data, index)
+            end = m.end()
+            if end < len(data) or complete:
+                if end != index:
+                    self._src._buf.seek(base + end)
+                token = m.group()
+                try:
+                    return token.decode("ascii")
+                except UnicodeDecodeError:
+                    return token.decode("latin-1")
         out = bytearray()
         while True:
             b = self._src.read()
@@ -1390,3 +1495,12 @@ class BaseParser:
                     )
                 break
         return COSString.parse_hex(s_buf.decode("ascii"))
+
+
+# The helpers the reference loops of ``skip_whitespace`` / ``read_int`` /
+# ``read_keyword`` / ``read_string`` call and their fast paths bypass. A
+# parser class that overrides any of them keeps the reference loops.
+_FAST_GUARD = operator.attrgetter(
+    "_skip_to_eol", "is_digit", "is_regular", "is_whitespace", "position"
+)
+_FAST_REFERENCE = _FAST_GUARD(BaseParser)
