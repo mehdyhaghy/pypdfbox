@@ -1,5 +1,6 @@
 import contextlib
 import logging
+import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -63,6 +64,168 @@ _PRUNABLE_CATEGORIES: tuple[str, ...] = (
     "Shading",
     "Properties",
 )
+
+# ---------- fast resource-name scanner (pruning hot path) ----------
+#
+# ``_prune_page_resources`` only needs the resource names a content stream
+# hands to a handful of operators. Building a full ``PDFStreamParser`` token
+# list per page (a COSBase per number, string and array) dominated split time,
+# so the scanner below tokenizes with one compiled regex and keeps operands as
+# lightweight markers. It accepts only a conservative subset of the content
+# stream grammar on which its token boundaries provably coincide with
+# ``PDFStreamParser``'s; anything else (inline images, ``#`` name escapes,
+# numbers glued to other tokens, malformed containers, keywords inside
+# arrays, ...) returns ``None`` and the caller re-scans the stream with the
+# exact parser, so the collected names are identical either way.
+
+_WS_CLASS = rb"\x00\t\n\x0c\r "
+_FAST_TOKEN_RE = re.compile(
+    rb"(?P<ws>[" + _WS_CLASS + rb"]+|%[^\r\n]*)"
+    rb"|(?P<name>/[^" + _WS_CLASS + rb"()<>\[\]/%]*)"
+    rb"|(?P<num>[+\-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)"
+    rb"(?=[" + _WS_CLASS + rb"()<>\[\]{}/%]|\Z))"
+    # Literal strings: up to two levels of unescaped nesting; deeper or
+    # unterminated strings fall through to ``bad``.
+    rb"|(?P<str>\((?:[^()\\]|\\.|\((?:[^()\\]|\\.)*\))*\))"
+    rb"|(?P<dopen><<)|(?P<dclose>>>)"
+    rb"|(?P<hex><[^>]*>)"
+    rb"|(?P<aopen>\[)|(?P<aclose>\])"
+    rb"|(?P<kw>['\"]|[A-Za-z*][^" + _WS_CLASS + rb"\[<(/%0-9]*)"
+    rb"|(?P<bad>.)",
+    re.DOTALL,
+)
+_KW_TAIL_RE = re.compile(rb"[^" + _WS_CLASS + rb"\[<(/%0-9]*")
+#: Unescaped ``(`` / ``)`` inside a nested literal string; used to replay the
+#: parser's PDFBOX-276 ``checkForEndOfString`` look-ahead on nested closers.
+_NESTED_CLOSE_EOS_RE = re.compile(rb"\)(?:[\r\n][/>]|\r\n[/>])")
+_OPERAND = object()
+_FAST_CATEGORY_OPS: dict[bytes, str] = {
+    b"Tf": "Font",
+    b"Do": "XObject",
+    b"gs": "ExtGState",
+    b"CS": "ColorSpace",
+    b"cs": "ColorSpace",
+    b"sh": "Shading",
+}
+
+
+def _fast_scan_resource_names(data: bytes) -> dict[str, set[bytes]] | None:
+    """Collect the raw (undecoded) resource names referenced by ``data``.
+
+    Returns ``{category: {name_bytes}}`` mirroring the exact-parser scan in
+    :meth:`Splitter._prune_page_resources`, or ``None`` when the stream uses
+    any construct outside the fast subset (the caller then falls back to
+    ``PDFStreamParser``)."""
+    used: dict[str, set[bytes]] = {c: set() for c in _PRUNABLE_CATEGORIES}
+    operands: list[Any] = []
+    # Container stack: "a" = array, "k" = dict expecting a key,
+    # "v" = dict expecting a value.
+    stack: list[str] = []
+    n = len(data)
+    pos = 0
+    match = _FAST_TOKEN_RE.match
+    while pos < n:
+        m = match(data, pos)
+        assert m is not None  # ``bad`` matches any single byte
+        kind = m.lastgroup
+        end = m.end()
+        if kind == "ws":
+            pos = end
+            continue
+        if kind == "kw":
+            tok = m.group()
+            if tok[-1:] == b"d" and end < n and data[end] in b"01":
+                # Type 3 ``d0`` / ``d1``: the parser folds the digit into
+                # the keyword and keeps reading the run.
+                while tok[-1:] == b"d" and end < n and data[end] in b"01":
+                    tail = _KW_TAIL_RE.match(data, end + 1)
+                    assert tail is not None
+                    tok = tok + data[end : tail.end()]
+                    end = tail.end()
+            if tok in (b"true", b"false", b"null"):
+                kind = "operand"
+            elif stack or tok == b"BI" or tok[:1] == b"I":
+                # Keyword inside a container, or inline image: not in the
+                # fast subset.
+                return None
+            else:
+                if operands:
+                    _fast_record(tok, operands, used)
+                    operands = []
+                pos = end
+                continue
+        elif kind == "name":
+            tok = m.group()
+            if b"#" in tok:
+                return None
+            if stack:
+                top = stack[-1]
+                if top == "k":
+                    stack[-1] = "v"
+                elif top == "v":
+                    stack[-1] = "k"
+                pos = end
+                continue
+            operands.append(tok[1:])
+            pos = end
+            continue
+        elif kind == "str":
+            body = m.group()
+            if b"(" in body[1:-1] and _NESTED_CLOSE_EOS_RE.search(
+                data, m.start(), end - 1
+            ):
+                return None
+            kind = "operand"
+        elif kind in ("num", "hex"):
+            kind = "operand"
+        elif kind == "aopen" or kind == "dopen":
+            if stack and stack[-1] == "k":
+                return None
+            stack.append("a" if kind == "aopen" else "k")
+            pos = end
+            continue
+        elif kind == "aclose":
+            if not stack or stack.pop() != "a":
+                return None
+            kind = "operand"
+        elif kind == "dclose":
+            if not stack or stack.pop() != "k":
+                return None
+            kind = "operand"
+        else:  # bad byte
+            return None
+        # ``kind == "operand"``: a complete scalar or a closed container.
+        if stack:
+            top = stack[-1]
+            if top == "k":
+                return None
+            if top == "v":
+                stack[-1] = "k"
+        else:
+            operands.append(_OPERAND)
+        pos = end
+    if stack:
+        return None
+    return used
+
+
+def _fast_record(
+    op: bytes, operands: list[Any], used: dict[str, set[bytes]]
+) -> None:
+    """Apply one operator to the operand list (mirrors ``scan``)."""
+    category = _FAST_CATEGORY_OPS.get(op)
+    if category is not None:
+        first = operands[0]
+        if first is not _OPERAND:
+            used[category].add(first)
+    elif op == b"SCN" or op == b"scn":
+        last = operands[-1]
+        if last is not _OPERAND:
+            used["Pattern"].add(last)
+    elif (op == b"BDC" or op == b"DP") and len(operands) >= 2:
+        second = operands[1]
+        if second is not _OPERAND:
+            used["Properties"].add(second)
 
 
 class Splitter:
@@ -149,6 +312,20 @@ class Splitter:
         # and share the read-only map across every chunk instead of
         # re-flattening per chunk. Reset at split() start, cleared at end.
         self._src_number_tree_map: dict[int, COSBase] | None = None
+        # Resource-pruning scan cache: {decoded stream bytes: names}. Holds
+        # only bytes and immutable name sets, never COS objects of a
+        # destination document. Reset at the start and end of split().
+        self._resource_scan_cache: dict[bytes, dict[str, frozenset[str]]] = {}
+        # Per-run cache of resolved source structure-element fields
+        # ({id(src): [src, /Pg, /K, /Type, has_mcids]}), shared by every
+        # chunk's structure-tree clone. ``None`` outside split() so direct
+        # helper calls always read the live dictionaries.
+        self._k_node_cache: dict[int, list[Any]] | None = None
+        # Subtree-skip switch and the chunk index being struct-cloned; set by
+        # split() (see _build_k_skip_info).
+        self._k_skip_enabled: bool = False
+        self._k_skip_pending: bool = False
+        self._k_chunk_index: int = 0
         # destToFixMap mirror — list of (cloned_dest_array, source_host_page_dict,
         # source_target_page_dict) per chunk. Deferred to after the page walk
         # so we can decide whether each destination's target page lives in
@@ -388,6 +565,10 @@ class Splitter:
         # Flattened source /ParentTree cache — populated lazily on the
         # first tagged chunk, shared read-only across the rest of the run.
         self._src_number_tree_map = None
+        self._resource_scan_cache = {}
+        self._k_node_cache = {}
+        self._k_skip_enabled = False
+        self._k_skip_pending = True
         # Track whether any chunk dropped a signature widget; clear
         # /SigFlags + scrub /AcroForm in destination catalogs at the end.
         self._signatures_dropped: bool = False
@@ -418,6 +599,7 @@ class Splitter:
                 # override either the public ``clone_structure_tree`` or
                 # the upstream-private ``_clone_structure_tree`` and have
                 # the override picked up.
+                self._k_chunk_index = index
                 self._clone_structure_tree(destination_document)
             except Exception:
                 _LOG.exception(
@@ -460,6 +642,10 @@ class Splitter:
         # Release the shared source-/ParentTree flatten (can be large) once
         # every chunk has been cloned.
         self._src_number_tree_map = None
+        self._resource_scan_cache = {}
+        self._k_node_cache = None
+        self._k_skip_enabled = False
+        self._k_skip_pending = False
         return self._destination_documents
 
     # ---------- named destinations (PDFBOX-6283) ----------
@@ -1236,10 +1422,6 @@ class Splitter:
         (inherited-resources path), which must not be mutated.
         """
         from pypdfbox.cos import COSStream
-        from pypdfbox.pdfparser.pdf_stream_parser import (
-            Operator,
-            PDFStreamParser,
-        )
 
         page_dict = imported.get_cos_object()
         res_dict = page_dict.get_dictionary_object(_RESOURCES)
@@ -1248,43 +1430,28 @@ class Splitter:
 
         used: dict[str, set[str]] = {c: set() for c in _PRUNABLE_CATEGORIES}
 
+        def merge(found: dict[str, frozenset[str]]) -> None:
+            for category, names in found.items():
+                if names:
+                    used[category].update(names)
+
         def scan(data: bytes) -> None:
-            operands: list[Any] = []
-            for token in PDFStreamParser.from_bytes(data).parse():
-                if not isinstance(token, Operator):
-                    operands.append(token)
-                    continue
-                op = token.get_name()
-                if op == "Tf" and operands and isinstance(operands[0], COSName):
-                    used["Font"].add(operands[0].get_name())
-                elif op == "Do" and operands and isinstance(operands[0], COSName):
-                    used["XObject"].add(operands[0].get_name())
-                elif op == "gs" and operands and isinstance(operands[0], COSName):
-                    used["ExtGState"].add(operands[0].get_name())
-                elif op in ("CS", "cs") and operands and isinstance(
-                    operands[0], COSName
-                ):
-                    used["ColorSpace"].add(operands[0].get_name())
-                elif op in ("SCN", "scn") and operands and isinstance(
-                    operands[-1], COSName
-                ):
-                    used["Pattern"].add(operands[-1].get_name())
-                elif op == "sh" and operands and isinstance(operands[0], COSName):
-                    used["Shading"].add(operands[0].get_name())
-                elif op in ("BDC", "DP") and len(operands) >= 2 and isinstance(
-                    operands[1], COSName
-                ):
-                    used["Properties"].add(operands[1].get_name())
-                elif op in ("BI", "ID") and token.image_parameters is not None:
-                    # Inline image: a named (non-device) colour space
-                    # resolves against the page's /ColorSpace resources.
-                    for cs_key in ("CS", "ColorSpace"):
-                        cs_value = token.image_parameters.get_dictionary_object(
-                            COSName.get_pdf_name(cs_key)
-                        )
-                        if isinstance(cs_value, COSName):
-                            used["ColorSpace"].add(cs_value.get_name())
-                operands = []
+            # The scan is a pure function of the decoded bytes, and form
+            # XObjects, patterns, glyph procs and appearance streams are
+            # routinely shared by many pages (import_page copies them, so
+            # identity is not stable). Tokenize each distinct byte string
+            # once per split() run.
+            if not isinstance(data, bytes):
+                data = bytes(data)
+            cache = self._resource_scan_cache
+            found = cache.get(data)
+            if found is None:
+                found = self._scan_resource_names(data)
+                cache[data] = found
+            merge(found)
+
+        def scan_stream(stream: COSStream) -> None:
+            scan(stream.to_byte_array())
 
         def resolve(category: str, name: str) -> COSBase | None:
             sub = res_dict.get_dictionary_object(COSName.get_pdf_name(category))
@@ -1295,7 +1462,7 @@ class Splitter:
         scan(imported.get_contents())
         for ap_stream in self._iter_appearance_streams(page_dict):
             if not ap_stream.contains_key(_RESOURCES):
-                scan(ap_stream.to_byte_array())
+                scan_stream(ap_stream)
 
         # Fixpoint walk: streams reachable through used resources may pull
         # further names from the page dictionary.
@@ -1313,7 +1480,7 @@ class Splitter:
                     isinstance(xobj, COSStream)
                     and xobj.get_name(_SUBTYPE) == "Form"
                 ):
-                    scan(xobj.to_byte_array())
+                    scan_stream(xobj)
             for name in list(used["Pattern"]):
                 if ("Pattern", name) in scanned:
                     continue
@@ -1321,7 +1488,7 @@ class Splitter:
                 progress = True
                 pattern = resolve("Pattern", name)
                 if isinstance(pattern, COSStream):
-                    scan(pattern.to_byte_array())
+                    scan_stream(pattern)
             for name in list(used["Font"]):
                 if ("Font", name) in scanned:
                     continue
@@ -1337,7 +1504,7 @@ class Splitter:
                         for glyph_key in list(char_procs.key_set()):
                             proc = char_procs.get_dictionary_object(glyph_key)
                             if isinstance(proc, COSStream):
-                                scan(proc.to_byte_array())
+                                scan_stream(proc)
 
         pruned = COSDictionary()
         for key in list(res_dict.key_set()):
@@ -1356,6 +1523,73 @@ class Splitter:
             # kept wholesale — pruning only what we can prove is name-keyed.
             pruned.set_item(key, res_dict.get_item(key))
         page_dict.set_item(_RESOURCES, pruned)
+
+    @staticmethod
+    def _scan_resource_names(data: bytes) -> dict[str, frozenset[str]]:
+        """Return ``{category: names}`` for the resource names ``data``
+        hands to name-consuming operators. Uses the regex fast path when the
+        stream stays inside its grammar subset, else the exact
+        ``PDFStreamParser`` scan; both yield the same names. Parse errors
+        propagate (the caller then keeps the full resource dictionary)."""
+        fast = _fast_scan_resource_names(data)
+        if fast is None:
+            return Splitter._exact_scan_resource_names(data)
+        return {
+            category: frozenset(
+                COSName.get_pdf_name(raw).get_name() for raw in names
+            )
+            for category, names in fast.items()
+        }
+
+    @staticmethod
+    def _exact_scan_resource_names(data: bytes) -> dict[str, frozenset[str]]:
+        """Reference scan: tokenize ``data`` with ``PDFStreamParser`` and
+        collect the resource names used by ``Tf`` / ``Do`` / ``gs`` /
+        ``CS`` / ``cs`` / ``SCN`` / ``scn`` / ``sh`` / ``BDC`` / ``DP`` and
+        inline-image colour spaces."""
+        from pypdfbox.pdfparser.pdf_stream_parser import (
+            Operator,
+            PDFStreamParser,
+        )
+
+        used: dict[str, set[str]] = {c: set() for c in _PRUNABLE_CATEGORIES}
+        operands: list[Any] = []
+        for token in PDFStreamParser.from_bytes(data).parse():
+            if not isinstance(token, Operator):
+                operands.append(token)
+                continue
+            op = token.get_name()
+            if op == "Tf" and operands and isinstance(operands[0], COSName):
+                used["Font"].add(operands[0].get_name())
+            elif op == "Do" and operands and isinstance(operands[0], COSName):
+                used["XObject"].add(operands[0].get_name())
+            elif op == "gs" and operands and isinstance(operands[0], COSName):
+                used["ExtGState"].add(operands[0].get_name())
+            elif op in ("CS", "cs") and operands and isinstance(
+                operands[0], COSName
+            ):
+                used["ColorSpace"].add(operands[0].get_name())
+            elif op in ("SCN", "scn") and operands and isinstance(
+                operands[-1], COSName
+            ):
+                used["Pattern"].add(operands[-1].get_name())
+            elif op == "sh" and operands and isinstance(operands[0], COSName):
+                used["Shading"].add(operands[0].get_name())
+            elif op in ("BDC", "DP") and len(operands) >= 2 and isinstance(
+                operands[1], COSName
+            ):
+                used["Properties"].add(operands[1].get_name())
+            elif op in ("BI", "ID") and token.image_parameters is not None:
+                # Inline image: a named (non-device) colour space
+                # resolves against the page's /ColorSpace resources.
+                for cs_key in ("CS", "ColorSpace"):
+                    cs_value = token.image_parameters.get_dictionary_object(
+                        COSName.get_pdf_name(cs_key)
+                    )
+                    if isinstance(cs_value, COSName):
+                        used["ColorSpace"].add(cs_value.get_name())
+            operands = []
+        return {category: frozenset(names) for category, names in used.items()}
 
     @staticmethod
     def _iter_appearance_streams(page_dict: COSDictionary) -> list[Any]:
@@ -1790,6 +2024,9 @@ class Splitter:
 
         # Clone /K, also fills _struct_dict_map.
         src_k = src_struct_root.get_cos_object().get_dictionary_object(_K)
+        if self._k_skip_pending:
+            self._k_skip_pending = False
+            self._build_k_skip_info(src_k)
         cloned_k = self._k_create_clone(
             src_k, dst_struct_root_cos, None, page_tree
         )
@@ -1891,6 +2128,94 @@ class Splitter:
 
     # ---- structure-tree helpers (private; mirror upstream KCloner) ----
 
+    def _build_k_skip_info(self, src_k: COSBase | None) -> None:
+        """Annotate every source structure element once per split() run so
+        each chunk's clone can skip subtrees that cannot contribute to it.
+
+        Upstream ``Splitter`` (KCloner) re-walks the complete source /K tree
+        for every output document, which makes an N-chunk split of a tagged
+        file O(N * tree). For each element reachable from /K this records,
+        in ``_k_node_cache``, ``[src, /Pg, /K, /Type, has_mcids, mask,
+        live]``:
+
+        * ``mask`` — bit ``i`` set when some /Pg in the subtree is a page of
+          destination document ``i``;
+        * ``live`` — the subtree can yield a non-``None`` clone (or has
+          observable side effects) even when no /Pg in it belongs to the
+          chunk and no ancestor supplied an in-chunk page.
+
+        With ``current_page_dict is None`` the parent clone carries no /Pg,
+        so a subtree with neither the chunk's bit nor ``live`` deterministically
+        clones to ``None`` with no side effects; :meth:`_k_clone_dictionary`
+        returns that result without walking it. ``live`` mirrors the clone
+        rules for that context: scalars survive; ``MCR`` and ``OBJR`` never do
+        (without an inherited page an ``OBJR`` is dropped after the
+        annotation lookup, and ``_remove_possible_orphan_annotation`` returns
+        before logging because there is no host page); an element whose
+        out-of-chunk /Pg carries MCIDs is dropped; otherwise an element
+        survives iff its /K does. If any element or array is reachable twice
+        (shared node or cycle), the per-chunk ``_struct_dict_map`` reuse
+        could resurrect a skipped node, so skipping is disabled for the run.
+        """
+        node_cache = self._k_node_cache
+        if node_cache is None:
+            return
+        page_chunk = self._page_to_doc_num_map
+        seen: set[int] = set()
+        shared = False
+
+        def visit(node: COSBase | None, depth: int) -> tuple[int, bool]:
+            nonlocal shared
+            if node is None:
+                return 0, False
+            if isinstance(node, COSObject):
+                return visit(node.get_object(), depth)
+            if isinstance(node, (COSArray, COSDictionary)):
+                if id(node) in seen or depth > 500:
+                    shared = True
+                    return 0, True
+                seen.add(id(node))
+            else:
+                return 0, True
+            if isinstance(node, COSArray):
+                mask = 0
+                live = False
+                for i in range(node.size()):
+                    entry = node.get(i)
+                    m, alive = visit(entry, depth + 1)
+                    mask |= m
+                    live = live or alive
+                return mask, live
+            src_page_dict = node.get_dictionary_object(_PG)
+            if not isinstance(src_page_dict, COSDictionary):
+                src_page_dict = None
+            kid = node.get_dictionary_object(_K)
+            type_name = node.get_name(_TYPE)
+            kid_mask, kid_live = visit(kid, depth + 1)
+            mask = kid_mask
+            has_mcids: bool | None = None
+            if src_page_dict is not None:
+                chunk = page_chunk.get(id(src_page_dict))
+                if chunk is not None:
+                    mask |= 1 << chunk
+            if type_name == "MCR" or type_name == "OBJR":
+                live = False
+            elif src_page_dict is not None:
+                has_mcids = self._has_mcids(kid)
+                live = False if has_mcids else kid_live
+            else:
+                live = kid_live
+            node_cache[id(node)] = [
+                node, src_page_dict, kid, type_name, has_mcids, mask, live
+            ]
+            return mask, live
+
+        try:
+            visit(src_k, 0)
+        except RecursionError:
+            shared = True
+        self._k_skip_enabled = not shared
+
     def _k_create_clone(
         self,
         src: COSBase | None,
@@ -1945,12 +2270,35 @@ class Splitter:
         if existing is not None:
             return existing
 
-        src_page_dict = src.get_dictionary_object(_PG)
-        if not isinstance(src_page_dict, COSDictionary):
-            src_page_dict = None
+        # The source structure tree is read-only during split() and every
+        # chunk re-walks it (upstream KCloner does the same), so resolve each
+        # element's /Pg, /K and /Type once per run instead of once per chunk.
+        # The entry pins ``src`` so a recycled id() can never match.
+        node_cache = self._k_node_cache
+        info = node_cache.get(id(src)) if node_cache is not None else None
+        if info is None or info[0] is not src:
+            src_page_dict = src.get_dictionary_object(_PG)
+            if not isinstance(src_page_dict, COSDictionary):
+                src_page_dict = None
+            info = [src, src_page_dict, src.get_dictionary_object(_K),
+                    src.get_name(_TYPE), None]
+            if node_cache is not None:
+                node_cache[id(src)] = info
+        # Subtree skip (see _build_k_skip_info): with no in-chunk page above
+        # (``current_page_dict is None``) and none anywhere below, a subtree
+        # whose clone is provably ``None`` is not walked at all.
+        if (
+            current_page_dict is None
+            and self._k_skip_enabled
+            and len(info) > 5
+            and not info[6]
+            and not (info[5] >> self._k_chunk_index) & 1
+        ):
+            return None
+        src_page_dict = info[1]
+        kid = info[2]
+        type_name = info[3]
         dst_page_dict: COSDictionary | None = None
-        kid = src.get_dictionary_object(_K)
-        type_name = src.get_name(_TYPE)
 
         if src_page_dict is not None:
             dst_page_dict = self._page_dict_map.get(id(src_page_dict))
@@ -1971,11 +2319,12 @@ class Splitter:
                 # PDFBOX-6009: src has /Pg pointing somewhere not in this
                 # chunk. Quit on MCID/MCR/OBJR — they need a /Pg — else
                 # keep as an intermediate.
-                if (
-                    type_name == "MCR"
-                    or type_name == "OBJR"
-                    or self._has_mcids(kid)
-                ):
+                if type_name == "MCR" or type_name == "OBJR":
+                    return None
+                has_mcids = info[4]
+                if has_mcids is None:
+                    has_mcids = info[4] = self._has_mcids(kid)
+                if has_mcids:
                     return None
 
         # MCR with no resolvable destination page and no inherited /Pg
