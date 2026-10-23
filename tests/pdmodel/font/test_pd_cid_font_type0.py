@@ -220,40 +220,31 @@ def test_get_height_falls_back_to_w2_when_no_program() -> None:
 
 
 def test_get_average_font_width_uses_w_when_present() -> None:
-    """Mean of positive /W entries wins."""
+    """Upstream ``PDCIDFontType0.getAverageFontWidth`` ignores /W and returns
+    its constant ``getAverageCharacterWidth`` (500)."""
     font = PDCIDFontType0()
-    # /W: CID 1 -> 100, CID 2 -> 300, CID 3 -> 500. Mean = 300.
     w = COSArray(
         [
             COSInteger.get(1),
-            COSArray(
-                [
-                    COSInteger.get(100),
-                    COSInteger.get(300),
-                    COSInteger.get(500),
-                ]
-            ),
+            COSArray([COSInteger.get(100), COSInteger.get(300), COSInteger.get(500)]),
         ]
     )
     font.set_w(w)
-    assert font.get_average_font_width() == 300.0
+    assert font.get_average_font_width() == 500.0
 
 
 def test_get_average_font_width_falls_back_to_dw_without_program() -> None:
-    """No /W, no embedded CFF → /DW (defaults to 1000)."""
+    """No /W, no embedded CFF: still upstream's constant 500, /DW unused."""
     font = PDCIDFontType0()
-    assert font.get_average_font_width() == 1000.0
+    assert font.get_average_font_width() == 500.0
     font.set_dw(450)
-    assert font.get_average_font_width() == 450.0
+    assert font.get_average_font_width() == 500.0
 
 
 def test_get_average_font_width_falls_back_to_cff_default_when_no_w() -> None:
-    """No /W, embedded CFF program with non-zero defaultWidthX → that value
-    scaled to 1/1000 em. Our test fixture has defaultWidthX=0, so this
-    test verifies the fallback to /DW takes over."""
+    """An embedded CFF program does not change upstream's constant 500."""
     font = _make_font_with_descriptor()
-    # Our fixture has no /W set and defaultWidthX=0 → falls through to /DW=1000.
-    assert font.get_average_font_width() == 1000.0
+    assert font.get_average_font_width() == 500.0
 
 
 # ---------- get_font_matrix ----------
@@ -488,6 +479,7 @@ def test_get_bounding_box_caches_first_call() -> None:
 
 
 def test_get_average_character_width_uses_w() -> None:
+    """Upstream's private ``getAverageCharacterWidth`` is the constant 500."""
     font = PDCIDFontType0()
     w = COSArray(
         [
@@ -496,13 +488,13 @@ def test_get_average_character_width_uses_w() -> None:
         ]
     )
     font.set_w(w)
-    assert font.get_average_character_width() == 300.0
+    assert font.get_average_character_width() == 500.0
 
 
 def test_get_average_character_width_falls_back_to_dw() -> None:
     font = PDCIDFontType0()
     font.set_dw(420)
-    assert font.get_average_character_width() == 420.0
+    assert font.get_average_character_width() == 500.0
 
 
 def test_get_average_character_width_zero_dw_uses_500_sentinel() -> None:

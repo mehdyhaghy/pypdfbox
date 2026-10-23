@@ -241,7 +241,9 @@ def test_filtered_text_stripper_emits_only_matching_rotation(
     doc = PDDocument.load(out)
     try:
         for target, label in expected.items():
-            text = _extract(FilteredTextStripper(target_angle=target), doc)
+            # Rotated text comes out one line per glyph run (upstream groups
+            # lines by the unrotated page axes), so compare without breaks.
+            text = _extract(FilteredTextStripper(target_angle=target), doc).replace("\n", "")
             # Only the matching label should survive the filter.
             assert label in text
             for other_target, other_label in expected.items():
@@ -358,7 +360,7 @@ def test_unfiltered_stripper_still_sees_everything(tmp_path: Path) -> None:
 
     doc = PDDocument.load(out)
     try:
-        text = _extract(PDFTextStripper(), doc)
+        text = _extract(PDFTextStripper(), doc).replace("\n", "")
         for label in ("ANGLE0", "ANGLE90", "ANGLE180", "ANGLE270"):
             assert label in text
     finally:

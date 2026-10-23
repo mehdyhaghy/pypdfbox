@@ -266,10 +266,10 @@ def test_wave1339_process_pages_invokes_process_page_for_each_page() -> None:
 
 
 def test_wave1339_write_page_returns_empty_when_no_articles() -> None:
-    """``write_page`` returns ``""`` when ``_characters_by_article`` is
-    empty — guard for the line-1684 short-circuit."""
+    """Without articles upstream ``writePage`` skips the page start but
+    still writes the page end (the line separator by default)."""
     s = PDFTextStripper()
-    assert s.write_page() == ""
+    assert s.write_page() == "\n"
 
 
 def test_wave1339_write_page_renders_each_article_through_emit_group() -> None:

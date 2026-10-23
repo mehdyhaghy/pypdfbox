@@ -60,7 +60,7 @@ _DIACRITICS: dict[int, str] = _create_diacritics()
 
 @dataclass
 class TextPosition:
-    """A single decoded text run with its origin in user space.
+    """One decoded glyph (or a hand-built run) with its origin in user space.
 
     Mirrors the conceptual shape of ``org.apache.pdfbox.text.TextPosition``
     in lite form. Upstream's ``TextPosition`` carries glyph-level
@@ -134,6 +134,20 @@ class TextPosition:
     # the lite dedup pass needs the span membership on the position because
     # it runs after the page walk.
     from_actual_text: bool = False
+    # Device-space glyph geometry as upstream's ``TextPosition`` holds it:
+    # the translation of the (cropbox-adjusted) text rendering matrix and the
+    # ``endX`` / ``endY`` end point. Upstream derives ``getX`` / ``getY`` /
+    # ``getWidth`` and their ``DirAdj`` variants from these four values; the
+    # stripper's line, word and sort logic reads them through the same
+    # formulas. ``None`` for positions built without them (e.g. by hand),
+    # in which case :attr:`x` / :attr:`y` / :attr:`width` stand in.
+    device_x: float | None = None
+    device_y: float | None = None
+    device_end_x: float | None = None
+    device_end_y: float | None = None
+    # The ``Tf`` font size (upstream ``getFontSize``), as opposed to
+    # :attr:`font_size`, which carries the matrix-scaled size.
+    tf_font_size: float | None = None
 
     # ------------------------------------------------------------------
     # Decoded text

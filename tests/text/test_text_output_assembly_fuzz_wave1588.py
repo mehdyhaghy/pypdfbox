@@ -210,8 +210,12 @@ def test_write_paragraph_separator_is_end_then_start() -> None:
     s = PDFTextStripper()
     s.set_paragraph_end("<PE>")
     s.set_paragraph_start("<PS>")
+    # Not inside a paragraph yet: upstream's ``writeParagraphEnd`` opens one
+    # first, so the separator reads start, end, start.
     out = _collect(s.write_paragraph_separator)
-    assert out == "<PE><PS>"
+    assert out == "<PS><PE><PS>"
+    # Now inside the paragraph the separator opened: end then start.
+    assert _collect(s.write_paragraph_separator) == "<PE><PS>"
 
 
 # ---------------------------------------------------------------------------

@@ -1,9 +1,11 @@
 import logging
 import math
 import re
+import struct
 import sys
 import unicodedata
 from collections.abc import Callable
+from dataclasses import replace
 from functools import cmp_to_key
 from typing import TYPE_CHECKING, Protocol
 
@@ -11,8 +13,10 @@ from pypdfbox.cos import COSArray, COSDictionary, COSName, COSNumber, COSStream,
 from pypdfbox.fontbox.cmap import CMap, CMapParser
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser.pdf_stream_parser import Operator, PDFStreamParser
+from pypdfbox.util.iterative_merge_sort import IterativeMergeSort
 from pypdfbox.util.matrix import Matrix, f32
 
+from ._tim_sort import ComparisonContractError, tim_sort
 from .bidi import BidiResolver, get_paragraph_direction
 from .bidi import _reorder_indices as _bidi_reorder_indices
 from .position_wrapper import PositionWrapper
@@ -104,6 +108,312 @@ def _dup_window_hit(
     return any(
         x_lo <= x_key < x_hi and y_lo <= y_val < y_hi for x_key, y_val in points
     )
+
+
+_F32_STRUCT = struct.Struct("<f")
+_f32_pack = _F32_STRUCT.pack
+_f32_unpack = _F32_STRUCT.unpack
+
+
+def _f32(value: float) -> float:
+    """:func:`pypdfbox.util.matrix.f32` without its NaN / infinity checks
+    (``struct`` round-trips those), for the per-glyph hot paths."""
+    try:
+        return _f32_unpack(_f32_pack(value))[0]
+    except OverflowError:
+        return f32(value)
+
+
+_F32X2_STRUCT = struct.Struct("<2f")
+_f32x2_pack = _F32X2_STRUCT.pack
+_f32x2_unpack = _F32X2_STRUCT.unpack
+
+
+def _f32x2(first: float, second: float) -> tuple[float, float]:
+    """Two :func:`_f32` narrowings in one ``struct`` round trip."""
+    try:
+        return _f32x2_unpack(_f32x2_pack(first, second))
+    except OverflowError:
+        return f32(first), f32(second)
+
+
+# Java ``Float.MAX_VALUE`` — upstream's reset sentinels for the line state.
+_FLT_MAX = 3.4028234663852886e38
+
+
+def _java_round(value: float) -> int:
+    """Java ``Math.round(float)``: round half up (``floor(x + 0.5)``)."""
+    if math.isnan(value):
+        return 0
+    if math.isinf(value):
+        return 2**31 - 1 if value > 0 else -(2**31)
+    return math.floor(value + 0.5)
+
+
+def _fdiv(numerator: float, denominator: float) -> float:
+    """Java floating-point division: ``x / 0`` is a signed infinity or NaN."""
+    if denominator == 0:
+        if numerator == 0 or math.isnan(numerator):
+            return math.nan
+        return math.copysign(math.inf, numerator) * math.copysign(1.0, denominator)
+    return numerator / denominator
+
+
+def _java_dir(a: float, b: float, c: float, d: float) -> float:
+    """Upstream ``TextPosition.getDir`` on a text rendering matrix.
+
+    ``a`` / ``d`` are the matrix's Y and X scale cells and ``b`` / ``c`` its
+    Y and X shear cells, in the order upstream reads them. Any matrix that
+    matches none of the four quadrant patterns (e.g. a 45 degree rotation)
+    reports ``0``.
+    """
+    if a > 0 and abs(b) < d and abs(c) < a and d > 0:
+        return 0.0
+    if a < 0 and abs(b) < abs(d) and abs(c) < abs(a) and d < 0:
+        return 180.0
+    if abs(a) < abs(c) and b > 0 and c < 0 and abs(d) < b:
+        return 90.0
+    if abs(a) < c and b < 0 and c > 0 and abs(d) < abs(b):
+        return 270.0
+    return 0.0
+
+
+class _JavaGeometry:
+    """Upstream ``TextPosition`` coordinates of one position.
+
+    Derived once from the device-space geometry with upstream's formulas
+    (``getXRot`` / ``getYLowerLeftRot`` / ``getWidthRot``), in upstream's
+    upper-left (y-down) frame and in float32, so the line, word, paragraph
+    and sort logic can follow ``PDFTextStripper.writePage`` and
+    ``TextPositionComparator`` literally.
+    """
+
+    __slots__ = (
+        "dir",
+        "x",
+        "y",
+        "width",
+        "x_dir_adj",
+        "y_dir_adj",
+        "width_dir_adj",
+        "height",
+        "width_of_space",
+    )
+
+    def __init__(self, pos: TextPosition) -> None:
+        tx = pos.device_x
+        ty = pos.device_y
+        end_x = pos.device_end_x
+        end_y = pos.device_end_y
+        if tx is None or ty is None or end_x is None or end_y is None:
+            # A position built by hand: its stored origin and width stand in
+            # for the device geometry, laid along its text direction.
+            tx = _f32(pos.x)
+            ty = _f32(pos.y)
+            theta = math.radians(pos.dir % 360.0)
+            end_x = _f32(tx + pos.width * math.cos(theta))
+            end_y = _f32(ty + pos.width * math.sin(theta))
+        pw = _f32(pos.page_width)
+        ph = _f32(pos.page_height)
+        rotation = pos.rotation % 360.0
+        direction = pos.dir % 360.0
+
+        def x_rot(r: float) -> float:
+            if r == 0.0:
+                return tx
+            if r == 90.0:
+                return ty
+            if r == 180.0:
+                return _f32(pw - tx)
+            if r == 270.0:
+                return _f32(ph - ty)
+            return 0.0
+
+        def y_lower_left_rot(r: float) -> float:
+            if r == 0.0:
+                return ty
+            if r == 90.0:
+                return _f32(pw - tx)
+            if r == 180.0:
+                return _f32(ph - ty)
+            if r == 270.0:
+                return tx
+            return 0.0
+
+        def width_rot(r: float) -> float:
+            if r in (90.0, 270.0):
+                return abs(_f32(end_y - ty))
+            return abs(_f32(end_x - tx))
+
+        self.dir = direction
+        self.x = x_rot(rotation)
+        extent = ph if rotation in (0.0, 180.0) else pw
+        self.y = _f32(extent - y_lower_left_rot(rotation))
+        self.width = width_rot(rotation)
+        if direction == rotation:
+            self.x_dir_adj = self.x
+            self.y_dir_adj = self.y
+            self.width_dir_adj = self.width
+        else:
+            self.x_dir_adj = x_rot(direction)
+            extent = ph if direction in (0.0, 180.0) else pw
+            self.y_dir_adj = _f32(extent - y_lower_left_rot(direction))
+            self.width_dir_adj = width_rot(direction)
+        if pos.device_x is not None:
+            # A glyph from the stripper: float values, its real (possibly
+            # zero) height.
+            self.height = abs(pos.height)
+            self.width_of_space = abs(pos.width_of_space)
+        else:
+            # A hand-built position falls back to its font size.
+            self.height = abs(_f32(pos.get_height()))
+            self.width_of_space = abs(_f32(pos.width_of_space))
+
+
+def _java_geometry(pos: TextPosition) -> _JavaGeometry:
+    """Return (and cache on ``pos``) its :class:`_JavaGeometry`."""
+    geometry = pos.__dict__.get("_java_geometry")
+    if geometry is None:
+        geometry = _JavaGeometry(pos)
+        pos.__dict__["_java_geometry"] = geometry
+    return geometry
+
+
+def _java_overlap(y1: float, height1: float, y2: float, height2: float) -> bool:
+    """Upstream ``PDFTextStripper.overlap`` (with ``within``) in float32."""
+    variance = _f32(0.1)
+    if _f32(y1 - variance) < y2 < _f32(y1 + variance):
+        return True
+    if y2 <= y1 and y2 >= _f32(y1 - height1):
+        return True
+    return y1 <= y2 and y1 >= _f32(y2 - height2)
+
+
+def _java_compare(pos1: TextPosition, pos2: TextPosition) -> int:
+    """Upstream ``TextPositionComparator.compare`` on Java geometry."""
+    g1 = _java_geometry(pos1)
+    g2 = _java_geometry(pos2)
+    if g1.dir != g2.dir:
+        return -1 if g1.dir < g2.dir else 1
+    x1 = g1.x_dir_adj
+    x2 = g2.x_dir_adj
+    pos1_y_bottom = g1.y_dir_adj
+    pos2_y_bottom = g2.y_dir_adj
+    # (0, 0) is the upper-left corner: a position's top is above its bottom.
+    pos1_y_top = _f32(pos1_y_bottom - g1.height)
+    pos2_y_top = _f32(pos2_y_bottom - g2.height)
+    y_difference = abs(_f32(pos1_y_bottom - pos2_y_bottom))
+    if (
+        y_difference < _f32(0.1)
+        or pos1_y_top <= pos2_y_bottom <= pos1_y_bottom
+        or pos2_y_top <= pos1_y_bottom <= pos2_y_bottom
+    ):
+        if x1 < x2:
+            return -1
+        if x1 > x2:
+            return 1
+        return 0
+    if pos1_y_bottom < pos2_y_bottom:
+        return -1
+    return 1
+
+
+def _java_contains(pos: TextPosition, other: TextPosition) -> bool:
+    """Upstream ``TextPosition.contains`` (used for diacritic merging)."""
+    g = _java_geometry(pos)
+    o = _java_geometry(other)
+    this_x_start = g.x_dir_adj
+    this_width = g.width_dir_adj
+    this_x_end = this_x_start + this_width
+    other_x_start = o.x_dir_adj
+    other_x_end = other_x_start + o.width_dir_adj
+    if other_x_end <= this_x_start or other_x_start >= this_x_end:
+        return False
+    this_y_start = g.y_dir_adj
+    other_y_start = o.y_dir_adj
+    if (
+        other_y_start + o.height < this_y_start
+        or other_y_start > this_y_start + g.height
+    ):
+        return False
+    if other_x_start > this_x_start and other_x_end > this_x_end:
+        return _fdiv(this_x_end - other_x_start, this_width) > 0.15
+    if other_x_start < this_x_start and other_x_end < this_x_end:
+        return _fdiv(other_x_end - this_x_start, this_width) > 0.15
+    return True
+
+
+def _java_completely_contains(pos: TextPosition, other: TextPosition) -> bool:
+    """Upstream ``TextPosition.completelyContains`` (contained spaces)."""
+    g = _java_geometry(pos)
+    o = _java_geometry(other)
+    this_left = g.x_dir_adj
+    this_right = _f32(this_left + g.width_dir_adj)
+    other_left = o.x_dir_adj
+    other_right = _f32(other_left + o.width_dir_adj)
+    if this_left > other_left or other_right > this_right:
+        return False
+    this_top = g.y_dir_adj
+    this_bottom = _f32(this_top + g.height)
+    other_top = o.y_dir_adj
+    other_bottom = _f32(other_top + o.height)
+    return not (this_top > other_top or other_bottom > this_bottom)
+
+
+def _java_individual_widths(pos: TextPosition) -> list[float]:
+    widths = pos.individual_widths
+    if widths is None:
+        widths = pos.get_individual_widths()
+    return widths
+
+
+def _java_merge_diacritic(pos: TextPosition, diacritic: TextPosition) -> None:
+    """Upstream ``TextPosition.mergeDiacritic`` / ``insertDiacritic``."""
+    diacritic_text = diacritic.get_unicode()
+    if len(diacritic_text) > 1:
+        return
+    diacritic_widths = _java_individual_widths(diacritic)
+    diac_x_start = _java_geometry(diacritic).x_dir_adj
+    diac_x_end = _f32(diac_x_start + (diacritic_widths[0] if diacritic_widths else 0.0))
+    curr_char_x_start = _java_geometry(pos).x_dir_adj
+    widths = list(_java_individual_widths(pos))
+    unicode = pos.get_unicode()
+    str_len = len(unicode)
+
+    def insert(i: int) -> None:
+        text = pos.get_unicode()
+        new_widths = widths[:i] + [widths[i], 0.0] + widths[i + 1 :]
+        head = text[: i + 1]
+        rest_from = i + 1
+        combined = TextPosition.combine_diacritic(diacritic_text)
+        pos.text = head + combined + text[rest_from:]
+        pos.individual_widths = new_widths
+
+    for i in range(str_len):
+        if i >= len(widths):
+            _log.info(
+                "diacritic %s on ligature %s is not supported yet and is ignored "
+                "(PDFBOX-2831)",
+                diacritic_text,
+                unicode,
+            )
+            break
+        curr_char_x_end = _f32(curr_char_x_start + widths[i])
+        if diac_x_start < curr_char_x_start and diac_x_end <= curr_char_x_end:
+            if i == 0:
+                insert(i)
+            else:
+                percentage1 = _fdiv(_f32(diac_x_end - curr_char_x_start), widths[i])
+                percentage2 = _fdiv(_f32(curr_char_x_start - diac_x_start), widths[i - 1])
+                insert(i if percentage1 >= percentage2 else i - 1)
+            return
+        if diac_x_start < curr_char_x_start or diac_x_end <= curr_char_x_end:
+            insert(i)
+            return
+        if i == str_len - 1:
+            insert(i)
+            return
+        curr_char_x_start = _f32(curr_char_x_start + widths[i])
 
 
 class PDFTextStripper:
@@ -254,6 +564,27 @@ class PDFTextStripper:
         self._page_rotation: int = 0
         self._page_width: float = 0.0
         self._page_height: float = 0.0
+        # Cropbox lower-left corner; upstream ``LegacyPDFStreamEngine``
+        # translates every glyph's device geometry by its negation.
+        self._crop_lower_left_x: float = 0.0
+        self._crop_lower_left_y: float = 0.0
+        # Per-page cache of each font's text-space space width (see
+        # ``_space_width_text``).
+        self._space_width_cache: dict[int, float] = {}
+        # Lazily-built Helvetica used when no font is set (upstream
+        # ``PDFStreamEngine.getDefaultFont``).
+        self._default_font: PDFont | None = None
+        # Upstream ``inParagraph``: a paragraph was started and not yet ended.
+        # Like upstream it is never reset between pages or documents.
+        self._in_paragraph: bool = False
+        # Counter tagging the glyphs of one show-text string (lite-only
+        # flipped-axes mode regroups them into runs).
+        self._run_counter: int = 0
+        # ``_rendering_scale`` results keyed by their inputs.
+        self._rendering_scale_cache: dict[tuple[float, ...], tuple[float, float]] = {}
+        # Size upstream's reused ``charactersByArticle`` list has reached in
+        # the current walk (see ``_assign_articles``).
+        self._article_slot_count: int = 0
         self._active_cmap: CMap | None = None
         self._active_font: PDFont | None = None
         # Resources override active while recursing into a form XObject's
@@ -766,17 +1097,8 @@ class PDFTextStripper:
         # ``TextPosition`` is constructed with the page rotation and page
         # dimensions. Defensive against a malformed ``/Rotate`` or missing
         # cropbox so unrotated pages keep their existing raw-user-space frame.
-        try:
-            self._page_rotation = int(page.get_rotation()) % 360
-        except Exception:  # defensive: bad /Rotate
-            self._page_rotation = 0
-        try:
-            crop = page.get_crop_box()
-            self._page_width = float(crop.get_width())
-            self._page_height = float(crop.get_height())
-        except Exception:  # defensive: missing/odd CropBox
-            self._page_width = 0.0
-            self._page_height = 0.0
+        self._page_rotation = self._effective_page_rotation(page)
+        self._capture_crop_box(page)
         self._cmap_cache = {}
         self._font_cache = {}
         self._active_cmap = None
@@ -805,6 +1127,34 @@ class PDFTextStripper:
             self._active_cmap = None
             self._active_font = None
             self._active_avg_advance = None
+
+    def _effective_page_rotation(self, page: PDPage) -> int:
+        """The page ``/Rotate`` the glyph coordinates are folded with."""
+        try:
+            return int(page.get_rotation()) % 360
+        except Exception:  # defensive: bad /Rotate
+            return 0
+
+    def _initial_ctm(self) -> Matrix:
+        """The CTM a page's content stream starts with (identity, as for
+        ``PDPage.getMatrix()``)."""
+        return Matrix()
+
+    def _capture_crop_box(self, page: PDPage) -> None:
+        """Record the page's cropbox size and lower-left corner and reset the
+        per-page space-width cache (upstream ``LegacyPDFStreamEngine.processPage``)."""
+        try:
+            crop = page.get_crop_box()
+            self._page_width = float(crop.get_width())
+            self._page_height = float(crop.get_height())
+            self._crop_lower_left_x = _f32(float(crop.get_lower_left_x()))
+            self._crop_lower_left_y = _f32(float(crop.get_lower_left_y()))
+        except Exception:  # defensive: missing/odd CropBox
+            self._page_width = 0.0
+            self._page_height = 0.0
+            self._crop_lower_left_x = 0.0
+            self._crop_lower_left_y = 0.0
+        self._space_width_cache = {}
 
     def _apply_page_rotation(self, positions: list[TextPosition]) -> None:
         """Fold the page ``/Rotate`` into each run's stored ``x``/``y``/``width``.
@@ -854,6 +1204,9 @@ class PDFTextStripper:
                 pos.rotation = 0.0
                 pos.page_width = pw
                 pos.page_height = ph
+                if pos.device_x is not None:
+                    # Upstream ``getWidth()`` = ``|endX - tx|``.
+                    pos.width = _java_geometry(pos).width
             return
         pw = self._page_width
         ph = self._page_height
@@ -909,12 +1262,16 @@ class PDFTextStripper:
                 y_adj = pw - raw_x
             else:
                 y_adj = raw_y
-            pos.x = x_adj
-            pos.y = y_adj
-            pos.width = width_adj
             pos.rotation = float(rotation)
             pos.page_width = pw
             pos.page_height = ph
+            if pos.device_x is not None:
+                # Exact upstream ``getWidthRot(rotation)`` from the glyph's
+                # device end point.
+                width_adj = _java_geometry(pos).width
+            pos.x = x_adj
+            pos.y = y_adj
+            pos.width = width_adj
 
     # ---------- parser walk ----------
 
@@ -934,6 +1291,7 @@ class PDFTextStripper:
         # with a per-line ``cm`` and fold the point size into ``Tm`` lay
         # out correctly. See CHANGES.md.
         state = _TextState()
+        state.ctm = self._initial_ctm()
 
         with RandomAccessReadBuffer(body) as src:
             parser = PDFStreamParser(src)
@@ -990,6 +1348,11 @@ class PDFTextStripper:
                     # word-gap heuristic both have something to consult.
                     self._active_cmap = self._get_cmap_for_font(state.font_name)
                     self._active_font = self._get_font_for(state.font_name)
+                    if self._active_font is None:
+                        # Upstream ``SetFontAndSize`` keeps a null font and
+                        # ``showText`` then falls back to Helvetica.
+                        _log.warning("font '%s' not found in resources", state.font_name)
+                        self._active_font = self._get_default_font()
                 if isinstance(size, COSNumber):
                     state.font_size = size.float_value()
                 # Recompute the per-glyph advance whenever the font OR
@@ -1016,8 +1379,7 @@ class PDFTextStripper:
             # text-matrix scale/shear before moving the translation-space
             # line origin (otherwise a ``Tm`` that folds the point size
             # into its scale would under-translate every ``Td``).
-            state.line_x += tx * state.tm_a + ty * state.tm_c
-            state.line_y += tx * state.tm_b + ty * state.tm_d
+            _move_text_line(state, tx, ty)
             state.text_x = state.line_x
             state.text_y = state.line_y
         elif op == "TD":
@@ -1026,8 +1388,7 @@ class PDFTextStripper:
             tx, ty = _two_numbers(operands)
             # ``TD`` = ``-ty TL`` then ``tx ty Td``.
             state.leading = -ty
-            state.line_x += tx * state.tm_a + ty * state.tm_c
-            state.line_y += tx * state.tm_b + ty * state.tm_d
+            _move_text_line(state, tx, ty)
             state.text_x = state.line_x
             state.text_y = state.line_y
         elif op == "Tm":
@@ -1062,8 +1423,7 @@ class PDFTextStripper:
             # Move to start of next line — equivalent to ``0 -leading Td``.
             # The ``(0, -leading)`` text-space delta is carried through the
             # text-matrix scale/shear before moving the line origin.
-            state.line_x += -state.leading * state.tm_c
-            state.line_y += -state.leading * state.tm_d
+            _move_text_line(state, 0.0, -state.leading)
             state.text_x = state.line_x
             state.text_y = state.line_y
         elif op == "Tj":
@@ -1086,8 +1446,7 @@ class PDFTextStripper:
             if not state.in_text_object:
                 return
             # Move to next line then show string.
-            state.line_x += -state.leading * state.tm_c
-            state.line_y += -state.leading * state.tm_d
+            _move_text_line(state, 0.0, -state.leading)
             state.text_x = state.line_x
             state.text_y = state.line_y
             if operands and isinstance(operands[0], COSString):
@@ -1107,8 +1466,7 @@ class PDFTextStripper:
                 state.char_spacing = operands[1].float_value()
                 if not state.in_text_object:
                     return
-                state.line_x += -state.leading * state.tm_c
-                state.line_y += -state.leading * state.tm_d
+                _move_text_line(state, 0.0, -state.leading)
                 state.text_x = state.line_x
                 state.text_y = state.line_y
                 self._emit(operands[2], state, positions)
@@ -1139,17 +1497,18 @@ class PDFTextStripper:
                 # cache key treats it as an input).
                 state._trm_cache = None
         elif op == "q":
-            # Save graphics state — push a copy of the current CTM so a
-            # later ``Q`` restores it (PDF 1.7 §8.4.2). Text state itself
-            # is not part of the graphics-state stack, so only the CTM is
-            # tracked here.
-            state.gs_stack.append(state.ctm.clone())
+            # Save graphics state (PDF 1.7 §8.4.2). Upstream's
+            # ``PDGraphicsState`` carries the CTM *and* the text state (font,
+            # size, Tc, Tw, Tz, TL, Ts), so ``Q`` restores both; the text
+            # and text-line matrices are not part of it.
+            state.gs_stack.append((state.ctm.clone(), self._save_text_state(state)))
         elif op == "Q":
-            # Restore graphics state — pop the saved CTM. Defensive: a
-            # malformed stream with an unbalanced ``Q`` leaves the CTM
-            # unchanged rather than raising.
+            # Restore graphics state. Defensive: an unbalanced ``Q`` is a
+            # no-op, as upstream only pops above the initial state.
             if state.gs_stack:
-                state.ctm = state.gs_stack.pop()
+                ctm, saved_text_state = state.gs_stack.pop()
+                state.ctm = ctm
+                self._restore_text_state(state, saved_text_state)
                 # CTM restored → derived scale/dir cache is stale.
                 state._trm_cache = None
         elif op == "cm":
@@ -1272,13 +1631,23 @@ class PDFTextStripper:
         self._active_resources = form_resources
         self._cmap_cache = {}
         self._font_cache = {}
-        self._active_cmap = None
-        self._active_font = None
-        self._active_avg_advance = None
-        self._active_font_height = None
         self._form_level += 1
 
+        # Upstream ``processStream`` pushes a clone of the graphics state, so
+        # the form inherits the current font and text-state parameters (and
+        # the text matrices, which are engine fields), and the CTM is
+        # concatenated with the form's /Matrix.
         form_state = _TextState()
+        self._restore_text_state(form_state, self._save_text_state(state))
+        form_state.text_x = state.text_x
+        form_state.text_y = state.text_y
+        form_state.line_x = state.line_x
+        form_state.line_y = state.line_y
+        form_state.tm_a = state.tm_a
+        form_state.tm_b = state.tm_b
+        form_state.tm_c = state.tm_c
+        form_state.tm_d = state.tm_d
+        form_state.in_text_object = state.in_text_object
         form_state.ctm = form_ctm
         try:
             with RandomAccessReadBuffer(body) as src:
@@ -1301,6 +1670,38 @@ class PDFTextStripper:
             self._active_font = saved_active_font
             self._active_avg_advance = saved_avg_advance
             self._active_font_height = saved_font_height
+
+    def _save_text_state(self, state: _TextState) -> tuple:
+        """Snapshot the text-state part of the graphics state, with the
+        resolved font, for ``q`` / ``Q`` and form XObjects."""
+        return (
+            state.font_name,
+            state.font_size,
+            state.char_spacing,
+            state.word_spacing,
+            state.horizontal_scaling,
+            state.leading,
+            state.text_rise,
+            self._active_font,
+            self._active_cmap,
+            self._active_avg_advance,
+            self._active_font_height,
+        )
+
+    def _restore_text_state(self, state: _TextState, saved: tuple) -> None:
+        (
+            state.font_name,
+            state.font_size,
+            state.char_spacing,
+            state.word_spacing,
+            state.horizontal_scaling,
+            state.leading,
+            state.text_rise,
+            self._active_font,
+            self._active_cmap,
+            self._active_avg_advance,
+            self._active_font_height,
+        ) = saved
 
     @staticmethod
     def _get_form_contents(xobject: object) -> bytes:
@@ -1409,20 +1810,15 @@ class PDFTextStripper:
     def _text_dir(trm: Matrix) -> float:
         """Text direction in degrees (0 / 90 / 180 / 270) for a run.
 
-        Mirrors upstream ``TextPosition.getDir()``: the direction is the
-        rotation baked into the text-rendering matrix, snapped to the
-        nearest right angle. PDFBox derives it from the matrix's X basis
-        vector — ``getScaleX()`` (slot 0,0) and ``getShearY()`` (slot 0,1)
-        — so a ``Tm`` rotated 90/180/270° (or a page-rotation folded into
-        the CTM) yields the matching quadrant. ``atan2`` of that basis
-        vector gives the angle; we normalise to ``[0, 360)`` and snap to a
-        multiple of 90 so a glyph painted with ``Matrix.getRotateInstance``
-        reports exactly 0/90/180/270 the way Apache PDFBox does.
+        Mirrors upstream ``TextPosition.getDir()`` cell by cell: the
+        direction is read from the text rendering matrix's scale and shear
+        cells with four quadrant tests, and a matrix that fits none of them
+        (a 45 degree rotation, a strong skew) reports ``0`` rather than the
+        nearest right angle.
         """
-        angle = math.degrees(math.atan2(trm.get_shear_y(), trm.get_scale_x()))
-        # Snap to the nearest right angle and fold into [0, 360).
-        quadrant = round(angle / 90.0) * 90
-        return float(quadrant % 360)
+        return _java_dir(
+            trm.get_scale_y(), trm.get_shear_y(), trm.get_shear_x(), trm.get_scale_x()
+        )
 
     def _scale_and_dir(self, state: _TextState) -> tuple[float, float, float]:
         """Run-invariant ``(x_scale, y_scale, text_dir)`` for the current run.
@@ -1499,131 +1895,52 @@ class PDFTextStripper:
         c7 = ctm.get_translate_y()
         # The Matrix ctor narrows the translation operands to float32 before
         # they become tm[6]/tm[7]; mirror that first.
-        e = f32(text_x)
-        g = f32(text_y)
+        e = _f32(text_x)
+        g = _f32(text_y)
         # slot 6 = f32(f32(tm[6]*ctm[0]) + f32(tm[7]*ctm[3])) + f32(tm[8]*ctm[6])
         #        with tm[8]=1.0, so f32(1.0*ctm[6]) == ctm[6] (already float32).
-        tx = f32(f32(f32(e * c0) + f32(g * c3)) + c6)
-        ty = f32(f32(f32(e * c1) + f32(g * c4)) + c7)
+        if c1 == 0.0 and c3 == 0.0:
+            # The shear products are zero and leave the sums unchanged.
+            tx = _f32(_f32(e * c0) + c6)
+            ty = _f32(_f32(g * c4) + c7)
+        else:
+            tx = _f32(_f32(_f32(e * c0) + _f32(g * c3)) + c6)
+            ty = _f32(_f32(_f32(e * c1) + _f32(g * c4)) + c7)
         if not (math.isfinite(tx) and math.isfinite(ty)):
             # Matches util.matrix._check_float_values raising on a non-finite
             # product (the only cells that can be non-finite here).
             raise ValueError("Multiplying two matrices produces illegal values")
         return tx, ty
 
-    def _glyph_segments(
-        self,
-        text_bytes: bytes,
-        state: _TextState,
-        font: PDFont | None,
-        fallback_advance: float,
-    ) -> list[tuple[str, float, float]] | None:
-        """Decode ``text_bytes`` into per-glyph ``(unicode, advance, width)``.
-
-        Threads real per-glyph advances through the lite stripper: each
-        character code is read via the font's ``read_code`` (1–4 bytes for
-        Type0/CID composite fonts, single byte for simple fonts), decoded to
-        its Unicode piece, and assigned its true displacement
-
-            ``w0 / 1000 × fontSize + Tc (+ Tw on single-byte code 32)``
-
-        in unscaled text space (the caller applies horizontal scaling
-        ``Th``). ``w0`` is the font's per-code width from ``PDFont.get_width``
-        (the ``/Widths`` array or the embedded font program — oracle-verified
-        wave 1408). Mirrors upstream ``PDFStreamEngine.showText`` /
-        ``PDFont.getDisplacement`` (PDF 32000-1 §9.4.4).
-
-        Returns ``None`` when the font is unavailable or cannot decode the
-        bytes, so the caller falls back to the average-advance path that keeps
-        malformed PDFs producing monotonic cursor steps.
-        """
-        if font is None:
-            return None
-        read_code = getattr(font, "read_code", None)
-        get_width = getattr(font, "get_width", None)
-        if not callable(read_code) or not callable(get_width):
-            return None
-        try:
-            from pypdfbox.pdmodel.font import PDType3Font
-
-            type3_scale = (
-                font.get_font_matrix()[0]
-                if isinstance(font, PDType3Font)
-                else None
-            )
-        except Exception:  # defensive
-            type3_scale = None
-        font_size = state.font_size
-        char_spacing = state.char_spacing
-        word_spacing = state.word_spacing
-        segments: list[tuple[str, float, float]] = []
-        offset = 0
-        n = len(text_bytes)
-        try:
-            while offset < n:
-                code, consumed = read_code(text_bytes, offset)
-                if consumed <= 0:
-                    return None
-                # Decode this single code to its Unicode piece, reusing the
-                # same resolution order ``_decode_show_text`` follows.
-                piece = self._decode_code_to_unicode(
-                    text_bytes[offset : offset + consumed], code, font
-                )
-                w0 = float(get_width(code))
-                if type3_scale is not None:
-                    glyph_width = w0 * type3_scale * font_size
-                else:
-                    glyph_width = w0 / 1000.0 * font_size
-                advance = glyph_width + char_spacing
-                # ``Tw`` (word spacing) applies only to the single-byte code
-                # 32 (PDF 32000-1 §9.3.3) — never to a 2-byte composite code.
-                if consumed == 1 and code == 32:
-                    advance += word_spacing
-                segments.append((piece, advance, glyph_width))
-                offset += consumed
-        except Exception:  # defensive: malformed font / decode
-            return None
-        if not segments:
-            return None
-        # When the per-code decode yields nothing useful (every width zero
-        # and no advance), let the caller fall back to the average path.
-        if all(w == 0.0 for _piece, _adv, w in segments) and fallback_advance > 0:
-            return None
-        return segments
-
     def _decode_code_to_unicode(
         self, code_bytes: bytes, code: int, font: PDFont | None
-    ) -> str:
+    ) -> str | None:
         """Decode a single character code to its Unicode piece.
 
-        Resolution order matches :meth:`_decode_show_text`: ``/ToUnicode``
-        CMap first, then the typed font's own ``to_unicode`` / simple-font
-        decode, then a Latin-1 fallback. Returns ``""`` for a code that
-        resolves to nothing (a non-spacing/absent glyph still carries its
-        advance via :meth:`_glyph_segments`).
+        Mirrors upstream ``LegacyPDFStreamEngine.showGlyph``: the font's
+        ``toUnicode`` (``/ToUnicode`` CMap, then the encoding's glyph name)
+        decides; when it has no answer a simple font's code is coerced to the
+        character with that value, as Acrobat does, while a composite font's
+        code returns ``None`` so the glyph is skipped (it still advances the
+        cursor). Without a font the bytes are read as Latin-1.
         """
         if self._active_cmap is not None:
             piece = self._active_cmap.to_unicode(code)
-            if piece is None and font is not None:
-                try:
-                    piece = font.to_unicode(code)
-                except Exception:  # defensive
-                    piece = None
-            return piece if piece is not None else ""
+            if piece is not None:
+                return piece
         if font is not None:
             try:
                 piece = font.to_unicode(code)
-                if piece is not None:
-                    return piece
             except Exception:  # defensive
-                pass
+                piece = None
+            if piece is not None:
+                return piece
             from pypdfbox.pdmodel.font import PDSimpleFont
 
             if isinstance(font, PDSimpleFont):
-                try:
-                    return font.decode(code_bytes)
-                except Exception:  # defensive
-                    pass
+                return chr(code) if 0 <= code <= 0x10FFFF else None
+            if callable(getattr(font, "read_code", None)):
+                return None
         return code_bytes.decode("latin-1", errors="replace")
 
     @staticmethod
@@ -1646,6 +1963,28 @@ class PDFTextStripper:
             return bool(is_vertical())
         except Exception:  # defensive: malformed CMap
             return False
+
+    @staticmethod
+    def _vertical_sort_width(font: PDFont, code: int) -> float:
+        """Upstream ``LegacyPDFStreamEngine.showGlyph``'s horizontal width of
+        a vertical glyph: ``getWidth(code) / 1000``, rescaled to a 1000-unit
+        em for a TrueType program with another ``unitsPerEm``."""
+        try:
+            width = _f32(float(font.get_width(code)) / 1000.0)
+        except Exception:  # defensive
+            return 0.0
+        try:
+            from pypdfbox.pdmodel.font.pd_cid_font_type2 import PDCIDFontType2
+
+            descendant = font.get_descendant_font()  # type: ignore[attr-defined]
+            if isinstance(descendant, PDCIDFontType2):
+                ttf = descendant.get_true_type_font()
+                units = ttf.get_units_per_em() if ttf is not None else 1000
+                if units != 1000:
+                    width = _f32(width * _f32(1000.0 / units))
+        except Exception:  # defensive
+            pass
+        return width
 
     def _emit_vertical(
         self,
@@ -1682,6 +2021,7 @@ class PDFTextStripper:
         origin is the composed ``textMatrix × CTM`` translation.
         """
         font_size = state.font_size
+        th = getattr(state, "horizontal_scaling", 1.0)
         char_spacing = state.char_spacing
         word_spacing = state.word_spacing
         # Effective font size / glyph height / direction are matrix-scaled the
@@ -1690,10 +2030,16 @@ class PDFTextStripper:
         x_scale, y_scale, text_dir = self._scale_and_dir(state)
         effective_font_size = font_size * y_scale
         font_size_in_pt = font_size * x_scale
+        per_char = self._active_avg_advance
+        if per_char is None:
+            per_char = font_size * 0.5
+        space_text = self._space_width_text(font, per_char / font_size if font_size else 0.0)
+        trm_scale_x, trm_scale_y = self._rendering_scale(state)
+        glyph_width_of_space = abs(_f32(space_text * trm_scale_x))
         font_height_fraction = self._active_font_height
         run_height = (
             0.0 if font_height_fraction is None
-            else font_height_fraction * effective_font_size
+            else abs(_f32(font_height_fraction * trm_scale_y))
         )
         # ``/ActualText`` substitution still applies per show-text run: inside
         # an ``/ActualText`` span the whole replacement string is emitted once
@@ -1752,13 +2098,28 @@ class PDFTextStripper:
             # Under an ``/ActualText`` span the replacement is emitted once at
             # the first glyph (``actual_text``); later glyphs in the span carry
             # no text. Without a span each glyph emits its own decoded piece.
-            if has_actual_text:
+            if piece is None:
+                # A composite-font code without a Unicode mapping: upstream
+                # skips the glyph (it still advances the cursor).
+                glyph_text = None
+            elif has_actual_text:
                 glyph_text = actual_text or ""
                 actual_text = ""  # emit the span replacement only once
             else:
                 glyph_text = piece
-            if glyph_text:
+            if glyph_text is not None:
                 origin_dx, origin_dy = self._origin_translate(state, origin_x, origin_y)
+                # Upstream's legacy end point for a vertical glyph: the
+                # horizontal width (``getWidth(code) / 1000``) from the
+                # unshifted cursor, through the text matrix and CTM.
+                dx = _f32(_f32(self._vertical_sort_width(font, code) * font_size) * th)
+                end_x, end_y = self._ctm_point(
+                    state,
+                    _f32(_f32(dx * state.tm_a) + _f32(state.text_x)),
+                    _f32(_f32(dx * state.tm_b) + _f32(state.text_y)),
+                )
+                crop_llx = self._crop_lower_left_x
+                crop_lly = self._crop_lower_left_y
                 positions.append(
                     TextPosition(
                         text=glyph_text,
@@ -1770,11 +2131,12 @@ class PDFTextStripper:
                         font=font,
                         resolved_font_name=resolved_font_name,
                         width=0.0,
-                        width_of_space=0.0,
+                        width_of_space=glyph_width_of_space,
                         char_spacing=char_spacing,
                         word_spacing=word_spacing,
                         dir=text_dir,
                         height=run_height,
+                        individual_widths=[_f32(end_x - origin_dx)],
                         text_matrix=[
                             state.tm_a,
                             state.tm_b,
@@ -1783,6 +2145,11 @@ class PDFTextStripper:
                             origin_x,
                             origin_y,
                         ],
+                        device_x=_f32(origin_dx - crop_llx),
+                        device_y=_f32(origin_dy - crop_lly),
+                        device_end_x=_f32(end_x - crop_llx),
+                        device_end_y=_f32(end_y - crop_lly),
+                        tf_font_size=font_size,
                     )
                 )
                 emitted_any = True
@@ -1858,262 +2225,277 @@ class PDFTextStripper:
         positions: list[TextPosition],
     ) -> None:
         raw_bytes = s.get_bytes()
-        text = self._decode_show_text(raw_bytes)
-        if not text:
-            return
         font = self._active_font
+        if font is None:
+            # Upstream ``showText``: "No current font, will use default".
+            _log.warning("No current font, will use default")
+            font = self._active_font = self._get_default_font()
+            self._active_avg_advance = self._compute_avg_advance(font, state.font_size)
+            self._active_font_height = self._compute_font_height(font)
         resolved_font_name = font.get_name() if font is not None else None
         # Vertical writing mode (WMode 1): when the active font's encoding
         # CMap declares vertical writing, each glyph advances DOWN the page
         # by its vertical displacement vector rather than along the text
-        # matrix's horizontal axis. Upstream ``PDFStreamEngine.showText``
-        # (PDFStreamEngine.java:430-470) offsets each glyph origin by the
-        # font's position vector and steps the text cursor by
-        # ``(0, w1y·fontSize + Tc + Tw)`` per glyph, so consecutive glyphs
-        # land on successive baselines and the line-grouping heuristic emits
-        # one glyph per line (top-to-bottom within a column). Delegate to the
-        # per-glyph vertical emitter, which never goes through the
-        # horizontal run-width / word-gap machinery below.
+        # matrix's horizontal axis (upstream ``PDFStreamEngine.showText``).
         if self._is_vertical_font(font):
+            text = self._decode_show_text(raw_bytes)
+            if not text:
+                return
             self._emit_vertical(raw_bytes, text, state, positions, font, resolved_font_name)
             return
-        per_char = self._active_avg_advance
-        if per_char is None:
-            per_char = state.font_size * 0.5
-        width_of_space = self._compute_width_of_space(
-            font, state.font_size, fallback=per_char
-        )
-        # Real per-glyph advances from the font's /Widths (wave 1408 per-code
-        # lookups), decoded code-by-code via the font's encoding. ``None``
-        # falls back to the average-advance path below for malformed fonts.
-        segments = self._glyph_segments(raw_bytes, state, font, per_char)
-        # Resolve the device-space origin and effective glyph size from
-        # the full text-rendering matrix. ``font_size`` (the ``Tf``
-        # operand) is scaled by the matrix's Y scaling so the line-break
-        # and word-gap heuristics operate on the rendered glyph size, and
-        # the run width (computed in text space) is scaled by the X
-        # scaling so it lands in the same device-space units as the
-        # origin.
-        # The device-space origin per (sub-)run is computed from the run's own
-        # cursor via ``_origin_translate`` below; here we only need the text-
-        # rendering matrix's scaling factors and rotation for the effective
-        # font size and dir (all translation-invariant, hence cached).
-        x_scale, y_scale, text_dir = self._scale_and_dir(state)
-        effective_font_size = state.font_size * y_scale
-        # Device-space glyph height — upstream ``maxHeight``: the font's
-        # text-space height fraction (``_compute_font_height``) times the
-        # font size times the matrix Y scale. Feeds the line-grouping
-        # vertical-overlap test (see ``_emit_group``). ``None`` (no Tf yet /
-        # unresolved font) leaves it 0.0 so the height accessors fall back
-        # to ``font_size``.
-        font_height_fraction = self._active_font_height
-        if font_height_fraction is None:
-            run_height = 0.0
-        else:
-            run_height = font_height_fraction * effective_font_size
-        # ``/ActualText`` substitution (PDF §14.9.4): inside a marked-content
-        # span carrying ``/ActualText``, the glyph-derived text is replaced
-        # and the ``/ActualText`` string is emitted *once* (at the origin of
-        # the span's first show-text run), mirroring Apache PDFBox's
-        # ``PDFTextStripper``. Every run still advances the cursor by its
-        # glyph width so positions after ``EMC`` line up.
-        # ``_actual_text_for_run`` returns the replacement string for the
-        # first run, ``None`` for suppressed later runs, and the unchanged
-        # ``text`` when no ``/ActualText`` is active.
-        emit_text = self._actual_text_for_run(text)
-        # ``Tz`` (horizontal text scaling, stored as ``Tz/100``) scales the
-        # horizontal glyph displacement in text space (PDF 32000-1 §9.3.4),
-        # so the advance the cursor takes — and the run width / space width
-        # the word-gap heuristic measures — are condensed (<1) or expanded
-        # (>1) by it. The rendered space width scales too, so an engine that
-        # honours ``Tz`` segments words differently from one that ignores it.
-        th = getattr(state, "horizontal_scaling", 1.0)
-        if segments is not None:
-            # Real per-glyph advances (text space), scaled by Th. The run
-            # width is their sum — replacing the ``len(text) × average``
-            # estimate so ``prev_right`` and the average-char-width prong of
-            # the word-break threshold use true metrics. ``glyph_width`` is
-            # the bare glyph advance (no Tc/Tw), used to size each glyph's
-            # right edge for the intra-run word-break test.
-            glyph_text = [piece for piece, _adv, _w in segments]
-            glyph_adv = [adv * th for _piece, adv, _w in segments]
-            glyph_width = [w * th for _piece, _adv, w in segments]
-            run_width = sum(glyph_adv)
-        else:
-            glyph_text = list(text)
-            glyph_adv = [per_char * th] * len(text)
-            glyph_width = list(glyph_adv)
-            run_width = len(text) * per_char * th
-        width_of_space = width_of_space * th
-
-        # Page-rotation per-glyph emission. On a ``/Rotate 90``/``270`` page the
-        # default grouping consumes the page-rotation-adjusted ``getX``/``getY``
-        # (``_apply_page_rotation``), in which a horizontal run advances along
-        # the grouping's *line* axis — so each glyph of the run lands on its own
-        # rotated line, exactly the way upstream's per-glyph ``showGlyph``
-        # (LegacyPDFStreamEngine.java:161) feeds one ``TextPosition`` per glyph
-        # into ``writePage``. The lite stripper otherwise emits one position per
-        # show-text run; to reproduce Java's rotated-row fragmentation faithfully
-        # we emit per glyph here. Only the plain (non-``/ActualText``,
-        # non-ignore-space) path takes this branch — those rarer combinations
-        # fall through to the run path below.
-        if (
-            self._page_rotation in (90, 270)
-            and not self._ignore_content_stream_space_glyphs
-            and emit_text is not None
-            and emit_text == text
-        ):
-            self._emit_per_glyph(
-                state,
-                positions,
-                font,
-                resolved_font_name,
-                glyph_text,
-                glyph_adv,
-                glyph_width,
-                effective_font_size,
-                x_scale,
-                width_of_space,
-                run_height,
-                text_dir,
-            )
-            state.text_x += run_width * state.tm_a
-            state.text_y += run_width * state.tm_b
-            return
-
-        if self._ignore_content_stream_space_glyphs:
-            if emit_text is not None:
-                self._emit_ignoring_space_glyphs(
-                    emit_text,
-                    state,
-                    positions,
-                    font,
-                    resolved_font_name,
-                    per_char * th,
-                    width_of_space,
-                )
+        glyphs = self._read_glyphs(raw_bytes, font)
+        if glyphs is None:
+            # No usable font: decode the run as a whole and advance each
+            # character by the average-width estimate.
+            text = self._decode_show_text(raw_bytes)
+            if not text:
                 return
-            # Suppressed run inside an ActualText span: keep the cursor
-            # advance (carried below) but emit no positions.
-            state.text_x += run_width * state.tm_a
-            state.text_y += run_width * state.tm_b
-            return
+            per_char = self._active_avg_advance
+            if per_char is None:
+                per_char = state.font_size * 0.5
+            fs = state.font_size
+            em = per_char / fs if fs else 0.0
+            glyphs = [(ch, em, 0, -1) for ch in text]
+        self._emit_glyphs(state, positions, font, resolved_font_name, glyphs)
 
-        if emit_text is not None:
-            # Subdivide the run on any *intra-run* glyph gap wide enough to
-            # be a word break — matching upstream's per-glyph emission, which
-            # turns a large ``Tc`` (or a sparse positioning advance) inside a
-            # single ``Tj`` string into a word separator. ``emit_text`` is the
-            # decoded run text (or the ``/ActualText`` replacement, which is
-            # never subdivided — it is a single semantic unit).
-            sub_runs = self._split_run_on_word_gaps(
-                emit_text, text, glyph_text, glyph_adv, glyph_width, width_of_space
+    def _read_glyphs(
+        self, raw_bytes: bytes, font: PDFont | None
+    ) -> list[tuple[str | None, float, int, int]] | None:
+        """Split a show-text string into ``(unicode, displacement, length, code)``.
+
+        Mirrors the code loop of upstream ``PDFStreamEngine.showText``: each
+        character code is read through the font (``readCode``), its Unicode
+        comes from ``toUnicode`` (``None`` for a composite-font code without
+        a mapping, which upstream skips instead of coercing) and its
+        horizontal displacement from ``getDisplacement`` (``width / 1000``,
+        or the ``/FontMatrix`` scale for Type 3), in text-space em units.
+        Returns ``None`` when the font cannot read codes.
+        """
+        if font is None:
+            return None
+        read_code = getattr(font, "read_code", None)
+        get_width = getattr(font, "get_width", None)
+        if not callable(read_code) or not callable(get_width):
+            return None
+        try:
+            from pypdfbox.pdmodel.font import PDType3Font
+
+            type3_scale = (
+                font.get_font_matrix()[0] if isinstance(font, PDType3Font) else None
             )
-            for sub_text, start_offset, _sub_advance, sub_width in sub_runs:
-                sub_text_x = state.text_x + start_offset * state.tm_a
-                sub_text_y = state.text_y + start_offset * state.tm_b
-                sub_dx, sub_dy = self._origin_translate(state, sub_text_x, sub_text_y)
-                positions.append(
-                    TextPosition(
-                        text=sub_text,
-                        x=sub_dx,
-                        y=sub_dy,
-                        font_size=effective_font_size,
-                        font_size_in_pt=state.font_size * x_scale,
-                        font_name=state.font_name,
-                        font=font,
-                        resolved_font_name=resolved_font_name,
-                        width=sub_width * x_scale,
-                        width_of_space=width_of_space * x_scale,
-                        char_spacing=state.char_spacing,
-                        word_spacing=state.word_spacing,
-                        dir=text_dir,
-                        height=run_height,
-                        text_matrix=[
-                            state.tm_a,
-                            state.tm_b,
-                            state.tm_c,
-                            state.tm_d,
-                            sub_text_x,
-                            sub_text_y,
-                        ],
-                    )
+        except Exception:  # defensive
+            type3_scale = None
+        glyphs: list[tuple[str | None, float, int, int]] = []
+        offset = 0
+        n = len(raw_bytes)
+        try:
+            while offset < n:
+                code, consumed = read_code(raw_bytes, offset)
+                if consumed <= 0:
+                    return None
+                piece = self._decode_code_to_unicode(
+                    raw_bytes[offset : offset + consumed], code, font
                 )
-            # When no subdivision occurred, the single emitted run carries the
-            # full glyph advance list so consumers (PDFTextStripperByArea) can
-            # route per glyph with true offsets.
-            if len(sub_runs) == 1 and positions:
-                positions[-1].individual_widths = [a * x_scale for a in glyph_adv]
-        # Advance the text origin by an approximation of the run width.
-        # If the active font has a ``/Widths`` array, we use its average
-        # glyph advance (already scaled to user-space units in
-        # ``_compute_avg_advance``); otherwise fall back to the legacy
-        # 0.5-em-per-char monospace estimate so unknown fonts still
-        # produce monotonic advances for the word-gap heuristic.
-        #
-        # ``run_width`` is the advance in *text space* (em-units × the
-        # ``Tf`` operand). The text cursor (``text_x`` / ``text_y``) lives
-        # in the text matrix's translation slots, so the advance must be
-        # carried through the text-matrix scale/shear — i.e.
-        # ``translate(run_width, 0) × Tm`` — which moves the cursor by
-        # ``(run_width·a, run_width·b)``. Without this, producers that
-        # fold the point size into ``Tm`` (``14 0 0 14 … Tm`` with a
-        # ``1 Tf``) would advance 14× too slowly and every glyph would
-        # collapse onto its neighbour.
-        state.text_x += run_width * state.tm_a
-        state.text_y += run_width * state.tm_b
+                w0 = float(get_width(code))
+                displacement = (
+                    _f32(w0 * type3_scale) if type3_scale is not None else _f32(w0 / 1000.0)
+                )
+                glyphs.append((piece, displacement, consumed, code))
+                offset += consumed
+        except Exception:  # defensive: malformed font / decode
+            return None
+        return glyphs
 
-    def _emit_per_glyph(
+    def _space_width_text(self, font: PDFont | None, fallback: float) -> float:
+        """Space width in text space, as upstream ``LegacyPDFStreamEngine.showGlyph``
+        computes it: ``getSpaceWidth()``, else 80% of the average glyph width,
+        else ``1.0``, all scaled from glyph space to text space."""
+        if font is None:
+            return fallback
+        cache = self._space_width_cache
+        key = id(font)
+        cached = cache.get(key)
+        if cached is not None:
+            return cached
+        try:
+            from pypdfbox.pdmodel.font import PDType3Font
+
+            factor = (
+                _f32(font.get_font_matrix()[0])
+                if isinstance(font, PDType3Font)
+                else _f32(1 / 1000)
+            )
+        except Exception:  # defensive
+            factor = _f32(1 / 1000)
+        try:
+            space_width = _f32(_f32(float(font.get_space_width())) * factor)
+        except Exception:  # defensive: upstream logs and keeps 0
+            space_width = 0.0
+        if space_width == 0:
+            try:
+                average = _f32(float(font.get_average_font_width()))
+                space_width = _f32(_f32(average * factor) * _f32(0.8))
+            except Exception:  # defensive
+                space_width = 0.0
+        if space_width == 0:
+            space_width = 1.0
+        cache[key] = space_width
+        return space_width
+
+    def _rendering_scale(self, state: _TextState) -> tuple[float, float]:
+        """Scaling factors of upstream's text rendering matrix
+        ``[fontSize * Th, 0, 0, fontSize, 0, rise] × textMatrix × CTM``, which
+        scale the glyph height and the space width (cached per input)."""
+        th = getattr(state, "horizontal_scaling", 1.0)
+        ctm = state.ctm
+        key = (
+            state.font_size,
+            th,
+            state.tm_a,
+            state.tm_b,
+            state.tm_c,
+            state.tm_d,
+            ctm.get_scale_x(),
+            ctm.get_shear_y(),
+            ctm.get_shear_x(),
+            ctm.get_scale_y(),
+        )
+        cache = self._rendering_scale_cache
+        scale = cache.get(key)
+        if scale is None:
+            parameters = Matrix(
+                _f32(state.font_size * th), 0.0, 0.0, state.font_size, 0.0, 0.0
+            )
+            text_matrix = Matrix(state.tm_a, state.tm_b, state.tm_c, state.tm_d, 0.0, 0.0)
+            trm = parameters.multiply(text_matrix).multiply(ctm)
+            scale = (trm.get_scaling_factor_x(), trm.get_scaling_factor_y())
+            if len(cache) > 4096:
+                cache.clear()
+            cache[key] = scale
+        return scale
+
+    def _ctm_point(self, state: _TextState, x: float, y: float) -> tuple[float, float]:
+        """Transform a text-space point (already through the text matrix) by
+        the CTM, in float32 like ``Matrix.multiply``'s translation row."""
+        ctm = state.ctm
+        e = _f32(x)
+        g = _f32(y)
+        c1 = ctm.get_shear_y()
+        c3 = ctm.get_shear_x()
+        if c1 == 0.0 and c3 == 0.0:
+            # The shear products are zero and leave the sums unchanged.
+            return (
+                _f32(_f32(e * ctm.get_scale_x()) + ctm.get_translate_x()),
+                _f32(_f32(g * ctm.get_scale_y()) + ctm.get_translate_y()),
+            )
+        tx = _f32(_f32(_f32(e * ctm.get_scale_x()) + _f32(g * c3)) + ctm.get_translate_x())
+        ty = _f32(_f32(_f32(e * c1) + _f32(g * ctm.get_scale_y())) + ctm.get_translate_y())
+        return tx, ty
+
+    def _emit_glyphs(
         self,
         state: _TextState,
         positions: list[TextPosition],
         font: PDFont | None,
         resolved_font_name: str | None,
-        glyph_text: list[str],
-        glyph_adv: list[float],
-        glyph_width: list[float],
-        effective_font_size: float,
-        x_scale: float,
-        width_of_space: float,
-        run_height: float,
-        text_dir: float,
+        glyphs: list[tuple[str | None, float, int, int]],
     ) -> None:
-        """Emit one :class:`TextPosition` per glyph of a show-text run.
+        """Emit one :class:`TextPosition` per glyph and advance the cursor.
 
-        Used on rotated (``/Rotate 90``/``270``) pages so the line/word
-        grouping fragments the rotated rows the way upstream's per-glyph
-        ``showGlyph`` does (LegacyPDFStreamEngine.java:161 →
-        ``processTextPosition`` per glyph). Each glyph's origin is the run
-        cursor stepped by the cumulative text-space advance of the preceding
-        glyphs, carried through the text matrix's scale/shear into the
-        translation slots — identical to how the run path advances
-        ``text_x``/``text_y`` (``translate(advance, 0) × Tm``). Widths are the
-        raw (pre-rotation) glyph advances; ``_apply_page_rotation`` then folds
-        each glyph into the device frame.
+        Follows upstream ``PDFStreamEngine.showText`` and
+        ``LegacyPDFStreamEngine.showGlyph``: each glyph's origin is the text
+        rendering matrix at the cursor, its end point is the cursor moved by
+        the bare displacement (no ``Tc`` / ``Tw``, as upstream's legacy
+        width), its height is the font height times the matrix Y scale, and
+        the cursor then advances by ``(w * fontSize + Tc + Tw) * Th``. Under an
+        ``/ActualText`` span the first glyph carries the replacement text and
+        the others an empty string.
         """
-        offset = 0.0
-        for piece, adv, gw in zip(glyph_text, glyph_adv, glyph_width, strict=False):
-            if piece:
-                glyph_x = state.text_x + offset * state.tm_a
-                glyph_y = state.text_y + offset * state.tm_b
-                glyph_dx, glyph_dy = self._origin_translate(state, glyph_x, glyph_y)
+        font_size = state.font_size
+        th = getattr(state, "horizontal_scaling", 1.0)
+        char_spacing = state.char_spacing
+        word_spacing_state = state.word_spacing
+        x_scale, y_scale, text_dir = self._scale_and_dir(state)
+        effective_font_size = font_size * y_scale
+        trm_scale_x, trm_scale_y = self._rendering_scale(state)
+        font_height_fraction = self._active_font_height
+        run_height = (
+            0.0
+            if font_height_fraction is None
+            else abs(_f32(font_height_fraction * trm_scale_y))
+        )
+        per_char = self._active_avg_advance
+        if per_char is None:
+            per_char = font_size * 0.5
+        space_text = self._space_width_text(font, per_char / font_size if font_size else 0.0)
+        width_of_space = abs(_f32(space_text * trm_scale_x))
+        crop_llx = self._crop_lower_left_x
+        crop_lly = self._crop_lower_left_y
+        tm_a = state.tm_a
+        tm_b = state.tm_b
+        ctm = state.ctm
+        c0 = ctm.get_scale_x()
+        c4 = ctm.get_scale_y()
+        c6 = ctm.get_translate_x()
+        c7 = ctm.get_translate_y()
+        # Without text rise or CTM shear the matrix products reduce to these
+        # per-axis float steps (same values as ``_origin_translate`` /
+        # ``_ctm_point``), done two at a time.
+        simple = (
+            not getattr(state, "text_rise", 0.0)
+            and ctm.get_shear_x() == 0.0
+            and ctm.get_shear_y() == 0.0
+        )
+        self._run_counter += 1
+        run_id = self._run_counter
+        for piece, displacement, code_length, code in glyphs:
+            glyph_x = state.text_x
+            glyph_y = state.text_y
+            if piece is not None:
+                if self._actual_text is not None:
+                    if self._first_actual_text_position:
+                        piece = self._actual_text
+                        self._first_actual_text_position = False
+                    else:
+                        piece = ""
+                # Upstream's legacy end point: the bare displacement through
+                # the text matrix and CTM (no font-parameter matrix).
+                dx = _f32(_f32(displacement * font_size) * th)
+                if simple:
+                    e, g = _f32x2(glyph_x, glyph_y)
+                    origin_x, origin_y = _f32x2(e * c0, g * c4)
+                    origin_x, origin_y = _f32x2(origin_x + c6, origin_y + c7)
+                    end_tx, end_ty = _f32x2(dx * tm_a, dx * tm_b)
+                    end_tx, end_ty = _f32x2(end_tx + e, end_ty + g)
+                    end_x, end_y = _f32x2(end_tx * c0, end_ty * c4)
+                    end_x, end_y = _f32x2(end_x + c6, end_y + c7)
+                    if not (math.isfinite(origin_x) and math.isfinite(origin_y)):
+                        raise ValueError("Multiplying two matrices produces illegal values")
+                else:
+                    origin_x, origin_y = self._origin_translate(state, glyph_x, glyph_y)
+                    end_x, end_y = self._ctm_point(
+                        state,
+                        _f32(_f32(dx * tm_a) + _f32(glyph_x)),
+                        _f32(_f32(dx * tm_b) + _f32(glyph_y)),
+                    )
+                dx_display = _f32(end_x - origin_x)
                 positions.append(
                     TextPosition(
                         text=piece,
-                        x=glyph_dx,
-                        y=glyph_dy,
+                        x=origin_x,
+                        y=origin_y,
                         font_size=effective_font_size,
-                        font_size_in_pt=state.font_size * x_scale,
+                        font_size_in_pt=font_size * x_scale,
                         font_name=state.font_name,
                         font=font,
                         resolved_font_name=resolved_font_name,
-                        width=gw * x_scale,
-                        width_of_space=width_of_space * x_scale,
-                        char_spacing=state.char_spacing,
-                        word_spacing=state.word_spacing,
+                        width=abs(_f32(dx * x_scale)),
+                        width_of_space=width_of_space,
+                        char_spacing=char_spacing,
+                        word_spacing=word_spacing_state,
                         dir=text_dir,
                         height=run_height,
-                        individual_widths=[gw * x_scale],
+                        individual_widths=[dx_display],
                         text_matrix=[
                             state.tm_a,
                             state.tm_b,
@@ -2122,9 +2504,21 @@ class PDFTextStripper:
                             glyph_x,
                             glyph_y,
                         ],
+                        device_x=_f32(origin_x - crop_llx) if crop_llx else origin_x,
+                        device_y=_f32(origin_y - crop_lly) if crop_lly else origin_y,
+                        device_end_x=_f32(end_x - crop_llx) if crop_llx else end_x,
+                        device_end_y=_f32(end_y - crop_lly) if crop_lly else end_y,
+                        tf_font_size=font_size,
                     )
                 )
-            offset += adv
+                positions[-1].__dict__["_run_id"] = run_id
+            # Word spacing applies to the single-byte code 32 only.
+            word_spacing = word_spacing_state if code_length == 1 and code == 32 else 0.0
+            advance = _f32(
+                _f32(_f32(_f32(displacement * font_size) + char_spacing) + word_spacing) * th
+            )
+            step_x, step_y = _f32x2(advance * tm_a, advance * tm_b)
+            state.text_x, state.text_y = _f32x2(glyph_x + step_x, glyph_y + step_y)
 
     @staticmethod
     def _origin_matrix(state: _TextState, text_x: float, text_y: float) -> Matrix:
@@ -2139,198 +2533,6 @@ class PDFTextStripper:
         if rise:
             tm = Matrix(1.0, 0.0, 0.0, 1.0, 0.0, rise).multiply(tm)
         return tm.multiply(state.ctm)
-
-    def _split_run_on_word_gaps(
-        self,
-        emit_text: str,
-        run_text: str,
-        glyph_text: list[str],
-        glyph_adv: list[float],
-        glyph_width: list[float],
-        width_of_space: float,
-    ) -> list[tuple[str, float, float, float]]:
-        """Subdivide a show-text run into word-separated sub-runs.
-
-        Mirrors upstream ``PDFStreamEngine``/``PDFTextStripper`` emitting one
-        ``TextPosition`` per glyph and inserting a word separator whenever the
-        gap between one glyph's right edge and the next glyph's origin exceeds
-        the space-width-relative threshold (the intra-run analogue of
-        :meth:`_is_word_break`). A large ``Tc`` (or a sparse positioning
-        advance) inside a single ``Tj`` string therefore segments into words
-        exactly the way Java does — closing the documented
-        per-glyph-granularity / intra-run word-break carve-out.
-
-        Returns a list of ``(sub_text, start_offset, sub_advance,
-        sub_width)`` tuples in text-space units (already scaled by ``Th``):
-        ``start_offset`` is the cumulative advance to the sub-run's first
-        glyph, ``sub_advance`` the sum of its glyphs' advances (so the offsets
-        tile the parent run's full advance and drive the cursor), and
-        ``sub_width`` the sum of its glyphs' *bare* widths (excluding the
-        trailing inter-glyph ``Tc``/``Tw``) — which is what the emitted
-        ``TextPosition.width`` must carry so the inter-position gap that the
-        word-break heuristic measures reflects the real ``Tc`` spacing, the
-        way Java's per-glyph widths do. A single-element result means no
-        break fired.
-
-        Subdivision is suppressed when the run carries an ``/ActualText``
-        replacement (``emit_text != run_text``) — that string is one semantic
-        unit and must not be split mid-replacement.
-        """
-        # No metrics, single glyph, an ActualText replacement, or a decode
-        # mismatch (the per-code join disagrees with the run text — e.g. a
-        # ligature or NFKC-normalised run) → emit one run unchanged so the
-        # subdivided text never diverges from the non-subdivided path.
-        n = len(glyph_adv)
-        # A run/segment's visual right edge (Java ``endX``) is the last
-        # glyph's origin + its *bare* width — i.e. the sum of advances minus
-        # the trailing inter-glyph spacing carried in the last glyph's
-        # advance. This is the width the inter-run word-break heuristic must
-        # measure against.
-        full_width = (
-            sum(glyph_adv) - (glyph_adv[-1] - glyph_width[-1]) if glyph_adv else 0.0
-        )
-        single = [(emit_text, 0.0, sum(glyph_adv), full_width)]
-        if (
-            n <= 1
-            or emit_text != run_text
-            or not glyph_text
-            or "".join(glyph_text) != run_text
-        ):
-            return single
-        # Threshold mirrors ``_is_word_break``: the smaller of the
-        # space-width and average-char-width prongs.
-        delta_space = (
-            width_of_space * self._spacing_tolerance
-            if width_of_space > 0.0
-            else math.inf
-        )
-        positive_widths = [w for w in glyph_width if w > 0.0]
-        if positive_widths:
-            avg_char_width = sum(positive_widths) / len(positive_widths)
-            delta_char = avg_char_width * self._average_char_tolerance
-        else:
-            delta_char = math.inf
-        threshold = min(delta_space, delta_char)
-        if not math.isfinite(threshold):
-            return single
-        sub_runs: list[tuple[str, float, float, float]] = []
-        seg_start = 0.0  # cumulative advance to the start of the segment
-        seg_text: list[str] = []
-        seg_adv = 0.0
-        for i in range(n):
-            seg_text.append(glyph_text[i])
-            seg_adv += glyph_adv[i]
-            # Gap after this glyph = advance beyond the bare glyph width
-            # (i.e. Tc, plus Tw on a space). Compare to the threshold.
-            gap = glyph_adv[i] - glyph_width[i]
-            # The segment ends here (at the last glyph or before a break);
-            # its visual width is the advance up to here minus this glyph's
-            # own trailing inter-glyph spacing (Java ``endX``).
-            seg_width = seg_adv - gap
-            if i == n - 1:
-                sub_runs.append(("".join(seg_text), seg_start, seg_adv, seg_width))
-            elif gap > threshold:
-                sub_runs.append(("".join(seg_text), seg_start, seg_adv, seg_width))
-                seg_start += seg_adv
-                seg_text = []
-                seg_adv = 0.0
-        # Drop any empty segment (defensive).
-        return [s for s in sub_runs if s[0] != ""] or single
-
-    def _emit_ignoring_space_glyphs(
-        self,
-        text: str,
-        state: _TextState,
-        positions: list[TextPosition],
-        font: PDFont | None,
-        resolved_font_name: str | None,
-        per_char: float,
-        width_of_space: float,
-    ) -> None:
-        """Emit non-space chunks while preserving the original text advance.
-
-        Each chunk's text-space origin is run through the text-rendering
-        matrix (textMatrix × CTM) so device-space positions and the
-        effective glyph size match the main :meth:`_emit` path.
-        """
-        ctm = state.ctm
-        tm_scale = Matrix(state.tm_a, state.tm_b, state.tm_c, state.tm_d, 0.0, 0.0)
-        trm_scale = tm_scale.multiply(ctm)
-        y_scale = trm_scale.get_scaling_factor_y()
-        x_scale = trm_scale.get_scaling_factor_x()
-        effective_font_size = state.font_size * y_scale
-        text_dir = self._text_dir(trm_scale)
-        # ``cursor_x`` tracks the text matrix's translation slot (slot e),
-        # so the per-character text-space advance is carried through the
-        # horizontal text-matrix scale (``tm_a``) — matching the main
-        # show-text path.
-        advance = per_char * state.tm_a
-        cursor_x = state.text_x
-        chunk_start_x = cursor_x
-        chunk: list[str] = []
-
-        def _device_origin(text_x: float) -> tuple[float, float]:
-            tm = Matrix(
-                state.tm_a, state.tm_b, state.tm_c, state.tm_d, text_x, state.text_y
-            )
-            # Fold text rise (``Ts``) in the way the main ``_emit`` path does
-            # — as the f-translation of the font-parameter matrix applied
-            # before the text matrix (``[1, 0, 0, 1, 0, rise] × Tm × ctm``).
-            rise = getattr(state, "text_rise", 0.0)
-            if rise:
-                tm = Matrix(1.0, 0.0, 0.0, 1.0, 0.0, rise).multiply(tm)
-            trm = tm.multiply(ctm)
-            return trm.get_translate_x(), trm.get_translate_y()
-
-        def flush_chunk() -> None:
-            nonlocal chunk_start_x
-            if not chunk:
-                return
-            chunk_text = "".join(chunk)
-            device_x, device_y = _device_origin(chunk_start_x)
-            positions.append(
-                TextPosition(
-                    text=chunk_text,
-                    x=device_x,
-                    y=device_y,
-                    font_size=effective_font_size,
-                    font_size_in_pt=state.font_size * x_scale,
-                    font_name=state.font_name,
-                    font=font,
-                    resolved_font_name=resolved_font_name,
-                    width=len(chunk_text) * per_char * x_scale,
-                    width_of_space=width_of_space * x_scale,
-                    char_spacing=state.char_spacing,
-                    word_spacing=state.word_spacing,
-                    dir=text_dir,
-                    height=(
-                        0.0
-                        if self._active_font_height is None
-                        else self._active_font_height * effective_font_size
-                    ),
-                    text_matrix=[
-                        state.tm_a,
-                        state.tm_b,
-                        state.tm_c,
-                        state.tm_d,
-                        chunk_start_x,
-                        state.text_y,
-                    ],
-                )
-            )
-            chunk.clear()
-            chunk_start_x = cursor_x
-
-        for char in text:
-            if char == " ":
-                flush_chunk()
-            else:
-                if not chunk:
-                    chunk_start_x = cursor_x
-                chunk.append(char)
-            cursor_x += advance
-        flush_chunk()
-        state.text_x = cursor_x
 
     def _emit_tj_array(
         self,
@@ -2351,14 +2553,19 @@ class PDFTextStripper:
                 # ``Tz`` here makes a ``TJ`` jump condense / expand with the
                 # surrounding text, so word segmentation matches an engine
                 # that scales the gap by ``Tz``.
-                adj = (
-                    entry.float_value()
-                    * state.font_size
-                    / 1000.0
+                # Upstream: ``tx = -tj / 1000 * fontSize * horizontalScaling``
+                # then ``textMatrix.translate(tx, 0)``, all in float.
+                if self._is_vertical_font(self._active_font):
+                    ty = _f32(_f32(-entry.float_value() / 1000.0) * state.font_size)
+                    state.text_x = _f32(state.text_x + _f32(ty * state.tm_c))
+                    state.text_y = _f32(state.text_y + _f32(ty * state.tm_d))
+                    continue
+                tx = _f32(
+                    _f32(_f32(-entry.float_value() / 1000.0) * state.font_size)
                     * getattr(state, "horizontal_scaling", 1.0)
                 )
-                state.text_x -= adj * state.tm_a
-                state.text_y -= adj * state.tm_b
+                state.text_x = _f32(state.text_x + _f32(tx * state.tm_a))
+                state.text_y = _f32(state.text_y + _f32(tx * state.tm_b))
 
     # ---------- /ToUnicode CMap helpers ----------
 
@@ -2450,10 +2657,60 @@ class PDFTextStripper:
                     return font.decode(text_bytes)
                 except Exception:  # defensive
                     pass
+            else:
+                decoded = self._decode_composite_codes(text_bytes, font)
+                if decoded is not None:
+                    return decoded
         # Fallback: construct a transient COSString purely for its
         # PDFDocEncoding-aware decode logic. We can't reuse ``s`` here
         # because callers pass raw bytes via ``s.get_bytes()`` already.
         return text_bytes.decode("latin-1", errors="replace")
+
+    @staticmethod
+    def _decode_composite_codes(text_bytes: bytes, font: PDFont) -> str | None:
+        """Decode a composite (Type 0) font's show-text bytes code by code.
+
+        Mirrors upstream ``LegacyPDFStreamEngine.showGlyph``: each code read
+        through the font's encoding CMap is mapped with ``font.toUnicode``
+        (which falls back to the predefined ``Adobe-<Ordering>-UCS2`` CMap
+        for a font without ``/ToUnicode``), and a code with no Unicode
+        mapping is skipped rather than coerced to a character, since Acrobat
+        does not coerce composite-font codes either. Returns ``None`` when
+        the font cannot read codes, so the caller keeps its Latin-1 fallback.
+        """
+        read_code = getattr(font, "read_code", None)
+        if not callable(read_code):
+            return None
+        out: list[str] = []
+        offset = 0
+        n = len(text_bytes)
+        try:
+            while offset < n:
+                code, consumed = read_code(text_bytes, offset)
+                if consumed <= 0:
+                    return None
+                piece = font.to_unicode(code)
+                if piece is not None:
+                    out.append(piece)
+                offset += consumed
+        except Exception:  # defensive: malformed font / encoding
+            return None
+        return "".join(out)
+
+    def _get_default_font(self) -> PDFont | None:
+        """Upstream ``PDFStreamEngine.getDefaultFont``: a non-embedded
+        Helvetica, built once per stripper."""
+        font = self._default_font
+        if font is None:
+            try:
+                from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
+                from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
+
+                font = PDType1Font(Standard14Fonts.FontName.HELVETICA)
+            except Exception:  # defensive
+                return None
+            self._default_font = font
+        return font
 
     def _get_font_for(self, font_resource_name: str | None) -> PDFont | None:
         """Resolve and cache the typed ``PDFont`` for the resource name
@@ -2525,23 +2782,16 @@ class PDFTextStripper:
 
     def _compute_font_height(self, font: PDFont | None) -> float:
         """Return the font's glyph height in text-space units (a fraction of
-        the em), mirroring upstream ``LegacyPDFStreamEngine.computeFontHeight``
-        (LegacyPDFStreamEngine.java:324-368).
+        the em), as upstream ``LegacyPDFStreamEngine.computeFontHeight``
+        computes it in float: half the font bounding box height, replaced by
+        the descriptor's ``/CapHeight`` when that is smaller (or the box is
+        empty), and by ``(ascent - descent) / 2`` when even the cap height
+        exceeds the ascent; then scaled from glyph space to text space
+        (``/ 1000``, or the ``/FontMatrix`` for Type 3).
 
-        Upstream takes half the font bounding box height, then prefers the
-        descriptor's ``/CapHeight`` (or ``(ascent − descent) / 2``) when the
-        bbox is implausibly tall, and finally scales glyph space → text space
-        (``/1000`` for ordinary fonts, the ``/FontMatrix`` for Type 3). The
-        result feeds the line-grouping vertical-overlap test in
-        :meth:`_emit_group`; the caller multiplies it by ``font_size`` (and
-        the text-rendering matrix's Y scale) to get the device-space glyph
-        height. The per-font value is cached for the active page exactly as
-        upstream caches it in its ``fontHeightMap``.
-
-        Returns ``0.5`` (half the em) when the font, its bounding box, and its
-        descriptor are all unavailable — a neutral proxy that keeps the
-        overlap test working for metric-less fonts without the previous
-        full-em (``1.0``) over-grouping.
+        The result is cached per font object for the active page, like
+        upstream's ``fontHeightMap``. Returns ``0.5`` only when no font is
+        given at all.
         """
         if font is None:
             return 0.5
@@ -2554,45 +2804,41 @@ class PDFTextStripper:
         except Exception:  # defensive: malformed font program
             bbox = None
         if bbox is not None:
-            lower_left_y = bbox.get_lower_left_y()
+            lower_left_y = _f32(float(bbox.get_lower_left_y()))
+            upper_right_y = _f32(float(bbox.get_upper_right_y()))
             if lower_left_y < -32768:
                 # PDFBOX-2158 / PDFBOX-3130 over-/under-flowed lower-left Y.
-                bbox_height = bbox.get_upper_right_y() - (-(lower_left_y + 65536))
-            else:
-                bbox_height = bbox.get_height()
-            glyph_height = bbox_height / 2.0
+                lower_left_y = _f32(-(lower_left_y + 65536))
+            glyph_height = _f32(_f32(upper_right_y - lower_left_y) / 2)
         try:
             descriptor = font.get_font_descriptor()
         except Exception:  # defensive
             descriptor = None
         if descriptor is not None:
-            cap_height = descriptor.get_cap_height()
+            cap_height = _f32(float(descriptor.get_cap_height()))
             if cap_height != 0 and (cap_height < glyph_height or glyph_height == 0):
                 glyph_height = cap_height
-            ascent = descriptor.get_ascent()
-            descent = descriptor.get_descent()
+            ascent = _f32(float(descriptor.get_ascent()))
+            descent = _f32(float(descriptor.get_descent()))
+            half_extent = _f32(_f32(ascent - descent) / 2)
             if (
                 cap_height > ascent
                 and ascent > 0
                 and descent < 0
-                and ((ascent - descent) / 2.0 < glyph_height or glyph_height == 0)
+                and (half_extent < glyph_height or glyph_height == 0)
             ):
-                glyph_height = (ascent - descent) / 2.0
+                glyph_height = half_extent
         # Glyph space → text space.
         from pypdfbox.pdmodel.font.pd_type3_font import PDType3Font
 
         if isinstance(font, PDType3Font):
             try:
-                height = font.get_font_matrix()[3] * glyph_height
+                matrix = font.get_font_matrix()
+                height = _f32(_f32(glyph_height * _f32(matrix[3])) + _f32(matrix[5]))
             except Exception:  # defensive
-                height = glyph_height / 1000.0
+                height = _f32(glyph_height / 1000)
         else:
-            height = glyph_height / 1000.0
-        if height <= 0:
-            # No usable metrics — fall back to half the em (a neutral proxy
-            # that avoids the full-em over-grouping the line-overlap test had
-            # before real heights were threaded through).
-            height = 0.5
+            height = _f32(glyph_height / 1000)
         self._font_height_cache[id(font)] = height
         return height
 
@@ -2691,6 +2937,359 @@ class PDFTextStripper:
         return self._article_start + self._article_end
 
     def _format_positions(self, positions: list[TextPosition]) -> str:
+        """Lay a page's glyphs out as text, the way upstream
+        ``PDFTextStripper`` does from ``processTextPosition`` on.
+
+        In order: glyphs a subclass declines via :meth:`should_skip_glyph`
+        are dropped; duplicate overlapping glyphs are suppressed (fake bold,
+        ``suppressDuplicateOverlappingText``); the rest are assigned to their
+        thread-bead articles (``2 * N + 1`` slots for ``N`` beads, see
+        :meth:`_partition_by_beads`) and diacritics are merged into the glyph
+        they overlap; each article is sorted with ``TextPositionComparator``
+        when ``sort_by_position`` is set (dropping spaces contained in the
+        previous glyph, PDFBOX-5487); and finally :meth:`_write_articles`
+        runs upstream's ``writePage`` line, word and paragraph logic. The
+        lite-only flipped-axes mode keeps its own formatter.
+        """
+        # Drop glyphs the subclass declines via ``should_skip_glyph``
+        # before any sorting/grouping — keeps the position lists handed
+        # to ``write_string`` in sync with what subclasses would have
+        # seen via ``processTextPosition`` upstream.
+        positions = [p for p in positions if not self.should_skip_glyph(p)]
+        if self._flip_axes:
+            if not positions:
+                return self._empty_article_wrap()
+            return self._format_positions_flipped(positions)
+        if self._suppress_duplicate_overlapping_text:
+            positions = self._drop_overlapping_duplicates(positions)
+        groups = self._assign_articles(positions)
+        groups = [self._merge_diacritics(group) for group in groups]
+        if self._sort_by_position:
+            for group in groups:
+                # ``Collections.sort`` (Java's TimSort); the comparator is not
+                # transitive, so the merge policy matters, and Java may reject
+                # it, in which case upstream falls back to IterativeMergeSort.
+                try:
+                    tim_sort(group, _java_compare)
+                except ComparisonContractError:
+                    IterativeMergeSort.sort(group, _java_compare)
+                self._remove_contained_spaces_java(group)
+        # ``charactersByArticle`` as upstream's ``writePage`` iterates it.
+        self._characters_by_article = groups
+        chunks: list[str] = []
+
+        def _sink(piece: str) -> None:
+            chunks.append(piece)
+
+        self._write_articles(groups, _sink)
+        return "".join(chunks)
+
+    @staticmethod
+    def _merge_diacritics(positions: list[TextPosition]) -> list[TextPosition]:
+        """Upstream ``processTextPosition``'s diacritic handling: a diacritic
+        glyph that overlaps the previous glyph of its article is merged into
+        it, and a previous diacritic overlapped by the current glyph is merged
+        into the current one."""
+        text_list: list[TextPosition] = []
+        for text in positions:
+            if not text_list:
+                text_list.append(text)
+                continue
+            previous = text_list[-1]
+            if text.is_diacritic() and _java_contains(previous, text):
+                _java_merge_diacritic(previous, text)
+            elif previous.is_diacritic() and _java_contains(text, previous):
+                _java_merge_diacritic(text, previous)
+                text_list[-1] = text
+            else:
+                text_list.append(text)
+        return text_list
+
+    @staticmethod
+    def _remove_contained_spaces_java(text_list: list[TextPosition]) -> None:
+        """Upstream ``removeContainedSpaces`` (PDFBOX-5487) on Java geometry."""
+        if not text_list:
+            return
+        previous = text_list[0]
+        kept = [previous]
+        for position in text_list[1:]:
+            if position.get_unicode() == " " and _java_completely_contains(previous, position):
+                continue
+            kept.append(position)
+            previous = position
+        text_list[:] = kept
+
+    def _write_articles(
+        self, articles: list[list[TextPosition]], sink: Callable[[str], None]
+    ) -> None:
+        """Port of upstream ``PDFTextStripper.writePage``'s article loop.
+
+        The line state (``lastPosition``, ``maxYForLine`` and friends) spans
+        the whole page, so the first glyph of an article is line-broken
+        against the last glyph of the previous one; only ``startOfArticle``
+        and the running average character width reset per article. Glyphs
+        are queued a line at a time as ``LineItem`` entries (word separators
+        included) and written through :meth:`normalize` / :meth:`write_line`.
+
+        A subclass that overrides ``write_article_start`` (``PDFText2HTML``)
+        brackets paragraphs itself, so the page-opening paragraph start and
+        the per-article paragraph end are left to it.
+        """
+        manages_own_paragraph = (
+            type(self).write_article_start is not PDFTextStripper.write_article_start
+        )
+        emit_paragraph_markers = not manages_own_paragraph
+        sort = self._sort_by_position
+        ignore_spaces = self._ignore_content_stream_space_glyphs
+        separator = self._word_separator
+        spacing_tolerance = _f32(self._spacing_tolerance)
+        average_char_tolerance = _f32(self._average_char_tolerance)
+
+        max_y_for_line = -_FLT_MAX
+        end_of_last_text_x = -1.0
+        last_word_spacing = -1.0
+        max_height_for_line = -1.0
+        last_position: PositionWrapper | None = None
+        last_line_start: PositionWrapper | None = None
+        start_of_page = True
+
+        for text_list in articles:
+            if self._article_start:
+                self.write_article_start(sink)
+                if manages_own_paragraph:
+                    # The subclass's article start opened the paragraph.
+                    self._in_paragraph = True
+            start_of_article = True
+            line: list[_LineItem] = []
+            previous_ave_char_width = -1.0
+            for position in text_list:
+                current = PositionWrapper(position)
+                character_value = position.get_unicode()
+                # PDFBOX-3774: conditionally ignore spaces from the content stream.
+                if ignore_spaces and character_value == " ":
+                    continue
+                if last_position is not None and self._java_font_or_size_changed(
+                    position, last_position.get_text_position()
+                ):
+                    previous_ave_char_width = -1.0
+                g = _java_geometry(position)
+                if sort:
+                    position_x = g.x_dir_adj
+                    position_y = g.y_dir_adj
+                    position_width = g.width_dir_adj
+                else:
+                    position_x = g.x
+                    position_y = g.y
+                    position_width = g.width
+                position_height = g.height
+                word_char_count = len(_java_individual_widths(position)) or 1
+                word_spacing = g.width_of_space
+                if word_spacing == 0 or math.isnan(word_spacing):
+                    delta_space = _FLT_MAX
+                elif last_word_spacing < 0:
+                    delta_space = _f32(word_spacing * spacing_tolerance)
+                else:
+                    delta_space = _f32(
+                        _f32(_f32(word_spacing + last_word_spacing) / 2) * spacing_tolerance
+                    )
+                if previous_ave_char_width < 0:
+                    average_char_width = _f32(position_width / word_char_count)
+                else:
+                    average_char_width = _f32(
+                        _f32(previous_ave_char_width + _f32(position_width / word_char_count))
+                        / 2
+                    )
+                delta_char_width, new_end_of_text_x = _f32x2(
+                    average_char_width * average_char_tolerance, position_x + position_width
+                )
+                expected_start_of_next_word_x = -_FLT_MAX
+                if end_of_last_text_x != -1.0:
+                    expected_start_of_next_word_x = _f32(
+                        end_of_last_text_x + min(delta_space, delta_char_width)
+                    )
+                if last_position is not None:
+                    if start_of_article:
+                        last_position.set_article_start()
+                        start_of_article = False
+                    if not _java_overlap(
+                        position_y, position_height, max_y_for_line, max_height_for_line
+                    ):
+                        self.write_line(self.normalize(line), sink)
+                        line = []
+                        last_line_start = self._java_handle_line_separation(
+                            current, last_position, last_line_start, max_height_for_line, sink
+                        )
+                        expected_start_of_next_word_x = -_FLT_MAX
+                        max_y_for_line = -_FLT_MAX
+                        max_height_for_line = -1.0
+                    last_unicode = last_position.get_text_position().get_unicode()
+                    if (
+                        expected_start_of_next_word_x != -_FLT_MAX
+                        and expected_start_of_next_word_x < position_x
+                        and (
+                            not separator
+                            or (last_unicode is not None and not last_unicode.endswith(separator))
+                        )
+                    ):
+                        line.append(_LineItem.get_word_separator())
+                    x_distance, space_limit = _f32x2(
+                        g.x - _java_geometry(last_position.get_text_position()).x,
+                        word_spacing + delta_space,
+                    )
+                    if abs(x_distance) > space_limit:
+                        max_y_for_line = -_FLT_MAX
+                        max_height_for_line = -1.0
+                if position_y >= max_y_for_line:
+                    max_y_for_line = position_y
+                end_of_last_text_x = new_end_of_text_x
+                if character_value is not None:
+                    if start_of_page and last_position is None and emit_paragraph_markers:
+                        self.write_paragraph_start(sink)
+                    line.append(_LineItem(position))
+                max_height_for_line = max(max_height_for_line, position_height)
+                last_position = current
+                if start_of_page:
+                    last_position.set_paragraph_start()
+                    last_position.set_line_start()
+                    last_line_start = last_position
+                    start_of_page = False
+                last_word_spacing = word_spacing
+                previous_ave_char_width = average_char_width
+            if line:
+                self.write_line(self.normalize(line), sink)
+                if emit_paragraph_markers:
+                    self.write_paragraph_end(sink)
+            if self._article_end:
+                self.write_article_end(sink)
+                if manages_own_paragraph:
+                    self._in_paragraph = False
+
+    @staticmethod
+    def _java_font_or_size_changed(current: TextPosition, last: TextPosition) -> bool:
+        """Upstream ``hasFontOrSizeChanged``: compares the ``Tf`` size, then
+        the font instance, then the font name, then the font hash."""
+        current_size = current.tf_font_size
+        last_size = last.tf_font_size
+        if current_size is None or last_size is None:
+            current_size = current.get_font_size()
+            last_size = last.get_font_size()
+        if current_size != last_size:
+            return True
+        current_font = current.get_font()
+        last_font = last.get_font()
+        if current_font is last_font:
+            return False
+        current_name = current_font.get_name() if current_font is not None else None
+        last_name = last_font.get_name() if last_font is not None else None
+        if current_name is not None:
+            return current_name != last_name
+        if last_name is not None:
+            return True
+        return hash(current_font) != hash(last_font)
+
+    def _java_handle_line_separation(
+        self,
+        current: PositionWrapper,
+        last_position: PositionWrapper,
+        last_line_start: PositionWrapper | None,
+        max_height_for_line: float,
+        sink: Callable[[str], None],
+    ) -> PositionWrapper:
+        """Upstream ``handleLineSeparation``: classify the break and write
+        the line (and paragraph) separators."""
+        current.set_line_start()
+        self._java_is_paragraph_separation(
+            current, last_position, last_line_start, max_height_for_line
+        )
+        if current.is_paragraph_start():
+            if last_position.is_article_start():
+                if last_position.is_line_start():
+                    self.write_line_separator(sink)
+                self.write_paragraph_start(sink)
+            else:
+                self.write_line_separator(sink)
+                self.write_paragraph_separator(sink)
+        else:
+            self.write_line_separator(sink)
+        return current
+
+    @staticmethod
+    def _java_multiply_float(value1: float, value2: float) -> float:
+        """Upstream ``multiplyFloat``: ``Math.round(v1 * v2 * 1000) / 1000f``."""
+        return _f32(_java_round(_f32(_f32(value1 * value2) * 1000)) / 1000)
+
+    def _java_is_paragraph_separation(
+        self,
+        position: PositionWrapper,
+        last_position: PositionWrapper,
+        last_line_start: PositionWrapper | None,
+        max_height_for_line: float,
+    ) -> None:
+        """Upstream ``isParagraphSeparation`` on Java geometry."""
+        result = False
+        if last_line_start is None:
+            result = True
+        else:
+            g = _java_geometry(position.get_text_position())
+            last_g = _java_geometry(last_position.get_text_position())
+            start_g = _java_geometry(last_line_start.get_text_position())
+            y_gap = abs(_f32(g.y_dir_adj - last_g.y_dir_adj))
+            new_y_val = self._java_multiply_float(
+                _f32(self.get_drop_threshold()), max_height_for_line
+            )
+            x_gap = _f32(g.x_dir_adj - start_g.x_dir_adj)
+            new_x_val = self._java_multiply_float(
+                _f32(self.get_indent_threshold()), g.width_of_space
+            )
+            position_width = self._java_multiply_float(0.25, g.width)
+            if y_gap > new_y_val:
+                result = True
+            elif x_gap > new_x_val:
+                # Indented, but screen for a hanging indent.
+                if not last_line_start.is_paragraph_start():
+                    result = True
+                else:
+                    position.set_hanging_indent()
+            elif x_gap < -g.width_of_space:
+                # Left of the previous line: was it a hanging indent?
+                if not last_line_start.is_paragraph_start():
+                    result = True
+            elif abs(x_gap) < position_width:
+                # Within a quarter character of the last line start.
+                if last_line_start.is_hanging_indent():
+                    position.set_hanging_indent()
+                elif last_line_start.is_paragraph_start():
+                    li_pattern = self.match_list_item_pattern(last_line_start)
+                    if li_pattern is not None:
+                        current_pattern = self.match_list_item_pattern(position)
+                        if li_pattern is current_pattern:
+                            result = True
+        if result:
+            position.set_paragraph_start()
+
+    @staticmethod
+    def _coalesce_runs(positions: list[TextPosition]) -> list[TextPosition]:
+        """Merge consecutive glyphs painted by the same show-text string back
+        into one run position (first glyph's origin, summed width)."""
+        runs: list[TextPosition] = []
+        last_run_id = None
+        for pos in positions:
+            run_id = pos.__dict__.get("_run_id")
+            if run_id is not None and run_id == last_run_id and runs:
+                head = runs[-1]
+                head.text += pos.text
+                head.width += pos.width
+                if head.individual_widths is not None and pos.individual_widths is not None:
+                    head.individual_widths = head.individual_widths + pos.individual_widths
+                continue
+            if run_id is not None:
+                pos = replace(pos)
+                pos.__dict__["_run_id"] = run_id
+            runs.append(pos)
+            last_run_id = run_id
+        return runs
+
+    def _format_positions_flipped(self, positions: list[TextPosition]) -> str:
         """Walk ``positions`` in emission order and stitch them into a
         single string using the configured line and word separators.
 
@@ -2726,13 +3325,9 @@ class PDFTextStripper:
         """
         if not positions:
             return self._empty_article_wrap()
-        # Drop glyphs the subclass declines via ``should_skip_glyph``
-        # before any sorting/grouping — keeps the position lists handed
-        # to ``write_string`` in sync with what subclasses would have
-        # seen via ``processTextPosition`` upstream.
-        positions = [p for p in positions if not self.should_skip_glyph(p)]
-        if not positions:
-            return self._empty_article_wrap()
+        # This lite-only mode lays out whole show-text runs: regroup the
+        # per-glyph positions (``should_skip_glyph`` already ran).
+        positions = self._coalesce_runs(positions)
         if self._suppress_duplicate_overlapping_text:
             positions = self._drop_overlapping_duplicates(positions)
         # Upstream applies the comparator only when ``sortByPosition`` is
@@ -3516,51 +4111,77 @@ class PDFTextStripper:
         present on the 3.x surface; we honour both for porting parity."""
         return self.is_paragraph_separation(pos, prev)
 
+    def _assign_articles(self, positions: list[TextPosition]) -> list[list[TextPosition]]:
+        """Upstream's ``charactersByArticle`` for the page: one slot without
+        bead separation, ``2 * N + 1`` slots for ``N`` beads otherwise.
+
+        Upstream reuses the list from page to page and only clears it, so a
+        page never has fewer slots than an earlier page of the same walk had
+        (the slots past this page's need stay empty, and glyphs outside every
+        bead go to the last one); ``reset_engine`` starts over.
+        """
+        rects: list[tuple[float, float, float, float] | None] = []
+        if self._should_separate_by_beads and self._active_page is not None:
+            rects = self._bead_rectangles_java(self._active_page)
+        sections = 1 + 2 * len(rects)
+        slot_count = max(sections, self._article_slot_count)
+        self._article_slot_count = slot_count
+        if not self._should_separate_by_beads:
+            slots: list[list[TextPosition]] = [[] for _ in range(slot_count)]
+            slots[0].extend(positions)
+            return slots
+        return self._partition_into_slots(positions, rects, slot_count)
+
     def _partition_by_beads(
-        self, positions: list[TextPosition]
+        self, positions: list[TextPosition], keep_empty: bool = False
     ) -> list[list[TextPosition]]:
         """Bucket ``positions`` into the per-article ``charactersByArticle``
         slots upstream maintains when ``shouldSeparateByBeads`` is enabled.
 
-        Faithful port of the article-assignment logic from upstream
-        ``processPage`` (sizing, PDFTextStripper.java:349-377) and
-        ``processTextPosition`` (assignment, PDFTextStripper.java:954-1020).
-        For ``N`` thread beads upstream allocates ``2*N + 1`` slots: slot
-        ``i*2 + 1`` holds glyphs *inside* bead ``i``, slot ``i*2`` is the
-        "gap" before bead ``i`` (glyphs left-of / above the bead that did
-        not land inside an earlier one), and the final slot
-        (``charactersByArticle.size() - 1``) catches everything else. The
-        slots are emitted in index order, which interleaves the gap runs
-        between the bead columns and reproduces the reading flow — e.g. an
-        inline stage-direction painted between two column beads stays
-        adjacent to the text it follows rather than being shunted to a
-        trailing residual bucket.
+        Port of the article assignment in upstream ``processTextPosition``
+        with the bead rectangles of ``fillBeadRectangles``. For ``N`` thread
+        beads there are ``2 * N + 1`` slots: slot ``i * 2 + 1`` holds glyphs
+        inside bead ``i``, slot ``i * 2`` the glyphs left of or above bead
+        ``i`` that did not land inside an earlier bead, and the last slot
+        everything else. Upstream flips each bead rectangle into the glyphs'
+        upper-left frame against the *media box* height and shifts it by the
+        cropbox corner, then tests ``getX()`` / ``getY()`` with the inclusive
+        ``PDRectangle.contains``.
 
-        Returns the non-empty slots in index order; an empty list when the
-        active page has no usable thread beads (callers fall back to a
-        single all-positions group).
+        Returns every slot in index order when ``keep_empty`` is set (as
+        upstream iterates them), otherwise only the non-empty ones; an empty
+        list when the page has no thread beads.
         """
         page = self._active_page
         if page is None:
             return []
+        rects = self._bead_rectangles_java(page)
+        if not rects:
+            return []
+        slots = self._partition_into_slots(positions, rects, len(rects) * 2 + 1)
+        if keep_empty:
+            return slots
+        return [s for s in slots if s]
+
+    @staticmethod
+    def _bead_rectangles_java(page: PDPage) -> list[tuple[float, float, float, float] | None]:
+        """Upstream ``fillBeadRectangles``: each bead rectangle flipped into
+        the glyphs' upper-left frame against the media box height and shifted
+        by the cropbox corner; ``None`` for a bead without a rectangle."""
         try:
             beads = page.get_thread_beads()
         except Exception:  # defensive: malformed /B
             return []
         if not beads:
             return []
-        # Bead rectangles, kept in the PDF user-space (y-up) frame the lite
-        # TextPosition origins live in. Upstream flips them into image
-        # (y-down) space (fillBeadRectangles, PDFTextStripper.java:386-420)
-        # and compares against ``text.getY()`` there; working consistently
-        # in y-up is equivalent for the ``contains`` test, and the gap-slot
-        # fallbacks below are mirrored accordingly (see ``_bead_above``).
-        # CropBox lower-left offsets are subtracted to mirror upstream's
-        # cropbox adjustment (lines 410-417).
+        try:
+            media_ury = _f32(float(page.get_media_box().get_upper_right_y()))
+        except Exception:  # defensive
+            media_ury = 0.0
         try:
             crop = page.get_crop_box()
-            crop_llx = float(crop.get_lower_left_x())
-            crop_lly = float(crop.get_lower_left_y())
+            crop_llx = _f32(float(crop.get_lower_left_x()))
+            crop_lly = _f32(float(crop.get_lower_left_y()))
         except Exception:  # defensive: missing/odd CropBox
             crop_llx = 0.0
             crop_lly = 0.0
@@ -3577,22 +4198,31 @@ class PDFTextStripper:
             if r is None:
                 rects.append(None)
                 continue
-            rects.append(
-                (
-                    float(r.get_lower_left_x()) - crop_llx,
-                    float(r.get_lower_left_y()) - crop_lly,
-                    float(r.get_upper_right_x()) - crop_llx,
-                    float(r.get_upper_right_y()) - crop_lly,
-                )
-            )
-        if not any(r is not None for r in rects):
-            return []
-        # Upstream allocates ``2 * beadRectangles.size() + 1`` slots.
-        slots: list[list[TextPosition]] = [[] for _ in range(len(rects) * 2 + 1)]
+            llx = _f32(float(r.get_lower_left_x()))
+            urx = _f32(float(r.get_upper_right_x()))
+            ury = _f32(media_ury - _f32(float(r.get_lower_left_y())))
+            lly = _f32(media_ury - _f32(float(r.get_upper_right_y())))
+            if crop_llx != 0 or crop_lly != 0:
+                llx = _f32(llx - crop_llx)
+                lly = _f32(lly - crop_lly)
+                urx = _f32(urx - crop_llx)
+                ury = _f32(ury - crop_lly)
+            rects.append((llx, lly, urx, ury))
+        return rects
+
+    @staticmethod
+    def _partition_into_slots(
+        positions: list[TextPosition],
+        rects: list[tuple[float, float, float, float] | None],
+        slot_count: int,
+    ) -> list[list[TextPosition]]:
+        """Upstream ``processTextPosition``'s article choice for each glyph."""
+        slots: list[list[TextPosition]] = [[] for _ in range(slot_count)]
         last_index = len(slots) - 1
         for pos in positions:
-            x = pos.x
-            y = pos.y
+            g = _java_geometry(pos)
+            x = g.x
+            y = g.y
             found = -1
             left_above = -1
             left = -1
@@ -3601,25 +4231,17 @@ class PDFTextStripper:
                 if found != -1:
                     break
                 if rect is None:
-                    # Upstream: a null bead rectangle short-circuits the
-                    # glyph into slot 0 (PDFTextStripper.java:988-991).
+                    # Upstream: a null bead rectangle sends the glyph to slot 0.
                     found = 0
                     continue
                 llx, lly, urx, ury = rect
-                inside = llx <= x <= urx and lly <= y <= ury
-                # Upstream image-space ``x < lowerLeftX`` is the same test in
-                # either frame; ``y < upperRightY`` (image, y-down) is, in
-                # PDF y-up space, ``y > lowerLeftY`` (the glyph baseline sits
-                # above the bead's bottom edge).
-                cond_left = x < llx
-                cond_above = y > lly
-                if inside:
+                if llx <= x <= urx and lly <= y <= ury:
                     found = i * 2 + 1
-                elif (cond_left or cond_above) and left_above == -1:
+                elif (x < llx or y < ury) and left_above == -1:
                     left_above = i * 2
-                elif cond_left and left == -1:
+                elif x < llx and left == -1:
                     left = i * 2
-                elif cond_above and above == -1:
+                elif y < ury and above == -1:
                     above = i * 2
             if found != -1:
                 idx = found
@@ -3632,7 +4254,7 @@ class PDFTextStripper:
             else:
                 idx = last_index
             slots[idx].append(pos)
-        return [s for s in slots if s]
+        return slots
 
     @staticmethod
     def _drop_overlapping_duplicates(
@@ -3671,14 +4293,9 @@ class PDFTextStripper:
           empty-text run on the page suppresses; with width 0 the tolerance
           is ``NaN`` and nothing ever matches (the run is always shown).
 
-        Lite-only fallback: a non-empty run with no width metric
-        (``width <= 0`` — synthetic positions, metric-less fonts, and the
-        vertical-mode emitter, which carries no run width) uses a
-        quarter-of-font-size window on both axes. Upstream never produces
-        such glyphs (its ``TextPosition`` always carries the real glyph
-        advance, so the true formula applies); with a literal ``0``
-        tolerance the half-open window would be empty and double-painted
-        vertical text that Java collapses would survive here.
+        Coordinates and width are upstream's page-rotation-adjusted
+        ``getX()`` / ``getY()`` / ``getWidth()`` (see :class:`_JavaGeometry`),
+        so the half-open windows apply in upstream's upper-left frame.
         """
         result: list[TextPosition] = []
         # Page-global dedup map keyed on decoded text (upstream
@@ -3711,27 +4328,23 @@ class PDFTextStripper:
                 continue
             text = pos.text
             char_count = len(text)
-            if pos.width > 0.0:
-                # Java: text.getWidth() / textCharacter.length() / 3.0f —
-                # float division, so length 0 yields +Infinity, not an error.
-                tol = math.inf if char_count == 0 else pos.width / char_count / 3.0
-            elif char_count == 0:
-                # Java: 0f / 0 == NaN — every comparison below is False, so
-                # the run is never suppressed (and its origin is recorded).
-                tol = math.nan
-            else:
-                # Lite-only: no width metric — see docstring.
-                tol = max(pos.font_size, 0.1) * 0.25
+            geometry = _java_geometry(pos)
+            pos_x = geometry.x
+            pos_y = geometry.y
+            # Java: text.getWidth() / textCharacter.length() / 3.0f — float
+            # division, so length 0 yields +Infinity (or NaN for a zero
+            # width, which never matches).
+            tol = _fdiv(_fdiv(geometry.width, float(char_count)), 3.0)
+            if math.isfinite(tol):
+                tol = _f32(tol)
             bucket = seen.get(text)
             if bucket is None:
                 bucket = seen[text] = {"cell": 0.0, "grid": {}, "overflow": []}
             grid: dict = bucket["grid"]
             cell: float = bucket["cell"]
             overflow: list = bucket["overflow"]
-            x_lo = pos.x - tol
-            x_hi = pos.x + tol
-            y_lo = pos.y - tol
-            y_hi = pos.y + tol
+            x_lo, x_hi = _f32x2(pos_x - tol, pos_x + tol)
+            y_lo, y_hi = _f32x2(pos_y - tol, pos_y + tol)
 
             suppress = _dup_window_hit(overflow, x_lo, x_hi, y_lo, y_hi)
             if not suppress and grid:
@@ -3759,8 +4372,9 @@ class PDFTextStripper:
                     else:
                         for cx in range(cx0, cx1 + 1):
                             for cy in range(cy0, cy1 + 1):
-                                if _dup_window_hit(
-                                    grid.get((cx, cy), ()), x_lo, x_hi, y_lo, y_hi
+                                cell_pts = grid.get((cx, cy))
+                                if cell_pts and _dup_window_hit(
+                                    cell_pts, x_lo, x_hi, y_lo, y_hi
                                 ):
                                     suppress = True
                                     break
@@ -3776,11 +4390,11 @@ class PDFTextStripper:
             if not suppress:
                 if cell <= 0.0 and math.isfinite(tol) and tol > 0.0:
                     cell = bucket["cell"] = tol
-                if cell > 0.0 and math.isfinite(pos.x) and math.isfinite(pos.y):
-                    key = (math.floor(pos.x / cell), math.floor(pos.y / cell))
-                    grid.setdefault(key, []).append((pos.x, pos.y))
+                if cell > 0.0 and math.isfinite(pos_x) and math.isfinite(pos_y):
+                    key = (math.floor(pos_x / cell), math.floor(pos_y / cell))
+                    grid.setdefault(key, []).append((pos_x, pos_y))
                 else:
-                    overflow.append((pos.x, pos.y))
+                    overflow.append((pos_x, pos_y))
                 result.append(pos)
         return result
 
@@ -3801,9 +4415,8 @@ class PDFTextStripper:
         collect or filter individual glyphs (the
         :class:`FilteredTextStripper` ``-rotationMagic`` collector is
         the canonical use case). Upstream PDFBox calls this from its
-        showText path; the lite stripper invokes it once per emitted
-        run from ``_format_positions`` so the hook stays observable
-        without re-engineering the parser walk.
+        showText path; pypdfbox invokes it for each glyph as the word it
+        belongs to is written (see :meth:`write_string`).
         """
         return
 
@@ -3843,12 +4456,11 @@ class PDFTextStripper:
 
         Invariants enforced here for subclasses:
 
-        - From the format path ``text`` is non-empty and ``text_positions``
-          carries one entry per emitted run (the lite stripper emits one
-          position per run, so the list is length 1).
+        - From the format path ``text`` is one word and ``text_positions``
+          its glyphs (upstream ``writeLine`` calls it once per word).
         - Each position is dispatched through :meth:`process_text_position`
           *before* anything is written to ``sink``, so collectors can
-          inspect the run's geometry before its text materialises.
+          inspect the glyph geometry before the text materialises.
 
         Upstream's ``writeString(String, List<TextPosition>)`` unconditionally
         delegates to ``writeString(String)`` — it writes ``text`` regardless
@@ -3876,10 +4488,21 @@ class PDFTextStripper:
         sink(self._line_separator)
 
     def write_paragraph_start(self, sink: Callable[[str], None]) -> None:
+        """Upstream ``writeParagraphStart``: an open paragraph is ended
+        first, so starts and ends always pair up."""
+        if self._in_paragraph:
+            self.write_paragraph_end(sink)
+            self._in_paragraph = False
         sink(self._paragraph_start)
+        self._in_paragraph = True
 
     def write_paragraph_end(self, sink: Callable[[str], None]) -> None:
+        """Upstream ``writeParagraphEnd``: a paragraph that was never
+        started is started first."""
+        if not self._in_paragraph:
+            self.write_paragraph_start(sink)
         sink(self._paragraph_end)
+        self._in_paragraph = False
 
     def write_page_start(self, sink: Callable[[str], None]) -> None:
         sink(self._page_start)
@@ -3898,9 +4521,8 @@ class PDFTextStripper:
 
         Mirrors upstream PDFBox's protected ``writeCharacters(TextPosition)``
         — the lowest-level emission hook, called for the unicode payload
-        of a single ``TextPosition``. The default is a no-op because the
-        lite stripper composes runs at the ``write_string`` level
-        (``TextPosition`` granularity, not glyph granularity); subclasses
+        of a single ``TextPosition``. The default is a no-op because text
+        is written word by word through :meth:`write_string`; subclasses
         that want to capture or transform per-glyph output can override.
         """
         return
@@ -4096,6 +4718,7 @@ class PDFTextStripper:
         cache, and the bookmark page resolution cache so back-to-back
         ``get_text`` walks don't leak state from each other."""
         self._characters_by_article = []
+        self._article_slot_count = 0
         self._bead_rectangles = []
         self._start_bookmark_page_number = -1
         self._end_bookmark_page_number = -1
@@ -4159,25 +4782,21 @@ class PDFTextStripper:
         return "".join(chunks)
 
     def write_page(self) -> str:
-        """Render the most recently extracted positions through the
-        line/word/paragraph hooks and return the formatted text.
+        """Render ``get_characters_by_article`` through the line, word and
+        paragraph hooks and return the text.
 
-        Mirrors upstream's protected ``writePage`` (PDFTextStripper.java:495)
-        in shape, but defers to the lite ``_format_positions`` heuristic
-        rather than the wrapper-based line walker since lite mode does
-        not yet maintain the full ``PositionWrapper`` chain. Subclasses
-        relying on the upstream signature can override this method
-        directly.
+        Mirrors upstream's protected ``writePage``: the page start (when
+        there is at least one article), every article, then the page end.
         """
-        if not self._characters_by_article:
-            return ""
         chunks: list[str] = []
 
         def sink(piece: str) -> None:
             chunks.append(piece)
 
-        for group in self._characters_by_article:
-            self._emit_group(group, sink)
+        if self._characters_by_article:
+            self.write_page_start(sink)
+        self._write_articles(self._characters_by_article, sink)
+        self.write_page_end(sink)
         return "".join(chunks)
 
     def write_line(
@@ -4341,8 +4960,11 @@ class PDFTextStripper:
         word_positions: list[TextPosition] = []
         for item in line:
             self.normalize_add(normalized, line_builder, word_positions, item)
-        if line_builder:
-            normalized.append(self.create_word("".join(line_builder), list(word_positions)))
+        # Upstream tests the builder's *length*: trailing empty-unicode glyphs
+        # (e.g. the tail of an ``/ActualText`` span) do not form a word.
+        last_word = "".join(line_builder)
+        if last_word:
+            normalized.append(self.create_word(last_word, list(word_positions)))
         return normalized
 
     def normalize_add(
@@ -4621,7 +5243,7 @@ class _TextState:
         # position each line via a per-line ``cm`` are scaled and placed
         # correctly instead of collapsing to a single baseline at size 1.
         self.ctm: Matrix = Matrix()
-        self.gs_stack: list[Matrix] = []
+        self.gs_stack: list[tuple[Matrix, tuple]] = []
         # Whether a text object (``BT`` … ``ET``) is currently open. Upstream
         # gates the text-showing and text-positioning operators on a non-null
         # text matrix / text-line matrix (both set to identity by ``BT`` and
@@ -4645,6 +5267,18 @@ class _TextState:
         # can never be observed. ``q`` needs no invalidation: it clones the CTM
         # onto the stack without reassigning ``self.ctm``.
         self._trm_cache: tuple[float, float, float] | None = None
+
+
+def _move_text_line(state: _TextState, tx: float, ty: float) -> None:
+    """Upstream ``MoveText``: ``textLineMatrix.concatenate(translate(tx, ty))``
+    in float, which moves the line origin by ``(tx, ty)`` through the text
+    matrix's scale and shear."""
+    tx = _f32(tx)
+    ty = _f32(ty)
+    x_part, y_part = _f32x2(tx * state.tm_a, tx * state.tm_b)
+    x_shear, y_shear = _f32x2(ty * state.tm_c, ty * state.tm_d)
+    x_sum, y_sum = _f32x2(x_part + x_shear, y_part + y_shear)
+    state.line_x, state.line_y = _f32x2(x_sum + state.line_x, y_sum + state.line_y)
 
 
 def _two_numbers(operands: list[COSBase]) -> tuple[float, float]:

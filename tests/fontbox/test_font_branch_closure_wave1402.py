@@ -799,21 +799,22 @@ def test_get_space_width_to_unicode_present_but_cmap_is_none() -> None:
 
 
 def test_get_space_width_cmap_space_mapping_minus_one_falls_through() -> None:
-    """ToUnicode cmap present but ``get_space_mapping()`` returns -1
-    → 264->273 arm. Falls to get_string_width.
+    """ToUnicode cmap present but ``get_space_mapping()`` returns -1:
+    upstream skips ``getStringWidth`` / ``getWidth(32)`` (they are only
+    tried without a CMap) and asks the font program.
     """
 
     class _Cmap:
         def get_space_mapping(self) -> int:
             return -1
 
-    font = _FakeFont(to_unicode_cmap=_Cmap(), string_width=600.0)
-    assert _space_width(font) == 600.0
+    font = _FakeFont(to_unicode_cmap=_Cmap(), string_width=600.0, width_from_font=650.0)
+    assert _space_width(font) == 650.0
 
 
 def test_get_space_width_cmap_width_zero_falls_through() -> None:
-    """get_width returned 0 for the mapped space code → 267->273 arm
-    falls through to get_string_width.
+    """get_width returned 0 for the mapped space code: upstream goes on to
+    the font program's width (not ``getStringWidth``).
     """
 
     class _Cmap:
@@ -821,8 +822,8 @@ def test_get_space_width_cmap_width_zero_falls_through() -> None:
             return 32  # valid mapping
 
     # get_width is hard-coded to return 0 in _FakeFont → fall through.
-    font = _FakeFont(to_unicode_cmap=_Cmap(), string_width=700.0)
-    assert _space_width(font) == 700.0
+    font = _FakeFont(to_unicode_cmap=_Cmap(), string_width=700.0, width_from_font=750.0)
+    assert _space_width(font) == 750.0
 
 
 def test_get_space_width_widths_zero_at_space_index_falls_through() -> None:

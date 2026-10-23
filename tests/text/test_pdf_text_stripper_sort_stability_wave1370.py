@@ -114,8 +114,9 @@ def test_sort_by_position_stable_for_three_way_y_x_tie() -> None:
     # texts; the words differ here so they all survive.
     s.set_sort_by_position(True)
     out = s.get_text(doc)
-    # Construction order is preserved despite the sort.
-    assert out.index("alpha") < out.index("beta") < out.index("gamma")
+    # Glyphs at the same x keep their construction order despite the sort
+    # (the words interleave glyph by glyph, as in PDFBox 3.0.8).
+    assert out == "abgleaptmhaama\n"
 
 
 # ---------------------------------------------------------------------------

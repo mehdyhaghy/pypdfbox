@@ -120,10 +120,11 @@ def test_wave488_td_operator_sets_leading_and_next_line_origin() -> None:
         assert stripper.get_text(doc) == "one\ntwo\nthree\n"
 
         positions = stripper.get_characters_by_article()[0]
-        assert [(p.text, p.x, p.y) for p in positions] == [
-            ("one", 100.0, 700.0),
-            ("two", 125.0, 682.0),
-            ("three", 125.0, 664.0),
+        # One position per glyph; check each word's first glyph.
+        assert [(p.text, p.x, p.y) for p in (positions[0], positions[3], positions[6])] == [
+            ("o", 100.0, 700.0),
+            ("t", 125.0, 682.0),
+            ("t", 125.0, 664.0),
         ]
     finally:
         doc.close()
@@ -257,7 +258,9 @@ def test_wave488_partition_by_beads_defensive_paths() -> None:
             ]
         ),
     )
-    assert stripper._partition_by_beads([pos]) == []
+    # Upstream keeps a null rectangle per unusable bead and sends the glyph
+    # to slot 0 as soon as it meets one.
+    assert stripper._partition_by_beads([pos]) == [[pos]]
 
     rect = PDRectangle(0.0, 0.0, 5.0, 5.0)
     stripper._active_page = cast(

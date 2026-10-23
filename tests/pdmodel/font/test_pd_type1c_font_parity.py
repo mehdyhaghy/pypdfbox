@@ -411,22 +411,24 @@ def test_get_average_font_width_uses_widths_when_present() -> None:
         _WIDTHS,
         COSArray([COSInteger.get(100), COSInteger.get(200), COSInteger.get(300)]),
     )
-    assert font.get_average_font_width() == 200.0
+    # Upstream PDType1CFont ignores /Widths here: the constant 500.
+    assert font.get_average_font_width() == 500.0
 
 
 def test_get_average_font_width_zero_when_no_widths_and_no_program() -> None:
-    # No /Widths, no /FontFile3, non-Standard-14 /BaseFont → 0.0.
+    # No /Widths, no /FontFile3, non-Standard-14 /BaseFont → upstream's 500.
     font = PDType1CFont()
     font.get_cos_object().set_name(_BASE_FONT, "MyEmbeddedType1C")
-    assert font.get_average_font_width() == 0.0
+    assert font.get_average_font_width() == 500.0
 
 
 def test_get_average_font_width_falls_back_to_afm_for_standard_14() -> None:
     font = PDType1CFont()
     font.get_cos_object().set_name(_BASE_FONT, "Helvetica")
     afm_mean = font.get_standard_14_font_metrics().get_average_width()  # type: ignore[union-attr]
-    assert font.get_average_font_width() == afm_mean
     assert afm_mean > 0.0
+    # Unlike PDType1Font, upstream PDType1CFont does not consult the AFM.
+    assert font.get_average_font_width() == 500.0
 
 
 # ---------- end-to-end /FontFile3 round-trip ----------

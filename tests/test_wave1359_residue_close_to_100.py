@@ -54,8 +54,8 @@ def _font_dict_with_basefont(name: str) -> COSDictionary:
 def test_type1c_average_uses_default_width_x_when_program_widths_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """CFF program is present but ``program.get_charset()`` is empty —
-    width loop yields nothing, fallback to ``defaultWidthX``."""
+    """Upstream ``PDType1CFont.getAverageCharacterWidth`` is the constant
+    500, whatever the embedded program reports."""
     font = PDType1CFont(_font_dict_with_basefont("Helvetica"))
 
     class _StubProgram:
@@ -73,7 +73,7 @@ def test_type1c_average_uses_default_width_x_when_program_widths_empty(
     monkeypatch.setattr(font, "_get_cff_font", lambda: _StubProgram())
     monkeypatch.setattr(font, "get_widths", list)
 
-    assert font.get_average_character_width() == pytest.approx(444.0)
+    assert font.get_average_character_width() == pytest.approx(500.0)
 
 
 def test_type1c_average_falls_through_to_afm_when_program_yields_zero(

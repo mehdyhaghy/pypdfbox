@@ -25,9 +25,10 @@ geometry against the value upstream's ``TextPosition`` would carry:
 
 The harness is self-contained (no live Java oracle): expectations are
 derived analytically from the PDF text-state algebra so the suite runs
-everywhere. ``/F0`` is an unresolved font resource, so per-glyph advances
-fall back to the lite stripper's deterministic 0.5-em monospace estimate —
-which is exactly what keeps these origin / width assertions analytic.
+everywhere. ``/F0`` is the monospaced standard-14 Courier (every glyph,
+space included, is 600/1000 em wide), which keeps these origin / width
+assertions analytic. Like upstream, the stripper emits one position per
+glyph, and a glyph's width is upstream's ``getWidth()`` (``|endX - x|``).
 
 Hand-written (not ported from upstream JUnit).
 """
@@ -36,7 +37,7 @@ import math
 
 import pytest
 
-from pypdfbox.cos import COSStream
+from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.text import PDFTextStripper, TextPosition
 
@@ -58,6 +59,16 @@ def _capture(content: bytes, *, rotation: int = 0) -> list[TextPosition]:
     stream = COSStream()
     stream.set_data(content)
     page.set_contents(stream)
+    font = COSDictionary()
+    font.set_item(COSName.TYPE, COSName.FONT)
+    font.set_item(COSName.SUBTYPE, COSName.get_pdf_name("Type1"))
+    font.set_item(COSName.BASE_FONT, COSName.get_pdf_name("Courier"))
+    font.set_item(COSName.get_pdf_name("Encoding"), COSName.get_pdf_name("WinAnsiEncoding"))
+    fonts = COSDictionary()
+    fonts.set_item(COSName.get_pdf_name("F0"), font)
+    resources = COSDictionary()
+    resources.set_item(COSName.FONT, fonts)
+    page.get_cos_object().set_item(COSName.RESOURCES, resources)
     doc.add_page(page)
 
     captured: list[TextPosition] = []
@@ -71,10 +82,9 @@ def _capture(content: bytes, *, rotation: int = 0) -> list[TextPosition]:
     return captured
 
 
-# Per-character advance the lite stripper assigns to an unresolved font:
-# half the font size in text space.
+# Courier's per-glyph advance (and space width) in text space.
 def _per_char(font_size: float) -> float:
-    return font_size * 0.5
+    return font_size * 0.6
 
 
 # ---------------------------------------------------------------------------
@@ -101,9 +111,11 @@ def test_origin_with_point_size_folded_into_tm() -> None:
     """``24 0 0 24 100 700 Tm`` with ``1 Tf`` puts the origin at (100, 700)
     — the matrix scale is folded into the rendered glyph, not the origin."""
     runs = _capture(b"BT /F0 1 Tf 24 0 0 24 100 700 Tm (AB) Tj ET")
-    assert len(runs) == 1
+    assert len(runs) == 2
     assert runs[0].x == pytest.approx(100.0, abs=_EPS)
     assert runs[0].y == pytest.approx(700.0, abs=_EPS)
+    # The second glyph starts one scaled advance later.
+    assert runs[1].x == pytest.approx(100.0 + 24 * 0.6, abs=_EPS)
 
 
 def test_origin_with_cm_translation_composed() -> None:
@@ -128,9 +140,9 @@ def test_run_width_is_glyph_advance_times_font_size(font_size: float) -> None:
         text.encode(),
     )
     runs = _capture(content)
-    assert len(runs) == 1
-    expected = len(text) * _per_char(font_size)
-    assert runs[0].width == pytest.approx(expected, abs=1e-3)
+    assert len(runs) == len(text)
+    for run in runs:
+        assert run.width == pytest.approx(_per_char(font_size), abs=1e-3)
 
 
 @pytest.mark.parametrize(
@@ -144,18 +156,18 @@ def test_run_width_scaled_by_horizontal_scaling_tz(
     displayed width — the word-gap heuristic measures the scaled value."""
     content = b"BT /F0 12 Tf %d Tz 100 700 Td (AB) Tj ET" % tz_percent
     runs = _capture(content)
-    assert len(runs) == 1
-    expected = 2 * _per_char(12.0) * factor
-    assert runs[0].width == pytest.approx(expected, abs=1e-3)
+    assert len(runs) == 2
+    for run in runs:
+        assert run.width == pytest.approx(_per_char(12.0) * factor, abs=1e-3)
 
 
 def test_run_width_scaled_by_matrix_x_scale() -> None:
     """A 3× horizontal ``Tm`` scale multiplies the device-space run width
     by the matrix X scaling factor."""
     runs = _capture(b"BT /F0 12 Tf 3 0 0 1 100 700 Tm (AB) Tj ET")
-    assert len(runs) == 1
-    expected = 2 * _per_char(12.0) * 3.0
-    assert runs[0].width == pytest.approx(expected, abs=1e-3)
+    assert len(runs) == 2
+    for run in runs:
+        assert run.width == pytest.approx(_per_char(12.0) * 3.0, abs=1e-3)
 
 
 # ---------------------------------------------------------------------------
@@ -209,7 +221,7 @@ def test_font_size_in_pt_equals_font_size_for_uniform_matrix() -> None:
 def test_width_of_space_scales_with_font_size(font_size: float) -> None:
     content = b"BT /F0 %s Tf 100 700 Td (AB) Tj ET" % repr(font_size).encode()
     runs = _capture(content)
-    # Unresolved font: width_of_space falls back to the per-char advance.
+    # Courier's space is as wide as every other glyph.
     assert runs[0].width_of_space == pytest.approx(_per_char(font_size), abs=1e-3)
 
 
@@ -249,7 +261,7 @@ def test_unicode_preserved_for_ascii_runs(text: str) -> None:
 
 
 def test_unicode_high_byte_latin1_fallback() -> None:
-    """A byte with no /ToUnicode resolves through the Latin-1 fallback."""
+    """A byte with no /ToUnicode resolves through the font's encoding."""
     runs = _capture(b"BT /F0 12 Tf 100 700 Td (caf\xe9) Tj ET")
     assert "".join(r.text for r in runs) == "café"
 
@@ -323,10 +335,12 @@ def test_x_dir_adj_180_and_270() -> None:
 def test_individual_widths_sum_to_run_width(text: str) -> None:
     content = b"BT /F0 12 Tf 100 700 Td (%s) Tj ET" % text.encode()
     runs = _capture(content)
-    assert len(runs) == 1
-    widths = runs[0].get_individual_widths()
-    assert len(widths) == len(text)
-    assert sum(widths) == pytest.approx(runs[0].width, abs=1e-3)
+    assert len(runs) == len(text)
+    for run in runs:
+        # One width per glyph: upstream's ``dxDisplay``.
+        widths = run.get_individual_widths()
+        assert len(widths) == 1
+        assert widths[0] == pytest.approx(run.width, abs=1e-3)
 
 
 def test_individual_widths_fallback_distribution() -> None:
@@ -410,10 +424,10 @@ def test_tj_negative_adjustment_advances_cursor() -> None:
     """A negative ``TJ`` number moves the cursor forward, so the second
     run starts to the right of the first run's right edge."""
     runs = _capture(b"BT /F0 12 Tf 100 700 Td [(AB) -2000 (CD)] TJ ET")
-    assert len(runs) == 2
-    first, second = runs
-    # -2000/1000 em × 12pt = +24pt extra gap on top of the run advance.
-    assert second.x > first.x + first.width
+    assert [r.text for r in runs] == ["A", "B", "C", "D"]
+    b_glyph, c_glyph = runs[1], runs[2]
+    # -2000/1000 em × 12pt = +24pt extra gap on top of B's advance.
+    assert c_glyph.x == pytest.approx(b_glyph.x + b_glyph.width + 24.0, abs=1e-3)
 
 
 # ---------------------------------------------------------------------------

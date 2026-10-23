@@ -103,10 +103,29 @@ def _strip(
         s.set_should_separate_by_beads(separate)
         s.set_add_more_formatting(add_more_formatting)
         text = s.get_text(doc)
-        cba = [[p.get_unicode() for p in art] for art in s.get_characters_by_article()]
+        cba = [_runs(art) for art in s.get_characters_by_article() if art]
         return text, cba
     finally:
         doc.close()
+
+
+def _runs(article: list) -> list[str]:
+    """Regroup an article's glyphs (upstream keeps one ``TextPosition`` per
+    glyph) into the show-text runs the page was built from: a run continues
+    while each glyph starts where the previous one ended on the same baseline."""
+    runs: list[str] = []
+    prev = None
+    for pos in article:
+        if (
+            prev is not None
+            and abs(pos.y - prev.y) < 0.01
+            and abs(pos.x - (prev.x + prev.width)) < 0.01
+        ):
+            runs[-1] += pos.get_unicode()
+        else:
+            runs.append(pos.get_unicode())
+        prev = pos
+    return runs
 
 
 # Two-column geometry shared by several cases. Bead 0 = LEFT, bead 1 = RIGHT;
@@ -377,7 +396,8 @@ def test_reset_engine_clears_articles(tmp_path: Path) -> None:
     try:
         s = PDFTextStripper()
         s.get_text(doc)
-        assert len(s.get_characters_by_article()) == 2
+        # Two beads give upstream's 2 * 2 + 1 article slots, empty ones too.
+        assert len(s.get_characters_by_article()) == 5
         s.reset_engine()
         assert s.get_characters_by_article() == []
     finally:
@@ -398,9 +418,9 @@ def test_article_markers_wrap_each_bucket(tmp_path: Path) -> None:
         s.set_article_start("<A>")
         s.set_article_end("</A>")
         text = s.get_text(doc)
-        # Two articles → two <A>…</A> wraps.
-        assert text.count("<A>") == 2
-        assert text.count("</A>") == 2
+        # Upstream wraps all 2 * 2 + 1 article slots, the empty gap slots
+        # included (verified against PDFBox 3.0.8).
+        assert text == "<A></A><A>LeftTop\nLeftBot</A><A></A><A>RightTop\nRightBot</A><A></A>\n"
         assert "<A>LeftTop" in text
         assert "<A>RightTop" in text
     finally:

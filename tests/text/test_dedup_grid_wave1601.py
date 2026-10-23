@@ -16,12 +16,15 @@ from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
 from pypdfbox.pdmodel.pd_document import PDDocument
 from pypdfbox.pdmodel.pd_page import PDPage
 from pypdfbox.pdmodel.pd_page_content_stream import PDPageContentStream
-from pypdfbox.text.pdf_text_stripper import PDFTextStripper
+from pypdfbox.text.pdf_text_stripper import PDFTextStripper, _fdiv, _java_geometry
 from pypdfbox.text.text_position import TextPosition
+from pypdfbox.util.matrix import f32
 
 
 def _reference_drop(positions):
-    """Verbatim pre-fix O(n^2) linear-scan suppressor (the oracle)."""
+    """Linear-scan reconstruction of upstream's suppressor (the oracle): the
+    window is ``getWidth() / length / 3`` around upstream's ``getX()`` /
+    ``getY()`` (upper-left frame), half-open, in float."""
     result = []
     seen: dict = {}
     for pos in positions:
@@ -29,19 +32,16 @@ def _reference_drop(positions):
             result.append(pos)
             continue
         text = pos.text
-        char_count = len(text)
-        if pos.width > 0.0:
-            tol = math.inf if char_count == 0 else pos.width / char_count / 3.0
-        elif char_count == 0:
-            tol = math.nan
-        else:
-            tol = max(pos.font_size, 0.1) * 0.25
+        geometry = _java_geometry(pos)
+        tol = _fdiv(_fdiv(geometry.width, float(len(text))), 3.0)
+        if math.isfinite(tol):
+            tol = f32(tol)
         same_text = seen.setdefault(text, {})
         suppress = False
-        x_lo = pos.x - tol
-        x_hi = pos.x + tol
-        y_lo = pos.y - tol
-        y_hi = pos.y + tol
+        x_lo = f32(geometry.x - tol)
+        x_hi = f32(geometry.x + tol)
+        y_lo = f32(geometry.y - tol)
+        y_hi = f32(geometry.y + tol)
         for x_key, y_values in same_text.items():
             if x_lo <= x_key < x_hi and any(
                 y_lo <= y_val < y_hi for y_val in y_values
@@ -49,7 +49,7 @@ def _reference_drop(positions):
                 suppress = True
                 break
         if not suppress:
-            same_text.setdefault(pos.x, []).append(pos.y)
+            same_text.setdefault(geometry.x, []).append(geometry.y)
             result.append(pos)
     return result
 
@@ -100,20 +100,24 @@ def test_grid_matches_linear_scan_randomized():
 
 def test_grid_near_tolerance_boundary():
     # tol = width/len/3 = 6/1/3 = 2.0 exactly. Probe origins at exactly
-    # +/- tol (half-open: -tol matches, +tol does not) and just inside/outside.
+    # +/- tol and just inside/outside.
     base = _pos(100.0, 100.0)
     tol = 2.0
-    eps = 1e-9
+    eps = 1e-3
     cases = [
-        _pos(100.0 - tol, 100.0),       # exactly x_lo -> inclusive -> match
-        _pos(100.0 + tol, 100.0),       # exactly x_hi -> exclusive -> no match
-        _pos(100.0 + tol - eps, 100.0),  # just inside high edge -> match
-        _pos(100.0, 100.0 - tol),       # exactly y_lo -> inclusive
-        _pos(100.0, 100.0 + tol),       # exactly y_hi -> exclusive
-        _pos(100.0 - tol, 100.0 - tol),  # corner, both inclusive
-        _pos(100.0 + tol, 100.0 + tol),  # corner, both exclusive
+        # The window is centred on the later (probe) glyph: [v - tol, v + tol).
+        (_pos(100.0 + tol, 100.0), True),  # base sits on the inclusive low edge
+        (_pos(100.0 - tol, 100.0), False),  # base sits on the exclusive high edge
+        (_pos(100.0 + tol - eps, 100.0), True),  # just inside
+        # Upstream's y axis points down, so user-space y flips the edges.
+        (_pos(100.0, 100.0 - tol), True),
+        (_pos(100.0, 100.0 + tol), False),
+        (_pos(100.0 + tol, 100.0 - tol), True),  # both inclusive
+        (_pos(100.0 - tol, 100.0 + tol), False),  # both exclusive
     ]
-    for probe in cases:
+    for probe, suppressed in cases:
+        got = PDFTextStripper._drop_overlapping_duplicates([base, probe])
+        assert (len(got) == 1) is suppressed
         _assert_same_decision([base, probe])
         # Also the reverse order (probe recorded first).
         _assert_same_decision([probe, base])
@@ -150,13 +154,16 @@ def test_grid_empty_text_and_zero_width_edges():
     _assert_same_decision(positions)
 
 
-def test_grid_zero_width_nonempty_fallback_tol():
-    # width<=0, non-empty text -> lite fallback tol = max(font_size,0.1)*0.25.
+def test_grid_zero_width_nonempty_never_suppressed():
+    # width 0, non-empty text -> tol 0: upstream's subMap(x, x) is empty, so
+    # nothing matches, not even an exact re-paint.
     positions = [
         _pos(50.0, 50.0, text="o", width=0.0, font_size=12.0),
-        _pos(51.0, 50.0, text="o", width=0.0, font_size=12.0),   # within 3.0
-        _pos(70.0, 50.0, text="o", width=0.0, font_size=12.0),   # outside
+        _pos(50.0, 50.0, text="o", width=0.0, font_size=12.0),
+        _pos(51.0, 50.0, text="o", width=0.0, font_size=12.0),
     ]
+    got = PDFTextStripper._drop_overlapping_duplicates(list(positions))
+    assert len(got) == 3
     _assert_same_decision(positions)
 
 

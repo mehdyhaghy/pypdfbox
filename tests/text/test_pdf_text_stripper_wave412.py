@@ -51,10 +51,12 @@ def test_tc_and_tw_state_is_visible_on_text_positions() -> None:
     )
 
     stripper = PDFTextStripper()
-    assert stripper.get_text(doc) == "spaced\n"
+    # 2.5pt character spacing exceeds the word-gap threshold of the 12pt
+    # Helvetica fallback (verified against PDFBox 3.0.8).
+    assert stripper.get_text(doc) == "s p a c e d\n"
 
     pos = stripper.get_characters_by_article()[0][0]
-    assert pos.text == "spaced"
+    assert pos.text == "s"
     assert pos.char_spacing == 2.5
     assert pos.word_spacing == 7.5
 
@@ -76,9 +78,10 @@ def test_td_updates_line_origin_for_t_star_after_multiple_moves() -> None:
     assert stripper.get_text(doc) == "one two\nthree\n"
 
     positions = stripper.get_characters_by_article()[0]
-    assert [p.text for p in positions] == ["one", "two", "three"]
-    assert positions[2].x == 150.0
-    assert positions[2].y == 690.0
+    assert "".join(p.text for p in positions) == "onetwothree"
+    # "three" starts at the moved line origin.
+    assert positions[6].x == 150.0
+    assert positions[6].y == 690.0
 
 
 def test_write_text_restores_output_and_current_page_when_page_hook_raises() -> None:
@@ -158,4 +161,4 @@ def test_custom_write_string_can_suppress_text_but_still_process_positions() -> 
             super().write_string(text, text_positions, lambda _piece: None)
 
     assert SuppressingStripper().get_text(doc) == "\n"
-    assert processed == ["visible"]
+    assert processed == list("visible")

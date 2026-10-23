@@ -242,8 +242,19 @@ def test_write_paragraph_separator_writes_end_then_start() -> None:
     s = PDFTextStripper()
     s.set_paragraph_start("[P]")
     s.set_paragraph_end("[/P]")
+    # Inside an open paragraph the separator is end then start.
+    s.write_paragraph_start(chunks.append)
+    chunks.clear()
     s.write_paragraph_separator(chunks.append)
     assert chunks == ["[/P]", "[P]"]
+    # Upstream's ``inParagraph`` guard: ending a paragraph that was never
+    # started opens it first.
+    fresh: list[str] = []
+    t = PDFTextStripper()
+    t.set_paragraph_start("[P]")
+    t.set_paragraph_end("[/P]")
+    t.write_paragraph_separator(fresh.append)
+    assert fresh == ["[P]", "[/P]", "[P]"]
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,9 @@
+import contextlib
 import re
 from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName, COSStream
+from pypdfbox.util.matrix import f32
 
 from .standard14_fonts import Standard14Fonts
 
@@ -253,87 +255,56 @@ class PDFont:
     def get_average_font_width(self) -> float:
         """Return the average glyph advance for this font in thousandths of an em.
 
-        Computed as the arithmetic mean of the positive entries in
-        ``/Widths``; zero-width entries (typically ``.notdef`` slots) are
-        skipped to avoid dragging the mean toward zero. Returns ``0.0``
-        when the font has no usable width entries. Memoised after first
-        call, mirroring upstream ``PDFont.getAverageFontWidth``.
+        Mirrors upstream ``PDFont.getAverageFontWidth``: the mean of the
+        positive numbers in ``/Widths``, summed in float, or ``0.0`` when
+        there are none. Memoised after the first call.
         """
         if self._avg_font_width_cached is not None:
             return self._avg_font_width_cached
-        widths = self.get_widths()
-        non_zero = [w for w in widths if w is not None and w > 0.0]
-        if not non_zero:
-            self._avg_font_width_cached = 0.0
-        else:
-            self._avg_font_width_cached = sum(non_zero) / len(non_zero)
+        total = 0.0
+        count = 0
+        for width in self.get_widths():
+            if width is not None and width > 0.0:
+                total = f32(total + f32(width))
+                count += 1
+        self._avg_font_width_cached = f32(total / count) if total > 0 else 0.0
         return self._avg_font_width_cached
 
     def get_space_width(self) -> float:
-        """Return the advance width of the space glyph (character code 32).
+        """Return the advance width of the space glyph, in glyph units.
 
-        Mirrors upstream ``PDFont.getSpaceWidth``: tries the ``/ToUnicode``
-        CMap's recorded space mapping first, then ``getStringWidth(" ")``
-        (so encoded fonts get the right code), then a direct ``/Widths``
-        lookup at offset ``32 - /FirstChar``, then ``getWidthFromFont(32)``,
-        finally falling back to ``getAverageFontWidth`` and 250 as the
-        ultimate default. Cached on first call.
+        Mirrors upstream ``PDFont.getSpaceWidth``: with a ``/ToUnicode``
+        CMap, the width of the code it maps to a space (or nothing yet when
+        it maps none); without one, ``getStringWidth(" ")`` (the encoding's
+        space code, PDFBOX-5920), then ``getWidth(32)``. A result that is
+        still not positive falls back to the font program's width for code
+        32 and then to the average glyph width; any failure gives 250.
+        Cached on first call.
         """
         if self._font_width_of_space is not None:
             return self._font_width_of_space
-        # 1) Use /ToUnicode CMap space mapping when present.
+        width = -1.0
         try:
-            if self.has_to_unicode():
-                cmap = self.get_to_unicode_cmap()
-                if cmap is not None:
-                    space_mapping = cmap.get_space_mapping()
-                    if space_mapping > -1:
-                        try:
-                            width = self.get_width(space_mapping)
-                            if width > 0:
-                                self._font_width_of_space = width
-                                return width
-                        except (NotImplementedError, OSError, ValueError):
-                            pass
-            # 2) Try get_string_width(" ") so encoded fonts hit the right code.
-            try:
-                width = self.get_string_width(" ")
-                if width > 0:
-                    self._font_width_of_space = width
-                    return width
-            except (NotImplementedError, OSError, ValueError):
-                pass
-            # 3) Direct /Widths lookup at code 32.
-            widths = self.get_widths()
-            if widths:
-                first = self.get_first_char()
-                if first < 0:
-                    first = 0
-                index = 32 - first
-                if 0 <= index < len(widths):
-                    width = widths[index]
-                    if width is not None and width > 0.0:
-                        self._font_width_of_space = width
-                        return width
-            # 4) Ask the embedded font program directly.
-            try:
-                width = self.get_width_from_font(32)
-                if width > 0:
-                    self._font_width_of_space = width
-                    return width
-            except (NotImplementedError, OSError, ValueError):
-                pass
-            # 5) Average font width fallback.
-            avg = self.get_average_font_width()
-            if avg > 0:
-                self._font_width_of_space = avg
-                return avg
+            cmap = self.get_to_unicode_cmap() if self.has_to_unicode() else None
+            if cmap is not None:
+                space_mapping = cmap.get_space_mapping()
+                if space_mapping > -1:
+                    width = float(self.get_width(space_mapping))
+            else:
+                # Upstream tolerates a missing space / unsupported encoding.
+                with contextlib.suppress(NotImplementedError, ValueError):
+                    width = float(self.get_string_width(" "))
+                if width <= 0:
+                    width = float(self.get_width(32))
+            if width <= 0:
+                width = float(self.get_width_from_font(32))
+                if width <= 0:
+                    width = float(self.get_average_font_width())
         except Exception:
-            # Mirrors upstream's broad catch — never let space-width
-            # calculation propagate; fall through to the 250 default.
-            pass
-        self._font_width_of_space = _DEFAULT_SPACE_WIDTH
-        return _DEFAULT_SPACE_WIDTH
+            # Upstream catches everything here and uses 250.
+            width = _DEFAULT_SPACE_WIDTH
+        self._font_width_of_space = width
+        return width
 
     # ---------- font matrix ----------
 

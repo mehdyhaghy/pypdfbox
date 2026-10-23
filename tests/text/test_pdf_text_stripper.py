@@ -852,6 +852,8 @@ def test_write_paragraph_separator_emits_end_then_start() -> None:
     s = PDFTextStripper()
     s.set_paragraph_start("<P>")
     s.set_paragraph_end("</P>")
+    s.write_paragraph_start(chunks.append)
+    chunks.clear()
     s.write_paragraph_separator(chunks.append)
     assert chunks == ["</P>", "<P>"]
 

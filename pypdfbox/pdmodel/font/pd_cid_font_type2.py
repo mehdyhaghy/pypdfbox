@@ -618,32 +618,6 @@ class PDCIDFontType2(PDCIDFont):
             return 0.0
         return float(y_max - y_min) * 1000.0 / float(units_per_em)
 
-    def get_average_font_width(self) -> float:
-        """Mean glyph advance across the embedded program (1/1000 em).
-
-        Mirrors upstream ``PDCIDFontType2.getAverageFontWidth``. Walks
-        the embedded ``hmtx`` table and averages the *positive* advance
-        widths (zero-width slots, typically ``.notdef`` and combining
-        marks, are excluded so they don't drag the mean toward zero).
-        Falls back to the parent's ``/W``-based average — and ultimately
-        to ``/DW`` — when no embedded program is available.
-        """
-        ttf = self.get_true_type_font()
-        if ttf is None:
-            return super().get_average_font_width()
-        units_per_em = ttf.get_units_per_em()
-        if units_per_em <= 0:
-            return super().get_average_font_width()
-        try:
-            advances = ttf.advance_widths
-        except Exception:
-            return super().get_average_font_width()
-        positive = [w for w in advances if w > 0]
-        if not positive:
-            return super().get_average_font_width()
-        mean_units = sum(positive) / float(len(positive))
-        return mean_units * 1000.0 / float(units_per_em)
-
     def get_font_matrix(self) -> list[float]:
         """Return the 6-element font matrix mapping glyph space to text
         space (``[1/upem 0 0 1/upem 0 0]`` for TrueType).

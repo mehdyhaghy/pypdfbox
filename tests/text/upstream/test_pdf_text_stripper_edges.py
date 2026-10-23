@@ -262,8 +262,7 @@ def test_write_hooks_override_emission() -> None:
 
 def test_process_text_position_called_for_every_emitted_run() -> None:
     """Upstream's ``PDFStreamEngine.processTextPosition`` fires once
-    per glyph; the lite stripper aggregates per-run, so this confirms
-    the hook fires once per emitted run rather than zero times."""
+    per glyph."""
 
     captured: list[str] = []
 
@@ -282,7 +281,7 @@ def test_process_text_position_called_for_every_emitted_run() -> None:
         ),
     )
     CountingStripper().get_text(doc)
-    assert captured == ["alpha", "beta"]
+    assert captured == list("alpha") + list("beta")
 
 
 # ---------------------------------------------------------------------------

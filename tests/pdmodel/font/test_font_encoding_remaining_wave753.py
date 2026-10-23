@@ -71,13 +71,17 @@ def test_encoding_named_cos_object_returns_pdf_name() -> None:
     assert cos_object == COSName.get_pdf_name("WaveEncoding")
 
 
-def test_pdfont_space_width_clamps_negative_first_char_to_zero() -> None:
+def test_pdfont_space_width_does_not_clamp_negative_first_char() -> None:
+    # Upstream ``getWidth(32)`` needs 32 within /FirstChar../LastChar (no
+    # LastChar here) and does not clamp a negative /FirstChar, so the
+    # /Widths entry is not used; this bare font has no program to ask
+    # either, which upstream would answer with the 250 fallback.
     font = _BarePDFont()
     cos = font.get_cos_object()
     cos.set_int(COSName.get_pdf_name("FirstChar"), -10)
     cos.set_item(COSName.get_pdf_name("Widths"), COSArray([COSInteger.get(333)] * 33))
 
-    assert font.get_space_width() == 333.0
+    assert font.get_space_width() == 250.0
 
 
 def test_pdfont_to_unicode_stream_parse_errors_cache_none(

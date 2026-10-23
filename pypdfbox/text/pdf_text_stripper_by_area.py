@@ -229,13 +229,7 @@ class PDFTextStripperByArea(PDFTextStripper):
             self._page_rotation = int(page.get_rotation()) % 360
         except Exception:  # defensive: bad /Rotate
             self._page_rotation = 0
-        try:
-            crop = page.get_crop_box()
-            self._page_width = float(crop.get_width())
-            self._page_height = float(crop.get_height())
-        except Exception:  # defensive: missing/odd CropBox
-            self._page_width = 0.0
-            self._page_height = 0.0
+        self._capture_crop_box(page)
         self._cmap_cache = {}
         self._font_cache = {}
         self._active_cmap = None
@@ -361,26 +355,15 @@ class PDFTextStripperByArea(PDFTextStripper):
         """
         if not self._binning_active:
             return
-        # Upstream's ``PDFTextStripper`` emits one ``TextPosition`` per glyph,
-        # so ``PDFTextStripperByArea.processTextPosition`` tests each glyph's
-        # own origin against every region's ``Rectangle2D`` — a single
-        # show-text run that straddles a region boundary is split per glyph
-        # across the regions it crosses. pypdfbox's lite stripper emits one
-        # ``TextPosition`` per *run* (see ``PDFTextStripper._emit``), so binning
-        # the run by its start origin alone would route the whole run into the
-        # region containing its first glyph and drop the tail glyphs that
-        # actually fall in a neighbouring region. To match upstream's per-glyph
-        # routing we split the run here: each glyph ``i`` of an ``n``-character
-        # run is placed at ``x + (width / n) * i`` (the lite stripper models a
-        # run's advance as a uniform ``width / n`` per glyph — see the
-        # monospace-average ``run_width`` in ``_emit``), and that per-glyph
-        # origin is what gets tested against each region. A glyph routed into a
-        # region contributes its single character to that region's bin via a
-        # one-character ``TextPosition`` so the formatter reassembles the
-        # captured slice in order.
+        # Upstream tests each glyph's own origin against every region's
+        # ``Rectangle2D``. The stripper emits one ``TextPosition`` per glyph
+        # too (a ligature glyph keeps its multi-character unicode and is
+        # routed as a whole); only a hand-built multi-character run passed in
+        # directly is split into one-character positions stepped by its
+        # individual widths (or evenly by its width).
         run_text = text.get_unicode()
         n = len(run_text)
-        if n <= 1:
+        if n <= 1 or text.device_x is not None:
             self._bin_glyph(text, text.get_x(), text.get_y())
             return
         base_x = text.get_x()

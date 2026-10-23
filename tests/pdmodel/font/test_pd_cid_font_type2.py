@@ -197,15 +197,17 @@ def test_get_height_falls_back_to_w2_when_no_program() -> None:
 # ---------- get_average_font_width ----------
 
 
-def test_get_average_font_width_skips_zero_advances() -> None:
+def test_get_average_font_width_ignores_embedded_advances() -> None:
+    # Upstream PDCIDFontType2 inherits PDCIDFont's /W mean (here no /W, so
+    # /DW = 1000); the embedded program's advances are not consulted.
     stub = _StubTTF(
         units_per_em=1000,
-        advance_widths=[0, 500, 0, 700, 1000],  # mean of {500, 700, 1000}
+        advance_widths=[0, 500, 0, 700, 1000],
         glyph_order=[".notdef", "a", "b", "c", "d"],
         glyphs={},
     )
     font = _make_font_with_stub_ttf(stub)
-    assert font.get_average_font_width() == pytest.approx((500 + 700 + 1000) / 3.0)
+    assert font.get_average_font_width() == pytest.approx(1000.0)
 
 
 def test_get_average_font_width_falls_back_to_dw_when_no_program() -> None:

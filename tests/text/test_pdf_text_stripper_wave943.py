@@ -98,4 +98,6 @@ def test_wave943_bead_buckets_concatenate_with_no_default_separator() -> None:
     stripper, first, residual, second = _beaded_stripper()
     # Slot order is [outside](slot 0), [first](slot 1), [second](slot 3);
     # default article markers are empty, so the three buckets concatenate.
-    assert stripper._format_positions([first, residual, second]) == "outsidefirstsecond"
+    # The line state spans articles, so the gap from the end of ``first``
+    # (x=5, no width) to ``second`` (x=25) is an ordinary word break.
+    assert stripper._format_positions([first, residual, second]) == "outsidefirst second"

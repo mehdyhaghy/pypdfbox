@@ -122,13 +122,14 @@ def test_get_average_font_width_falls_back_to_dw_when_no_w() -> None:
 
 
 def test_get_average_font_width_default_when_w_and_dw_absent() -> None:
-    font = PDCIDFontType0()
+    # PDCIDFont's mean (PDCIDFontType2 inherits it; Type0 returns 500).
+    font = PDCIDFontType2()
     # /DW absent -> 1000; /W absent -> empty parsed table -> falls back to /DW.
     assert font.get_average_font_width() == 1000.0
 
 
 def test_get_average_font_width_arithmetic_mean_of_w() -> None:
-    font = PDCIDFontType0()
+    font = PDCIDFontType2()
     # /W [1 3 600] -> CIDs 1..3 each 600 -> mean = 600.
     font.set_w(_w_range(1, 3, 600))
     assert font.get_average_font_width() == 600.0

@@ -217,8 +217,8 @@ def test_write_string_override_can_transform_text() -> None:
 
 
 def test_write_string_receives_positions_for_run() -> None:
-    """``write_string`` should be passed a list with a ``TextPosition``
-    for every run it's asked to write."""
+    """``write_string`` is passed the ``TextPosition`` of every glyph of
+    the word it is asked to write."""
 
     seen: list[list[TextPosition]] = []
 
@@ -233,11 +233,10 @@ def test_write_string_receives_positions_for_run() -> None:
         b"BT /F0 12 Tf 100 700 Td (foo) Tj 200 0 Td (bar) Tj ET",
     )
     CapturingStripper().get_text(doc)
-    # Two emitted runs: "foo" and "bar".
+    # Upstream ``writeLine``: one call per word, with that word's glyphs.
     assert len(seen) == 2
-    assert all(len(group) == 1 for group in seen)
-    assert seen[0][0].text == "foo"
-    assert seen[1][0].text == "bar"
+    assert [p.text for p in seen[0]] == ["f", "o", "o"]
+    assert [p.text for p in seen[1]] == ["b", "a", "r"]
 
 
 def test_write_word_separator_override_replaces_space() -> None:
@@ -338,7 +337,8 @@ def test_process_text_position_invoked_for_each_run() -> None:
         b"BT /F0 12 Tf 100 700 Td (foo) Tj 200 0 Td (bar) Tj ET",
     )
     CollectingStripper().get_text(doc)
-    assert [p.text for p in seen] == ["foo", "bar"]
+    # One position per glyph, as upstream emits them.
+    assert [p.text for p in seen] == ["f", "o", "o", "b", "a", "r"]
 
 
 # ---------------------------------------------------------------------------

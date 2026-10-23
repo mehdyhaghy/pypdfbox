@@ -3,13 +3,10 @@
 Mirrors ``org.apache.pdfbox.util.IterativeMergeSort`` (PDFBox 3.0,
 ``pdfbox/src/main/java/org/apache/pdfbox/util/IterativeMergeSort.java``).
 
-Python's built-in ``list.sort`` is Timsort (stable, O(n log n)). We retain
-the class so callers that reach for ``IterativeMergeSort.sort(list, cmp)``
-still find it, but delegate to ``functools.cmp_to_key`` for the
-comparator-driven case.
+The sort follows upstream's comparison sequence exactly, so it gives the
+same order as PDFBox even for a comparator that is not transitive.
 """
 
-import functools
 from collections.abc import Callable, MutableSequence
 from typing import TypeVar
 
@@ -53,17 +50,47 @@ class IterativeMergeSort:
 
     @staticmethod
     def sort(items: MutableSequence[_T], cmp: Callable[[_T, _T], int]) -> None:
-        """In-place sort of ``items`` using comparator ``cmp``.
+        """In-place bottom-up merge sort of ``items`` using comparator ``cmp``.
 
-        Java's ``Comparator.compare(a, b)`` returns negative/zero/positive;
-        Python's ``cmp_to_key`` follows the same convention.
+        Port of upstream ``IterativeMergeSort.sort``: blocks of size 1, 2,
+        4, ... are merged pairwise, taking from the right block only when
+        ``cmp(right, left) < 0``. The exact comparison sequence matters for
+        comparators that are not transitive (``TextPositionComparator``),
+        which is why upstream uses it as the fallback when ``List.sort``
+        rejects such a comparator.
         """
-        if len(items) < 2:
+        n = len(items)
+        if n < 2:
             return
-        key = functools.cmp_to_key(cmp)
-        sorted_items = sorted(items, key=key)
-        for i, value in enumerate(sorted_items):
-            items[i] = value
+        arr = list(items)
+        aux = list(arr)
+        block_size = 1
+        while block_size < n:
+            start = 0
+            while start < n:
+                mid = start + block_size
+                if mid < n:
+                    to = min(start + (block_size << 1), n)
+                    i = start
+                    j = mid
+                    for k in range(start, to):
+                        if i == mid:
+                            aux[k] = arr[j]
+                            j += 1
+                        elif j == to:
+                            aux[k] = arr[i]
+                            i += 1
+                        elif cmp(arr[j], arr[i]) < 0:
+                            aux[k] = arr[j]
+                            j += 1
+                        else:
+                            aux[k] = arr[i]
+                            i += 1
+                    arr[start:to] = aux[start:to]
+                start += block_size << 1
+            block_size <<= 1
+        for index, value in enumerate(arr):
+            items[index] = value
 
 
 __all__ = ["IterativeMergeSort"]

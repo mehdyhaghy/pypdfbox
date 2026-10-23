@@ -40,8 +40,10 @@ from pypdfbox.cos import (
 
 
 def test_pd_font_space_width_cmap_returns_no_space_mapping() -> None:
-    """Closes 264->273: cmap is not None but ``get_space_mapping`` returns
-    -1 (font has no space recorded), falling through to fallback 2."""
+    """cmap is not None but ``get_space_mapping`` returns -1 (font has no
+    space recorded): upstream skips ``getStringWidth`` (only tried without a
+    ToUnicode CMap) and, with no width from the font program, uses the
+    average font width."""
     from pypdfbox.pdmodel.font.pd_font import PDFont
 
     class _CmapNoSpace:
@@ -130,8 +132,8 @@ def test_pd_font_space_width_cmap_returns_no_space_mapping() -> None:
 
     f = _Stub()
     width = f.get_space_width()
-    # Fallback 2 (get_string_width) returned 555.
-    assert width == 555.0
+    # get_string_width (555) is not consulted; the average (250) is used.
+    assert width == 250.0
 
 
 def test_pd_font_space_width_cmap_returns_space_mapping_but_zero_width() -> None:

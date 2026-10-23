@@ -165,7 +165,8 @@ class _FakeCharString:
 def test_type0_program_metrics_matrix_bbox_paths_and_charstrings() -> None:
     font = _type0_with_program(_FakeCFF())
 
-    assert font.get_average_font_width() == 600.0
+    # Upstream PDCIDFontType0.getAverageFontWidth is the constant 500.
+    assert font.get_average_font_width() == 500.0
     assert font.get_font_matrix() == (0.002, 0.0, 0.0, 0.002, 0.0, 0.0)
     bbox = font.get_bounding_box()
     assert bbox is not None
@@ -188,7 +189,7 @@ def test_type0_handles_malformed_program_values_and_unsupported_encoding() -> No
     font.set_dw(444)
 
     assert font.get_width_from_font(1) == 0.0
-    assert font.get_average_font_width() == 444.0
+    assert font.get_average_font_width() == 500.0
     assert font.get_font_matrix() == (0.001, 0.0, 0.0, 0.001, 0.0, 0.0)
     assert font.get_bounding_box() is None
     assert font.get_height(2) == 0.0

@@ -565,52 +565,15 @@ class PDCIDFontType0(PDCIDFont):
     def get_average_font_width(self) -> float:  # type: ignore[override]
         """Mean glyph advance for this CID font in 1/1000 em.
 
-        Mirrors upstream ``PDCIDFontType0.getAverageFontWidth`` — routes
-        resolution through :meth:`get_average_character_width`. Upstream
-        caches the result once, but the Python port honours subsequent
-        ``/DW`` setter calls (the underlying cache is reset by the
-        :meth:`set_cff_font` injector and otherwise recomputed cheaply).
+        Mirrors upstream ``PDCIDFontType0.getAverageFontWidth``, which
+        returns its private ``getAverageCharacterWidth`` (the constant
+        ``500``) instead of the ``/W`` mean ``PDCIDFont`` computes.
         """
         return self.get_average_character_width()
 
     def get_average_character_width(self) -> float:
-        """Resolve the mean character advance from the available metadata.
-
-        Mirrors upstream private
-        ``PDCIDFontType0.getAverageCharacterWidth``. Resolution order:
-
-        1. Mean of positive entries in ``/W``.
-        2. CFF Private DICT ``defaultWidthX`` when an embedded CFF
-           program is present (CFF spec §10).
-        3. ``/DW`` default (1000 per spec) — falls through to the
-           hardcoded ``500`` upstream sentinel only when ``/DW`` is the
-           explicit zero a damaged font sometimes reports.
-
-        Exposed under the upstream name (without an underscore prefix)
-        because PDFBox treats it as a protected method; keeping the same
-        surface helps ports of upstream callers find what they expect.
-        We deliberately diverge from upstream's ``PDCIDFontType0`` (which
-        plumbs through to ``PDCIDFont.getAverageFontWidth``) by promoting
-        the CFF default width: it is information actually present in the
-        embedded program and yields a far better answer than the spec's
-        1000-unit default for non-Western non-Latin fonts.
-        """
-        widths = self.get_widths()
-        positive = [w for w in widths.values() if w > 0.0]
-        if positive:
-            return sum(positive) / len(positive)
-        program = self.get_cff_font()
-        if program is not None:
-            default = program.get_default_width_x()
-            if default > 0.0:
-                upem = program.units_per_em
-                if upem > 0:
-                    return default * 1000.0 / upem
-        dw = float(self.get_default_width())
-        # Upstream's ``getAverageCharacterWidth`` hardcodes ``500`` as
-        # the last-resort sentinel ("highly suspect" per the upstream
-        # comment). Surface that only when /DW is itself a useless zero.
-        return dw if dw > 0.0 else 500.0
+        """Upstream ``PDCIDFontType0.getAverageCharacterWidth``: ``500``."""
+        return 500.0
 
     def get_height(self, cid: int) -> float:  # type: ignore[override]
         """Height of the glyph at ``cid`` in *font units*.
