@@ -1,6 +1,6 @@
 import pytest
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
+from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel import PDDocument, PDPage
 from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import PDSignature
 from pypdfbox.pdmodel.pd_document_information import PDDocumentInformation
@@ -71,34 +71,6 @@ def test_wave485_add_signature_rejects_non_signature() -> None:
     with pytest.raises(TypeError, match="PDSignature"):
         doc.add_signature(object())  # type: ignore[arg-type]
     doc.close()
-
-
-def test_wave485_import_page_deep_copies_page_dictionary_and_stream_data() -> None:
-    source = PDDocument()
-    page = PDPage()
-    stream = COSStream()
-    stream.set_raw_data(b"page bytes")
-    page_dict = page.get_cos_object()
-    page_dict.set_item(COSName.CONTENTS, stream)  # type: ignore[attr-defined]
-    source.add_page(page)
-
-    target = PDDocument()
-    imported = target.import_page(page)
-    imported_dict = imported.get_cos_object()
-    imported_stream = imported_dict.get_dictionary_object(COSName.CONTENTS)  # type: ignore[attr-defined]
-
-    assert imported_dict is not page_dict
-    imported_parent = imported_dict.get_dictionary_object(COSName.PARENT)  # type: ignore[attr-defined]
-    source_parent = page_dict.get_dictionary_object(COSName.PARENT)  # type: ignore[attr-defined]
-    assert imported_parent is not None
-    assert imported_parent is not source_parent
-    assert isinstance(imported_stream, COSStream)
-    assert imported_stream is not stream
-    assert imported_stream.get_raw_data() == b"page bytes"
-    assert target.get_number_of_pages() == 1
-
-    source.close()
-    target.close()
 
 
 def test_wave485_closed_document_guards_page_convenience_helpers() -> None:

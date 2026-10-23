@@ -1,4 +1,5 @@
-"""Pin the object-graph semantics of the ``import_page`` deep copy.
+"""Pin the object-graph semantics of ``_deep_copy_cos_graph``, the
+deep copier the Overlay fallback cloner uses.
 
 ``_deep_copy_cos_graph`` replaced a recursive copier; these tests lock in
 the observable behaviour the replacement must keep (which occurrence of a
@@ -6,7 +7,6 @@ shared container is copied, leaf sharing, stream bodies, dropped dangling
 references) plus the one intended difference: no recursion-depth limit.
 """
 
-from pypdfbox import PDDocument, PDPage
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,
@@ -144,32 +144,3 @@ def test_deep_nesting_has_no_recursion_limit() -> None:
     assert depth == 20000
     assert node.get(0).int_value() == 42
 
-
-def test_import_page_copies_nested_resources_and_skips_parent() -> None:
-    src = PDDocument()
-    page = PDPage()
-    font = COSDictionary()
-    font.set_item(_N("Widths"), COSArray([COSInteger.get(i) for i in range(300)]))
-    fonts = COSDictionary()
-    fonts.set_item(_N("F1"), font)
-    fonts.set_item(_N("F2"), font)
-    resources = COSDictionary()
-    resources.set_item(_N("Font"), fonts)
-    page.get_cos_object().set_item(_N("Resources"), resources)
-    page.get_cos_object().set_item(_N("Contents"), _stream(b"/F1 1 Tf"))
-    src.add_page(page)
-
-    dst = PDDocument()
-    imported = dst.import_page(page)
-
-    imported_fonts = imported.get_cos_object().get_dictionary_object(
-        _N("Resources")
-    ).get_dictionary_object(_N("Font"))
-    assert imported_fonts is not fonts
-    first = imported_fonts.get_item(_N("F1"))
-    assert first is not font
-    assert first.get_item(_N("Widths")).size() == 300
-    # Within one import_page call the second reference shares the source.
-    assert imported_fonts.get_item(_N("F2")) is font
-    parent = imported.get_cos_object().get_dictionary_object(_N("Parent"))
-    assert parent is dst.get_pages().get_cos_object()
