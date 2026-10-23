@@ -24,7 +24,7 @@ from pathlib import Path
 from pypdfbox import PDDocument, PDPage, PDRectangle
 from pypdfbox.cos import COSName
 from pypdfbox.pdfparser import PDFStreamParser
-from pypdfbox.pdmodel.font import PDFontFactory, Standard14Fonts
+from pypdfbox.pdmodel.font import PDType1Font, Standard14Fonts
 from pypdfbox.pdmodel.interactive.annotation import PDAppearanceStream
 from pypdfbox.pdmodel.interactive.form import PDAcroForm, PDTextField
 from pypdfbox.pdmodel.pd_resources import PDResources
@@ -103,10 +103,7 @@ def test_tiny_horizontal_field_with_0_font_size() -> None:
         page = PDPage(PDRectangle.A4)
         document.add_page(page)
 
-        # Upstream: ``new PDType1Font(Standard14Fonts.FontName.HELVETICA)``.
-        # pypdfbox's PDType1Font takes a COSDictionary; the Standard14-name
-        # constructor lives on ``PDFontFactory.create_default_font``.
-        font = PDFontFactory.create_default_font(Standard14Fonts.FontName.HELVETICA.value)
+        font = PDType1Font(Standard14Fonts.FontName.HELVETICA)
         resources = PDResources()
         resources.put(COSName.get_pdf_name("Helv"), font)
         acro_form = PDAcroForm(document)

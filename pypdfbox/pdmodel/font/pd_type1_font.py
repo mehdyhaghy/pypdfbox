@@ -16,6 +16,10 @@ from .standard14_fonts import Standard14Fonts
 # ``COSName.BASE_FONT`` and avoids re-allocating the name on every
 # :meth:`PDType1Font.get_name` call.
 _BASE_FONT_KEY = COSName.get_pdf_name("BaseFont")
+_TYPE_KEY = COSName.get_pdf_name("Type")
+_SUBTYPE_KEY = COSName.get_pdf_name("Subtype")
+_FONT_NAME = COSName.get_pdf_name("Font")
+_TYPE1_NAME = COSName.get_pdf_name("Type1")
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_document import PDDocument
@@ -48,6 +52,44 @@ _ALT_NAMES: dict[str, str] = {
 # stream contains the entire PFB envelope (header + segments) rather
 # than the bare two binary segments specified by PDF 32000-1 §9.9.
 _PFB_START_MARKER: int = 0x80
+
+
+class _EncodeFailure(Exception):
+    """Carries an exception raised while resolving a codepoint out of
+    ``str.translate``, which would otherwise swallow a ``LookupError`` and
+    pass the character through unchanged."""
+
+    def __init__(self, error: BaseException) -> None:
+        super().__init__()
+        self.error = error
+
+
+class _EncodeTable(dict):
+    """``codepoint -> Latin-1 str`` translate table for
+    :meth:`PDType1Font.encode`, backed by the font's ``_codepoint_encoding``
+    bytes cache. Misses are resolved (and cached in both maps) on demand."""
+
+    __slots__ = ("font", "source")
+
+    def __init__(self, font: PDType1Font, source: dict[int, bytes]) -> None:
+        super().__init__()
+        self.font = font
+        self.source = source
+
+    def __missing__(self, codepoint: int) -> str:
+        piece = self.source.get(codepoint)
+        if piece is None:
+            try:
+                piece = bytes(self.font._encode_codepoint_uncached(chr(codepoint)))
+            except LookupError as exc:
+                raise _EncodeFailure(exc) from exc
+            # Type-1 single-byte encodings yield one byte per codepoint
+            # (PDF 32000-1 §9.6.6.4); mirrors upstream's
+            # ``new byte[] { code }`` cache shape.
+            self.source[codepoint] = piece
+        value = piece.decode("latin-1")
+        self[codepoint] = value
+        return value
 
 
 class PDType1Font(PDSimpleFont):
@@ -98,7 +140,25 @@ class PDType1Font(PDSimpleFont):
     # for Helvetica.
     SUBSTITUTE_NOTDEF_WIDTH: float = 250.0
 
-    def __init__(self, font_dict: COSDictionary | None = None) -> None:
+    def __init__(
+        self, font_dict: COSDictionary | Standard14Fonts.FontName | None = None
+    ) -> None:
+        """Wrap a Type 1 font dictionary, or build a non-embedded Standard 14
+        font from a :class:`Standard14Fonts.FontName`.
+
+        ``PDType1Font(Standard14Fonts.FontName.HELVETICA)`` mirrors upstream's
+        ``PDType1Font(FontName baseFont)`` constructor; see
+        :meth:`standard14` for the dictionary and encoding it produces.
+        """
+        standard14_name: Standard14Fonts.FontName | None = None
+        if isinstance(font_dict, Standard14Fonts.FontName):
+            standard14_name = font_dict
+            # Upstream key order: PDFont(FontName) writes /Type /Font first,
+            # then the PDType1Font constructor adds /Subtype and /BaseFont.
+            font_dict = COSDictionary()
+            font_dict.set_item(_TYPE_KEY, _FONT_NAME)
+            font_dict.set_item(_SUBTYPE_KEY, _TYPE1_NAME)
+            font_dict.set_name(_BASE_FONT_KEY, standard14_name.get_name())
         super().__init__(font_dict)
         # Lazily-loaded embedded Type 1 program. ``None`` means
         # "not yet attempted", ``False`` means "tried, no /FontFile or
@@ -109,6 +169,26 @@ class PDType1Font(PDSimpleFont):
         # / :meth:`get_font_matrix`.
         self._bbox_cache: PDRectangle | None = None
         self._font_matrix_cache: list[float] | None = None
+        # ``str.translate`` view of ``_codepoint_encoding`` used by
+        # :meth:`encode`; built on first use.
+        self._encode_table: _EncodeTable | None = None
+        if standard14_name is not None:
+            self._init_standard14_encoding(standard14_name)
+
+    def _init_standard14_encoding(
+        self, base_font: Standard14Fonts.FontName
+    ) -> None:
+        """Encoding / glyph-list setup of upstream's
+        ``PDType1Font(FontName)`` (and ``PDSimpleFont(FontName)``)."""
+        if base_font is Standard14Fonts.FontName.ZAPF_DINGBATS:
+            self.set_encoding(ZapfDingbatsEncoding.INSTANCE)
+        elif base_font is Standard14Fonts.FontName.SYMBOL:
+            self.set_encoding(SymbolEncoding.INSTANCE)
+        else:
+            # Latin core: WinAnsi, written into the dict as upstream does.
+            # ``read_encoding`` resolves it through the named-encoding path.
+            self._dict.set_item(COSName.ENCODING, COSName.WIN_ANSI_ENCODING)
+        self.assign_glyph_list(base_font.get_name())
 
     @classmethod
     def load(
@@ -162,24 +242,18 @@ class PDType1Font(PDSimpleFont):
         constructor; callers parsing a real PDF font dict use
         ``cls(font_dict)``.
         """
-        from .encoding.symbol_encoding import SymbolEncoding
-        from .encoding.zapf_dingbats_encoding import ZapfDingbatsEncoding
-
         canonical = Standard14Fonts.get_mapped_font_name(base_font) or base_font
+        try:
+            font_name = Standard14Fonts.FontName(canonical)
+        except ValueError:
+            font_name = None
+        if font_name is not None:
+            return cls(font_name)
+        # Not one of the 14 names: keep a bare /Type1 dict for the name.
         font_dict = COSDictionary()
         font_dict.set_name(COSName.get_pdf_name("Subtype"), cls.SUB_TYPE)
         font_dict.set_name(_BASE_FONT_KEY, canonical)
-        font = cls(font_dict)
-        if canonical == "ZapfDingbats":
-            font.set_encoding(ZapfDingbatsEncoding.INSTANCE)
-        elif canonical == "Symbol":
-            font.set_encoding(SymbolEncoding.INSTANCE)
-        else:
-            # Latin core: write the named /Encoding into the dict, exactly
-            # as the upstream constructor does (line 120). ``read_encoding``
-            # then resolves it to WinAnsiEncoding via the named-encoding path.
-            font_dict.set_item(COSName.ENCODING, COSName.WIN_ANSI_ENCODING)
-        return font
+        return cls(font_dict)
 
     def set_encoding(self, encoding: Encoding) -> None:
         """Assign the font's typed encoding in memory, bypassing
@@ -374,21 +448,32 @@ class PDType1Font(PDSimpleFont):
         """
         if not text:
             return b""
-        out = bytearray()
-        for ch in text:
-            unicode_value = ord(ch)
-            cached = self._codepoint_encoding.get(unicode_value)
-            if cached is not None:
-                out.extend(cached)
-                continue
-            piece = super().encode(ch)
-            # Cache the very first byte produced — Type-1 single-byte
-            # encodings always yield exactly one byte per codepoint per
-            # PDF 32000-1 §9.6.6.4. Mirrors upstream's ``new byte[] { code }``
-            # cache shape.
-            self._codepoint_encoding[unicode_value] = bytes(piece)
-            out.extend(piece)
-        return bytes(out)
+        # Bulk path: ``str.translate`` walks the text in C through a
+        # per-instance table mirroring ``_codepoint_encoding`` (each cached
+        # byte string stored as its Latin-1 ``str``), then one Latin-1
+        # encode yields the bytes. Codepoints not cached yet fall into
+        # ``_EncodeTable.__missing__``, which runs the original per-char
+        # resolution and fills both caches, so output, cache contents and
+        # cache order are unchanged.
+        table = self._encode_table
+        cache = self._codepoint_encoding
+        if (
+            table is None
+            or table.source is not cache
+            or table.font is not self
+            or len(table) > len(cache)
+        ):
+            # First use, a copied font, or the cache was replaced / cleared.
+            table = self._encode_table = _EncodeTable(self, cache)
+        try:
+            return text.translate(table).encode("latin-1")
+        except _EncodeFailure as failure:
+            raise failure.error from None
+
+    def _encode_codepoint_uncached(self, ch: str) -> bytes:
+        """Resolve one character through :meth:`PDSimpleFont.encode` (the
+        cache-miss path of :meth:`encode`)."""
+        return super().encode(ch)
 
     # ---------- glyph paths ----------
 

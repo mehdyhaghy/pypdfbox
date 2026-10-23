@@ -25,6 +25,7 @@ from pypdfbox.cos.cos_object import COSObject
 from pypdfbox.cos.cos_object_key import COSObjectKey
 from pypdfbox.cos.cos_stream import COSStream
 from pypdfbox.cos.cos_string import COSString
+from pypdfbox.pdfwriter._name_token import name_token as _name_token
 from pypdfbox.pdfwriter.compress.direct_access_byte_array_output_stream import (
     DirectAccessByteArrayOutputStream,
 )
@@ -36,6 +37,47 @@ if TYPE_CHECKING:
 
 _LOG = logging.getLogger(__name__)
 _SPACE = b" "
+
+
+# Dispatch kinds for :meth:`COSWriterObjectStream.write_object`, resolved
+# once per concrete type with the same ``issubclass`` order as the original
+# ``isinstance`` chain. ``COSBase`` is an ABC, so each *missed* ``isinstance``
+# goes through the slow ``ABCMeta.__instancecheck__``; caching the kind per
+# type keeps the dispatch identical without paying that per value.
+_K_STRING = 0
+_K_FLOAT = 1
+_K_INTEGER = 2
+_K_BOOLEAN = 3
+_K_NAME = 4
+_K_ARRAY = 5
+_K_DICTIONARY = 6
+_K_NULL = 7
+_K_UNKNOWN = 8
+_KIND_ORDER: tuple[tuple[type, int], ...] = (
+    (COSString, _K_STRING),
+    (COSFloat, _K_FLOAT),
+    (COSInteger, _K_INTEGER),
+    (COSBoolean, _K_BOOLEAN),
+    (COSName, _K_NAME),
+    (COSArray, _K_ARRAY),
+    (COSDictionary, _K_DICTIONARY),
+    (COSNull, _K_NULL),
+)
+_KIND_CACHE: dict[type, int] = {}
+# Whether a type is a ``COSObject`` (indirect wrapper), cached per type.
+_IS_COS_OBJECT: dict[type, bool] = {}
+
+
+def _kind_of(tp: type) -> int:
+    kind = _KIND_CACHE.get(tp)
+    if kind is None:
+        kind = _K_UNKNOWN
+        for cls, k in _KIND_ORDER:
+            if issubclass(tp, cls):
+                kind = k
+                break
+        _KIND_CACHE[tp] = kind
+    return kind
 
 
 def _write_pdf(base: COSBase, output: BinaryIO) -> None:
@@ -111,7 +153,11 @@ class COSWriterObjectStream:
         if obj is None:
             return
         base: COSBase
-        if isinstance(obj, COSObject):
+        tp = type(obj)
+        is_cos_object = _IS_COS_OBJECT.get(tp)
+        if is_cos_object is None:
+            is_cos_object = _IS_COS_OBJECT[tp] = issubclass(tp, COSObject)
+        if is_cos_object:
             if not top_level:
                 actual_key = obj.get_key()
                 if actual_key is not None:
@@ -135,21 +181,24 @@ class COSWriterObjectStream:
             self.write_object_reference(output, key)
             return
 
-        if isinstance(base, COSString):
-            self.write_cos_string(output, base)
-        elif isinstance(base, COSFloat):
-            self.write_cos_float(output, base)
-        elif isinstance(base, COSInteger):
-            self.write_cos_integer(output, base)
-        elif isinstance(base, COSBoolean):
-            self.write_cos_boolean(output, base)
-        elif isinstance(base, COSName):
+        kind = _KIND_CACHE.get(type(base))
+        if kind is None:
+            kind = _kind_of(type(base))
+        if kind == _K_NAME:
             self.write_cos_name(output, base)
-        elif isinstance(base, COSArray):
-            self.write_cos_array(output, base)
-        elif isinstance(base, COSDictionary):
+        elif kind == _K_INTEGER:
+            self.write_cos_integer(output, base)
+        elif kind == _K_DICTIONARY:
             self.write_cos_dictionary(output, base)
-        elif isinstance(base, COSNull):
+        elif kind == _K_ARRAY:
+            self.write_cos_array(output, base)
+        elif kind == _K_STRING:
+            self.write_cos_string(output, base)
+        elif kind == _K_FLOAT:
+            self.write_cos_float(output, base)
+        elif kind == _K_BOOLEAN:
+            self.write_cos_boolean(output, base)
+        elif kind == _K_NULL:
             self.write_cos_null(output)
         else:
             raise OSError(f"Error: Unknown type in object stream:{obj}")
@@ -175,6 +224,11 @@ class COSWriterObjectStream:
 
     def write_cos_integer(self, output: BinaryIO, cos_integer: COSInteger) -> None:
         """Emit a ``COSInteger`` token. Mirrors upstream ``writeCOSInteger``."""
+        if type(cos_integer) is COSInteger:
+            # Same bytes as ``COSInteger.write_pdf`` + the separator, in one
+            # write.
+            output.write(b"%d " % cos_integer.value)
+            return
         _write_pdf(cos_integer, output)
         output.write(_SPACE)
 
@@ -189,6 +243,11 @@ class COSWriterObjectStream:
 
     def write_cos_name(self, output: BinaryIO, cos_name: COSName) -> None:
         """Emit a ``COSName`` token. Mirrors upstream ``writeCOSName``."""
+        if type(cos_name) is COSName:
+            # Same bytes as ``COSName.write_pdf`` (shared escaped-token memo)
+            # + the separator, in one write.
+            output.write(_name_token(cos_name.get_bytes()) + _SPACE)
+            return
         _write_pdf(cos_name, output)
         output.write(_SPACE)
 
@@ -224,12 +283,7 @@ class COSWriterObjectStream:
     def write_object_reference(self, output: BinaryIO, ref: COSObjectKey) -> None:
         """Emit an indirect-object reference (``N G R``). Mirrors upstream
         ``writeObjectReference``."""
-        output.write(str(ref.get_number()).encode("iso-8859-1"))
-        output.write(_SPACE)
-        output.write(str(ref.get_generation()).encode("iso-8859-1"))
-        output.write(_SPACE)
-        output.write(b"R")
-        output.write(_SPACE)
+        output.write(b"%d %d R " % (ref.get_number(), ref.get_generation()))
 
     _write_object_reference = write_object_reference
 

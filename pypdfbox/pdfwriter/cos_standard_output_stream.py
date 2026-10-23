@@ -16,6 +16,10 @@ LF: bytes = b"\n"
 EOL: bytes = b"\n"
 
 
+# Pre-built one-byte ``bytes`` objects for :meth:`COSStandardOutputStream.write_byte`.
+_SINGLE_BYTES: tuple[bytes, ...] = tuple(bytes((i,)) for i in range(256))
+
+
 def _require_plain_int(value: object, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise TypeError(f"{name} must be an int")
@@ -65,6 +69,20 @@ class COSStandardOutputStream:
     ) -> None:
         """Write a slice of ``data`` to the underlying sink and update
         ``position`` / ``onNewLine`` based on the **last** byte written."""
+        # Fast path: the writer's hot loop passes whole immutable ``bytes``
+        # with the default offset/length. ``bytes`` cannot change after the
+        # call, so it is handed to the sink as-is (no defensive copy).
+        if (
+            type(data) is bytes
+            and length is None
+            and type(offset) is int
+            and offset == 0
+        ):
+            if data:
+                self._out.write(data)
+                self._position += len(data)
+                self._on_new_line = False
+            return
         if data is None:
             raise TypeError("write requires a bytes-like argument, not None")
         offset = _require_plain_int(offset, "offset")
@@ -102,6 +120,11 @@ class COSStandardOutputStream:
 
     def write_byte(self, value: int) -> None:
         """Write a single byte. ``value`` must be in 0..255."""
+        if type(value) is int and 0 <= value <= 0xFF:
+            self._out.write(_SINGLE_BYTES[value])
+            self._position += 1
+            self._on_new_line = False
+            return
         value = _require_plain_int(value, "byte value")
         if not 0 <= value <= 0xFF:
             raise ValueError("byte value must be in 0..255")
@@ -112,7 +135,8 @@ class COSStandardOutputStream:
     def write_int(self, value: int) -> None:
         """Write the ASCII decimal form of ``value``. Used for object numbers,
         offsets, and similar non-negotiable integer fields."""
-        value = _require_plain_int(value, "integer value")
+        if type(value) is not int:
+            value = _require_plain_int(value, "integer value")
         self.write(str(value).encode("ascii"))
 
     def write_crlf(self) -> None:

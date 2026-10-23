@@ -22,13 +22,13 @@ from pypdfbox.io import RandomAccessWrite
 # CHANGES.md for the deviation note.
 from pypdfbox.pdfparser.pdf_stream_parser import Operator as _ParserOperator
 
+from ._name_token import name_token as _name_token
 from .cos_writer import (
     ARRAY_CLOSE,
     ARRAY_OPEN,
     DICT_CLOSE,
     DICT_OPEN,
     COSWriter,
-    _is_printable_name_byte,
 )
 
 # Public byte constants — mirror upstream ``ContentStreamWriter.SPACE`` /
@@ -258,14 +258,8 @@ class ContentStreamWriter:
     def _write_name(self, name: COSName) -> None:
         """Inline of ``COSName.writePDF`` — emit ``/`` then the name with
         any non-printable byte ``#xx``-escaped (ISO 32000-1 §7.3.5).
-        Mirrors :func:`pypdfbox.pdfwriter.cos_writer._is_printable_name_byte`."""
-        self._write(b"/")
-        for b in name.get_bytes():
-            if _is_printable_name_byte(b):
-                self._write(bytes((b,)))
-            else:
-                self._write(b"#")
-                self._write(f"{b:02X}".encode("ascii"))
+        Delegates to the shared escaped-token memo in ``_name_token``."""
+        self._write(_name_token(name.get_bytes()))
 
     def _write_string(self, s: COSString) -> None:
         """Reuse :meth:`COSWriter.write_string`, which expects something

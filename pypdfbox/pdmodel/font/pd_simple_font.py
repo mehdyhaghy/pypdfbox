@@ -59,15 +59,20 @@ def _glyph_list_for(encoding: Encoding) -> GlyphList:
 
 def _build_unicode_to_code(encoding: Encoding) -> dict[str, int]:
     glyph_list = _glyph_list_for(encoding)
+    name_to_code = encoding.get_name_to_code_map()
     out: dict[str, int] = {}
     # Iterate code -> name (rather than name -> code) so that the *first*
     # code wins when several names map to the same unicode point — this
     # matches the lowest-code-first behaviour expected by writers.
     for code, name in sorted(encoding.get_code_to_name_map().items()):
         unicode = glyph_list.to_unicode(name)
-        if unicode is None:
+        if unicode is None or unicode in out:
             continue
-        out.setdefault(unicode, code)
+        # A glyph name listed at several codes encodes to the code the
+        # encoding's name -> code map holds, as upstream's
+        # ``getNameToCodeMap().get(name)`` does (WinAnsi ``bullet`` is 0x95,
+        # not the 0x7F filler slot).
+        out[unicode] = name_to_code.get(name, code)
     return out
 
 
