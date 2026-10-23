@@ -13,6 +13,8 @@ from .cos_string import COSString
 from .cos_update_state import COSUpdateState
 from .i_cos_visitor import ICOSVisitor
 
+_NULL = COSNull.NULL
+
 
 def _add_to_collection(collection: Collection[Any], item: Any) -> None:
     """Append ``item`` to ``collection`` using whichever mutator is available
@@ -58,24 +60,35 @@ class COSArray(COSBase):
         if index < 0 or index > len(self._items):
             raise IndexError("COSArray insert index out of range")
 
+    # The update-state calls below are skipped while the state has no origin
+    # document state: ``COSUpdateState.update`` is an exact no-op then, and
+    # that is the case for every array that is still being built.
+
     def add(self, item: COSBase) -> None:
         self._items.append(item)
-        self._update_state.update(child=item)
+        state = self._update_state
+        if state._origin_document_state is not None:
+            state.update(child=item)
 
     def add_at(self, index: int, item: COSBase) -> None:
         self._check_insert_index(index)
         self._items.insert(index, item)
-        self._update_state.update(child=item)
+        state = self._update_state
+        if state._origin_document_state is not None:
+            state.update(child=item)
 
     def add_all(self, items: Iterable[COSBase]) -> None:
         materialized = list(items)
         if materialized:
             self._items.extend(materialized)
-            self._update_state.update(children=materialized)
+            state = self._update_state
+            if state._origin_document_state is not None:
+                state.update(children=materialized)
 
     def get(self, index: int) -> COSBase:
         """Raw entry at ``index`` — may be a ``COSObject`` indirect ref."""
-        self._check_non_negative_index(index)
+        if index < 0:
+            raise IndexError("COSArray index out of range")
         return self._items[index]
 
     @staticmethod
@@ -83,25 +96,36 @@ class COSArray(COSBase):
         if isinstance(item, COSObject):
             resolved = item.get_object()
             item = COSNull.NULL if resolved is None else resolved
-        if item is COSNull.NULL:
+        if item is _NULL:
             return None
         return item
 
     def get_object(self, index: int) -> COSBase | None:
         """Resolved entry — if the entry is a ``COSObject``, returns its
         target; otherwise returns the entry itself."""
-        self._check_non_negative_index(index)
-        return self._resolve(self._items[index])
+        if index < 0:
+            raise IndexError("COSArray index out of range")
+        # Inlined ``_resolve``.
+        item = self._items[index]
+        if isinstance(item, COSObject):
+            item = item.get_object()
+            if item is None:
+                return None
+        if item is _NULL:
+            return None
+        return item
 
     def set(self, index: int, item: COSBase) -> None:
         self._check_non_negative_index(index)
         self._items[index] = item
-        self._update_state.update(child=item)
+        state = self._update_state
+        if state._origin_document_state is not None:
+            state.update(child=item)
 
     def remove(self, item: COSBase) -> bool:
         try:
             self._items.remove(item)
-            self._update_state.update()
+            self._mark_updated()
             return True
         except ValueError:
             return False
@@ -109,13 +133,13 @@ class COSArray(COSBase):
     def remove_at(self, index: int) -> COSBase:
         self._check_non_negative_index(index)
         item = self._items.pop(index)
-        self._update_state.update()
+        self._mark_updated()
         return item
 
     def clear(self) -> None:
         if self._items:
             self._items.clear()
-            self._update_state.update()
+            self._mark_updated()
 
     def size(self) -> int:
         return len(self._items)
@@ -163,7 +187,7 @@ class COSArray(COSBase):
                 self._items.remove(item)
                 changed = True
         if changed:
-            self._update_state.update()
+            self._mark_updated()
         return changed
 
     def retain_all(self, items: Iterable[COSBase]) -> bool:
@@ -174,7 +198,7 @@ class COSArray(COSBase):
         self._items = [x for x in self._items if x in keep]
         changed = len(self._items) != before
         if changed:
-            self._update_state.update()
+            self._mark_updated()
         return changed
 
     def grow_to_size(self, size: int, fill: COSBase | None = None) -> None:
@@ -185,7 +209,14 @@ class COSArray(COSBase):
             self._items.append(fill)  # type: ignore[arg-type]
             changed = True
         if changed:
-            self._update_state.update(child=fill)
+            state = self._update_state
+            if state._origin_document_state is not None:
+                state.update(child=fill)
+
+    def _mark_updated(self) -> None:
+        state = self._update_state
+        if state._origin_document_state is not None:
+            state.update()
 
     def get_update_state(self) -> COSUpdateState:
         return self._update_state
@@ -292,7 +323,9 @@ class COSArray(COSBase):
     def set_float_array(self, values: Iterable[float]) -> None:
         """Replace contents with ``COSFloat`` instances built from ``values``."""
         self._items = [COSFloat(v) for v in values]
-        self._update_state.update(children=self._items)
+        state = self._update_state
+        if state._origin_document_state is not None:
+            state.update(children=self._items)
 
     def to_float_array(self) -> list[float]:
         """Convert numeric entries to floats; ``None`` entries become ``0``."""
