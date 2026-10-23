@@ -22,7 +22,8 @@ from pypdfbox.cos import (
 )
 from pypdfbox.io import RandomAccessRead, RandomAccessReadBuffer
 
-from .base_parser import BaseParser
+from .base_parser import _FAST_MAX_DIGITS, BaseParser
+from .base_parser import _FAST_WS as _BASE_FAST_WS
 from .cos_parser import (
     _GENERATION_NUMBER_THRESHOLD,
     _MAX_LENGTH_LONG,
@@ -43,6 +44,10 @@ from .pdf_object_stream_parser import PDFObjectStreamParser
 from .xref_trailer_resolver import XrefEntry, XrefTrailerResolver, XrefType
 
 _LOG = logging.getLogger(__name__)
+
+# ``security_handler._decrypt_file_object``, imported on first use (pdmodel
+# imports the parser, so it cannot be a module-level import here).
+_security_decrypt_file_object: Any = None
 
 
 class _HeaderNotFoundError(PDFParseError):
@@ -87,6 +92,23 @@ _OBJ_HEADER_SCAN_WINDOW: int = 64
 _FAST_OBJ_HEADER_RE = re.compile(
     rb"([0-9]++)[\x00\t\n\x0c\r ]++([0-9]++)[\x00\t\n\x0c\r ]*+obj"
 )
+
+# ``skip_whitespace`` + ``read_int`` + ``skip_whitespace`` + ``read_int`` +
+# ``skip_whitespace`` + ``read_keyword`` of an indirect object's ``n g obj``
+# header as one match, built from the reader's own fast-path patterns.
+# Possessive quantifiers: each run is maximal exactly as in the separate reads
+# (a digit run can never be split by backtracking).
+_FAST_WS_PATTERN = _BASE_FAST_WS.__self__.pattern  # type: ignore[attr-defined]
+_FAST_FILE_OBJ_HEADER = re.compile(
+    _FAST_WS_PATTERN
+    + rb"([+-]?+[0-9]++)"
+    + _FAST_WS_PATTERN
+    + rb"([+-]?+[0-9]++)"
+    + _FAST_WS_PATTERN
+    + rb"([A-Za-z][^\x00\t\n\x0c\r ()<>\[\]{}/%]*+)"
+).match
+# ``skip_whitespace`` + ``read_string`` after an indirect object's body.
+_FAST_END_TOKEN = re.compile(_FAST_WS_PATTERN + rb"([^\x00\t\n\x0c\r ]*+)").match
 
 # PDF whitespace bytes (PDF 32000-1 §7.2.3) — mirrors BaseParser's set. Used
 # by the bulk xref-row reader to avoid per-byte method-call overhead.
@@ -230,6 +252,11 @@ class PDFParser:
                 dict[int, list[tuple[int, int]]],
             ],
         ] = OrderedDict()
+        # Member parser over the most recently used decoded ObjStm payload:
+        # ``[decoded, reader, parser, busy]``. Consecutive members of one
+        # stream reuse it instead of building a reader + ``COSParser`` per
+        # member; ``busy`` hands a re-entrant resolve a fresh pair.
+        self._objstm_member_parser: list[Any] | None = None
         # Lazy ``PDDocument`` wrapper around the parsed ``COSDocument``.
         # Built on first call to :meth:`get_pd_document`; mirrors upstream
         # ``PDFParser.getPDDocument()``.
@@ -2627,7 +2654,14 @@ class PDFParser:
                 body = self._load_indirect_object_at(offset, obj)
             except PDFParseError as exc:
                 raise OSError(str(exc)) from exc
-            self._decrypt_file_object(body, obj)
+            # ``_decrypt_file_object`` is a no-op without a security handler
+            # or a body; skip the call in that (unencrypted) common case.
+            if (
+                body is not None
+                and getattr(self._document, "_object_security_handler", None)
+                is not None
+            ):
+                self._decrypt_file_object(body, obj)
             return body
 
         return _loader
@@ -2642,9 +2676,14 @@ class PDFParser:
         handler = getattr(document, "_object_security_handler", None)
         if handler is None or body is None:
             return
-        from pypdfbox.pdmodel.encryption.security_handler import (
-            _decrypt_file_object,
-        )
+        global _security_decrypt_file_object
+        if _security_decrypt_file_object is None:
+            from pypdfbox.pdmodel.encryption.security_handler import (
+                _decrypt_file_object,
+            )
+
+            _security_decrypt_file_object = _decrypt_file_object
+        _decrypt_file_object = _security_decrypt_file_object
 
         # The /Encrypt dictionary is key material, never ciphertext. Compare
         # by reference key: resolving it here while it is itself being
@@ -2769,13 +2808,31 @@ class PDFParser:
             # start rather than slicing ``decoded[start:]`` — the slice copied
             # the whole tail per member (O(N) each, O(N^2) for the stream).
             # ``RandomAccessReadBuffer`` wraps the bytes in a read-only BytesIO
-            # that shares the buffer (no copy); a fresh buffer per member keeps
-            # parser state isolated. Byte-level parse behaviour is identical:
-            # the object starts at ``first + target_byte_offset`` and
-            # ``parse_direct_object`` reads from the current position.
-            body_view = RandomAccessReadBuffer(decoded)
+            # that shares the buffer (no copy). Consecutive members of the same
+            # payload share one reader + parser (seeked per member; the parse
+            # depends only on the position, its recursion counter is restored
+            # on every exit); a re-entrant resolve gets a fresh pair. Byte-level
+            # parse behaviour is identical: the object starts at
+            # ``first + target_byte_offset`` and ``parse_direct_object`` reads
+            # from the current position.
+            member = self._objstm_member_parser
+            if (
+                member is None
+                or member[0] is not decoded
+                or member[3]
+                or member[2]._document is not self._document
+            ):
+                body_view = RandomAccessReadBuffer(decoded)
+                member = [
+                    decoded,
+                    body_view,
+                    COSParser(body_view, document=self._document),
+                    False,
+                ]
+                self._objstm_member_parser = member
+            _, body_view, body_parser, _ = member
             body_view.seek(first + target_byte_offset)
-            body_parser = COSParser(body_view, document=self._document)
+            member[3] = True
             try:
                 obj_body = body_parser.parse_direct_object()
                 # A compressed object's body is the indirect object itself —
@@ -2791,7 +2848,7 @@ class PDFParser:
                     )
                 return obj_body
             finally:
-                body_view.close()
+                member[3] = False
         except PDFParseError:
             if self._lenient:
                 _LOG.error(
@@ -2806,13 +2863,36 @@ class PDFParser:
         """Seek to ``offset`` and parse the indirect-object definition.
         For a stream object, also reads the body."""
         self._src.seek(offset)
-        self._base.skip_whitespace()
-        # n m obj
-        on = self._base.read_int()
-        self._base.skip_whitespace()
-        gn = self._base.read_int()
-        self._base.skip_whitespace()
-        kw = self._base.read_keyword()
+        base_parser = self._base
+        # n m obj. The header decided in one regex over the reader's fast
+        # chunk when that is exactly what the skip_whitespace / read_int /
+        # read_keyword sequence below would consume; anything else (a token
+        # running to the chunk end, an over-long digit run, no ``obj``-shaped
+        # keyword) re-runs that sequence from ``offset``.
+        header = None
+        chunk = base_parser._fast_chunk()
+        if chunk is not None:
+            data, index, chunk_base, complete = chunk
+            header = _FAST_FILE_OBJ_HEADER(data, index)
+            if header is not None and (
+                (header.end() >= len(data) and not complete)
+                or len(header.group(1)) > _FAST_MAX_DIGITS
+                or len(header.group(2)) > _FAST_MAX_DIGITS
+            ):
+                header = None
+        if header is not None:
+            self._src._buf.seek(chunk_base + header.end())  # type: ignore[attr-defined]
+            on = int(header.group(1))
+            gn = int(header.group(2))
+            kw = header.group(3)
+        else:
+            self._src.seek(offset)
+            base_parser.skip_whitespace()
+            on = base_parser.read_int()
+            base_parser.skip_whitespace()
+            gn = base_parser.read_int()
+            base_parser.skip_whitespace()
+            kw = base_parser.read_keyword()
         if kw != b"obj":
             raise PDFParseError(
                 f"expected 'obj' at offset {offset}, got {kw!r}",
@@ -2848,6 +2928,19 @@ class PDFParser:
         if isinstance(body, (COSDictionary, COSArray)):
             body.set_direct(False)
             body.set_key(COSObjectKey(obj.object_number, obj.generation_number))
+        # Common case: whitespace then an ``endobj``-prefixed token, decided
+        # in one regex over the fast chunk exactly as skip_whitespace +
+        # read_string would read it. Everything else takes the reference
+        # sequence below from the same position.
+        chunk = base_parser._fast_chunk()
+        if chunk is not None:
+            data, index, chunk_base, complete = chunk
+            tail = _FAST_END_TOKEN(data, index)
+            if (tail.end() < len(data) or complete) and tail.group(1).startswith(
+                b"endobj"
+            ):
+                self._src._buf.seek(chunk_base + tail.end())  # type: ignore[attr-defined]
+                return body
         self._base.skip_whitespace()
         # Distinguish 'endobj' from 'stream'.
         peek = self._base.peek_byte()

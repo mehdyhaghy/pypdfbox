@@ -28,8 +28,18 @@ from pypdfbox.io import (
     RandomAccessReadMemoryMappedFile,
 )
 
-from .base_parser import BaseParser
+from .base_parser import _FAST_MAX_DIGITS, BaseParser
+from .base_parser import _FAST_WS as _FAST_WS_MATCH
 from .parse_error import PDFParseError
+
+# One ``read_int`` + ``skip_whitespace`` + ``read_int`` of an object stream's
+# header pair, built from the reader's own fast-path patterns. Possessive
+# quantifiers keep each digit run maximal, as in the separate reads.
+_FAST_OBJSTM_PAIR = re.compile(
+    rb"([+-]?+[0-9]++)"
+    + _FAST_WS_MATCH.__self__.pattern  # type: ignore[attr-defined]
+    + rb"([+-]?+[0-9]++)"
+).match
 
 # ---------------------------------------------------------------------------
 # Buffer-scanning fast path for ``COSParser.parse_direct_object``.
@@ -898,12 +908,12 @@ class COSParser(BaseParser):
         # file (mirrors COSParser.parseObjectDynamically's bfSearchForObjects
         # fallback). In-use keys already have their offset loader, so this is
         # a no-op for them.
+        resolver = self._missing_object_resolver
         if (
-            self._missing_object_resolver is not None
-            and not cos_obj.is_dereferenced()
-            and not cos_obj.has_loader()
+            resolver is not None
+            and not cos_obj._dereferenced
+            and cos_obj._loader is None
         ):
-            resolver = self._missing_object_resolver
             cos_obj.set_loader(lambda _obj, _k=key: resolver(_k))
         return cos_obj
 
@@ -3217,25 +3227,46 @@ def _read_object_stream_offsets(
     # half (wave 1516 ``first_too_small`` divergence — slicing produced a
     # spurious "header truncated"). An inflated /N is naturally bounded by the
     # same break so /N-too-large recovers at parity rather than failing.
-    header_view = RandomAccessReadBuffer(decoded)
-    header_parser = BaseParser(header_view)
+    #
+    # Each pair is matched in one regex built from the reader's own fast-path
+    # patterns (the in-memory reader always takes those paths); a pair the
+    # regex cannot decide (a sign without digits, an over-long digit run, a
+    # missing number) re-reads from the same position through ``BaseParser``.
+    header_view: RandomAccessReadBuffer | None = None
+    header_parser: BaseParser | None = None
     pairs: list[tuple[int, int]] = []
     first_object_position = first - 1
+    position = 0
     try:
         for pair_index in range(object_count):
-            header_parser.skip_whitespace()
-            if header_parser.position >= first_object_position:
+            position = _FAST_WS_MATCH(decoded, position).end()
+            if position >= first_object_position:
                 # reached the /First boundary — stop reading object-number pairs
                 break
-            try:
-                stored_obj_num = header_parser.read_int()
-                header_parser.skip_whitespace()
-                byte_offset = header_parser.read_int()
-            except PDFParseError as exc:
-                raise PDFParseError(
-                    f"object stream {objstm_obj_num} header truncated at pair "
-                    f"{pair_index}"
-                ) from exc
+            pair = _FAST_OBJSTM_PAIR(decoded, position)
+            if (
+                pair is not None
+                and len(pair.group(1)) <= _FAST_MAX_DIGITS
+                and len(pair.group(2)) <= _FAST_MAX_DIGITS
+            ):
+                stored_obj_num = int(pair.group(1))
+                byte_offset = int(pair.group(2))
+                position = pair.end()
+            else:
+                if header_parser is None:
+                    header_view = RandomAccessReadBuffer(decoded)
+                    header_parser = BaseParser(header_view)
+                header_parser.seek(position)
+                try:
+                    stored_obj_num = header_parser.read_int()
+                    header_parser.skip_whitespace()
+                    byte_offset = header_parser.read_int()
+                except PDFParseError as exc:
+                    raise PDFParseError(
+                        f"object stream {objstm_obj_num} header truncated at pair "
+                        f"{pair_index}"
+                    ) from exc
+                position = header_parser.position
             if stored_obj_num < 0:
                 raise PDFParseError(
                     f"object stream {objstm_obj_num} has negative object number "
@@ -3248,7 +3279,8 @@ def _read_object_stream_offsets(
                 )
             pairs.append((stored_obj_num, byte_offset))
     finally:
-        header_view.close()
+        if header_view is not None:
+            header_view.close()
     return decoded, pairs, first
 
 
