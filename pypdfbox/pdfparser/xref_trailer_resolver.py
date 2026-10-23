@@ -150,6 +150,21 @@ class XrefTrailerResolver:
             type=self._current.xref_type, offset=offset
         )
 
+    def set_stream_entry(self, key: COSObjectKey, entry: XrefEntry) -> None:
+        """Record an xref-stream entry with upstream ``setXRef`` semantics:
+        an in-use entry already in the current section is kept (PDFBOX-3506,
+        so a hybrid file's ``/XRefStm`` cannot override its table, and the
+        first of duplicate stream rows wins). Free markers, which upstream
+        does not record at all, never replace an existing entry."""
+        if self._current is None:
+            raise RuntimeError("set_stream_entry called before begin_section")
+        existing = self._current.entries.get(key)
+        if existing is not None and (
+            existing.compressed_index != -1 or entry.compressed_index == -1
+        ):
+            return
+        self._current.entries[key] = entry
+
     def set_trailer(self, trailer: COSDictionary) -> None:
         if self._current is None:
             raise RuntimeError("set_trailer called before begin_section")
@@ -190,6 +205,20 @@ class XrefTrailerResolver:
                     continue
                 merged[key] = entry
         return merged
+
+    def replace_xref_table(self, table: dict[COSObjectKey, XrefEntry]) -> None:
+        """Make ``table`` the consolidated xref returned by
+        :meth:`get_xref_table`, keeping every section's trailer and type.
+
+        Stands in for upstream code that edits the resolver's resolved map in
+        place (``COSParser.checkXrefOffsets`` re-keying or replacing it). The
+        entries move into the newest section; sections added afterwards still
+        merge underneath them."""
+        if not self._sections:
+            self.begin_section(-1)
+        for section in self._sections:
+            section.entries = {}
+        self._sections[0].entries = dict(table)
 
     def get_trailer(self) -> COSDictionary | None:
         """Return the consolidated trailer. The newest section's trailer

@@ -6,6 +6,19 @@ from .cos_base import COSBase
 from .cos_document_state import COSDocumentState
 from .cos_increment import COSIncrement
 
+# COSArray / COSDictionary / COSObject, bound on first use: those modules
+# import this one, so a module-level import would be circular.
+_COS_TYPES: tuple[type, type, type] | None = None
+
+
+def _bind_cos_types() -> None:
+    global _COS_TYPES
+    from .cos_array import COSArray
+    from .cos_dictionary import COSDictionary
+    from .cos_object import COSObject
+
+    _COS_TYPES = (COSArray, COSDictionary, COSObject)
+
 
 class COSUpdateState:
     """Document-state-gated update tracker for COS update-info objects.
@@ -103,19 +116,17 @@ class COSUpdateState:
             state().set_origin_document_state(self._origin_document_state)
 
     def _push_substructures(self, pending: list[COSUpdateState]) -> None:
-        # Local imports avoid hard module cycles at import time.
-        from .cos_array import COSArray
-        from .cos_dictionary import COSDictionary
-        from .cos_object import COSObject
-
+        if _COS_TYPES is None:
+            _bind_cos_types()
+        cos_array, cos_dictionary, cos_object = _COS_TYPES  # type: ignore[misc]
         update_info = self._update_info
-        if isinstance(update_info, COSDictionary):
+        if isinstance(update_info, cos_dictionary):
             for entry in update_info.values():
                 self._push_update_state(pending, entry)
-        elif isinstance(update_info, COSArray):
+        elif isinstance(update_info, cos_array):
             for entry in update_info:
                 self._push_update_state(pending, entry)
-        elif isinstance(update_info, COSObject) and update_info.is_dereferenced():
+        elif isinstance(update_info, cos_object) and update_info.is_dereferenced():
             self._push_update_state(pending, update_info.get_object())
 
     @staticmethod

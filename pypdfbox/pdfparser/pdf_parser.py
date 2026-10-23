@@ -1,4 +1,5 @@
 import contextlib
+import gc
 import logging
 import re
 from collections import OrderedDict
@@ -23,13 +24,22 @@ from pypdfbox.io import RandomAccessRead, RandomAccessReadBuffer
 
 from .base_parser import BaseParser
 from .cos_parser import (
+    _GENERATION_NUMBER_THRESHOLD,
+    _MAX_LENGTH_LONG,
+    _OBJECT_NUMBER_THRESHOLD,
     COSParser,
+    _apply_xref_key_corrections,
+    _bf_search_for_obj_stream_offsets_in,
+    _ByteWindow,
+    _find_object_key_in,
+    _OutOfWindow,
     _parse_xref_entry_line,
     _read_object_stream_offsets,
     _validate_xref_index_pair,
 )
 from .endstream_filter_stream import EndstreamFilterStream
 from .parse_error import PDFParseError
+from .pdf_object_stream_parser import PDFObjectStreamParser
 from .xref_trailer_resolver import XrefEntry, XrefTrailerResolver, XrefType
 
 _LOG = logging.getLogger(__name__)
@@ -63,23 +73,27 @@ _TAIL_SCAN_BYTES: int = 4096
 # captures nearly all repeat hits while bounding retained decoded bytes.
 _OBJSTM_CACHE_MAX: int = 16
 
-# Bytes pulled in a single bulk read when validating an ``n g obj`` header at
-# an xref offset (see :meth:`PDFParser._object_header_matches`). Comfortably
-# larger than any real header (``999999 65535 obj`` is 18 bytes); when the
-# window is fully consumed without a verdict — a pathological header longer
-# than this, a ``%``-comment, or a signed integer — the check falls back to
-# the byte-exact slow scanner so behaviour stays identical to upstream.
+# Minimum bytes kept buffered past an xref offset when checking its object
+# header (see :meth:`PDFParser._find_object_keys`). Comfortably larger than
+# any real header (``999999 65535 obj`` is 18 bytes); anything the buffered
+# bytes cannot decide is re-run over the whole source.
 _OBJ_HEADER_SCAN_WINDOW: int = 64
 
+# The plain object-header shape ``<digits><ws>+<digits><ws>*obj`` that
+# upstream ``COSParser.findObjectKey`` reads when the offset points at a digit
+# preceded by a non-digit. Possessive quantifiers: the digit runs can never be
+# split by backtracking. Anything else (comments, leading whitespace, a digit
+# before the offset, a short buffer) takes the byte-exact reader port.
+_FAST_OBJ_HEADER_RE = re.compile(
+    rb"([0-9]++)[\x00\t\n\x0c\r ]++([0-9]++)[\x00\t\n\x0c\r ]*+obj"
+)
+
 # PDF whitespace bytes (PDF 32000-1 §7.2.3) — mirrors BaseParser's set. Used
-# by the fast header scanner to avoid per-byte method-call overhead.
+# by the bulk xref-row reader to avoid per-byte method-call overhead.
 _HEADER_WHITESPACE_INTS = frozenset(b"\x00\t\n\x0c\r ")
-# Delimiter bytes (§7.2.3); a regular character is neither whitespace nor
-# delimiter. Used to find the end of the ``obj`` keyword token.
-_HEADER_DELIMITER_INTS = frozenset(b"()<>[]{}/%")
 
 # Size of the sequential blocks read when validating every xref offset at
-# load (see :meth:`PDFParser._find_bad_xref_offsets`) and when parsing the
+# load (see :meth:`PDFParser._find_object_keys`) and when parsing the
 # fixed-width rows of a traditional xref table. One bulk read per block
 # replaces one seek + small read (or one ``read()`` per byte) per entry
 # through the generic RandomAccessRead layer.
@@ -184,6 +198,12 @@ class PDFParser:
         # ``COSParser.bfCOSObjectKeyOffsets``). ``None`` until the first
         # dangling reference forces a ``bf_search_for_objects`` scan.
         self._bf_offsets_cache: dict[COSObjectKey, int] | None = None
+        # Set when the lenient xref offset check ran the brute-force object
+        # scan. Upstream ``COSParser.retrieveTrailer`` then adds the members
+        # of every brute-forced object stream to that scan's map
+        # (``bfSearchForObjStreams``); pypdfbox does it on first use of the
+        # map, see :meth:`_brute_force_offsets`.
+        self._bf_obj_streams_pending: bool = False
         # LRU cache of decoded object-stream headers keyed by the ObjStm's
         # object number: ``objstm_obj_num -> (decoded_bytes, pairs, first)``.
         # Every compressed-member resolve needs the owning ObjStm decoded
@@ -276,6 +296,22 @@ class PDFParser:
         default" note on the no-arg overload."""
         if lenient is not None:
             self.set_lenient(lenient)
+        # Loading allocates one COSObject (plus its update-state cycle) per
+        # xref entry; with the cyclic GC running, its collections re-walk the
+        # growing heap and cost about as much as the parse itself on large
+        # files. Nothing created here is garbage until the parse returns, so
+        # the collector is paused for the duration and restored afterwards.
+        gc_was_enabled = gc.isenabled()
+        if gc_was_enabled:
+            gc.disable()
+        try:
+            return self._parse_document()
+        finally:
+            if gc_was_enabled:
+                gc.enable()
+
+    def _parse_document(self) -> COSDocument:
+        """Body of :meth:`parse` (runs with the cyclic GC paused)."""
         self._document = COSDocument(scratch_file=self._scratch_file)
         self._cos_parser = COSParser(self._src, document=self._document)
         # Mirror upstream ``PDFParser.parse(boolean)`` (PDFBox 3.0.7,
@@ -331,6 +367,20 @@ class PDFParser:
             # via /Prev (PRD §6.5 cluster #2).
             self._document.set_start_xref(startxref)
             self.parse_xref_chain(startxref)
+            # Upstream COSParser.parseXref: in lenient mode every offset of
+            # the consolidated table is checked (checkXrefOffsets) before the
+            # table is handed to the document; one bad entry replaces the
+            # whole table with the brute-force object offsets. A trailer
+            # without /Root sends upstream into rebuildTrailer, which discards
+            # the checked table anyway; pypdfbox's missing-/Root repair below
+            # keeps the located entries instead, so they are left unchecked.
+            located_trailer = self._resolver.get_trailer()
+            if (
+                self._lenient
+                and located_trailer is not None
+                and located_trailer.get_item(COSName.ROOT) is not None
+            ):
+                self._check_xref_offsets_lenient()
             # A classic xref table that broke mid-parse (malformed subsection
             # header / entry row) leaves an incomplete object map. Mirror
             # upstream COSParser, which after an "Unexpected XRefTable Entry"
@@ -428,12 +478,6 @@ class PDFParser:
             # but the full rebuild mirrors initialParse end-to-end). The
             # located-xref path is untouched — its kids are valid.
             self._check_pages_after_full_rebuild()
-        elif self._lenient:
-            # PDFBox's COSParser.checkXrefOffsets: in lenient mode every
-            # parsed xref offset is verified to point at its ``n g obj``
-            # header; entries that don't are brute-force-corrected so a
-            # single bad subsection offset doesn't strand an object.
-            self._check_xref_offsets_lenient()
         # ``initial_parse()`` is intentionally **not** auto-invoked here.
         # Upstream PDFBox does call it from ``parse()``, but pypdfbox's
         # historical contract has been that ``parse()`` returns the
@@ -1534,7 +1578,7 @@ class PDFParser:
                     # Free entry — record it but flag with compressed_index=-1
                     # so populate_document() skips it (matches the traditional
                     # 'f' flag path).
-                    self._resolver.set_entry(
+                    self._resolver.set_stream_entry(
                         COSObjectKey(obj_num, field3),
                         XrefEntry(
                             type=XrefType.STREAM,
@@ -1544,14 +1588,14 @@ class PDFParser:
                     )
                 elif field1 == 1:
                     # Uncompressed: field2 = byte offset, field3 = generation.
-                    self._resolver.set_entry(
+                    self._resolver.set_stream_entry(
                         COSObjectKey(obj_num, field3),
                         XrefEntry(type=XrefType.STREAM, offset=field2),
                     )
                 elif field1 == 2:
                     # Compressed: field2 = ObjStm obj number, field3 = index
                     # within stream. Generation is always 0 per spec.
-                    self._resolver.set_entry(
+                    self._resolver.set_stream_entry(
                         COSObjectKey(obj_num, 0),
                         XrefEntry(
                             type=XrefType.COMPRESSED,
@@ -1563,7 +1607,7 @@ class PDFParser:
                     # PDF 32000-1 §7.5.8.3: "any other value of the type
                     # field shall be interpreted as a reference to the null
                     # object." Treat as a free slot.
-                    self._resolver.set_entry(
+                    self._resolver.set_stream_entry(
                         COSObjectKey(obj_num, 0),
                         XrefEntry(
                             type=XrefType.STREAM,
@@ -1871,6 +1915,9 @@ class PDFParser:
         assert self._document is not None
         xref = self._resolver.get_xref_table()
         offset_table: dict[COSObjectKey, int] = {}
+        get_object_from_pool = self._document.get_object_from_pool
+        make_loader = self._make_loader
+        compressed = XrefType.COMPRESSED
         for key, entry in xref.items():
             if entry.compressed_index == -1:
                 # Free entry — skip; PDFBox does not register a placeholder
@@ -1880,9 +1927,8 @@ class PDFParser:
                 # fallback installed below (mirrors COSParser's lazy
                 # bfSearchForObjects path), not via a pre-attached loader.
                 continue
-            cos_obj = self._document.get_object_from_pool(key)
-            cos_obj.set_loader(self._make_loader(entry))
-            if entry.type is XrefType.COMPRESSED:
+            get_object_from_pool(key).set_loader(make_loader(entry))
+            if entry.type is compressed:
                 # Compressed object: ``entry.offset`` holds the owning ObjStm
                 # object number. Record it as ``-objstm_object_number`` to
                 # match the COSDocument/PDFBox convention.
@@ -1915,9 +1961,16 @@ class PDFParser:
         reference still resolves to null."""
         offsets = self._brute_force_offsets()
         offset = offsets.get(key)
-        if offset is None or offset <= 0:
+        if offset is None:
             return None
+        # Upstream getObjectOffset records the recovered value in the
+        # document's xref table before parsing the object.
+        self._document.get_xref_table()[key] = offset
         cos_obj = self._document.get_object_from_pool(key)
+        if offset <= 0:
+            # Object-stream member found by bfSearchForObjStreams
+            # (upstream parseObjectStreamObject).
+            return self._load_compressed_object(-offset, -1, cos_obj)
         try:
             body = self._load_indirect_object_at(offset, cos_obj)
         except PDFParseError:
@@ -1926,22 +1979,67 @@ class PDFParser:
         return body
 
     def _brute_force_offsets(self) -> dict[COSObjectKey, int]:
-        """Cached brute-force object scan for the lenient free/missing
-        resolution fallback. Mirrors upstream ``COSParser`` caching the scan
-        in ``bfCOSObjectKeyOffsets`` so a document with several dangling
+        """Brute-force object map for the lenient free/missing resolution
+        fallback: upstream ``getBFCOSObjectOffsets()``, the same cached map
+        the xref offset check uses, so a document with several dangling
         references scans the body only once.
 
-        Uses :meth:`_brute_force_recovered_offsets` (the EOF-aware variant
-        with upstream's deferred-final-object drop) rather than the raw
-        ``bf_search_for_objects`` — upstream ``bfSearchForObjects`` applies the
-        same ``bfSearchForLastEOFMarker`` rule, so a trailing object header
-        that runs to EOF with no ``endobj`` / ``%%EOF`` must NOT be recovered."""
+        If the load-time xref check triggered the scan, the members of the
+        brute-forced object streams are added to the map first (upstream
+        ``retrieveTrailer`` runs ``bfSearchForObjStreams`` at load; running it
+        on first use gives the same map, and the stream can be decrypted)."""
+        assert self._cos_parser is not None
         if self._bf_offsets_cache is None:
             try:
-                self._bf_offsets_cache = self._brute_force_recovered_offsets()
+                self._bf_offsets_cache = self._cos_parser.get_bf_cos_object_offsets()
             except PDFParseError:
                 self._bf_offsets_cache = {}
+        if self._bf_obj_streams_pending:
+            self._bf_obj_streams_pending = False
+            self._bf_search_for_obj_streams(self._bf_offsets_cache)
         return self._bf_offsets_cache
+
+    def _bf_search_for_obj_streams(self, offsets: dict[COSObjectKey, int]) -> None:
+        """Port of upstream ``BruteForceParser.bfSearchForObjStreams``: add
+        the members of every brute-forced object stream to ``offsets`` as
+        ``-objstm_number``, unless the member is already known from an
+        object (or object stream) at a higher offset.
+
+        Only streams whose header offset matches their brute-force offset
+        are read; the stream is taken from the pool, which after the xref
+        replacement loads it from that same offset. Broken streams are
+        skipped, as upstream does."""
+        assert self._cos_parser is not None and self._document is not None
+        if not offsets:
+            return
+        data = self._cos_parser._read_all_bytes()
+        stream_offsets = _bf_search_for_obj_stream_offsets_in(data)
+        for stream_offset in sorted(stream_offsets):
+            stream_key = stream_offsets[stream_offset]
+            if offsets.get(stream_key) != stream_offset:
+                continue
+            try:
+                stream = self._document.get_object_from_pool(stream_key).get_object()
+                if not isinstance(stream, COSStream):
+                    continue
+                numbers = PDFObjectStreamParser(
+                    stream, self._document
+                ).read_object_numbers()
+            except (PDFParseError, OSError, ValueError):
+                _LOG.debug(
+                    "Skipped corrupt stream: (%s 0 at offset %s",
+                    stream_key.object_number,
+                    stream_offset,
+                    exc_info=True,
+                )
+                continue
+            for number in numbers:
+                member = COSObjectKey(number, 0)
+                existing = offsets.get(member)
+                if existing is not None and existing < 0:
+                    existing = offsets.get(COSObjectKey(-existing, 0))
+                if existing is None or stream_offset > existing:
+                    offsets[member] = -stream_key.object_number
 
     def _brute_force_recovered_offsets(self) -> dict[COSObjectKey, int]:
         """``bf_search_for_objects`` with upstream's final-object EOF rule.
@@ -2355,106 +2453,141 @@ class PDFParser:
             raise PDFParseError("Page tree root must be a dictionary")
 
     def _check_xref_offsets_lenient(self) -> None:
-        """Verify every parsed xref offset points at its ``n g obj`` header
-        and brute-force-correct the ones that don't.
+        """Port of upstream ``COSParser.checkXrefOffsets`` (3.0.8) over the
+        consolidated resolver table, run in lenient mode right after the xref
+        chain is parsed and before the table reaches the document.
 
-        Mirrors upstream ``COSParser.checkXrefOffsets``: a single wrong
-        subsection offset (corrupt xref entry) must not strand the object —
-        the body still contains a valid ``n g obj`` definition that a
-        linear scan can relocate. Only invoked in lenient mode. The scan is
-        run lazily (only when at least one offset fails its header check) so
-        well-formed documents pay nothing."""
+        Every uncompressed entry is checked with ``findObjectKey`` rules. If
+        any entry fails (wrong or missing header, an offset below 6, past
+        EOF, ...), the WHOLE table is replaced by the brute-force object
+        offsets (``getBFCOSObjectOffsets``), when that scan found anything.
+        Otherwise entries whose header names another object number or a
+        higher generation are re-keyed (``validateXrefOffsets``)."""
         assert self._cos_parser is not None
-        assert self._document is not None
         xref = self._resolver.get_xref_table()
-        # Header checks are side-effect free, so they are batched up front in
-        # file order (see _find_bad_xref_offsets); the repair loop below still
-        # walks the xref in its own order, so the brute-force trigger and the
-        # corrected-entry order are unchanged.
-        bad = self._find_bad_xref_offsets(xref)
-        if not bad:
-            return
-        bf_offsets: dict[COSObjectKey, int] | None = None
-        corrected: dict[COSObjectKey, int] = {}
+        # Upstream's map view: free entries are absent, object-stream members
+        # are stored as ``-objstm_number``.
+        values: dict[COSObjectKey, int] = {}
         for key, entry in xref.items():
-            if entry.type is XrefType.COMPRESSED or entry.compressed_index == -1:
+            if entry.compressed_index == -1:
                 continue
-            if key not in bad:
-                continue
-            # Offset is wrong — locate the object by brute force.
-            if bf_offsets is None:
-                bf_offsets = self._cos_parser.bf_search_for_objects()
-            real_offset = bf_offsets.get(key)
-            if real_offset is None or real_offset == entry.offset:
-                continue
-            entry.offset = real_offset
-            corrected[key] = real_offset
-        if not corrected:
-            return
-        # Re-attach loaders for the corrected entries so lazy resolution
-        # reads from the relocated offset, and refresh the document's
-        # public xref-table view.
-        for key, real_offset in corrected.items():
-            cos_obj = self._document.get_object_from_pool(key)
-            cos_obj.set_loader(
-                self._make_loader(
-                    XrefEntry(type=XrefType.TABLE, offset=real_offset)
+            if entry.type is XrefType.COMPRESSED:
+                values[key] = -entry.offset
+            else:
+                values[key] = entry.offset
+        result = self._find_object_keys(values)
+        if result is None:
+            self._bf_obj_streams_pending = True
+            recovered = self._cos_parser.get_bf_cos_object_offsets()
+            if recovered:
+                _LOG.debug(
+                    "Replaced read xref table with the results of a brute "
+                    "force search"
                 )
-            )
-        self._document.add_xref_table(corrected)
+                self._resolver.replace_xref_table(
+                    {
+                        key: XrefEntry(type=XrefType.TABLE, offset=offset)
+                        for key, offset in recovered.items()
+                    }
+                )
+            return
+        corrected, valid = result
+        if corrected:
+            _apply_xref_key_corrections(xref, corrected, valid)
+            self._resolver.replace_xref_table(xref)
 
-    def _find_bad_xref_offsets(
-        self, xref: dict[COSObjectKey, XrefEntry]
-    ) -> set[COSObjectKey]:
-        """Return the keys of the in-use, uncompressed xref entries whose
-        offset does not point at a matching ``n g obj`` header.
+    def _find_object_keys(
+        self, values: dict[COSObjectKey, int]
+    ) -> tuple[dict[COSObjectKey, COSObjectKey], set[COSObjectKey]] | None:
+        """Run upstream ``findObjectKey`` for every entry of ``values`` with
+        a non-negative value. Returns ``None`` as soon as one entry fails,
+        else ``(corrected, valid)``: the keys whose header yielded a
+        different key, and the keys confirmed as they are.
 
-        Equivalent to calling :meth:`_object_header_matches` once per entry,
-        but the offsets are visited in ascending order and the header windows
-        are sliced out of :data:`_BULK_READ_BLOCK`-sized sequential reads, so
-        a large table costs one read per block instead of a seek, a small
-        read and two position round-trips per entry. Each window is judged by
-        the same :meth:`_scan_object_header` / slow-path pair, with the same
-        ``n`` / ``truncated`` inputs the per-entry method computes. The
-        source position is restored."""
+        The offsets are visited in ascending order and their bytes sliced
+        from :data:`_BULK_READ_BLOCK`-sized sequential reads. A plain header
+        is decided by :data:`_FAST_OBJ_HEADER_RE`; every other shape goes
+        through the reader port (``_find_object_key_in``), which falls back
+        to the whole source when the buffered bytes are not enough. Since
+        upstream only reads the original map while checking, the visiting
+        order does not change the outcome. The source position is
+        restored."""
+        corrected: dict[COSObjectKey, COSObjectKey] = {}
+        valid: set[COSObjectKey] = set()
+        todo = [(offset, key) for key, offset in values.items() if offset >= 0]
+        if not todo:
+            return corrected, valid
+        todo.sort(key=itemgetter(0))
+        if todo[0][0] < COSParser.MINIMUM_SEARCH_OFFSET:
+            return None
         src = self._src
         length = src.length()
+        match = _FAST_OBJ_HEADER_RE.match
         window = _OBJ_HEADER_SCAN_WINDOW
-        scan = self._scan_object_header
-        todo: list[tuple[int, COSObjectKey]] = []
-        bad: set[COSObjectKey] = set()
-        for key, entry in xref.items():
-            if entry.type is XrefType.COMPRESSED or entry.compressed_index == -1:
-                continue
-            offset = entry.offset
-            if offset < 0 or offset >= length:
-                bad.add(key)
-            else:
-                todo.append((offset, key))
-        if not todo:
-            return bad
-        todo.sort(key=itemgetter(0))
         saved = src.get_position()
         try:
             block = b""
             block_start = 0
             block_end = 0
             for offset, key in todo:
-                if offset + window > block_end and block_end < length:
-                    block_start = offset
-                    block = self._read_block_at(offset, _BULK_READ_BLOCK)
-                    block_end = offset + len(block)
+                if offset >= length:
+                    # Past EOF the reader only sees the last byte(s).
+                    tail_start = max(0, length - window)
+                    block = self._read_block_at(tail_start, length - tail_start)
+                    block_start = tail_start
+                    block_end = length
+                elif offset + window > block_end and block_end < length:
+                    block_start = offset - 1
+                    block = self._read_block_at(block_start, _BULK_READ_BLOCK)
+                    block_end = block_start + len(block)
+                found: COSObjectKey | None
                 rel = offset - block_start
-                buf = block[rel : rel + window]
-                n = len(buf)
-                verdict = scan(buf, n, offset + n < length, key.object_number)
-                if verdict is None:
-                    verdict = self._object_header_matches_slow(offset, key)
-                if not verdict:
-                    bad.add(key)
+                m = None
+                if (
+                    offset < length
+                    and 0x30 <= block[rel] <= 0x39
+                    and not 0x30 <= block[rel - 1] <= 0x39
+                ):
+                    m = match(block, rel)
+                if m is not None:
+                    found = _decide_plain_object_header(
+                        key, m.group(1), m.group(2)
+                    )
+                else:
+                    found = self._find_object_key_slow(
+                        key, offset, values, block, block_start, length
+                    )
+                if found is None:
+                    return None
+                if found is key:
+                    valid.add(key)
+                else:
+                    corrected[key] = found
         finally:
             src.seek(saved)
-        return bad
+        return corrected, valid
+
+    def _find_object_key_slow(
+        self,
+        key: COSObjectKey,
+        offset: int,
+        values: dict[COSObjectKey, int],
+        block: bytes,
+        block_start: int,
+        length: int,
+    ) -> COSObjectKey | None:
+        """``findObjectKey`` through the reader port, first over the current
+        block, then over the whole source if the block was too short."""
+        assert self._cos_parser is not None
+        try:
+            return _find_object_key_in(
+                _ByteWindow(block, block_start, length), key, offset, values, True
+            )
+        except _OutOfWindow:
+            data = self._cos_parser._read_all_bytes()
+            return _find_object_key_in(
+                _ByteWindow(data, 0, len(data)), key, offset, values, True
+            )
 
     def _read_block_at(self, position: int, size: int) -> bytes:
         """Read up to ``size`` bytes starting at ``position`` (fewer only at
@@ -2470,156 +2603,6 @@ class PDFParser:
             n += r
         del buf[n:]
         return bytes(buf)
-
-    def _object_header_matches(self, offset: int, key: COSObjectKey) -> bool:
-        """Return ``True`` when ``offset`` seeks to an ``n g obj`` header
-        whose object number matches ``key``. Cursor position is restored.
-
-        Used by :meth:`_check_xref_offsets_lenient` to decide whether an
-        xref entry's byte offset is trustworthy before resolving it.
-
-        Fast path: a single bulk read of :data:`_OBJ_HEADER_SCAN_WINDOW`
-        bytes at ``offset`` is scanned in-memory by
-        :meth:`_scan_object_header`, replacing ~15 per-byte reader calls per
-        xref entry (this check dominated pure load time on large documents).
-        The scanner returns ``None`` for the rare inputs it cannot decide
-        byte-for-byte identically to the reader (a header longer than the
-        window, a ``%``-comment, or a ``+``/``-`` signed integer), in which
-        case we defer to :meth:`_object_header_matches_slow` — the original
-        byte-exact logic — so accept/reject decisions are unchanged."""
-        if offset < 0 or offset >= self._src.length():
-            return False
-        buf = bytearray(_OBJ_HEADER_SCAN_WINDOW)
-        saved = self._src.get_position()
-        try:
-            self._src.seek(offset)
-            n = 0
-            while n < _OBJ_HEADER_SCAN_WINDOW:
-                r = self._src.read_into(
-                    buf, n, _OBJ_HEADER_SCAN_WINDOW - n
-                )
-                if r <= 0:
-                    break
-                n += r
-        finally:
-            self._src.seek(saved)
-        # ``truncated`` is True iff bytes remain in the file past our window —
-        # i.e. the reader could read further than we buffered. When False, the
-        # window ends exactly at EOF and the scanner can decide every case.
-        truncated = offset + n < self._src.length()
-        verdict = self._scan_object_header(
-            buf, n, truncated, key.object_number
-        )
-        if verdict is not None:
-            return verdict
-        return self._object_header_matches_slow(offset, key)
-
-    @staticmethod
-    def _scan_object_header(
-        buf: bytearray, n: int, truncated: bool, object_number: int
-    ) -> bool | None:
-        """Decide whether ``buf[:n]`` opens with an ``<int> <int> obj`` header
-        whose first integer equals ``object_number``, mirroring the reader
-        sequence ``skip_whitespace / read_int / skip_whitespace / read_int /
-        skip_whitespace / read_keyword`` used by
-        :meth:`_object_header_matches_slow`.
-
-        Returns ``True``/``False`` for a definitive verdict, or ``None`` when
-        the answer would depend on bytes beyond the buffered window or on a
-        code path this fast scanner deliberately does not replicate
-        (``%``-comments, ``+``/``-`` signed integers) — the caller then falls
-        back to the byte-exact slow scanner.
-
-        ``truncated`` signals that more bytes exist past ``buf[:n]``; whenever a
-        scan step reaches the window end while ``truncated`` is set, the reader
-        might read further, so we return ``None`` rather than guess."""
-        ws = _HEADER_WHITESPACE_INTS
-        i = 0
-
-        # read_int() #1 — object number. Leading whitespace is skipped by the
-        # explicit skip_whitespace() and again inside read_int(); comments and
-        # signs divert to the slow path.
-        while i < n and buf[i] in ws:
-            i += 1
-        if i >= n:
-            # Reader hits EOF (or more whitespace) here: at EOF read_int raises
-            # -> False; if truncated we cannot tell -> defer.
-            return None if truncated else False
-        if buf[i] == 0x25:  # '%' comment — slow path handles it
-            return None
-        if buf[i] in (0x2B, 0x2D):  # '+'/'-' signed int — slow path
-            return None
-        if not (0x30 <= buf[i] <= 0x39):
-            return False  # read_int: non-digit where a digit is required
-        start = i
-        while i < n and 0x30 <= buf[i] <= 0x39:
-            i += 1
-        if i >= n and truncated:
-            return None  # digit run may continue past the window
-        on = int(buf[start:i])
-
-        # read_int() #2 — generation number (value discarded).
-        while i < n and buf[i] in ws:
-            i += 1
-        if i >= n:
-            return None if truncated else False
-        if buf[i] == 0x25:
-            return None
-        if buf[i] in (0x2B, 0x2D):
-            return None
-        if not (0x30 <= buf[i] <= 0x39):
-            return False
-        while i < n and 0x30 <= buf[i] <= 0x39:
-            i += 1
-        if i >= n and truncated:
-            return None
-
-        # read_keyword() — must be ``obj``.
-        while i < n and buf[i] in ws:
-            i += 1
-        if i >= n:
-            return None if truncated else False  # read_keyword at EOF -> False
-        if buf[i] == 0x25:
-            return None
-        b0 = buf[i]
-        if not ((0x41 <= b0 <= 0x5A) or (0x61 <= b0 <= 0x7A)):
-            return False  # read_keyword: non-alpha start raises -> False
-        kstart = i
-        i += 1
-        while (
-            i < n
-            and buf[i] not in ws
-            and buf[i] not in _HEADER_DELIMITER_INTS
-        ):
-            i += 1
-        if i >= n and truncated:
-            return None  # keyword token may continue past the window
-        return buf[kstart:i] == b"obj" and on == object_number
-
-    def _object_header_matches_slow(
-        self, offset: int, key: COSObjectKey
-    ) -> bool:
-        """Byte-exact fallback for :meth:`_object_header_matches` — the
-        original per-byte reader logic, retained verbatim for the inputs the
-        fast scanner defers on. Cursor position is restored."""
-        if offset < 0 or offset >= self._src.length():
-            return False
-        saved = self._src.get_position()
-        try:
-            self._src.seek(offset)
-            self._base.skip_whitespace()
-            on = self._base.read_int()
-            self._base.skip_whitespace()
-            self._base.read_int()
-            self._base.skip_whitespace()
-            return (
-                self._base.read_keyword() == b"obj"
-                and on == key.object_number
-            )
-        except PDFParseError:
-            return False
-        finally:
-            self._src.seek(saved)
 
     def _make_loader(self, entry: XrefEntry):  # type: ignore[no-untyped-def]
         """Build a lazy loader callback for a single xref entry."""
@@ -3137,3 +3120,27 @@ class PDFParser:
         raise PDFParseError(
             f"Wrong type of length object: {type(length_base).__name__}"
         )
+
+
+def _decide_plain_object_header(
+    key: COSObjectKey, number_digits: bytes, generation_digits: bytes
+) -> COSObjectKey | None:
+    """Tail of upstream ``findObjectKey`` (lenient) for a header matched by
+    :data:`_FAST_OBJ_HEADER_RE`: the reader's number limits, then the object
+    number / generation comparison. Returns ``key`` itself when it matches."""
+    if (
+        len(number_digits) > _MAX_LENGTH_LONG
+        or len(generation_digits) > _MAX_LENGTH_LONG
+    ):
+        return None
+    number = int(number_digits)
+    generation = int(generation_digits)
+    if number >= _OBJECT_NUMBER_THRESHOLD or generation > _GENERATION_NUMBER_THRESHOLD:
+        return None
+    if number != key.object_number:
+        key = COSObjectKey(number, key.generation_number)
+    if generation == key.generation_number:
+        return key
+    if generation > key.generation_number:
+        return COSObjectKey(key.object_number, generation)
+    return None

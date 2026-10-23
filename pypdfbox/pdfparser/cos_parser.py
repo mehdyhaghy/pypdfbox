@@ -142,6 +142,11 @@ class COSParser(BaseParser):
         # file. ``None`` means "not yet computed".
         self._bf_objects_cache: dict[COSObjectKey, int] | None = None
         self._all_bytes_cache: bytes | None = None
+        # Upstream ``BruteForceParser.bfSearchTriggered`` /
+        # ``bfSearchCOSObjectKeyOffsets``: the byte-exact ``bfSearchForObjects``
+        # result served by :meth:`get_bf_cos_object_offsets`.
+        self._bf_search_triggered: bool = False
+        self._bf_cos_object_offsets: dict[COSObjectKey, int] = {}
 
     def set_missing_object_resolver(
         self, resolver: Callable[[COSObjectKey], COSBase | None] | None
@@ -2477,45 +2482,42 @@ class COSParser(BaseParser):
     def validate_xref_offsets(
         self, xref_offset: dict[COSObjectKey, int] | None
     ) -> bool:
-        """Walk every entry of ``xref_offset`` confirming each key
-        actually appears at its claimed byte offset. Mirrors upstream
-        ``COSParser.validateXrefOffsets(Map)`` (Java line 1223).
+        """Confirm every uncompressed entry of ``xref_offset`` points at its
+        ``n g obj`` header. Mirrors upstream
+        ``COSParser.validateXrefOffsets(Map)`` (3.0.8).
 
-        Generation-number mismatches are corrected in place. Returns
-        ``False`` when even one key cannot be dereferenced — the caller
-        should fall back to a brute-force scan."""
+        Returns ``False`` as soon as one entry cannot be dereferenced (the
+        caller then replaces the whole table). Otherwise entries whose header
+        carried a different object number or a higher generation are re-keyed
+        in place, unless the corrected key already has a valid entry of its
+        own. Negative values (object-stream members) are not checked."""
         if xref_offset is None:
             return True
         corrected: dict[COSObjectKey, COSObjectKey] = {}
         valid: set[COSObjectKey] = set()
-        for object_key, object_offset in list(xref_offset.items()):
+        for object_key, object_offset in xref_offset.items():
             if object_offset is not None and object_offset >= 0:
                 found = self.find_object_key(object_key, object_offset, xref_offset)
                 if found is None:
                     return False
-                if found != object_key:
+                if found is not object_key:
                     corrected[object_key] = found
                 else:
                     valid.add(object_key)
-        corrected_pointers: dict[COSObjectKey, int] = {}
-        for original, replacement in corrected.items():
-            if replacement not in valid:
-                corrected_pointers[replacement] = xref_offset[original]
-        for original in corrected:
-            xref_offset.pop(original, None)
-        xref_offset.update(corrected_pointers)
+        _apply_xref_key_corrections(xref_offset, corrected, valid)
         return True
 
     def check_xref_offsets(self) -> None:
-        """Drive the xref-table dereferencing walk; if even one entry
-        fails to resolve, replace the table with a brute-force scan.
-        Mirrors upstream ``COSParser.checkXrefOffsets()`` (Java line
-        1278)."""
+        """Validate the document's xref table and, if even one entry fails,
+        replace the whole table with the brute-force object offsets. Mirrors
+        upstream ``COSParser.checkXrefOffsets()`` (3.0.8), which runs on the
+        resolver's table before it is copied to the document; ``PDFParser``
+        drives the same rules over its resolver during a lenient load."""
         if self._document is None:
             return
         xref_table = self._document.get_xref_table()
         if not self.validate_xref_offsets(xref_table):
-            recovered = self.get_brute_force_parser().bf_search_for_objects()
+            recovered = self.get_bf_cos_object_offsets()
             if recovered:
                 xref_table.clear()
                 xref_table.update(recovered)
@@ -2526,47 +2528,41 @@ class COSParser(BaseParser):
         offset: int,
         xref_offset: dict[COSObjectKey, int],
     ) -> COSObjectKey | None:
-        """Verify that ``object_key`` actually starts at byte
-        ``offset``; return the (possibly generation-corrected) key on
-        success or ``None`` on mismatch. Mirrors upstream
-        ``COSParser.findObjectKey(COSObjectKey, long, Map)`` (Java line
-        1305)."""
+        """Check that ``object_key`` starts at byte ``offset``. Mirrors
+        upstream ``COSParser.findObjectKey(COSObjectKey, long, Map)`` (3.0.8).
+
+        Returns ``object_key`` itself when the header matches, a new key when
+        (lenient only) the header carries another object number or a higher
+        generation, and ``None`` otherwise (including any offset below
+        :attr:`MINIMUM_SEARCH_OFFSET`)."""
         if offset < self.MINIMUM_SEARCH_OFFSET:
             return None
-        try:
-            self._src.seek(offset)
-            self.skip_spaces()
-            if self.position == offset:
-                self._src.seek(offset - 1)
-                # ``seek(offset - 1)`` always lands at offset - 1 for the
-                # in-memory / mmap-backed RandomAccessRead implementations
-                # shipped with pypdfbox, so the False arm of the nested
-                # check is unreachable here; the guard mirrors upstream's
-                # defensive ``if (source.getPosition() < offset)`` (Java
-                # line 1311) and stays for parity.
-                if self.position < offset:  # pragma: no branch
-                    peek = self.peek()
-                    if peek == RandomAccessRead.EOF or not self.is_digit(peek):
-                        self._src.read()
-            try:
-                found_object_number = self.read_object_number()
-            except PDFParseError:
-                return None
-            if object_key.object_number != found_object_number:
-                if not self._lenient:
-                    return None
-                object_key = COSObjectKey(
-                    found_object_number, object_key.generation_number
-                )
-            gen_number = self.read_generation_number()
-            self.read_expected_string(b"obj", True)
-            if gen_number == object_key.generation_number:
-                return object_key
-            if self._lenient and gen_number > object_key.generation_number:
-                return COSObjectKey(object_key.object_number, gen_number)
-        except PDFParseError:
-            return None
-        return None
+        data = self._read_all_bytes()
+        return _find_object_key_in(
+            _ByteWindow(data, 0, len(data)),
+            object_key,
+            offset,
+            xref_offset,
+            self._lenient,
+        )
+
+    def get_bf_cos_object_offsets(self) -> dict[COSObjectKey, int]:
+        """Return the brute-force ``n g obj`` offset map, scanning on first
+        use. Mirrors upstream ``BruteForceParser.getBFCOSObjectOffsets()``
+        (3.0.8): the scan follows ``bfSearchForObjects`` byte for byte
+        (single-digit generations, the last-``%%EOF`` bound and the deferred
+        final object), and the same map instance is returned on every call."""
+        if not self._bf_search_triggered:
+            self._bf_search_triggered = True
+            self._bf_cos_object_offsets = _bf_search_for_objects_in(
+                self._read_all_bytes()
+            )
+        return self._bf_cos_object_offsets
+
+    def bf_search_triggered(self) -> bool:
+        """``True`` once :meth:`get_bf_cos_object_offsets` has run. Mirrors
+        upstream ``BruteForceParser.bfSearchTriggered()``."""
+        return self._bf_search_triggered
 
     def get_brute_force_parser(self) -> COSParser:
         """Return the brute-force parser. Mirrors upstream
@@ -2702,3 +2698,401 @@ def _read_object_stream_offsets(
     finally:
         header_view.close()
     return decoded, pairs, first
+
+
+# ---------------------------------------------------------------------------
+# Byte-exact ports of the upstream xref offset check and brute-force object
+# scan (COSParser.findObjectKey / validateXrefOffsets and
+# BruteForceParser.bfSearchForObjects / bfSearchForLastEOFMarker /
+# bfSearchForObjStreamOffsets, PDFBox 3.0.8). They run over an in-memory
+# slice of the source so callers can batch reads; the reader primitives below
+# reproduce BaseParser's cursor behaviour (including rewinds at EOF).
+# ---------------------------------------------------------------------------
+
+# BaseParser.isWhitespace: NUL, TAB, LF, FF, CR, SPACE.
+_PDF_WHITESPACE = frozenset(b"\x00\t\n\x0c\r ")
+_OBJECT_NUMBER_THRESHOLD = 10_000_000_000
+_GENERATION_NUMBER_THRESHOLD = 65535
+_MAX_LENGTH_LONG = 19
+_JAVA_LONG_MAX = (1 << 63) - 1
+_JAVA_INT_MAX = (1 << 31) - 1
+_MINIMUM_SEARCH_OFFSET = 6
+
+
+class _ReadError(Exception):
+    """Stands in for the ``IOException`` the upstream reader raises."""
+
+
+class _OutOfWindow(Exception):
+    """A read needed source bytes outside the buffered slice."""
+
+
+class _ByteWindow:
+    """Cursor over ``buf``, which holds the source bytes starting at absolute
+    offset ``base`` of a source that is ``length`` bytes long.
+
+    Mirrors the ``RandomAccessRead`` contract upstream relies on: ``read`` at
+    EOF returns ``-1`` without advancing, seeking past EOF is allowed and a
+    negative seek raises. Touching an in-file byte outside the slice raises
+    :class:`_OutOfWindow` so the caller can retry with a larger slice."""
+
+    __slots__ = ("base", "buf", "length", "limit", "pos")
+
+    def __init__(self, buf: bytes, base: int, length: int) -> None:
+        self.buf = buf
+        self.base = base
+        self.limit = base + len(buf)
+        self.length = length
+        self.pos = 0
+
+    def at(self, position: int) -> int:
+        if position >= self.length:
+            return -1
+        if position < self.base or position >= self.limit:
+            raise _OutOfWindow
+        return self.buf[position - self.base]
+
+    def peek(self) -> int:
+        return self.at(self.pos)
+
+    def read(self) -> int:
+        c = self.at(self.pos)
+        if c != -1:
+            self.pos += 1
+        return c
+
+    def seek(self, position: int) -> None:
+        if position < 0:
+            raise _ReadError
+        self.pos = position
+
+
+def _is_digit(c: int) -> bool:
+    return 0x30 <= c <= 0x39
+
+
+def _w_skip_spaces(s: _ByteWindow) -> None:
+    """BaseParser.skipSpaces: whitespace and ``%`` comments."""
+    c = s.read()
+    while c in _PDF_WHITESPACE or c == 0x25:
+        if c == 0x25:
+            c = s.read()
+            while c not in (0x0A, 0x0D) and c != -1:
+                c = s.read()
+        else:
+            c = s.read()
+    if c != -1:
+        s.seek(s.pos - 1)
+
+
+def _w_skip_white_spaces(s: _ByteWindow) -> None:
+    """BaseParser.skipWhiteSpaces: spaces, then at most one line break."""
+    c = s.read()
+    while c == 0x20:
+        c = s.read()
+    if c == 0x0D:
+        if s.read() != 0x0A:
+            s.seek(s.pos - 1)
+    elif c != 0x0A:
+        s.seek(s.pos - 1)
+
+
+def _w_read_string_number(s: _ByteWindow) -> bytes:
+    """BaseParser.readStringNumber."""
+    start = s.pos
+    c = s.read()
+    while _is_digit(c):
+        if s.pos - start > _MAX_LENGTH_LONG:
+            raise _ReadError
+        c = s.read()
+    if c != -1:
+        s.seek(s.pos - 1)
+    return bytes(s.at(i) for i in range(start, s.pos))
+
+
+def _w_read_number(s: _ByteWindow, maximum: int) -> int:
+    _w_skip_spaces(s)
+    digits = _w_read_string_number(s)
+    if not digits:
+        raise _ReadError
+    value = int(digits)
+    if value > maximum:
+        raise _ReadError
+    return value
+
+
+def _w_read_object_number(s: _ByteWindow) -> int:
+    """BaseParser.readObjectNumber."""
+    value = _w_read_number(s, _JAVA_LONG_MAX)
+    if value >= _OBJECT_NUMBER_THRESHOLD:
+        raise _ReadError
+    return value
+
+
+def _w_read_generation_number(s: _ByteWindow) -> int:
+    """BaseParser.readGenerationNumber."""
+    value = _w_read_number(s, _JAVA_INT_MAX)
+    if value > _GENERATION_NUMBER_THRESHOLD:
+        raise _ReadError
+    return value
+
+
+def _find_object_key_in(
+    s: _ByteWindow,
+    object_key: COSObjectKey,
+    offset: int,
+    xref_offset: dict[COSObjectKey, int],
+    lenient: bool,
+) -> COSObjectKey | None:
+    """Port of upstream ``COSParser.findObjectKey`` over ``s``.
+
+    ``xref_offset`` maps keys to upstream-style values (negative for
+    object-stream members). May raise :class:`_OutOfWindow`."""
+    if offset < _MINIMUM_SEARCH_OFFSET:
+        return None
+    try:
+        s.seek(offset)
+        _w_skip_white_spaces(s)
+        if s.pos == offset:
+            # Ensure at least one whitespace precedes the object number.
+            s.seek(offset - 1)
+            if s.pos < offset:  # pragma: no branch - always true after seek
+                if not _is_digit(s.peek()):
+                    # Garbage of the previous object: ignore it.
+                    s.read()
+                else:
+                    current = s.pos - 1
+                    s.seek(current)
+                    while _is_digit(s.peek()):
+                        current -= 1
+                        s.seek(current)
+                    new_obj_nr = _w_read_object_number(s)
+                    new_gen_nr = _w_read_generation_number(s)
+                    existing = xref_offset.get(COSObjectKey(new_obj_nr, new_gen_nr))
+                    # The digits belong to another uncompressed object at
+                    # (nearly) the same offset: something is wrong.
+                    if (
+                        existing is not None
+                        and existing > 0
+                        and abs(offset - existing) < 10
+                    ):
+                        return None
+                    s.seek(offset)
+        found_object_number = _w_read_object_number(s)
+        if object_key.object_number != found_object_number:
+            if not lenient:
+                return None
+            object_key = COSObjectKey(
+                found_object_number, object_key.generation_number
+            )
+        gen_number = _w_read_generation_number(s)
+        _w_skip_spaces(s)
+        for expected in b"obj":
+            if s.read() != expected:
+                raise _ReadError
+        # (Upstream skips trailing spaces here too; that cannot change the
+        # outcome, so it is left out to keep the read inside the window.)
+        if gen_number == object_key.generation_number:
+            return object_key
+        if lenient and gen_number > object_key.generation_number:
+            return COSObjectKey(object_key.object_number, gen_number)
+    except _ReadError:
+        pass
+    return None
+
+
+def _java_hash_map_capacity(size: int) -> int:
+    """Table size of a ``java.util.HashMap`` filled by ``size`` puts."""
+    capacity = 16
+    while size > capacity * 3 // 4:
+        capacity *= 2
+    return capacity
+
+
+def _java_hash_map_bucket(key: COSObjectKey, capacity: int) -> int:
+    """Bucket of ``key`` in a ``HashMap`` of ``capacity`` (upstream
+    ``COSObjectKey.hashCode`` is ``Long.hashCode(number << 16 | gen)``)."""
+    v = (key.object_number << 16) | (key.generation_number & 0xFFFF)
+    h = (v ^ (v >> 32)) & 0xFFFFFFFF
+    return (h ^ (h >> 16)) & (capacity - 1)
+
+
+def _apply_xref_key_corrections(
+    xref_offset: dict, corrected: dict, valid: set
+) -> None:
+    """Second half of upstream ``validateXrefOffsets``: re-key corrected
+    entries unless the corrected key is already valid, then drop the old
+    keys. When two entries correct to the same key the one visited last in
+    upstream's ``HashMap`` iteration order wins, which is approximated by
+    ordering on the bucket index (ties by key)."""
+    if not corrected:
+        return
+    capacity = _java_hash_map_capacity(len(corrected))
+    ordered = sorted(
+        corrected,
+        key=lambda k: (
+            _java_hash_map_bucket(k, capacity),
+            k.object_number,
+            k.generation_number,
+        ),
+    )
+    pointers: dict = {}
+    for original in ordered:
+        replacement = corrected[original]
+        if replacement not in valid:
+            pointers[replacement] = xref_offset[original]
+    for original in corrected:
+        xref_offset.pop(original, None)
+    xref_offset.update(pointers)
+
+
+def _bf_find_string(data: bytes, position: int, pattern: bytes) -> tuple[int, int]:
+    """Port of ``BruteForceParser.findString``: a naive matcher that, after
+    a partial match fails, resumes at the mismatching byte (so ``%%%EOF``
+    is not found). Returns ``(match position or -1, new cursor)``; a partial
+    match cut off by EOF returns its start, as upstream does."""
+    n = len(data)
+    first = pattern[:1]
+    size = len(pattern)
+    i = position
+    while True:
+        start = data.find(first, i)
+        if start < 0:
+            return -1, max(n, position)
+        k = 1
+        while k < size and start + k < n and data[start + k] == pattern[k]:
+            k += 1
+        if k == size:
+            return start, start + size
+        if start + k >= n:
+            return start, n
+        i = start + k
+
+
+def _bf_search_for_last_eof_marker(data: bytes) -> int:
+    """Port of ``BruteForceParser.bfSearchForLastEOFMarker``: the last
+    ``%%EOF`` that is not followed by an ``xref`` table or an object header,
+    or ``Long.MAX_VALUE`` when there is none."""
+    window = _ByteWindow(data, 0, len(data))
+    last_eof_marker = -1
+    marker, position = _bf_find_string(data, _MINIMUM_SEARCH_OFFSET, b"%%EOF")
+    while marker != -1:
+        window.pos = position
+        try:
+            _w_skip_spaces(window)
+            if data[window.pos : window.pos + 4] != b"xref":
+                _w_read_object_number(window)
+                _w_read_generation_number(window)
+        except _ReadError:
+            last_eof_marker = marker
+        marker, position = _bf_find_string(data, window.pos, b"%%EOF")
+    return _JAVA_LONG_MAX if last_eof_marker == -1 else last_eof_marker
+
+
+def _bf_search_for_objects_in(data: bytes) -> dict[COSObjectKey, int]:
+    """Port of ``BruteForceParser.bfSearchForObjects`` (3.0.8).
+
+    An object is ``<digits><ws>+<digit><ws>obj`` (single-digit generation,
+    exactly one whitespace byte before ``obj``) at or after offset 6 and
+    before the last ``%%EOF`` marker. Each object is committed when the next
+    one is found; the final one only if a ``%%EOF`` marker exists or an
+    ``endobj`` follows it. A later definition of the same key wins. An object
+    number upstream cannot read (11+ digits) ends the scan, keeping what was
+    found so far, as upstream's partially filled map does."""
+    n = len(data)
+    last_eof = _bf_search_for_last_eof_marker(data)
+    window = _ByteWindow(data, 0, n)
+    offsets: dict[COSObjectKey, int] = {}
+    pending: tuple[int, int, int] | None = None
+    aborted = False
+    last_ws = -1
+    i = _MINIMUM_SEARCH_OFFSET + 1
+    ws = _PDF_WHITESPACE
+    minimum = _MINIMUM_SEARCH_OFFSET
+    while True:
+        j = data.find(b"obj", i)
+        if j < 0:
+            break
+        i = j + 1
+        p = j - 1  # the whitespace byte the scan reads before ``obj``
+        if p > minimum and p >= last_eof:
+            break
+        if data[p] not in ws:
+            continue
+        gen = data[p - 1]
+        if not _is_digit(gen):
+            continue
+        temp = p - 2
+        if data[temp] not in ws:
+            continue
+        while temp > minimum and data[temp] in ws:
+            temp -= 1
+        found = False
+        while temp > minimum and _is_digit(data[temp]):
+            temp -= 1
+            found = True
+        if not found:
+            continue
+        window.pos = temp + 1
+        try:
+            object_id = _w_read_object_number(window)
+        except _ReadError:
+            aborted = True
+            break
+        if pending is not None:
+            offsets[COSObjectKey(pending[0], pending[1])] = pending[2]
+        pending = (object_id, gen - 0x30, temp + 1)
+        last_ws = p
+        i = j + 3
+    if pending is not None and not aborted:
+        end_of_obj_found = False
+        k = data.find(b"endo", last_ws + 1)
+        while k >= 0 and (k <= minimum or k < last_eof):
+            if k + 4 >= n or data[k + 4 : k + 6] == b"bj":
+                end_of_obj_found = True
+                break
+            k = data.find(b"endo", k + 4)
+        if last_eof < _JAVA_LONG_MAX or end_of_obj_found:
+            offsets[COSObjectKey(pending[0], pending[1])] = pending[2]
+    return offsets
+
+
+def _bf_search_for_obj_stream_offsets_in(data: bytes) -> dict[int, COSObjectKey]:
+    """Port of ``BruteForceParser.bfSearchForObjStreamOffsets``: for each
+    ``/ObjStm`` occurrence, look back (up to ~400 bytes, in 10-byte steps)
+    for the ``<n> <g> obj`` header of the enclosing object."""
+    n = len(data)
+    window = _ByteWindow(data, 0, n)
+    result: dict[int, COSObjectKey] = {}
+    marker, _ = _bf_find_string(data, _MINIMUM_SEARCH_OFFSET, b"/ObjStm")
+    while marker != -1:
+        obj_found = False
+        for step in range(1, 40):
+            if obj_found:
+                break
+            current = marker - step * 10
+            if current <= 0:
+                continue
+            for _ in range(10):
+                if data[current : current + 4] == b" obj":
+                    temp = current - 1
+                    if _is_digit(data[temp]) and temp - 1 >= 0 and data[temp - 1] == 0x20:
+                        temp -= 2
+                        length = 0
+                        while temp > _MINIMUM_SEARCH_OFFSET and _is_digit(data[temp]):
+                            temp -= 1
+                            length += 1
+                        if length > 0:
+                            window.pos = temp + 1
+                            try:
+                                number = _w_read_object_number(window)
+                                generation = _w_read_generation_number(window)
+                            except _ReadError:
+                                pass
+                            else:
+                                result[temp + 1] = COSObjectKey(number, generation)
+                    obj_found = True
+                    break
+                current += 1
+        marker, _ = _bf_find_string(data, marker + 7, b"/ObjStm")
+    return result

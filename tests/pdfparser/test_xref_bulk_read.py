@@ -5,8 +5,8 @@ per-byte reader logic they replace.
   per-row ``skip_whitespace`` / peek / ``_read_xref_entry`` loop is kept for
   the rows it defers on. Every case is parsed twice (fast path on, and forced
   off) and must leave the same entries, recovery flag, trailer and cursor.
-* ``_find_bad_xref_offsets`` validates all offsets from sorted block reads and
-  must agree with the per-entry ``_object_header_matches``.
+* ``_find_object_keys`` checks all offsets from sorted block reads and must
+  agree with the per-entry ``COSParser.find_object_key`` port.
 * In-use rows with offset 0 are skipped, as upstream ``parseXrefTable`` does
   (oracle-confirmed on ``eu-001.pdf``).
 """
@@ -23,7 +23,6 @@ from pypdfbox.io.random_access_read_buffered_file import (
 from pypdfbox.pdfparser import pdf_parser as pdf_parser_module
 from pypdfbox.pdfparser.cos_parser import COSParser
 from pypdfbox.pdfparser.pdf_parser import PDFParser
-from pypdfbox.pdfparser.xref_trailer_resolver import XrefEntry, XrefType
 from pypdfbox.pdmodel.pd_document import PDDocument
 
 _FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
@@ -164,37 +163,41 @@ def _with_xref(body: bytes, offsets: list[int]) -> bytes:
 
 
 @pytest.mark.parametrize("block", [1 << 20, 64, 70, 97])
-def test_find_bad_offsets_matches_per_entry_check(block: int, monkeypatch) -> None:
+def test_find_object_keys_matches_per_entry_check(block: int, monkeypatch) -> None:
     body, offsets = _pdf_with_objects(40)
     bad_offsets = list(offsets)
     bad_offsets[5] += 3  # into the middle of a header
     bad_offsets[9] -= 1  # the preceding newline: whitespace-tolerant accept
-    bad_offsets[12] = offsets[13]  # another object's header
+    bad_offsets[12] = offsets[13]  # another object's header: re-keyed
     bad_offsets[20] = len(body) + 500  # past EOF
     bad_offsets[30] = len(body) - 2  # header window truncated by EOF
     data = _with_xref(body, bad_offsets)
-    parser = PDFParser(RandomAccessReadBuffer(bytearray(data)))
-    xref = {
-        COSObjectKey(i + 1, 0): XrefEntry(type=XrefType.TABLE, offset=o)
-        for i, o in enumerate(bad_offsets)
-    }
-    xref[COSObjectKey(99, 0)] = XrefEntry(type=XrefType.COMPRESSED, offset=7)
-    xref[COSObjectKey(98, 0)] = XrefEntry(
-        type=XrefType.TABLE, offset=0, compressed_index=-1
-    )
-    parser._src.seek(17)
+    values = {COSObjectKey(i + 1, 0): o for i, o in enumerate(bad_offsets)}
+    values[COSObjectKey(99, 0)] = -7  # object-stream member: not checked
     monkeypatch.setattr(pdf_parser_module, "_BULK_READ_BLOCK", block)
-    bad = parser._find_bad_xref_offsets(xref)
+    parser = PDFParser(RandomAccessReadBuffer(bytearray(data)))
+    parser._cos_parser = COSParser(parser._src)
+    reference = COSParser(RandomAccessReadBuffer(bytearray(data)))
+    parser._src.seek(17)
+    # Any failing entry makes the whole check fail.
+    assert parser._find_object_keys(values) is None
     assert parser._src.get_position() == 17
-    expected = {
-        key
-        for key, entry in xref.items()
-        if entry.type is XrefType.TABLE
-        and entry.compressed_index != -1
-        and not parser._object_header_matches(entry.offset, key)
-    }
-    assert bad == expected
-    assert {k.object_number for k in bad} == {6, 13, 21, 31}
+    failing = set()
+    for key, offset in values.items():
+        if offset < 0:
+            continue
+        expected = reference.find_object_key(key, offset, values)
+        result = parser._find_object_keys({key: offset})
+        if expected is None:
+            assert result is None
+            failing.add(key.object_number)
+            continue
+        corrected, valid = result
+        if expected is key:
+            assert valid == {key} and not corrected
+        else:
+            assert corrected == {key: expected}
+    assert failing == {6, 21, 31}
 
 
 def test_bad_offsets_are_repaired_from_file_source(tmp_path: Path) -> None:

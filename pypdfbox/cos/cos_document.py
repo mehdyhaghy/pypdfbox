@@ -128,10 +128,10 @@ class COSDocument(COSBase):
         if existing is None:
             existing = COSObject(key.object_number, key.generation_number)
             self._objects[key] = existing
-            existing.get_update_state().set_origin_document_state(
-                self._document_state,
-                dereferencing=True,
-            )
+            # ``set_origin_document_state(state, dereferencing=True)`` on a
+            # fresh, unresolved placeholder only records the origin: it has no
+            # substructures to walk and dereferencing never marks it updated.
+            existing._update_state._origin_document_state = self._document_state
         return existing
 
     def get_object(self, key: COSObjectKey) -> COSObject | None:
@@ -173,11 +173,14 @@ class COSDocument(COSBase):
         Entries with a ``None`` key (PDFBOX-6132 — corrupt xref entry) are
         ignored; offsets are stored in ``_xref_table`` for later retrieval via
         :meth:`get_xref_table`."""
+        objects = self._objects
+        xref_table = self._xref_table
         for key, offset in table.items():
             if key is None:
                 continue
-            self.get_object_from_pool(key)
-            self._xref_table[key] = offset
+            if key not in objects:
+                self.get_object_from_pool(key)
+            xref_table[key] = offset
 
     def add_x_ref_table(self, table: dict[COSObjectKey | None, int]) -> None:
         """Alias for :meth:`add_xref_table` matching the parity-audit's

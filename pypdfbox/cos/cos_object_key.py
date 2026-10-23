@@ -87,11 +87,11 @@ class COSObjectKey:
 
     @property
     def object_number(self) -> int:
-        return self.get_number()
+        return self._number_and_generation >> _NUMBER_OFFSET
 
     @property
     def generation_number(self) -> int:
-        return self.get_generation()
+        return self._number_and_generation & _GENERATION_MASK
 
     @property
     def stream_index(self) -> int:
@@ -114,7 +114,8 @@ class COSObjectKey:
         return not result
 
     def __hash__(self) -> int:
-        return hash(self._number_and_generation)
+        # Same value as ``hash(int)``: Python reduces the returned int itself.
+        return self._number_and_generation
 
     def __lt__(self, other: Any) -> bool:
         if not isinstance(other, COSObjectKey):
