@@ -95,6 +95,43 @@ _FAST_TOKEN_RE = re.compile(
     re.DOTALL,
 )
 _KW_TAIL_RE = re.compile(rb"[^" + _WS_CLASS + rb"\[<(/%0-9]*")
+# Operand-only shortcuts. Each piece below accepts exactly the bytes the
+# corresponding ``_FAST_TOKEN_RE`` token accepts (or a subset of them), and
+# is possessive / atomic: the alternatives start with disjoint bytes, so that
+# never changes what matches, it only rules out backtracking blow-ups on long
+# runs that end in an unsupported token. Literal strings are restricted to
+# bodies with no ``(`` byte at all, escaped or not: the main loop replays the
+# PDFBOX-276 end-of-string look-ahead whenever the body holds one, so those
+# take the token-by-token path.
+_SHORTCUT_WS = rb"[" + _WS_CLASS + rb"]++|%[^\r\n]*+"
+_SHORTCUT_NUM = (
+    rb"(?>[+\-]?(?:[0-9]++(?:\.[0-9]*+)?|\.[0-9]++))"
+    rb"(?=[" + _WS_CLASS + rb"()<>\[\]{}/%]|\Z)"
+)
+_SHORTCUT_STR = rb"\((?:[^()\\]|\\[^(])*+\)"
+_SHORTCUT_HEX = rb"<(?!<)[^>]*+>"
+#: A whole top-level array of numbers, flat literal strings and hex strings
+#: (the ``TJ`` / ``d`` operand shape). Every element is a token the main loop
+#: accepts inside an array without effect, so matching it in one step is
+#: equivalent to tokenizing it: the array contributes a single operand.
+#: Anything else (names, strings holding a ``(``, dictionaries, keywords)
+#: fails this match and the array is tokenized element by element.
+_SHORTCUT_ARRAY = (
+    rb"\[(?:" + _SHORTCUT_WS + rb"|" + _SHORTCUT_NUM + rb"|" + _SHORTCUT_STR
+    + rb"|" + _SHORTCUT_HEX + rb")*+\]"
+)
+_SIMPLE_ARRAY_RE = re.compile(_SHORTCUT_ARRAY, re.DOTALL)
+#: With no pending operands: a run of name-free operands (numbers, flat
+#: strings, hex strings, simple arrays) closed by an operator keyword. No
+#: name operand means the operator cannot record a resource name, so the
+#: whole run is a no-op for the scan -- provided the keyword is an ordinary
+#: operator (the caller checks the keyword group for the special cases).
+_PLAIN_RUN_RE = re.compile(
+    rb"(?:" + _SHORTCUT_WS + rb"|" + _SHORTCUT_NUM + rb"|" + _SHORTCUT_STR
+    + rb"|" + _SHORTCUT_HEX + rb"|" + _SHORTCUT_ARRAY + rb")*+"
+    rb"(?P<kw>['\"]|[A-Za-z*][^" + _WS_CLASS + rb"\[<(/%0-9]*+)",
+    re.DOTALL,
+)
 #: Unescaped ``(`` / ``)`` inside a nested literal string; used to replay the
 #: parser's PDFBOX-276 ``checkForEndOfString`` look-ahead on nested closers.
 _NESTED_CLOSE_EOS_RE = re.compile(rb"\)(?:[\r\n][/>]|\r\n[/>])")
@@ -124,7 +161,22 @@ def _fast_scan_resource_names(data: bytes) -> dict[str, set[bytes]] | None:
     n = len(data)
     pos = 0
     match = _FAST_TOKEN_RE.match
+    simple_array = _SIMPLE_ARRAY_RE.match
+    plain_run = _PLAIN_RUN_RE.match
     while pos < n:
+        if not operands and not stack:
+            run = plain_run(data, pos)
+            if run is not None:
+                tok = run.group("kw")
+                end = run.end()
+                if not (
+                    tok in (b"true", b"false", b"null")
+                    or tok == b"BI"
+                    or tok[:1] == b"I"
+                    or (tok[-1:] == b"d" and end < n and data[end] in b"01")
+                ):
+                    pos = end
+                    continue
         m = match(data, pos)
         assert m is not None  # ``bad`` matches any single byte
         kind = m.lastgroup
@@ -179,6 +231,12 @@ def _fast_scan_resource_names(data: bytes) -> dict[str, set[bytes]] | None:
         elif kind in ("num", "hex"):
             kind = "operand"
         elif kind == "aopen" or kind == "dopen":
+            if not stack and kind == "aopen":
+                simple = simple_array(data, m.start())
+                if simple is not None:
+                    operands.append(_OPERAND)
+                    pos = simple.end()
+                    continue
             if stack and stack[-1] == "k":
                 return None
             stack.append("a" if kind == "aopen" else "k")

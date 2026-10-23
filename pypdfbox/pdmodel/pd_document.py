@@ -2,7 +2,19 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any, BinaryIO
 
-from pypdfbox.cos import COSArray, COSDictionary, COSDocument, COSName
+from pypdfbox.cos import (
+    COSArray,
+    COSBoolean,
+    COSDictionary,
+    COSDocument,
+    COSFloat,
+    COSInteger,
+    COSName,
+    COSNull,
+    COSObject,
+    COSStream,
+    COSString,
+)
 from pypdfbox.io import RandomAccessRead, RandomAccessWrite
 
 from .pd_page import PDPage
@@ -1789,46 +1801,13 @@ class PDDocument:
             self._import_fields_count += 1
 
     def _deep_copy_cos(self, value: Any, seen: set[int]) -> Any:
-        """Recursive deep copy of a ``COSBase`` tree. Cycles are broken via
-        an ``id()``-keyed seen set — when revisited, the original instance
-        is shared (rare in well-formed PDFs but possible via /Parent loops
-        or self-referential resource trees)."""
-        from pypdfbox.cos import COSArray, COSDictionary, COSObject, COSStream
+        """Deep copy of a ``COSBase`` tree (see :func:`_deep_copy_cos_graph`).
 
-        if id(value) in seen:
-            return value
-        if isinstance(value, COSObject):
-            # Resolve indirect ref, then deep-copy the resolved value.
-            return self._deep_copy_cos(value.get_object(), seen)
-        if isinstance(value, COSStream):
-            seen.add(id(value))
-            new_stream = COSStream()
-            for key in list(value.key_set()):
-                new_stream.set_item(
-                    key, self._deep_copy_cos(value.get_item(key), seen)
-                )
-            # Copy raw (still-encoded) stream bytes verbatim — /Filter chain
-            # and /Length come along via the dict copy above.
-            if value.has_data():
-                new_stream.set_raw_data(value.get_raw_data())
-            return new_stream
-        if isinstance(value, COSDictionary):
-            seen.add(id(value))
-            new_dict = COSDictionary()
-            for key in list(value.key_set()):
-                new_dict.set_item(
-                    key, self._deep_copy_cos(value.get_item(key), seen)
-                )
-            return new_dict
-        if isinstance(value, COSArray):
-            seen.add(id(value))
-            new_arr = COSArray()
-            for item in value:
-                new_arr.add(self._deep_copy_cos(item, seen))
-            return new_arr
-        # Scalars (COSInteger, COSFloat, COSName, COSString, COSBoolean,
-        # COSNull) are immutable in practice — share the original instance.
-        return value
+        Cycles are broken via an ``id()``-keyed seen set: when a container
+        is revisited, the original instance is shared (rare in well-formed
+        PDFs but possible via /Parent loops or self-referential resource
+        trees)."""
+        return _deep_copy_cos_graph(value, seen)
 
     def get_resource_cache(self) -> Any:
         """Return the document's :class:`PDResourceCache`, lazily allocating
@@ -2169,6 +2148,116 @@ class ExternalSigningSupport:
         self._document._pending_signature = None
         self._document._pending_signature_interface = None
         self._document._pending_signature_options = None
+
+
+# Exact types :func:`_deep_copy_cos_graph` shares instead of copying. They are
+# immutable in practice, and the copy has always shared them; checking the
+# exact type first just skips the dispatch for the bulk of the graph (font
+# /Widths arrays, number trees, ...).
+_COPY_LEAF_TYPES = frozenset(
+    (COSName, COSInteger, COSFloat, COSBoolean, COSNull, COSString)
+)
+_FRAME_DICT = 0
+_FRAME_STREAM = 1
+_FRAME_ARRAY = 2
+
+
+def _deep_copy_cos_graph(value: Any, seen: set[int]) -> Any:
+    """Deep copy of a ``COSBase`` graph, as used by
+    :meth:`PDDocument.import_page`.
+
+    Indirect references are resolved and their targets copied in place;
+    streams keep their raw (still-encoded) bytes. A container already in
+    ``seen`` -- either seeded by the caller or copied earlier in the same
+    walk -- is *not* copied again: the original source instance is shared.
+    Leaves (names, numbers, strings, booleans, null) are always shared.
+
+    The walk is an explicit-stack, depth-first, pre-order traversal in
+    dictionary-key / array-index order, so which occurrence of a shared
+    object receives the fresh copy is exactly what the former recursive
+    implementation produced, without its recursion-depth limit.
+    """
+    leaf_types = _COPY_LEAF_TYPES
+    stack: list[tuple[Any, ...]] = []
+
+    def enter(item: Any) -> Any:
+        while True:
+            if id(item) in seen:
+                return item
+            if not isinstance(item, COSObject):
+                break
+            item = item.get_object()
+        if isinstance(item, COSStream):
+            seen.add(id(item))
+            new_stream = COSStream()
+            stack.append(
+                (_FRAME_STREAM, item, new_stream, iter(list(item._items)))
+            )
+            return new_stream
+        if isinstance(item, COSDictionary):
+            seen.add(id(item))
+            new_dict = COSDictionary()
+            stack.append(
+                (_FRAME_DICT, item._items, new_dict._items, iter(list(item._items)))
+            )
+            return new_dict
+        if isinstance(item, COSArray):
+            seen.add(id(item))
+            new_arr = COSArray()
+            stack.append((_FRAME_ARRAY, None, new_arr._items, iter(item._items)))
+            return new_arr
+        return item
+
+    result = enter(value)
+    # A fresh container's ``set_item`` / ``add`` only links the child's update
+    # state to the container's (unset) document state, which is a no-op, so
+    # plain dict / list stores below are equivalent for COSDictionary and
+    # COSArray copies. Stream copies keep ``set_item`` (it also bumps the
+    # decode-cache generation).
+    while stack:
+        kind, src, dst, it = stack[-1]
+        depth = len(stack)
+        descended = False
+        if kind == _FRAME_ARRAY:
+            append = dst.append
+            for item in it:
+                if type(item) in leaf_types:
+                    append(item)
+                    continue
+                append(enter(item))
+                if len(stack) != depth:
+                    descended = True
+                    break
+        elif kind == _FRAME_DICT:
+            for key in it:
+                item = src.get(key)
+                if item is None:
+                    continue
+                if type(item) not in leaf_types:
+                    item = enter(item)
+                    if item is None:
+                        continue
+                dst[key] = item
+                if len(stack) != depth:
+                    descended = True
+                    break
+        else:
+            src_items = src._items
+            for key in it:
+                item = src_items.get(key)
+                if item is not None and type(item) not in leaf_types:
+                    item = enter(item)
+                dst.set_item(key, item)
+                if len(stack) != depth:
+                    descended = True
+                    break
+            if not descended and src.has_data():
+                # Copy raw (still-encoded) stream bytes verbatim; /Filter
+                # and /Length came along with the dictionary entries.
+                dst.set_raw_data(src.get_raw_data())
+        if not descended:
+            stack.pop()
+    return result
 
 
 __all__ = ["PDDocument", "PDDocumentSource", "ExternalSigningSupport"]
