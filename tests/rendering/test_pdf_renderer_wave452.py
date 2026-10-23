@@ -48,7 +48,9 @@ def test_paste_image_with_blend_preserves_rgba_canvas_mode() -> None:
         )
 
         assert renderer._image.mode == "RGBA"
-        assert renderer._image.getpixel((1, 1)) == (0, 0, 0, 255)
+        # PDFBox 3.0.8 BlendComposite: the multiply result is weighted by
+        # the backdrop alpha (128/255), leaving half of the red source.
+        assert renderer._image.getpixel((1, 1)) == (127, 0, 0, 255)
         assert renderer._image.getpixel((0, 0)) == (0, 255, 0, 128)
     finally:
         _finish(renderer)

@@ -3939,7 +3939,14 @@ class PDFRenderer(PDFStreamEngine):
             source = layer.copy()
             source.putalpha(combined)
             blended = PDFRenderer._blend(source, backdrop, blend_mode)
-            prev_image.paste(blended.convert("RGB"), (0, 0), blended.getchannel("A"))
+            if prev_image.mode == "RGBA":
+                # ``blended`` already carries the composited alpha; a masked
+                # paste would re-weight the backdrop alpha outside the paint.
+                prev_image.paste(blended, (0, 0))
+            else:
+                prev_image.paste(
+                    blended.convert("RGB"), (0, 0), blended.getchannel("A")
+                )
         elif prev_image.mode == "RGBA":
             # Compositing onto a transparency-group canvas (RGBA, seeded
             # transparent for an isolated group). PIL's ``paste(rgb, mask)``
@@ -7092,13 +7099,9 @@ class PDFRenderer(PDFStreamEngine):
                 out = backdrop.copy()
                 out.alpha_composite(source)
                 return out
-            inv_sa = ImageChops.invert(sa)
-            ba_keep = ImageChops.multiply(ba, inv_sa)
-            out_a = ImageChops.add(sa, ba_keep)
-            cr = Image.composite(cr, br, sa)
-            cg = Image.composite(cg, bg, sa)
-            cb = Image.composite(cb, bb, sa)
-            return Image.merge("RGBA", (cr, cg, cb, out_a))
+            return PDFRenderer._blend_result(
+                (cr, cg, cb), (sr, sg, sb, sa), (br, bg, bb, ba)
+            )
 
         # ImageChops paths are vectorised in C — prefer them whenever the
         # blend formula maps cleanly to a single primitive.
@@ -7130,23 +7133,68 @@ class PDFRenderer(PDFStreamEngine):
             cg = PDFRenderer._blend_channel(bg, sg, name)
             cb = PDFRenderer._blend_channel(bb, sb, name)
 
-        # Porter-Duff alpha-over for the resulting alpha channel:
-        #   a_out = a_s + a_b * (1 - a_s)
-        inv_sa = ImageChops.invert(sa)
-        ba_keep = ImageChops.multiply(ba, inv_sa)
-        out_a = ImageChops.add(sa, ba_keep)
+        return PDFRenderer._blend_result(
+            (cr, cg, cb), (sr, sg, sb, sa), (br, bg, bb, ba), name
+        )
 
-        # Where source is fully transparent the backdrop colour wins; where
-        # source is fully opaque the blend result wins. For partial alpha
-        # interpolate the per-channel blend back toward the backdrop using
-        # ``a_s`` as the weight (the simplified compositing equation when
-        # no shape coverage is involved):
-        #   c_out = (1 - a_s) * c_b + a_s * blend(c_b, c_s)
-        cr = Image.composite(cr, br, sa)
-        cg = Image.composite(cg, bg, sa)
-        cb = Image.composite(cb, bb, sa)
+    @staticmethod
+    def _blend_result(
+        mixed: tuple[Image.Image, Image.Image, Image.Image],
+        source: tuple[Image.Image, Image.Image, Image.Image, Image.Image],
+        backdrop: tuple[Image.Image, Image.Image, Image.Image, Image.Image],
+        separable_name: str | None = None,
+    ) -> Image.Image:
+        """Composite the per-channel blend result ``mixed`` = B(c_b, c_s)
+        back onto the backdrop, as upstream ``BlendComposite.compose``:
 
-        return Image.merge("RGBA", (cr, cg, cb, out_a))
+            a_r = a_b + a_s - a_s * a_b
+            v   = c_s + a_b * (B - c_s)
+            c   = c_b + (a_s / a_r) * (v - c_b)
+
+        On an opaque backdrop (``a_b`` = 1) this reduces to
+        ``c_b + a_s * (B - c_b)``, done with the PIL channel ops. A
+        backdrop with transparency (a transparency-group canvas) takes
+        the float path, where a separable ``B`` named by
+        ``separable_name`` is recomputed in float like upstream instead of
+        reusing the 8-bit ``mixed`` planes."""
+        cr, cg, cb = mixed
+        sr, sg, sb, sa = source
+        br, bg, bb, ba = backdrop
+        if ba.getextrema() == (255, 255):
+            # Porter-Duff alpha-over: a_out = a_s + a_b * (1 - a_s).
+            inv_sa = ImageChops.invert(sa)
+            ba_keep = ImageChops.multiply(ba, inv_sa)
+            out_a = ImageChops.add(sa, ba_keep)
+            cr = Image.composite(cr, br, sa)
+            cg = Image.composite(cg, bg, sa)
+            cb = Image.composite(cb, bb, sa)
+            return Image.merge("RGBA", (cr, cg, cb, out_a))
+
+        import numpy as np
+
+        def plane(img: Image.Image) -> Any:
+            return np.asarray(img, dtype=np.float32) / np.float32(255)
+
+        a_s = plane(sa)
+        a_b = plane(ba)
+        a_r = a_b + a_s - a_s * a_b
+        ratio = np.divide(a_s, a_r, out=np.zeros_like(a_s), where=a_r > 0)
+        out = []
+        for c_mix, c_src, c_dst in ((cr, sr, br), (cg, sg, bg), (cb, sb, bb)):
+            s = plane(c_src)
+            d = plane(c_dst)
+            mix = _separable_blend_float(separable_name, s, d)
+            if mix is None:
+                mix = plane(c_mix)
+            v = s + a_b * (mix - s)
+            out.append(d + ratio * (v - d))
+        out.append(a_r)
+
+        def to_l(values: Any) -> Image.Image:
+            data = np.floor(np.clip(values, 0, 1) * 255 + 0.5).astype(np.uint8)
+            return Image.fromarray(data, "L")
+
+        return Image.merge("RGBA", tuple(to_l(v) for v in out))
 
     @staticmethod
     def _blend_channel(
@@ -11205,3 +11253,49 @@ _COLOR_OPS: frozenset[str] = frozenset({
 
 
 __all__ = ["PDFRenderer"]
+
+
+def _separable_blend_float(name: str | None, src: Any, dst: Any) -> Any:
+    """Upstream ``BlendMode`` separable channel functions on float32
+    planes in [0, 1]; ``None`` for a name without one."""
+    import numpy as np
+
+    one = np.float32(1)
+    two = np.float32(2)
+    half = np.float32(0.5)
+    if name == "Multiply":
+        return src * dst
+    if name == "Screen":
+        return src + dst - src * dst
+    if name in ("Overlay", "HardLight"):
+        # Overlay is HardLight with the operands swapped.
+        cond = (dst if name == "Overlay" else src) <= half
+        return np.where(cond, two * dst * src, two * (src + dst - src * dst) - one)
+    if name == "Darken":
+        return np.minimum(src, dst)
+    if name == "Lighten":
+        return np.maximum(src, dst)
+    if name == "ColorDodge":
+        with np.errstate(divide="ignore", invalid="ignore"):
+            q = dst / (one - src)
+        return np.where(dst == 0, 0, np.where(dst >= one - src, one, q))
+    if name == "ColorBurn":
+        with np.errstate(divide="ignore", invalid="ignore"):
+            q = one - (one - dst) / src
+        return np.where(dst == one, one, np.where(one - dst >= src, 0, q))
+    if name == "SoftLight":
+        d = np.where(
+            dst <= np.float32(0.25),
+            ((np.float32(16) * dst - np.float32(12)) * dst + np.float32(4)) * dst,
+            np.sqrt(dst),
+        )
+        return np.where(
+            src <= half,
+            dst - (one - two * src) * dst * (one - dst),
+            dst + (two * src - one) * (d - dst),
+        )
+    if name == "Difference":
+        return np.abs(dst - src)
+    if name == "Exclusion":
+        return dst + src - two * dst * src
+    return None

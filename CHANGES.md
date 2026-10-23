@@ -27,6 +27,10 @@ Divergences that remain live (will affect observable behaviour vs Java PDFBox):
   upstream: PDFBox 3.0.8 `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/RC4Cipher.java`, `SecurityHandler.java`
   reason: bug fix toward parity.
 
+- **Blend modes over a transparent backdrop follow upstream `BlendComposite` (fix).** On a transparency-group canvas the blend result is now weighted by the backdrop alpha (`v = c_s + a_b * (B - c_s)`, then `c_b + (a_s / a_r) * (v - c_b)`), with separable modes computed in float like upstream, and a blended clipped paint no longer changes the canvas alpha outside the painted area. Verified pixel for pixel against PDFBox 3.0.8 on 1,333 random transparent-backdrop pixels across all 15 non-Normal blend modes. Remaining difference: on an opaque backdrop the existing 8-bit path can differ by 1/255 in Multiply and ColorBurn.
+  upstream: PDFBox 3.0.8 `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/blend/BlendComposite.java`, `BlendMode.java`
+  reason: bug fix toward parity.
+
 - **`PDDocument.import_page` is a shallow copy, like upstream (fix, behavior change).** It used to deep-copy everything the page reached and promote widget field roots into the destination `/AcroForm /Fields`. It now copies the page dictionary shallowly (minus `/Parent`), so resources and annotations are shared with the source; re-embeds the decoded `/Contents` as one FlateDecode stream; resets imported object keys; sets the resolved CropBox, MediaBox and Rotate; and only logs a warning for inherited resources. No AcroForm is created. Code that edits an imported page's resources now changes the source document too, as in PDFBox. Split output shrinks accordingly: a 100-page chunk of the ISO 32000 spec went from 2.02 MB (544 font dictionaries) to 0.80 MB (15, as upstream), and split chunks of form PDFs no longer carry a stray `/AcroForm`. `Splitter.process_page` no longer re-applies the page geometry itself.
   upstream: PDFBox 3.0.8 `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDDocument.java` (`importPage`)
   reason: bug fix toward parity.
