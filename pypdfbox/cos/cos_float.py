@@ -2,13 +2,22 @@ import math
 import re
 import struct
 from decimal import Decimal
-from typing import IO, Any, ClassVar
+from typing import IO, TYPE_CHECKING, Any, ClassVar
 
 from .cos_number import COSNumber
 from .i_cos_visitor import ICOSVisitor
 
+if TYPE_CHECKING:
+    from .cos_object_key import COSObjectKey
+
 _FLOAT_MAX = 3.4028234663852886e38  # Float.MAX_VALUE
 _FLOAT_MIN_NORMAL = 1.1754943508222875e-38  # Float.MIN_NORMAL (2**-126)
+
+# Precompiled big-endian float32 codec for the hot rounding paths (same
+# format as the ``struct.pack(">f", ...)`` calls it replaces).
+_F32 = struct.Struct(">f")
+_f32_pack = _F32.pack
+_f32_unpack = _F32.unpack
 
 # Signed 32/64-bit bounds for the ``f2i`` / ``f2l`` saturating narrowing casts.
 _INT_MIN = -(2**31)
@@ -46,7 +55,7 @@ def _float32_or_inf(value: float) -> float:
     if math.isnan(value) or math.isinf(value):
         return value
     try:
-        return float(struct.unpack(">f", struct.pack(">f", value))[0])
+        return float(_f32_unpack(_f32_pack(value))[0])
     except OverflowError:
         # A finite double whose magnitude rounds past Float.MAX_VALUE becomes
         # ±Infinity in IEEE-754 single precision (Java ``Float.parseFloat``);
@@ -284,7 +293,7 @@ def _to_float32(value: float) -> float:
         return _FLOAT_MAX
     if value < -_FLOAT_MAX or value == -math.inf:
         return -_FLOAT_MAX
-    return float(struct.unpack(">f", struct.pack(">f", value))[0])
+    return float(_f32_unpack(_f32_pack(value))[0])
 
 
 def _coerce(value: float) -> float:
@@ -321,9 +330,41 @@ class COSFloat(COSNumber):
     ZERO: ClassVar[COSFloat]
     ONE: ClassVar[COSFloat]
 
+    # ``COSBase`` state defaults, held on the class so construction (a parser
+    # hot path) skips the ``COSBase.__init__`` call: reads fall through to
+    # these until a setter stores a per-instance value, exactly the values
+    # ``COSBase.__init__`` would assign. Keep in sync with ``COSBase``.
+    _direct: bool = False
+    _needs_to_be_updated: bool = False
+    _key: COSObjectKey | None = None
+
     def __init__(self, value: float | str) -> None:
-        super().__init__()
         self._original: str | None
+        if type(value) is str:
+            # Fast path for the common parsed real. Whenever ``float(text)``
+            # succeeds with a finite result, ``_parse_float(text)`` returns
+            # that same double: every spelling it treats specially either
+            # makes ``float`` raise (blank, hex) or yields a non-finite value
+            # (``NaN`` / ``Infinity`` and the lenient ``nan`` / ``inf``
+            # forms). A float32 of normal magnitude then passes ``_coerce``
+            # unchanged, so ``parsed == coerced`` and the verbatim text is
+            # kept. Everything else (malformed text, overflow, subnormal or
+            # zero results) takes the general branch below unchanged.
+            try:
+                parsed = _f32_unpack(_f32_pack(float(value)))[0]
+            except (ValueError, OverflowError):
+                parsed = 0.0
+            # ``abs(nan)`` fails both comparisons; ``inf`` fails the upper one.
+            if _FLOAT_MIN_NORMAL <= abs(parsed) <= _FLOAT_MAX:
+                self._original = value
+                self._value = parsed
+                return
+        elif type(value) is float and -_FLOAT_MAX <= value <= _FLOAT_MAX:
+            # Fast path for an in-range double (``NaN`` fails the bounds):
+            # ``_to_float32`` reduces to the float32 round-trip here.
+            self._value = _f32_unpack(_f32_pack(value))[0]
+            self._original = None
+            return
         if isinstance(value, str):
             # Mirror upstream ``COSFloat(String)`` branch-for-branch: parse the
             # ORIGINAL string first. Only if that throws do we apply the

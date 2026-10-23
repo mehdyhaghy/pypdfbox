@@ -11,6 +11,9 @@ def _is_ascii_digits(text: str) -> bool:
     default): the empty string matches, and non-ASCII "digit" code points
     (which Python's ``str.isdigit`` would accept) do not.
     """
+    if type(text) is str:
+        # ASCII ``isdigit`` accepts exactly ``0``-``9``.
+        return text == "" or (text.isascii() and text.isdigit())
     return all("0" <= ch <= "9" for ch in text)
 
 
@@ -43,6 +46,8 @@ class COSNumber(COSBase):
         """
         if number is None:
             raise TypeError("number is None")
+        if type(number) is str:
+            return "." in number or "e" in number
         return any(ch in (".", "e") for ch in number)
 
     @staticmethod
@@ -67,10 +72,11 @@ class COSNumber(COSBase):
         float, and ``"".matches("\d*")`` is ``True``, so upstream returns
         ``OUT_OF_RANGE_MAX`` — not ``ZERO``.
         """
-        # Local imports avoid the circular dependency between cos_number,
-        # cos_integer and cos_float at module-import time.
-        from .cos_float import COSFloat
-        from .cos_integer import COSInteger
+        # Module references bound at the bottom of this file (a circular
+        # import at module-import time); attribute access is far cheaper
+        # than a function-local ``import`` on every call.
+        COSFloat = _cos_float.COSFloat  # noqa: N806
+        COSInteger = _cos_integer.COSInteger  # noqa: N806
 
         if value is None:
             raise TypeError("value is None")
@@ -121,3 +127,9 @@ class COSNumber(COSBase):
         if not (_LONG_MIN <= n <= _LONG_MAX):
             raise ValueError(f"For input string: {value!r}")
         return n
+
+
+# Bound last: both modules import ``COSNumber`` from here, so by this point
+# whichever of them triggered this import is already in ``sys.modules``.
+from . import cos_float as _cos_float  # noqa: E402
+from . import cos_integer as _cos_integer  # noqa: E402

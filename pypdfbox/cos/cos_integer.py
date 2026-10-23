@@ -1,7 +1,10 @@
-from typing import IO, Any, ClassVar
+from typing import IO, TYPE_CHECKING, Any, ClassVar
 
 from .cos_number import COSNumber
 from .i_cos_visitor import ICOSVisitor
+
+if TYPE_CHECKING:
+    from .cos_object_key import COSObjectKey
 
 # Java's Integer.valueOf caches -128..127 by default; PDFBox extends to
 # -100..256 for the COS hot path. We mirror that range so common values
@@ -19,9 +22,18 @@ class COSInteger(COSNumber):
 
     _cache: ClassVar[dict[int, COSInteger]] = {}
 
+    # ``COSBase`` state defaults, held on the class so construction (a parser
+    # hot path) skips the ``COSBase.__init__`` call: reads fall through to
+    # these until a setter stores a per-instance value, exactly the values
+    # ``COSBase.__init__`` would assign. Keep in sync with ``COSBase``.
+    _direct: bool = False
+    _needs_to_be_updated: bool = False
+    _key: COSObjectKey | None = None
+
     def __init__(self, value: int) -> None:
-        super().__init__()
-        if not isinstance(value, int) or isinstance(value, bool):
+        if type(value) is not int and (
+            not isinstance(value, int) or isinstance(value, bool)
+        ):
             raise TypeError("COSInteger value must be int")
         self._value = value
         # PDFBOX-5176: integers parsed from input outside Java's Long range
@@ -35,6 +47,13 @@ class COSInteger(COSNumber):
     @classmethod
     def get(cls, value: int) -> COSInteger:  # type: ignore[override]
         """Return a cached instance for small values, else a new one."""
+        if type(value) is int:
+            # Hot path: the -100..256 table is filled at import, so a miss
+            # means the value is outside the cached range.
+            cached = _cache_get(value)
+            if cached is not None:
+                return cached
+            return cls(value)
         if not isinstance(value, int) or isinstance(value, bool):
             raise TypeError("COSInteger value must be int")
         if _CACHE_LOW <= value <= _CACHE_HIGH:
@@ -158,6 +177,14 @@ class COSInteger(COSNumber):
     def __repr__(self) -> str:
         return f"COSInteger({self._value})"
 
+
+# Fill the shared small-value table up front so ``get`` is a single dict
+# probe. Upstream fills its ``STATIC`` array lazily; the observable contract
+# (one shared instance per value in -100..256) is the same either way.
+for _v in range(_CACHE_LOW, _CACHE_HIGH + 1):
+    COSInteger._cache[_v] = COSInteger(_v)
+del _v
+_cache_get = COSInteger._cache.get
 
 COSInteger.ZERO = COSInteger.get(0)  # type: ignore[attr-defined]
 COSInteger.ONE = COSInteger.get(1)  # type: ignore[attr-defined]
