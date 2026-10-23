@@ -4817,3 +4817,5 @@ License: SIL Open Font License 1.1 (permissive; on the project allow-list)
 | `tests/fontbox/ttf/upstream/test_hinting_concurrency.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/HintingConcurrencyTest.java` |
 | `tests/fontbox/ttf/upstream/test_system_font_hinting.py` | 3.0.9-SNAPSHOT | `fontbox/src/test/java/org/apache/fontbox/ttf/SystemFontHintingTest.java` (skips without Arial) |
 | `tests/pdmodel/test_pd_page_tree_resource_cache_wave1613.py` | 3.0.8 | hand-written; page resource-cache threading in `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDPageTree.java` |
+| `tests/multipdf/test_splitter_structure_oracle.py` | 3.0.8 (+ 3.0 branch Splitter for PDFBOX-6283) | hand-written; live object-graph differential of `pdfbox/src/main/java/org/apache/pdfbox/multipdf/Splitter.java` and `PageExtractor.java` output |
+| `tests/pdmodel/interactive/action/test_pd_action_wrap_keeps_dictionary.py` | 3.0.8 | hand-written; `PDAction(COSDictionary)` wrap semantics in `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDAction.java` |

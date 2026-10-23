@@ -2,7 +2,6 @@ import logging
 
 import pytest
 
-from pypdfbox import PDDocument
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSNull
 from pypdfbox.multipdf import Splitter
 
@@ -16,61 +15,6 @@ _SIG_FLAGS = COSName.get_pdf_name("SigFlags")
 _SUBTYPE = COSName.get_pdf_name("Subtype")
 _TYPE = COSName.get_pdf_name("Type")
 _V = COSName.get_pdf_name("V")
-
-
-def test_wave604_scrub_acroform_drops_signature_state_but_keeps_other_fields() -> None:
-    doc = PDDocument()
-    acroform = COSDictionary()
-    acroform.set_item(_SIG_FLAGS, COSInteger.get(3))
-    fields = COSArray()
-    sig_field = COSDictionary()
-    sig_field.set_item(_FT, COSName.get_pdf_name("Sig"))
-    text_field = COSDictionary()
-    text_field.set_item(_FT, COSName.get_pdf_name("Tx"))
-    fields.add(sig_field)
-    fields.add(text_field)
-    acroform.set_item(_FIELDS, fields)
-    doc.get_document_catalog().get_cos_object().set_item(_ACROFORM, acroform)
-
-    try:
-        Splitter()._scrub_acroform(doc)
-
-        kept_fields = acroform.get_dictionary_object(_FIELDS)
-        assert isinstance(kept_fields, COSArray)
-        assert not acroform.contains_key(_SIG_FLAGS)
-        assert kept_fields.size() == 1
-        assert kept_fields.get_object(0) is text_field
-        assert doc.get_document_catalog().get_cos_object().contains_key(_ACROFORM)
-    finally:
-        doc.close()
-
-
-def test_wave604_scrub_acroform_removes_empty_signature_only_form() -> None:
-    doc = PDDocument()
-    acroform = COSDictionary()
-    fields = COSArray()
-    sig_field = COSDictionary()
-    sig_field.set_item(_FT, COSName.get_pdf_name("Sig"))
-    fields.add(sig_field)
-    acroform.set_item(_FIELDS, fields)
-    doc.get_document_catalog().get_cos_object().set_item(_ACROFORM, acroform)
-
-    try:
-        Splitter()._scrub_acroform(doc)
-
-        assert not doc.get_document_catalog().get_cos_object().contains_key(_ACROFORM)
-    finally:
-        doc.close()
-
-
-def test_wave604_signature_widget_detects_signature_value_by_byte_range() -> None:
-    widget = COSDictionary()
-    widget.set_item(_SUBTYPE, COSName.get_pdf_name("Widget"))
-    sig_value = COSDictionary()
-    sig_value.set_item(_BYTE_RANGE, COSArray())
-    widget.set_item(_V, sig_value)
-
-    assert Splitter._is_signature_widget(widget)
 
 
 def test_wave604_clone_tree_array_preserves_mcid_holes_with_nulls() -> None:

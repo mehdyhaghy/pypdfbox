@@ -50,13 +50,12 @@ def test_wave375_process_page_copies_inherited_resources_and_removes_beads() -> 
     chunks = Splitter().split(src)
 
     imported_dict = chunks[0].get_page(0).get_cos_object()
-    # The inherited resources are materialized onto the imported page.
-    # The splitter's pruning pass rebuilds the dictionary (so the source
-    # document's shared instance is never installed directly), keeping
-    # non-name-keyed categories like /ProcSet wholesale.
+    # The inherited resources are materialized onto the imported page:
+    # upstream ``imported.setResources(page.getResources())`` installs the
+    # source document's (shared) dictionary itself.
     imported_res = imported_dict.get_dictionary_object(_RESOURCES)
     assert isinstance(imported_res, COSDictionary)
-    assert imported_res is not resources
+    assert imported_res is resources
     imported_proc_set = imported_res.get_dictionary_object(
         COSName.get_pdf_name("ProcSet")
     )
@@ -67,7 +66,6 @@ def test_wave375_process_page_copies_inherited_resources_and_removes_beads() -> 
 
 
 def test_wave375_popup_annotation_reference_is_rewritten_to_cloned_popup() -> None:
-    source_page = PDPage()
     imported = PDPage()
     popup = _annotation("Popup")
     text = _annotation("Text")
@@ -78,14 +76,7 @@ def test_wave375_popup_annotation_reference_is_rewritten_to_cloned_popup() -> No
     imported.get_cos_object().set_item(COSName.get_pdf_name("Annots"), annots)
 
     splitter = Splitter()
-    # Wave 1373: the markup/popup second pass is deferred to a chunk-level
-    # ``_finalize_annotation_links`` call so cross-page popup references
-    # in the same chunk resolve correctly. Direct unit-callers of
-    # ``_process_annotations`` need to allocate the pending queue + drain
-    # it manually.
-    splitter._pending_annot_passes = []
-    splitter._process_annotations(source_page, imported)
-    splitter._finalize_annotation_links()
+    splitter._process_annotations(imported)
 
     cloned_annots = (
         imported.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Annots"))

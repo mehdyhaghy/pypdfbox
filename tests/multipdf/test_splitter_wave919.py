@@ -19,26 +19,3 @@ def test_wave919_wave503_page_tree_stubs_are_exercised(monkeypatch) -> None:
     monkeypatch.setattr(wave503.Splitter, "_k_create_clone", clone_with_page_tree_call)
 
     wave503.test_wave503_k_clone_dictionary_reuses_existing_clone_and_tracks_id_role()
-
-
-def test_wave919_wave503_unmapped_page_and_id_tree_stubs_are_exercised(
-    monkeypatch,
-) -> None:
-    def clone_none_with_page_tree_call(self, src, parent, root, page_tree):
-        if src.get_dictionary_object(wave503._PG) is not None:
-            page_tree.index_of(src.get_dictionary_object(wave503._PG))
-        return
-
-    def clone_id_tree_calls_kids(self, source_root, dest_root, tree_cls):
-        id_tree = source_root.get_id_tree()
-        assert id_tree.get_kids() is None
-        tree = tree_cls()
-        first_source_struct = next(iter(id_tree.get_names().values()))
-        tree.set_names({"keep": self._struct_dict_map[id(first_source_struct)]})
-        dest_root.set_id_tree(tree)
-
-    monkeypatch.setattr(wave503.Splitter, "_k_create_clone", clone_none_with_page_tree_call)
-    wave503.test_wave503_k_clone_drops_unmapped_page_mcid_and_rootless_mcr()
-
-    monkeypatch.setattr(wave503.Splitter, "_clone_id_tree", clone_id_tree_calls_kids)
-    wave503.test_wave503_role_map_and_id_tree_are_filtered_to_retained_structure()

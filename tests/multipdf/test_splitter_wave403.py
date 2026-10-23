@@ -1,7 +1,7 @@
 import pytest
 
 from pypdfbox import PDDocument, PDPage
-from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSNull
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSNull
 from pypdfbox.multipdf import Splitter
 
 _ACROFORM = COSName.get_pdf_name("AcroForm")
@@ -85,7 +85,6 @@ def test_wave403_cross_chunk_direct_link_destination_is_nulled() -> None:
 
 
 def test_wave403_widget_parent_is_removed_while_non_signature_widget_kept() -> None:
-    source_page = PDPage()
     imported = PDPage()
     parent = COSDictionary()
     parent.set_item(_FT, COSName.get_pdf_name("Tx"))
@@ -95,61 +94,10 @@ def test_wave403_widget_parent_is_removed_while_non_signature_widget_kept() -> N
     annots.add(widget)
     imported.get_cos_object().set_item(_ANNOTS, annots)
 
-    Splitter()._process_annotations(source_page, imported)
+    Splitter()._process_annotations(imported)
 
     cloned_annots = imported.get_cos_object().get_dictionary_object(_ANNOTS)
     assert isinstance(cloned_annots, COSArray)
     cloned_widget = cloned_annots.get_object(0)
     assert isinstance(cloned_widget, COSDictionary)
     assert not cloned_widget.contains_key(_PARENT)
-
-
-def test_wave403_signature_widget_is_dropped_and_acroform_scrubbed() -> None:
-    class AcroFormCopyingSplitter(Splitter):
-        def create_new_document(self) -> PDDocument:
-            document = super().create_new_document()
-            acroform = (
-                self.get_source_document()
-                .get_document_catalog()
-                .get_cos_object()
-                .get_dictionary_object(_ACROFORM)
-            )
-            document.get_document_catalog().get_cos_object().set_item(
-                _ACROFORM, acroform
-            )
-            return document
-
-    source = _make_doc(1)
-    sig_field = COSDictionary()
-    sig_field.set_item(_FT, COSName.get_pdf_name("Sig"))
-    sig_field.set_string(_T, "signature")
-    text_field = COSDictionary()
-    text_field.set_item(_FT, COSName.get_pdf_name("Tx"))
-    text_field.set_string(_T, "name")
-    fields = COSArray()
-    fields.add(sig_field)
-    fields.add(text_field)
-    acroform = COSDictionary()
-    acroform.set_item(_SIG_FLAGS, COSInteger.get(3))
-    acroform.set_item(_FIELDS, fields)
-    source.get_document_catalog().get_cos_object().set_item(_ACROFORM, acroform)
-
-    widget = _annotation("Widget")
-    widget.set_item(_FT, COSName.get_pdf_name("Sig"))
-    annots = COSArray()
-    annots.add(widget)
-    source.get_page(0).get_cos_object().set_item(_ANNOTS, annots)
-
-    chunks = AcroFormCopyingSplitter().split(source)
-
-    assert chunks[0].get_page(0).get_annotations() == []
-    scrubbed = chunks[0].get_document_catalog().get_cos_object().get_dictionary_object(
-        _ACROFORM
-    )
-    assert isinstance(scrubbed, COSDictionary)
-    assert not scrubbed.contains_key(_SIG_FLAGS)
-    kept_fields = scrubbed.get_dictionary_object(_FIELDS)
-    assert isinstance(kept_fields, COSArray)
-    assert kept_fields.size() == 1
-    assert kept_fields.get_object(0) is text_field
-    _close_all(source, chunks)

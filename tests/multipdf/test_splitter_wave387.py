@@ -8,6 +8,7 @@ from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSNull, 
 from pypdfbox.multipdf import Splitter
 from pypdfbox.pdmodel.interactive.action.pd_action_go_to import PDActionGoTo
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_link import PDAnnotationLink
+from pypdfbox.pdmodel.interactive.documentnavigation.destination import PDDestination
 
 _A = COSName.get_pdf_name("A")
 _ANNOTS = COSName.get_pdf_name("Annots")
@@ -82,9 +83,6 @@ def test_wave387_post_pass_exceptions_are_logged_and_do_not_abort(
         def _fix_destinations(self, destination_document: PDDocument) -> None:
             raise RuntimeError("dest boom")
 
-        def _scrub_acroform(self, destination_document: PDDocument) -> None:
-            raise RuntimeError("acro boom")
-
     src = _make_doc(1)
 
     with caplog.at_level(logging.ERROR, logger="pypdfbox.multipdf.splitter"):
@@ -94,65 +92,62 @@ def test_wave387_post_pass_exceptions_are_logged_and_do_not_abort(
     messages = [record.getMessage() for record in caplog.records]
     assert any("structure-tree clone failed" in message for message in messages)
     assert any("destination fix-up failed" in message for message in messages)
-    assert any("AcroForm scrub failed" in message for message in messages)
     _close_all(src, chunks)
 
 
-def test_wave387_stage_link_destination_removes_bad_direct_destination() -> None:
-    class BadDestinationLink:
-        destination_cleared = False
+def _page_with_link(link: PDAnnotationLink) -> PDPage:
+    page = PDPage()
+    annots = COSArray()
+    annots.add(link.get_cos_object())
+    page.get_cos_object().set_item(_ANNOTS, annots)
+    return page
 
-        def get_destination(self) -> object:
-            raise OSError("bad dest")
 
-        def set_destination(self, value: object) -> None:
-            self.destination_cleared = value is None
+def _cloned_link(page: PDPage) -> COSDictionary:
+    return page.get_cos_object().get_dictionary_object(_ANNOTS).get_object(0)
 
+
+def test_wave387_process_annotations_removes_bad_direct_destination() -> None:
+    link = PDAnnotationLink()
+    link.get_cos_object().set_item(_DEST, COSInteger.get(4))
+    page = _page_with_link(link)
     splitter = Splitter()
     splitter._current_page_number = 4
-    link = BadDestinationLink()
 
-    splitter._stage_link_destination(link, COSDictionary())
+    splitter._process_annotations(page)
 
-    assert link.destination_cleared
+    cloned = _cloned_link(page)
+    assert cloned is not link.get_cos_object()
+    assert not cloned.contains_key(_DEST)
+    # the source annotation is untouched
+    assert link.get_cos_object().contains_key(_DEST)
     assert splitter._dest_to_fix == []
 
 
-def test_wave387_stage_link_destination_removes_bad_goto_action() -> None:
-    class BadAction(PDActionGoTo):
-        def get_destination(self) -> object:
-            raise OSError("bad action destination")
-
-    class LinkWithBadAction:
-        def __init__(self) -> None:
-            self.action: object | None = BadAction()
-
-        def get_destination(self) -> None:
-            return None
-
-        def get_action(self) -> object | None:
-            return self.action
-
-        def set_action(self, value: object | None) -> None:
-            self.action = value
-
-    link = LinkWithBadAction()
+def test_wave387_process_annotations_removes_bad_goto_action() -> None:
+    action = PDActionGoTo()
+    action.get_cos_object().set_item(_D, COSInteger.get(4))
+    link = PDAnnotationLink()
+    link.set_action(action)
+    page = _page_with_link(link)
     splitter = Splitter()
 
-    splitter._stage_link_destination(link, COSDictionary())
+    splitter._process_annotations(page)
 
-    assert link.action is None
+    assert not _cloned_link(page).contains_key(_A)
+    assert link.get_cos_object().contains_key(_A)
     assert splitter._dest_to_fix == []
 
 
 def test_wave387_named_destinations_are_left_untouched() -> None:
     link = PDAnnotationLink()
     link.set_destination(COSName.get_pdf_name("ChapterOne"))
+    page = _page_with_link(link)
     splitter = Splitter()
 
-    splitter._stage_link_destination(link, COSDictionary())
+    splitter._process_annotations(page)
 
-    assert link.get_cos_object().get_dictionary_object(_DEST) == COSName.get_pdf_name(
+    assert _cloned_link(page).get_dictionary_object(_DEST) == COSName.get_pdf_name(
         "ChapterOne"
     )
     assert splitter._dest_to_fix == []
@@ -164,18 +159,21 @@ def test_wave387_goto_action_destination_gets_shallow_cloned() -> None:
     action.set_destination(_dest_array(page_dict))
     link = PDAnnotationLink()
     link.set_action(action)
+    page = _page_with_link(link)
     splitter = Splitter()
 
-    splitter._stage_link_destination(link, COSDictionary())
+    splitter._process_annotations(page)
 
     staged = splitter._dest_to_fix
     assert len(staged) == 1
-    cloned_action = link.get_cos_object().get_dictionary_object(_A)
+    assert staged[0][1] is page.get_cos_object()
+    cloned_action = _cloned_link(page).get_dictionary_object(_A)
     assert isinstance(cloned_action, COSDictionary)
     assert cloned_action is not action.get_cos_object()
     cloned_dest = cloned_action.get_dictionary_object(_D)
-    assert cloned_dest is staged[0][0]
+    assert cloned_dest is staged[0][0].get_cos_object()
     assert cloned_dest is not action.get_cos_object().get_dictionary_object(_D)
+    assert cloned_dest.get_object(0) is page_dict
 
 
 def test_wave387_fix_destinations_skips_missing_hosts_and_non_page_targets() -> None:
@@ -189,8 +187,8 @@ def test_wave387_fix_destinations_skips_missing_hosts_and_non_page_targets() -> 
 
     splitter = Splitter()
     splitter._dest_to_fix = [
-        (missing_host_dest, COSDictionary()),
-        (integer_target_dest, host),
+        (PDDestination.create(missing_host_dest), COSDictionary()),
+        (PDDestination.create(integer_target_dest), host),
     ]
     splitter._page_dict_map = {id(host): chunk.get_page(0).get_cos_object()}
 
@@ -201,34 +199,16 @@ def test_wave387_fix_destinations_skips_missing_hosts_and_non_page_targets() -> 
     _close_all(src, [chunk])
 
 
-def test_wave387_signature_widget_detects_byte_range_value() -> None:
-    widget = COSDictionary()
-    widget.set_item(_SUBTYPE, COSName.get_pdf_name("Widget"))
-    signature_value = COSDictionary()
-    signature_value.set_item(_BYTE_RANGE, COSArray())
-    widget.set_item(_V, signature_value)
-
-    assert Splitter._is_signature_widget(widget)
-
-
-def test_wave387_signature_widget_non_sig_parent_stops_parent_walk() -> None:
-    widget = COSDictionary()
-    widget.set_item(_SUBTYPE, COSName.get_pdf_name("Widget"))
-    parent = COSDictionary()
-    parent.set_item(_FT, COSName.get_pdf_name("Tx"))
-    widget.set_item(_PARENT, parent)
-
-    assert not Splitter._is_signature_widget(widget)
-
-
 def test_wave387_cosobject_and_array_struct_helpers_preserve_holes() -> None:
     splitter = Splitter()
     parent = COSDictionary()
     child = COSDictionary()
     child.set_item(_S, COSName.get_pdf_name("P"))
+    # like upstream createClone, an unresolved reference is returned as is
     wrapped = COSObject(10, resolved=child)
+    assert splitter._k_create_clone(wrapped, parent, parent, object()) is wrapped
 
-    cloned = splitter._k_create_clone(wrapped, parent, parent, object())
+    cloned = splitter._k_create_clone(child, parent, parent, object())
     assert isinstance(cloned, COSDictionary)
     assert splitter._k_create_clone(COSInteger.get(3), parent, parent, object()).int_value() == 3
     assert splitter._has_mcids(COSInteger.get(0))
@@ -264,58 +244,3 @@ def test_wave387_orphan_annotation_without_page_annots_is_removed(
 
     assert not dst.contains_key(_OBJ)
     assert "isn't in the page" in caplog.text
-
-
-def test_wave387_number_and_id_tree_walkers_recurse_and_swallow_bad_nodes() -> None:
-    class BadNode:
-        def get_numbers(self) -> object:
-            raise RuntimeError("numbers unavailable")
-
-        def get_names(self) -> object:
-            raise RuntimeError("names unavailable")
-
-        def get_kids(self) -> object:
-            raise RuntimeError("kids unavailable")
-
-    class NumberLeaf:
-        def __init__(self, value: COSDictionary) -> None:
-            self.value = value
-
-        def get_numbers(self) -> dict[int, COSDictionary]:
-            return {2: self.value}
-
-        def get_kids(self) -> None:
-            return None
-
-    class IdLeaf:
-        def __init__(self, value: COSDictionary) -> None:
-            self.value = value
-
-        def get_names(self) -> dict[str, COSDictionary]:
-            return {"id": self.value}
-
-        def get_kids(self) -> None:
-            return None
-
-    class Parent:
-        def __init__(self, child: object) -> None:
-            self.child = child
-
-        def get_numbers(self) -> None:
-            return None
-
-        def get_names(self) -> None:
-            return None
-
-        def get_kids(self) -> list[object]:
-            return [BadNode(), self.child]
-
-    number_value = COSDictionary()
-    id_value = COSDictionary()
-
-    assert Splitter._get_number_tree_as_map(Parent(NumberLeaf(number_value))) == {
-        2: number_value
-    }
-    assert Splitter._get_id_tree_as_map(Parent(IdLeaf(id_value))) == {
-        "id": id_value
-    }

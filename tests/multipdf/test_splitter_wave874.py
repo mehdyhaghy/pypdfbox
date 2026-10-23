@@ -1,4 +1,4 @@
-from pypdfbox.cos import COSDictionary
+from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.multipdf import Splitter
 from tests.multipdf.test_splitter_wave654 import _IdentityNameTree, _Root
 
@@ -10,6 +10,9 @@ class _IdTree:
 
     def get_names(self) -> dict[str, COSDictionary]:
         return {self.name: self.struct_dict}
+
+    def get_tree_as_map(self) -> dict[str, COSDictionary]:
+        return self.get_names()
 
 
 def test_wave874_root_and_identity_name_tree_helpers_record_assigned_values() -> None:
@@ -35,7 +38,11 @@ def test_wave874_clone_id_tree_uses_wave654_helper_stubs_for_retained_name() -> 
     splitter._id_set = {"kept"}
     splitter._struct_dict_map = {id(source_struct): cloned_struct}
 
-    splitter._clone_id_tree(source, destination, _IdentityNameTree)
+    splitter._clone_id_tree(source, destination)
 
-    assert isinstance(destination.id_tree, _IdentityNameTree)
-    assert list(destination.id_tree.names) == ["kept"]
+    names = destination.id_tree.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("Names")
+    )
+    assert names.size() == 2
+    assert names.get_object(0).get_string() == "kept"
+    assert names.get_object(1) is cloned_struct

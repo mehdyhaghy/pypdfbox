@@ -185,7 +185,9 @@ def test_unknown_action_preserves_unrecognized_action_type() -> None:
 
     assert isinstance(action, PDActionUnknown)
     assert action.get_cos_object() is raw
-    assert action.get_type() == "Action"
+    # upstream PDAction(COSDictionary) only wraps: no /Type is added
+    assert action.get_type() is None
+    assert not raw.contains_key("Type")
     assert action.get_sub_type() == "VendorSpecificAction"
     assert raw.get_string("VendorPayload") == "opaque"
 

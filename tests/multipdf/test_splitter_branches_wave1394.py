@@ -47,37 +47,6 @@ def _fit(page: PDPage) -> PDPageFitDestination:
 # ---------- lines 375-376: _finalize_annotation_links exception ----------
 
 
-def test_finalize_annotation_links_failure_is_caught_per_chunk(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    """An exception inside ``_finalize_annotation_links`` is logged and
-    suppressed; the rest of the post-chunk pass still runs and split
-    returns normally (lines 375-376)."""
-    src = _make_doc(2)
-    sp = Splitter()
-
-    def _boom(*_a, **_kw):
-        raise RuntimeError("simulated annotation linkage failure")
-
-    monkeypatch.setattr(sp, "_finalize_annotation_links", _boom)
-    caplog.set_level(logging.ERROR, logger="pypdfbox.multipdf.splitter")
-    chunks = sp.split(src)
-    try:
-        # Even with the failure, the split produced its expected output.
-        assert len(chunks) >= 1
-        assert any(
-            "annotation linkage finalisation failed" in rec.message
-            for rec in caplog.records
-        )
-    finally:
-        for c in chunks:
-            c.close()
-        src.close()
-
-
-# ---------- lines 1219-1223: resolver returns 2-tuple with wrong element types ----------
-
-
 def test_cross_chunk_resolver_2tuple_with_non_str_filename_falls_back(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

@@ -51,6 +51,15 @@ def _make_doc(page_count: int) -> PDDocument:
     return doc
 
 
+def _id_tree_names(tree: object) -> list[object]:
+    """``/Names`` of a cloned (flat) ID tree as ``[key, value, ...]``."""
+    names = tree.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Names"))
+    return [
+        names.get_object(i).get_string() if i % 2 == 0 else names.get_object(i)
+        for i in range(names.size())
+    ]
+
+
 def test_wave503_create_new_document_warns_when_root_and_info_share_dict(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -65,39 +74,6 @@ def test_wave503_create_new_document_warns_when_root_and_info_share_dict(
     assert "/Root and /Info share the same dictionary" in caplog.text
     chunks[0].close()
     source.close()
-
-
-def test_wave503_process_annotations_returns_when_annotation_read_fails() -> None:
-    class BrokenImportedPage:
-        def get_annotations(self) -> object:
-            raise OSError("bad annotations")
-
-    Splitter()._process_annotations(PDPage(), BrokenImportedPage())  # type: ignore[arg-type]
-
-
-def test_wave503_signature_widget_detects_signature_value_type() -> None:
-    widget = COSDictionary()
-    widget.set_item(_SUBTYPE, COSName.get_pdf_name("Widget"))
-    signature_value = COSDictionary()
-    signature_value.set_item(_TYPE, COSName.get_pdf_name("Sig"))
-    widget.set_item(_V, signature_value)
-
-    assert Splitter._is_signature_widget(widget)
-
-
-def test_wave503_stage_link_destination_ignores_links_with_broken_action() -> None:
-    class LinkWithBrokenAction:
-        def get_destination(self) -> None:
-            return None
-
-        def get_action(self) -> object:
-            raise OSError("bad action")
-
-    splitter = Splitter()
-
-    splitter._stage_link_destination(LinkWithBrokenAction(), COSDictionary())  # type: ignore[arg-type]
-
-    assert splitter._dest_to_fix == []
 
 
 def test_wave503_k_clone_dictionary_reuses_existing_clone_and_tracks_id_role() -> None:
@@ -204,6 +180,9 @@ def test_wave503_role_map_and_id_tree_are_filtered_to_retained_structure() -> No
         def get_names(self) -> dict[str, COSDictionary]:
             return {"keep": source_struct, "drop": COSDictionary()}
 
+        def get_tree_as_map(self) -> dict[str, COSDictionary]:
+            return self.get_names()
+
         def get_kids(self) -> None:
             return None
 
@@ -216,14 +195,13 @@ def test_wave503_role_map_and_id_tree_are_filtered_to_retained_structure() -> No
     splitter._struct_dict_map = {id(source_struct): cloned_struct}
 
     splitter._clone_role_map(source_root, dest_root)
-    splitter._clone_id_tree(source_root, dest_root, _IdentityNameTree)
+    splitter._clone_id_tree(source_root, dest_root)
 
     cloned_role_map = dest_root.get_cos_object().get_dictionary_object(_ROLE_MAP)
     assert isinstance(cloned_role_map, COSDictionary)
     assert cloned_role_map.contains_key(COSName.get_pdf_name("P"))
     assert not cloned_role_map.contains_key(COSName.get_pdf_name("H1"))
-    assert isinstance(dest_root.id_tree, _IdentityNameTree)
-    assert list(dest_root.id_tree.names) == ["keep"]
+    assert _id_tree_names(dest_root.id_tree) == ["keep", cloned_struct]
 
 
 def test_wave503_has_mcids_finds_integer_inside_array_and_object_array_clone() -> None:
