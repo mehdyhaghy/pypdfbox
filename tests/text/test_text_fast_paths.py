@@ -7,8 +7,10 @@ decoding, and indexes the duplicate suppressor with a flat grid;
 Each has a reference it must reproduce exactly:
 
 * every packer raising ``OverflowError`` sends each batched step to its
-  one-value-at-a-time reference, so a whole extraction is rerun on the
-  reference arithmetic and compared glyph by glyph;
+  one-value-at-a-time reference, and ``_USE_FAST_PATHS`` off drops the
+  memos, float32-array narrowings and inlined stock hooks, so a whole
+  extraction is rerun on the reference arithmetic and compared glyph by
+  glyph;
 * the batched helpers are compared with their references on random and
   out-of-range inputs;
 * ``tokens()`` is compared with the ``parse_next_token`` loop on real
@@ -17,9 +19,11 @@ Each has a reference it must reproduce exactly:
 Hand-written (not ported from upstream JUnit).
 """
 
+import io
 import math
 import random
 import struct
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -44,6 +48,7 @@ from pypdfbox.text.pdf_text_stripper import (
     _tj_step,
     _tj_step_reference,
 )
+from pypdfbox.util.matrix import f32
 
 _FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 _SAMPLES = [
@@ -97,6 +102,7 @@ def _force_reference(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in ("_f32_pack", "_f32x2_pack", "_f32x3_pack", "_f32x4_pack"):
         monkeypatch.setattr(stripper_module, name, refuse)
     monkeypatch.setattr(stripper_module, "_F32X5_STRUCT", _RefusingStruct("<5f"))
+    monkeypatch.setattr(stripper_module, "_USE_FAST_PATHS", False)
 
 
 def _key(value: object) -> object:
@@ -248,6 +254,206 @@ def test_emit_glyphs_matches_reference_on_random_state(
     _force_reference(monkeypatch)
     reference = [run(seed) for seed in seeds]
     assert fast == reference
+
+
+@pytest.mark.parametrize("name", _SAMPLES)
+def test_extraction_matches_without_fast_paths_only(
+    name: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The memos and shortcuts alone (batched packing left on), also under
+    ``-rotationMagic``'s filtered strippers."""
+    from pypdfbox.tools.extracttext import extract_text
+
+    path = _FIXTURES / name
+
+    def run() -> tuple[str, list[list[object]], str]:
+        text, rows = _extract(path, False)
+        doc = PDDocument.load(str(path))
+        try:
+            buf = io.StringIO()
+            extract_text(doc, buf, rotation_magic=True)
+        finally:
+            doc.close()
+        return text, rows, buf.getvalue()
+
+    fast = run()
+    monkeypatch.setattr(stripper_module, "_USE_FAST_PATHS", False)
+    assert run() == fast
+
+
+def _f32_value(rnd: random.Random) -> float:
+    return struct.unpack("<f", struct.pack("<f", rnd.uniform(-800.0, 800.0)))[0]
+
+
+def test_plain_glyph_path_matches_reference_on_random_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Identity-CTM runs (the memoized plain path) with float32 cursors,
+    signed zeros and out-of-range values, against the batched and the
+    reference arithmetic."""
+    rnd = random.Random(2026)
+
+    def run(seed: int) -> list[object]:
+        local = random.Random(seed)
+        stripper = PDFTextStripper()
+        stripper._crop_lower_left_x = local.choice([0.0, 0.0, -0.0, 12.0])
+        stripper._crop_lower_left_y = local.choice([0.0, 0.0, -7.5])
+        stripper._page_width = 612.0
+        stripper._page_height = local.choice([792.0, 0.0])
+        stripper._page_rotation = 0
+        stripper._fold_upright_geometry = local.random() < 0.8
+        stripper._active_font_height = local.choice([0.7, None])
+        stripper._active_avg_advance = 5.0
+        state = stripper_module._TextState()
+        if local.random() < 0.9:
+            state.ctm = stripper_module.Matrix(1.0, 0.0, 0.0, 1.0, local.choice([0.0, -0.0]), 0.0)
+        state.font_size = local.choice([1.0, 1.0, 12.0, -0.0, 0.0, 1e30])
+        state.char_spacing = local.choice([0.0, -0.0, 0.0027, -1.0, 1e38])
+        state.word_spacing = local.choice([0.0, -0.0, -0.0034, 2.0])
+        state.horizontal_scaling = local.choice([1.0, 1.0, 0.8])
+        state.tm_a = local.choice([9.96, 1.0, -10.0, 1e9, 0.0])
+        state.tm_b = local.choice([0.0, 0.0, -0.0, 0.5])
+        state.tm_d = local.choice([9.96, -9.96])
+        state.text_x = local.choice([_f32_value(local), -0.0, 0.0, 0.1, math.inf])
+        state.text_y = local.choice([_f32_value(local), -0.0, 0.0, math.nan])
+        state.text_rise = local.choice([0.0, 0.0, 0.0, 2.0])
+        displacements = [0.5, 0.278, 0.0, -0.0, 1e10, 0.333, math.nan, -0.25]
+        rows: list[object] = []
+        for _ in range(local.randint(1, 4)):
+            glyphs = [
+                (
+                    local.choice(["a", " ", None, "b"]),
+                    local.choice(displacements),
+                    local.choice([1, 1, 2]),
+                    local.choice([32, 65, 66]),
+                )
+                for _ in range(local.randint(1, 8))
+            ]
+            positions: list[TextPosition] = []
+            try:
+                stripper._emit_glyphs(state, positions, None, None, glyphs)
+            except ValueError as exc:
+                rows.append(["raised", str(exc), _key(state.text_x), _key(state.text_y)])
+            rows.append([_key(state.text_x), _key(state.text_y)])
+            stripper._apply_page_rotation(positions)
+            for pos in positions:
+                rows.append([_key(getattr(pos, f)) for f in _FIELDS])
+                geometry = getattr(pos, "_java_geometry", None)
+                if geometry is not None:
+                    rows.append([_key(getattr(geometry, f)) for f in _GEOMETRY])
+            if local.random() < 0.5:
+                # A new ``Tc`` object with the same value re-derives the run.
+                state.char_spacing = float(str(state.char_spacing))
+        return rows
+
+    seeds = [rnd.randrange(1 << 30) for _ in range(600)]
+    fast = [run(seed) for seed in seeds]
+    assert sum(len(rows) for rows in fast) > 3000
+    monkeypatch.setattr(stripper_module, "_USE_FAST_PATHS", False)
+    unbatched = [run(seed) for seed in seeds]
+    assert fast == unbatched
+    _force_reference(monkeypatch)
+    reference = [run(seed) for seed in seeds]
+    assert fast == reference
+
+
+def _random_position(rnd: random.Random, texts: list[str]) -> TextPosition:
+    x = rnd.choice([rnd.uniform(0, 600), rnd.uniform(0, 600), -0.0, 1e38, math.inf])
+    y = rnd.choice([rnd.uniform(0, 800), 700.0, 700.0, 712.0, -0.0, math.nan])
+    width = rnd.choice([rnd.uniform(0, 12), 5.5, 5.5, 0.0, 3e38])
+    pos = TextPosition(
+        text=rnd.choice(texts),
+        x=x,
+        y=y,
+        font_size=rnd.choice([10.0, 12.0]),
+        font_size_in_pt=10.0,
+        font_name="F",
+        font=None,
+        resolved_font_name="F",
+        width=width,
+        width_of_space=rnd.choice([2.5, 2.5, 3.0, 0.0, math.nan, 1e38]),
+        char_spacing=0.0,
+        word_spacing=0.0,
+        dir=0.0,
+        height=rnd.choice([10.0, 0.0, 7.0]),
+        text_matrix=[1, 0, 0, 1, x, y],
+        device_x=x,
+        device_y=y,
+        device_end_x=x + width,
+        device_end_y=y,
+        page_height=800.0,
+    )
+    pos.tf_font_size = rnd.choice([10.0, 10.0, 12.0, None])
+    if rnd.random() < 0.3:
+        pos.individual_widths = [width / 2, width / 2]
+    return pos
+
+
+@pytest.mark.parametrize("sort", [False, True], ids=["default", "sort"])
+def test_format_positions_matches_without_fast_paths(
+    sort: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Random glyph layouts through dedup, diacritic merging and the line
+    and word logic, with and without the shortcuts."""
+    rnd = random.Random(77 + sort)
+    texts = ["a", "b", "e", " ", "\u0301", "^", "ab", "", "\u05d0\u05d1", "\ufb01"]
+    layouts = [
+        [_random_position(rnd, texts) for _ in range(rnd.randint(1, 60))]
+        for _ in range(400)
+    ]
+
+    def run() -> list[object]:
+        out: list[object] = []
+        for layout in layouts:
+            positions = [replace(p) for p in layout]
+            for src, pos in zip(layout, positions, strict=True):
+                pos.tf_font_size = src.tf_font_size
+            stripper = PDFTextStripper()
+            stripper.set_sort_by_position(sort)
+            text = stripper._format_positions(positions)
+            out.append(text)
+            out.append([[_key(p.text) for p in a] for a in stripper._characters_by_article])
+        return out
+
+    fast = run()
+    monkeypatch.setattr(stripper_module, "_USE_FAST_PATHS", False)
+    assert run() == fast
+
+
+def _reference_java_compare(pos1: TextPosition, pos2: TextPosition) -> int:
+    """Upstream ``TextPositionComparator.compare``, one narrowing at a time."""
+    g1 = stripper_module._java_geometry(pos1)
+    g2 = stripper_module._java_geometry(pos2)
+    if g1.dir != g2.dir:
+        return -1 if g1.dir < g2.dir else 1
+    pos1_y_top = f32(g1.y_dir_adj - g1.height)
+    pos2_y_top = f32(g2.y_dir_adj - g2.height)
+    y_difference = abs(f32(g1.y_dir_adj - g2.y_dir_adj))
+    if (
+        y_difference < f32(0.1)
+        or pos1_y_top <= g2.y_dir_adj <= g1.y_dir_adj
+        or pos2_y_top <= g1.y_dir_adj <= g2.y_dir_adj
+    ):
+        if g1.x_dir_adj < g2.x_dir_adj:
+            return -1
+        if g1.x_dir_adj > g2.x_dir_adj:
+            return 1
+        return 0
+    return -1 if g1.y_dir_adj < g2.y_dir_adj else 1
+
+
+def test_java_compare_matches_reference() -> None:
+    rnd = random.Random(31)
+    texts = ["a"]
+    positions = [_random_position(rnd, texts) for _ in range(300)]
+    for pos in positions:
+        pos.dir = rnd.choice([0.0, 0.0, 90.0])
+        pos.height = rnd.choice([10.0, 0.0, 0.05, 3e38, math.nan])
+        pos.device_y = rnd.choice([pos.device_y, 700.05, 700.0, 699.95, -3e38])
+    for _ in range(20000):
+        a = rnd.choice(positions)
+        b = rnd.choice(positions)
+        assert stripper_module._java_compare(a, b) == _reference_java_compare(a, b)
 
 
 # ---------------------------------------------------------------------------

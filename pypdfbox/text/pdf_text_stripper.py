@@ -4,6 +4,7 @@ import re
 import struct
 import sys
 import unicodedata
+from array import array
 from collections.abc import Callable
 from dataclasses import replace
 from functools import cmp_to_key
@@ -20,7 +21,7 @@ from ._tim_sort import ComparisonContractError, tim_sort
 from .bidi import BidiResolver, get_paragraph_direction
 from .bidi import _reorder_indices as _bidi_reorder_indices
 from .position_wrapper import PositionWrapper
-from .text_position import TextPosition
+from .text_position import _IS_DIACRITIC, TextPosition
 from .word_with_text_positions import WordWithTextPositions
 
 _log = logging.getLogger(__name__)
@@ -111,9 +112,71 @@ def _dup_window_hit_flat(
     )
 
 
+def _dup_grid_hit(
+    grid: dict[int, list[float]],
+    cx0: int | None,
+    cx1: int,
+    cy0: int,
+    cy1: int,
+    x_lo: float,
+    x_hi: float,
+    y_lo: float,
+    y_hi: float,
+) -> bool:
+    """Whether a recorded origin in the duplicate suppressor's ``grid`` lies
+    in the window, probing the cells ``cx0..cx1`` x ``cy0..cy1`` (``cx0`` is
+    ``None`` when the window cannot be indexed)."""
+    if cx0 is None or (cx1 - cx0 + 1) * (cy1 - cy0 + 1) > 128:
+        # No cell yet, a non-finite window (inf tolerance), or a tolerance
+        # spanning a huge multiple of the cell (widely varying per-run tol):
+        # scanning every recorded origin is still exact and never slower
+        # than the original linear scan.
+        return any(
+            _dup_window_hit_flat(cell_pts, x_lo, x_hi, y_lo, y_hi)
+            for cell_pts in grid.values()
+        )
+    row_stride = _GRID_ROW
+    grid_get = grid.get
+    for cx in range(cx0, cx1 + 1):
+        row = cx * row_stride
+        for cy in range(cy0, cy1 + 1):
+            cell_pts = grid_get(row + cy)
+            if cell_pts and _dup_window_hit_flat(cell_pts, x_lo, x_hi, y_lo, y_hi):
+                return True
+    return False
+
+
 _F32_STRUCT = struct.Struct("<f")
 _f32_pack = _F32_STRUCT.pack
 _f32_unpack = _F32_STRUCT.unpack
+
+
+# The exact shortcuts of the hot paths (memos, float32 array narrowing,
+# inlined stock hooks). Tests turn them off to rerun extraction on the plain
+# code paths they shortcut and compare the results.
+_USE_FAST_PATHS = True
+
+_SINGLE_BYTE_READERS: frozenset[object] | None = None
+
+
+def _single_byte_readers() -> frozenset[object]:
+    """The stock ``read_code`` functions that read one byte per code."""
+    global _SINGLE_BYTE_READERS
+    if _SINGLE_BYTE_READERS is None:
+        from pypdfbox.pdmodel.font.pd_true_type_font import PDTrueTypeFont
+        from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
+        from pypdfbox.pdmodel.font.pd_type1c_font import PDType1CFont
+        from pypdfbox.pdmodel.font.pd_type3_font import PDType3Font
+
+        _SINGLE_BYTE_READERS = frozenset(
+            {
+                PDTrueTypeFont.read_code,
+                PDType1Font.read_code,
+                PDType1CFont.read_code,
+                PDType3Font.read_code,
+            }
+        )
+    return _SINGLE_BYTE_READERS
 
 
 def _f32(value: float) -> float:
@@ -194,6 +257,37 @@ def _glyph_step_reference(
     step_x, step_y = _f32x2(advance * tm_a, advance * tm_b)
     next_x, next_y = _f32x2(glyph_x + step_x, glyph_y + step_y)
     return origin_x, origin_y, end_x, end_y, dx_display, width, next_x, next_y
+
+
+def _plain_glyph_step(
+    displacement: float,
+    font_size: float,
+    th: float,
+    char_spacing: float,
+    word_spacing: float,
+    tm_a: float,
+    tm_b: float,
+    x_scale: float,
+) -> tuple[float, float, float, float, float]:
+    """The cursor-independent float steps of :func:`_glyph_step_reference`.
+
+    Returns ``(f32(dx * tm_a), f32(dx * tm_b), step_x, step_y, width)``: the
+    bare displacement through the text matrix (before the cursor is added),
+    the advance through the text matrix and the scaled glyph width.
+    """
+    dfs = _f32(displacement * font_size)
+    dx = _f32(dfs * th)
+    advance = _f32(_f32(_f32(dfs + char_spacing) + word_spacing) * th)
+    return (
+        _f32(dx * tm_a),
+        _f32(dx * tm_b),
+        _f32(advance * tm_a),
+        _f32(advance * tm_b),
+        abs(_f32(dx * x_scale)),
+    )
+
+
+_PLAIN_STEP_KEY = struct.Struct("<7d")
 
 
 # Java ``Float.MAX_VALUE`` — upstream's reset sentinels for the line state.
@@ -444,6 +538,11 @@ def _java_geometry(pos: TextPosition) -> _JavaGeometry:
 
 
 _F32_TENTH = _f32(0.1)
+# The Unicode presentation-form blocks ``normalize_word`` decomposes.
+_PRESENTATION_FORM = re.compile("[\uFB00-\uFDFF\uFE70-\uFEFF]")
+# ``2 ** -125``: halving a float32 at least this large stays a normal
+# float32, so the division is exact.
+_F32_MIN_HALVABLE = 2.0**-125
 
 
 def _java_overlap(y1: float, height1: float, y2: float, height2: float) -> bool:
@@ -462,31 +561,42 @@ def _java_overlap(y1: float, height1: float, y2: float, height2: float) -> bool:
 
 def _java_compare(pos1: TextPosition, pos2: TextPosition) -> int:
     """Upstream ``TextPositionComparator.compare`` on Java geometry."""
-    g1 = _java_geometry(pos1)
-    g2 = _java_geometry(pos2)
-    if g1.dir != g2.dir:
-        return -1 if g1.dir < g2.dir else 1
-    x1 = g1.x_dir_adj
-    x2 = g2.x_dir_adj
+    try:
+        g1 = pos1._java_geometry or _java_geometry(pos1)
+    except AttributeError:
+        g1 = _java_geometry(pos1)
+    try:
+        g2 = pos2._java_geometry or _java_geometry(pos2)
+    except AttributeError:
+        g2 = _java_geometry(pos2)
+    dir1 = g1.dir
+    dir2 = g2.dir
+    if dir1 != dir2:
+        return -1 if dir1 < dir2 else 1
     pos1_y_bottom = g1.y_dir_adj
     pos2_y_bottom = g2.y_dir_adj
-    # (0, 0) is the upper-left corner: a position's top is above its bottom.
-    pos1_y_top = _f32(pos1_y_bottom - g1.height)
-    pos2_y_top = _f32(pos2_y_bottom - g2.height)
-    y_difference = abs(_f32(pos1_y_bottom - pos2_y_bottom))
-    if (
-        y_difference < _f32(0.1)
-        or pos1_y_top <= pos2_y_bottom <= pos1_y_bottom
-        or pos2_y_top <= pos1_y_bottom <= pos2_y_bottom
-    ):
-        if x1 < x2:
-            return -1
-        if x1 > x2:
+    try:
+        y_difference = abs(_f32_unpack(_f32_pack(pos1_y_bottom - pos2_y_bottom))[0])
+    except OverflowError:
+        y_difference = abs(f32(pos1_y_bottom - pos2_y_bottom))
+    if y_difference >= _F32_TENTH or y_difference != y_difference:
+        # (0, 0) is the upper-left corner: a position's top is above its
+        # bottom. (Only needed when the bottoms are not within 0.1.)
+        pos1_y_top, pos2_y_top = _f32x2(pos1_y_bottom - g1.height, pos2_y_bottom - g2.height)
+        if not (
+            pos1_y_top <= pos2_y_bottom <= pos1_y_bottom
+            or pos2_y_top <= pos1_y_bottom <= pos2_y_bottom
+        ):
+            if pos1_y_bottom < pos2_y_bottom:
+                return -1
             return 1
-        return 0
-    if pos1_y_bottom < pos2_y_bottom:
+    x1 = g1.x_dir_adj
+    x2 = g2.x_dir_adj
+    if x1 < x2:
         return -1
-    return 1
+    if x1 > x2:
+        return 1
+    return 0
 
 
 def _java_contains(pos: TextPosition, other: TextPosition) -> bool:
@@ -723,6 +833,13 @@ class PDFTextStripper:
         # ``_read_glyphs`` memo, keyed by ``(id(font), id(cmap))``; each entry
         # holds the font and CMap so a reused id is never mistaken for them.
         self._glyph_memo: dict[tuple[int, int], tuple] = {}
+        # ``(font, cmap, glyph memo, font name, per-byte glyph memo)`` of the
+        # last horizontal one-byte font ``_emit_run`` read (see there).
+        self._run_font: tuple | None = None
+        # The position list ``_emit_glyphs`` last appended prefolded
+        # positions to (see ``_apply_page_rotation``), and how many.
+        self._prefolded_positions: list[TextPosition] | None = None
+        self._prefolded_count = 0
         # ``_font_traits`` memo, keyed by ``id(font)`` (entries hold the font).
         self._font_traits_memo: dict[int, tuple] = {}
         self._font_vertical_memo: dict[int, tuple] = {}
@@ -753,6 +870,8 @@ class PDFTextStripper:
         # Per-page cache of each font's text-space space width (see
         # ``_space_width_text``).
         self._space_width_cache: dict[int, float] = {}
+        # ``id(stream) -> (stream, CMap)``: parsed ``/ToUnicode`` streams.
+        self._to_unicode_memo: dict[int, tuple[COSStream, CMap]] = {}
         # Lazily-built Helvetica used when no font is set (upstream
         # ``PDFStreamEngine.getDefaultFont``).
         self._default_font: PDFont | None = None
@@ -764,6 +883,8 @@ class PDFTextStripper:
         self._run_counter: int = 0
         # ``_rendering_scale`` results keyed by their inputs.
         self._rendering_scale_cache: dict[tuple[float, ...], tuple[float, float]] = {}
+        # ``_plain_glyph_step`` memos keyed by their run-invariant inputs.
+        self._plain_step_memo: dict[bytes, tuple[dict, dict]] = {}
         # Size upstream's reused ``charactersByArticle`` list has reached in
         # the current walk (see ``_assign_articles``).
         self._article_slot_count: int = 0
@@ -1284,6 +1405,7 @@ class PDFTextStripper:
         self._cmap_cache = {}
         self._font_cache = {}
         self._glyph_memo = {}
+        self._run_font = None
         self._font_traits_memo = {}
         self._font_vertical_memo = {}
         self._active_cmap = None
@@ -1314,6 +1436,7 @@ class PDFTextStripper:
             return self._format_positions(positions)
         finally:
             self._fold_upright_geometry = False
+            self._prefolded_positions = None
             self._active_page = None
             self._active_cmap = None
             self._active_font = None
@@ -1389,6 +1512,13 @@ class PDFTextStripper:
             # (byte-exact with every pre-fold extraction). Still record the
             # page geometry + rotation on the positions for API parity with
             # upstream ``getRotation``/``getPageWidth``/``getPageHeight``.
+            if (
+                _USE_FAST_PATHS
+                and self._prefolded_positions is positions
+                and self._prefolded_count == len(positions)
+            ):
+                # Every position was built with the values set below.
+                return
             pw = self._page_width
             ph = self._page_height
             for pos in positions:
@@ -1397,7 +1527,9 @@ class PDFTextStripper:
                 pos.page_height = ph
                 if pos.device_x is not None:
                     # Upstream ``getWidth()`` = ``|endX - tx|``.
-                    pos.width = _java_geometry(pos).width
+                    pos.width = (
+                        getattr(pos, "_java_geometry", None) or _java_geometry(pos)
+                    ).width
             return
         pw = self._page_width
         ph = self._page_height
@@ -2417,6 +2549,23 @@ class PDFTextStripper:
     ) -> None:
         raw_bytes = s.get_bytes()
         font = self._active_font
+        run_font = self._run_font
+        if (
+            run_font is not None
+            and run_font[0] is font
+            and run_font[1] is self._active_cmap
+            and run_font[2] is self._glyph_memo
+        ):
+            # The same horizontal one-byte font as a run already read on
+            # this page: its name and per-byte glyph memo are known.
+            byte_memo = run_font[4]
+            try:
+                glyphs = [byte_memo[b] for b in raw_bytes]
+            except KeyError:
+                pass
+            else:
+                self._emit_glyphs(state, positions, font, run_font[3], glyphs)
+                return
         if font is None:
             # Upstream ``showText``: "No current font, will use default".
             _log.warning("No current font, will use default")
@@ -2447,6 +2596,21 @@ class PDFTextStripper:
             fs = state.font_size
             em = per_char / fs if fs else 0.0
             glyphs = [(ch, em, 0, -1) for ch in text]
+        elif (
+            _USE_FAST_PATHS
+            and font is not None
+            and type(self)._is_vertical_font is PDFTextStripper._is_vertical_font
+            and type(self)._decode_code_to_unicode is PDFTextStripper._decode_code_to_unicode
+        ):
+            cmap = self._active_cmap
+            entry = self._glyph_memo.get((id(font), id(cmap)))
+            if (
+                entry is not None
+                and entry[0] is font
+                and entry[1] is cmap
+                and entry[4] is not None
+            ):
+                self._run_font = (font, cmap, self._glyph_memo, resolved_font_name, entry[4])
         self._emit_glyphs(state, positions, font, resolved_font_name, glyphs)
 
     def _font_traits(self, font: PDFont | None) -> tuple[str | None, bool]:
@@ -2516,14 +2680,52 @@ class PDFTextStripper:
                 )
             except Exception:  # defensive
                 type3_scale = None
-            entry = (font, cmap, type3_scale, {})
+            # Fonts whose ``read_code`` is one of the stock one-byte readers
+            # (``(data[offset] & 0xFF, 1)``) also memoize the whole glyph
+            # tuple per byte value.
+            byte_memo = (
+                {}
+                if _USE_FAST_PATHS
+                and getattr(type(font), "read_code", None) in _single_byte_readers()
+                and "read_code" not in getattr(font, "__dict__", ())
+                else None
+            )
+            entry = (font, cmap, type3_scale, {}, byte_memo)
             self._glyph_memo[memo_key] = entry
         type3_scale = entry[2]
-        memo = (
-            entry[3]
-            if type(self)._decode_code_to_unicode is PDFTextStripper._decode_code_to_unicode
-            else None
-        )
+        if type(self)._decode_code_to_unicode is PDFTextStripper._decode_code_to_unicode:
+            memo = entry[3]
+            byte_memo = entry[4]
+            if byte_memo is not None:
+                # One code per byte: the same ``(unicode, displacement,
+                # length, code)`` tuples the loop below builds, looked up
+                # by byte value. Misses go through the loop's own steps,
+                # in order.
+                try:
+                    return [byte_memo[b] for b in raw_bytes]
+                except KeyError:
+                    pass
+                try:
+                    for b in raw_bytes:
+                        if b not in byte_memo:
+                            code_bytes = bytes((b,))
+                            cached = memo.get(code_bytes)
+                            if cached is None or cached[2] != b:
+                                piece = self._decode_code_to_unicode(code_bytes, b, font)
+                                w0 = float(get_width(b))
+                                displacement = (
+                                    _f32(w0 * type3_scale)
+                                    if type3_scale is not None
+                                    else _f32(w0 / 1000.0)
+                                )
+                                cached = (piece, displacement, b)
+                                memo[code_bytes] = cached
+                            byte_memo[b] = (cached[0], cached[1], 1, b)
+                except Exception:  # defensive: malformed font / decode
+                    return None
+                return [byte_memo[b] for b in raw_bytes]
+        else:
+            memo = None
         glyphs: list[tuple[str | None, float, int, int]] = []
         append = glyphs.append
         offset = 0
@@ -2638,6 +2840,111 @@ class PDFTextStripper:
         ty = _f32(_f32(_f32(e * c1) + _f32(g * ctm.get_scale_y())) + ctm.get_translate_y())
         return tx, ty
 
+    def _run_context(
+        self,
+        state: _TextState,
+        font: PDFont | None,
+        key: tuple[object, ...],
+        scratch: object,
+    ) -> tuple[object, ...]:
+        """The run-invariant inputs ``key`` of :meth:`_emit_glyphs` followed
+        by the values it derives from them, and a float32 scratch buffer."""
+        (
+            scale_and_dir,
+            font_size,
+            th,
+            char_spacing,
+            word_spacing,
+            _font,
+            font_height_fraction,
+            avg_advance,
+            ctm,
+            fold_upright,
+            rise,
+            tm_a,
+            tm_b,
+            _crop_llx,
+            _crop_lly,
+            page_height_raw,
+            _tm_c,
+            _tm_d,
+        ) = key
+        x_scale, y_scale, text_dir = scale_and_dir
+        effective_font_size = font_size * y_scale
+        trm_scale_x, trm_scale_y = self._rendering_scale(state)
+        run_height = (
+            0.0
+            if font_height_fraction is None
+            else abs(_f32(font_height_fraction * trm_scale_y))
+        )
+        per_char = avg_advance
+        if per_char is None:
+            per_char = font_size * 0.5
+        space_text = self._space_width_text(font, per_char / font_size if font_size else 0.0)
+        width_of_space = abs(_f32(space_text * trm_scale_x))
+        c0 = ctm.get_scale_x()
+        c4 = ctm.get_scale_y()
+        c6 = ctm.get_translate_x()
+        c7 = ctm.get_translate_y()
+        # Without text rise or CTM shear the matrix products reduce to
+        # per-axis float steps (same values as ``_origin_translate`` /
+        # ``_ctm_point``).
+        simple = not rise and ctm.get_shear_x() == 0.0 and ctm.get_shear_y() == 0.0
+        font_size_in_pt = font_size * x_scale
+        # Inside ``process_page`` on an unrotated page, an upright glyph gets
+        # its upstream geometry (``_JavaGeometry``) here, from the values
+        # ``_apply_page_rotation`` then stores (rotation 0, the cropbox
+        # height), rather than lazily in a later pass over the page.
+        upright = simple and fold_upright and text_dir % 360.0 == 0.0
+        page_height = _f32(page_height_raw) if upright else 0.0
+        plain_steps = None
+        if (
+            _USE_FAST_PATHS
+            and simple
+            and c0 == 1.0
+            and c4 == 1.0
+            and c6 == 0.0
+            and c7 == 0.0
+            and tm_b == 0.0
+        ):
+            # The memo of :func:`_plain_glyph_step` results for these step
+            # inputs, keyed by their exact bits (signed zeros differ).
+            try:
+                steps_key = _PLAIN_STEP_KEY.pack(
+                    font_size, th, char_spacing, word_spacing, tm_a, tm_b, x_scale
+                )
+            except (OverflowError, struct.error):  # (not a float input)
+                steps_key = None
+            if steps_key is not None:
+                memo = self._plain_step_memo
+                plain_steps = memo.get(steps_key)
+                if plain_steps is None:
+                    if len(memo) > 65536:
+                        memo.clear()
+                    plain_steps = memo[steps_key] = ({}, {})
+        if scratch is None:
+            scratch = array("f", bytes(16))
+        return (
+            *key,
+            x_scale,
+            text_dir,
+            effective_font_size,
+            run_height,
+            width_of_space,
+            c0,
+            c4,
+            c6,
+            c7,
+            simple,
+            font_size_in_pt,
+            upright,
+            page_height,
+            abs(run_height),
+            abs(width_of_space),
+            plain_steps,
+            scratch,
+        )
+
     def _emit_glyphs(
         self,
         state: _TextState,
@@ -2661,56 +2968,283 @@ class PDFTextStripper:
         th = getattr(state, "horizontal_scaling", 1.0)
         char_spacing = state.char_spacing
         word_spacing_state = state.word_spacing
-        x_scale, y_scale, text_dir = self._scale_and_dir(state)
-        effective_font_size = font_size * y_scale
-        trm_scale_x, trm_scale_y = self._rendering_scale(state)
-        font_height_fraction = self._active_font_height
-        run_height = (
-            0.0
-            if font_height_fraction is None
-            else abs(_f32(font_height_fraction * trm_scale_y))
-        )
-        per_char = self._active_avg_advance
-        if per_char is None:
-            per_char = font_size * 0.5
-        space_text = self._space_width_text(font, per_char / font_size if font_size else 0.0)
-        width_of_space = abs(_f32(space_text * trm_scale_x))
-        crop_llx = self._crop_lower_left_x
-        crop_lly = self._crop_lower_left_y
+        scale_and_dir = self._scale_and_dir(state)
         tm_a = state.tm_a
         tm_b = state.tm_b
-        ctm = state.ctm
-        c0 = ctm.get_scale_x()
-        c4 = ctm.get_scale_y()
-        c6 = ctm.get_translate_x()
-        c7 = ctm.get_translate_y()
-        # Without text rise or CTM shear the matrix products reduce to these
-        # per-axis float steps (same values as ``_origin_translate`` /
-        # ``_ctm_point``), done two at a time.
-        simple = (
-            not getattr(state, "text_rise", 0.0)
-            and ctm.get_shear_x() == 0.0
-            and ctm.get_shear_y() == 0.0
-        )
-        self._run_counter += 1
-        run_id = self._run_counter
         tm_c = state.tm_c
         tm_d = state.tm_d
+        ctm = state.ctm
+        rise = getattr(state, "text_rise", 0.0)
+        font_height_fraction = self._active_font_height
+        avg_advance = self._active_avg_advance
+        fold_upright = self._fold_upright_geometry
+        crop_llx = self._crop_lower_left_x
+        crop_lly = self._crop_lower_left_y
+        page_height_raw = self._page_height
+        # The run-invariant values below are functions of these inputs
+        # alone; a run whose inputs are the very same objects as the last
+        # run's reuses them (the context keeps every input alive, so an
+        # identity match is a value match).
+        ctx = getattr(state, "_run_ctx", None)
+        if (
+            ctx is None
+            or ctx[0] is not scale_and_dir
+            or ctx[1] is not font_size
+            or ctx[2] is not th
+            or ctx[3] is not char_spacing
+            or ctx[4] is not word_spacing_state
+            or ctx[5] is not font
+            or ctx[6] is not font_height_fraction
+            or ctx[7] is not avg_advance
+            or ctx[8] is not ctm
+            or ctx[9] is not fold_upright
+            or ctx[10] is not rise
+            or ctx[11] is not tm_a
+            or ctx[12] is not tm_b
+            or ctx[13] is not crop_llx
+            or ctx[14] is not crop_lly
+            or ctx[15] is not page_height_raw
+            or ctx[16] is not tm_c
+            or ctx[17] is not tm_d
+        ):
+            ctx = state._run_ctx = self._run_context(
+                state,
+                font,
+                (
+                    scale_and_dir,
+                    font_size,
+                    th,
+                    char_spacing,
+                    word_spacing_state,
+                    font,
+                    font_height_fraction,
+                    avg_advance,
+                    ctm,
+                    fold_upright,
+                    rise,
+                    tm_a,
+                    tm_b,
+                    crop_llx,
+                    crop_lly,
+                    page_height_raw,
+                    tm_c,
+                    tm_d,
+                ),
+                None if ctx is None else ctx[-1],
+            )
+        (
+            x_scale,
+            text_dir,
+            effective_font_size,
+            run_height,
+            width_of_space,
+            c0,
+            c4,
+            c6,
+            c7,
+            simple,
+            font_size_in_pt,
+            upright,
+            page_height,
+            abs_height,
+            abs_width_of_space,
+            plain_steps,
+            scratch,
+        ) = ctx[18:]
+        self._run_counter += 1
+        run_id = self._run_counter
         font_name = state.font_name
-        font_size_in_pt = font_size * x_scale
-        isfinite = math.isfinite
         append = positions.append
-        # Inside ``process_page`` on an unrotated page, an upright glyph gets
-        # its upstream geometry (``_JavaGeometry``) here, from the values
-        # ``_apply_page_rotation`` then stores (rotation 0, the cropbox
-        # height), rather than lazily in a later pass over the page.
-        upright = simple and self._fold_upright_geometry and text_dir % 360.0 == 0.0
-        page_height = _f32(self._page_height) if upright else 0.0
-        abs_height = abs(run_height)
-        abs_width_of_space = abs(width_of_space)
         new_geometry = _JavaGeometry.__new__
         # ``/ActualText`` only changes at marked-content operators.
         actual_text = self._actual_text
+        if plain_steps is not None:
+            # An identity CTM and an unrotated, unsheared text matrix
+            # (``tm_b == 0``): with a float32 cursor, the products with the
+            # exactly-1.0 CTM scale, the sums with its zero translation and
+            # the zero ``tm_b`` products are exact, so only three
+            # narrowings per glyph remain; the cursor-independent ones come
+            # from a memo of :func:`_plain_glyph_step`.
+            glyph_x = state.text_x
+            glyph_y = state.text_y
+            scratch[0] = glyph_x
+            scratch[1] = glyph_y
+            if scratch[0] == glyph_x and scratch[1] == glyph_y:
+                nonspace_steps, space_steps = plain_steps
+                last_device_y = None
+                start_count = len(positions)
+                page_width_raw = self._page_width
+                geometry_y = 0.0
+                for piece, displacement, code_length, code in glyphs:
+                    if code_length == 1 and code == 32:
+                        # Word spacing applies to the single-byte code 32 only.
+                        step = space_steps.get(displacement)
+                        if step is None:
+                            step = _plain_glyph_step(
+                                displacement,
+                                font_size,
+                                th,
+                                char_spacing,
+                                word_spacing_state,
+                                tm_a,
+                                tm_b,
+                                x_scale,
+                            )
+                            if displacement:
+                                # (A zero key would conflate the signed zeros.)
+                                space_steps[displacement] = step
+                    else:
+                        step = nonspace_steps.get(displacement)
+                        if step is None:
+                            step = _plain_glyph_step(
+                                displacement,
+                                font_size,
+                                th,
+                                char_spacing,
+                                0.0,
+                                tm_a,
+                                tm_b,
+                                x_scale,
+                            )
+                            if displacement:
+                                nonspace_steps[displacement] = step
+                    end_tx_offset, end_ty_offset, step_x, step_y, width = step
+                    scratch[0] = end_tx_offset + glyph_x
+                    scratch[1] = glyph_x + step_x
+                    end_x = scratch[0] * c0 + c6
+                    next_x = scratch[1]
+                    next_y = glyph_y + step_y
+                    if piece is None:
+                        glyph_x = next_x
+                        glyph_y = next_y
+                        continue
+                    origin_x = glyph_x * c0 + c6
+                    origin_y = glyph_y * c4 + c7
+                    end_y = (end_ty_offset + glyph_y) * c4 + c7
+                    scratch[0] = end_x - origin_x
+                    dx_display = scratch[0]
+                    if actual_text is not None:
+                        if self._first_actual_text_position:
+                            piece = actual_text
+                            self._first_actual_text_position = False
+                        else:
+                            piece = ""
+                    if origin_x - origin_x + (origin_y - origin_y) != 0.0:
+                        # (Zero exactly when both are finite.)
+                        state.text_x = glyph_x
+                        state.text_y = glyph_y
+                        raise ValueError("Multiplying two matrices produces illegal values")
+                    if crop_llx:
+                        scratch[0] = origin_x - crop_llx
+                        scratch[1] = end_x - crop_llx
+                        device_x = scratch[0]
+                        device_end_x = scratch[1]
+                    else:
+                        device_x = origin_x
+                        device_end_x = end_x
+                    if crop_lly:
+                        scratch[0] = origin_y - crop_lly
+                        scratch[1] = end_y - crop_lly
+                        device_y = scratch[0]
+                        device_end_y = scratch[1]
+                    else:
+                        device_y = origin_y
+                        device_end_y = end_y
+                    if upright:
+                        # ``_JavaGeometry`` for rotation and direction 0. The
+                        # width narrows ``device_end_x - device_x``, which
+                        # without a cropbox offset is ``dx_display``.
+                        if crop_llx:
+                            scratch[0] = device_end_x - device_x
+                            geometry_width = abs(scratch[0])
+                        else:
+                            geometry_width = abs(dx_display)
+                        if device_y != last_device_y or not device_y:
+                            scratch[0] = page_height - device_y
+                            geometry_y = scratch[0]
+                            last_device_y = device_y
+                        # Built with the rotation, page size and width
+                        # ``_apply_page_rotation`` then stores for an
+                        # unrotated page.
+                        position = TextPosition(
+                            piece,
+                            origin_x,
+                            origin_y,
+                            effective_font_size,
+                            font_name,
+                            font,
+                            resolved_font_name,
+                            geometry_width,
+                            width_of_space,
+                            char_spacing,
+                            word_spacing_state,
+                            text_dir,
+                            0.0,
+                            page_width_raw,
+                            page_height_raw,
+                            [tm_a, tm_b, tm_c, tm_d, glyph_x, glyph_y],
+                            font_size_in_pt,
+                            run_height,
+                            [dx_display],
+                            False,
+                            device_x,
+                            device_y,
+                            device_end_x,
+                            device_end_y,
+                            font_size,
+                        )
+                        position._run_id = run_id
+                        geometry = new_geometry(_JavaGeometry)
+                        geometry.dir = 0.0
+                        geometry.x = geometry.x_dir_adj = device_x
+                        geometry.y = geometry.y_dir_adj = geometry_y
+                        geometry.width = geometry.width_dir_adj = geometry_width
+                        geometry.height = abs_height
+                        geometry.width_of_space = abs_width_of_space
+                        position._java_geometry = geometry
+                    else:
+                        position = TextPosition(
+                            piece,
+                            origin_x,
+                            origin_y,
+                            effective_font_size,
+                            font_name,
+                            font,
+                            resolved_font_name,
+                            width,
+                            width_of_space,
+                            char_spacing,
+                            word_spacing_state,
+                            text_dir,
+                            0.0,
+                            0.0,
+                            0.0,
+                            [tm_a, tm_b, tm_c, tm_d, glyph_x, glyph_y],
+                            font_size_in_pt,
+                            run_height,
+                            [dx_display],
+                            False,
+                            device_x,
+                            device_y,
+                            device_end_x,
+                            device_end_y,
+                            font_size,
+                        )
+                        position._run_id = run_id
+                    append(position)
+                    glyph_x = next_x
+                    glyph_y = next_y
+                state.text_x = glyph_x
+                state.text_y = glyph_y
+                if upright:
+                    # Count the positions built already folded (see
+                    # ``_apply_page_rotation``).
+                    if self._prefolded_positions is not positions:
+                        self._prefolded_positions = positions
+                        self._prefolded_count = 0
+                    self._prefolded_count += len(positions) - start_count
+                return
+        isfinite = math.isfinite
         pack2 = _f32x2_pack
         unpack2 = _f32x2_unpack
         pack3 = _f32x3_pack
@@ -2896,6 +3430,7 @@ class PDFTextStripper:
         positions: list[TextPosition],
     ) -> None:
         emit = self._emit
+        scratch = None
         for entry in arr:
             if isinstance(entry, COSString):
                 emit(entry, state, positions)
@@ -2916,15 +3451,35 @@ class PDFTextStripper:
                     state.text_x = _f32(state.text_x + _f32(ty * state.tm_c))
                     state.text_y = _f32(state.text_y + _f32(ty * state.tm_d))
                     continue
-                state.text_x, state.text_y = _tj_step(
-                    entry.float_value(),
-                    state.font_size,
-                    getattr(state, "horizontal_scaling", 1.0),
-                    state.tm_a,
-                    state.tm_b,
-                    state.text_x,
-                    state.text_y,
-                )
+                if not _USE_FAST_PATHS:
+                    state.text_x, state.text_y = _tj_step(
+                        entry.float_value(),
+                        state.font_size,
+                        getattr(state, "horizontal_scaling", 1.0),
+                        state.tm_a,
+                        state.tm_b,
+                        state.text_x,
+                        state.text_y,
+                    )
+                    continue
+                # :func:`_tj_step`, narrowing through a float32 array; a
+                # product with an exactly-1.0 size or scaling is exact.
+                if scratch is None:
+                    scratch = array("f", bytes(8))
+                scratch[0] = -entry.float_value() / 1000.0
+                font_size = state.font_size
+                if font_size != 1.0:
+                    scratch[0] = scratch[0] * font_size
+                th = getattr(state, "horizontal_scaling", 1.0)
+                if th != 1.0:
+                    scratch[0] = scratch[0] * th
+                tx = scratch[0]
+                scratch[0] = tx * state.tm_a
+                scratch[1] = tx * state.tm_b
+                scratch[0] = state.text_x + scratch[0]
+                scratch[1] = state.text_y + scratch[1]
+                state.text_x = scratch[0]
+                state.text_y = scratch[1]
 
     # ---------- /ToUnicode CMap helpers ----------
 
@@ -2977,8 +3532,17 @@ class PDFTextStripper:
                 )
                 to_unicode = font_dict.get_dictionary_object("ToUnicode")
                 if isinstance(to_unicode, COSStream):
-                    with to_unicode.create_input_stream() as src:
-                        cmap = CMapParser().parse(src.read())
+                    # The parse of a stream an earlier page already read.
+                    known = self._to_unicode_memo.get(id(to_unicode))
+                    if _USE_FAST_PATHS and known is not None and known[0] is to_unicode:
+                        cmap = known[1]
+                    else:
+                        with to_unicode.create_input_stream() as src:
+                            cmap = CMapParser().parse(src.read())
+                        memo = self._to_unicode_memo
+                        if len(memo) > 256:
+                            memo.clear()
+                        memo[id(to_unicode)] = (to_unicode, cmap)
         except Exception:  # defensive: malformed CMap → no decode
             cmap = None
         self._cmap_cache[font_resource_name] = cmap
@@ -3314,7 +3878,11 @@ class PDFTextStripper:
         # before any sorting/grouping — keeps the position lists handed
         # to ``write_string`` in sync with what subclasses would have
         # seen via ``processTextPosition`` upstream.
-        positions = [p for p in positions if not self.should_skip_glyph(p)]
+        if _USE_FAST_PATHS and type(self).should_skip_glyph is _BASE_SHOULD_SKIP_GLYPH:
+            # (The base hook keeps every glyph.)
+            positions = list(positions)
+        else:
+            positions = [p for p in positions if not self.should_skip_glyph(p)]
         if self._flip_axes:
             if not positions:
                 return self._empty_article_wrap()
@@ -3350,18 +3918,41 @@ class PDFTextStripper:
         it, and a previous diacritic overlapped by the current glyph is merged
         into the current one."""
         text_list: list[TextPosition] = []
+        append = text_list.append
+        # ``is_diacritic`` of the stock position class, read from its
+        # per-character memo; ``previous_diacritic`` remembers the last
+        # entry's answer while its text is unchanged (``None``: not known).
+        known = _IS_DIACRITIC
+        fast = _USE_FAST_PATHS
+        previous: TextPosition | None = None
+        previous_diacritic: bool | None = None
         for text in positions:
-            if not text_list:
-                text_list.append(text)
+            if previous is None:
+                append(text)
+                previous = text
+                previous_diacritic = None
                 continue
-            previous = text_list[-1]
-            if text.is_diacritic() and _java_contains(previous, text):
+            diacritic = None
+            if fast and type(text) is TextPosition:
+                piece = text.text
+                diacritic = known.get(piece) if len(piece) == 1 else False
+            if diacritic is None:
+                diacritic = text.is_diacritic()
+            if diacritic and _java_contains(previous, text):
                 _java_merge_diacritic(previous, text)
-            elif previous.is_diacritic() and _java_contains(text, previous):
+                previous_diacritic = None
+                continue
+            if previous_diacritic is None or not fast:
+                previous_diacritic = previous.is_diacritic()
+            if previous_diacritic and _java_contains(text, previous):
                 _java_merge_diacritic(text, previous)
                 text_list[-1] = text
+                previous = text
+                previous_diacritic = None
             else:
-                text_list.append(text)
+                append(text)
+                previous = text
+                previous_diacritic = diacritic
         return text_list
 
     @staticmethod
@@ -3406,21 +3997,60 @@ class PDFTextStripper:
 
         font_or_size_changed = self._java_font_or_size_changed
         variance = _F32_TENTH
-        pack1 = _f32_pack
-        unpack1 = _f32_unpack
-        pack2 = _f32x2_pack
-        unpack2 = _f32x2_unpack
-        pack5 = _F32X5_STRUCT.pack
-        unpack5 = _F32X5_STRUCT.unpack
+        # Float32 narrowing by a store into (and load from) a ``float``
+        # array: the C ``(float)`` cast, which is Java's ``(float)`` (an
+        # out-of-range magnitude becomes an infinity).
+        scratch = array("f", bytes(16))
+        fast = _USE_FAST_PATHS
         word_separator_item = _LineItem.get_word_separator()
+        line_item = _LineItem
+        # ``_LineItem(position)`` without the ``__init__`` call.
+        new_line_item = _LineItem.__new__
+        # With the stock ``normalize`` / ``normalize_add`` a line is queued
+        # as its positions, ``None`` standing for the word separator.
+        bare_line = (
+            fast
+            and type(self).normalize is _BASE_NORMALIZE
+            and type(self).normalize_add is _BASE_NORMALIZE_ADD
+        )
+        normalize_positions = self._normalize_positions
+        # With the stock line and word hooks as well, a line's words are
+        # written straight from its positions.
+        cls = type(self)
+        bare_write = (
+            bare_line
+            and cls.write_line is _BASE_WRITE_LINE
+            and cls.create_word is _BASE_CREATE_WORD
+            and cls.write_string_with_positions is _BASE_WRITE_STRING_WITH_POSITIONS
+            and cls.write_string is _BASE_WRITE_STRING
+            and cls.process_text_position is _BASE_PROCESS_TEXT_POSITION
+            and cls.write_word_separator is _BASE_WRITE_WORD_SEPARATOR
+        )
+        write_bare_line = self._write_bare_line
         max_y_for_line = -_FLT_MAX
         end_of_last_text_x = -1.0
         last_word_spacing = -1.0
         max_height_for_line = -1.0
-        last_position: PositionWrapper | None = None
+        # The last position, and its ``PositionWrapper`` once one is needed:
+        # a wrapper only carries flags, which are only ever set on wrappers
+        # made at a line break, at the page start or for an article start,
+        # so a later-made one is in the same state an earlier one would be.
+        last_text: TextPosition | None = None
+        last_stock = False
+        last_wrapper: PositionWrapper | None = None
         last_geometry: _JavaGeometry | None = None
         last_line_start: PositionWrapper | None = None
         start_of_page = True
+        # In-line spacing terms remembered for the last ``(word_spacing,
+        # last_word_spacing)`` pair, and the ``within`` bounds for the last
+        # ``y``: functions of those values alone.
+        memo_word_spacing: float | None = None
+        memo_last_word_spacing: float | None = None
+        memo_delta_space = 0.0
+        memo_space_limit = 0.0
+        memo_y: float | None = None
+        memo_within_low = 0.0
+        memo_within_high = 0.0
 
         for text_list in articles:
             if self._article_start:
@@ -3429,26 +4059,36 @@ class PDFTextStripper:
                     # The subclass's article start opened the paragraph.
                     self._in_paragraph = True
             start_of_article = True
-            line: list[_LineItem] = []
+            # ``_LineItem`` entries, or positions and ``None`` (``bare_line``).
+            line: list = []
             previous_ave_char_width = -1.0
             for position in text_list:
-                current = PositionWrapper(position)
-                character_value = position.get_unicode()
+                # (The stock position's ``get_unicode`` / ``get_font`` return
+                # these fields.)
+                stock = fast and type(position) is TextPosition
+                character_value = position.text if stock else position.get_unicode()
                 # PDFBOX-3774: conditionally ignore spaces from the content stream.
                 if ignore_spaces and character_value == " ":
                     continue
-                if last_position is not None:
-                    last_text = last_position.get_text_position()
+                current: PositionWrapper | None = None
+                if last_text is not None:
                     current_size = position.tf_font_size
                     # ``hasFontOrSizeChanged`` is false for the same ``Tf``
                     # size and font instance; anything else asks it.
                     if (
                         current_size is None
                         or current_size != last_text.tf_font_size
-                        or position.get_font() is not last_text.get_font()
+                        or (
+                            position.font is not last_text.font
+                            if stock and last_stock
+                            else position.get_font() is not last_text.get_font()
+                        )
                     ) and font_or_size_changed(position, last_text):
                         previous_ave_char_width = -1.0
-                g = getattr(position, "_java_geometry", None) or _java_geometry(position)
+                try:
+                    g = position._java_geometry or _java_geometry(position)
+                except AttributeError:
+                    g = _java_geometry(position)
                 if sort:
                     position_x = g.x_dir_adj
                     position_y = g.y_dir_adj
@@ -3464,47 +4104,65 @@ class PDFTextStripper:
                 word_char_count = len(widths) or 1
                 word_spacing = g.width_of_space
                 within_low = None
+                x_distance = None
                 if (
-                    last_word_spacing >= 0
+                    fast
+                    and last_word_spacing >= 0
                     and previous_ave_char_width >= 0
                     and end_of_last_text_x != -1.0
                     and word_spacing != 0
                     and word_spacing == word_spacing  # not NaN
                 ):
-                    # ``_word_metrics_reference`` for a glyph inside a line,
-                    # batched, with the ``within`` bounds of ``_java_overlap``
-                    # packed into its first round trip.
-                    try:
-                        (
-                            space_sum,
-                            char_width,
-                            new_end_of_text_x,
-                            within_low,
-                            within_high,
-                        ) = unpack5(
-                            pack5(
-                                word_spacing + last_word_spacing,
-                                position_width / word_char_count,
-                                position_x + position_width,
-                                position_y - variance,
-                                position_y + variance,
-                            )
-                        )
-                        space_half, char_sum = unpack2(
-                            pack2(space_sum / 2, previous_ave_char_width + char_width)
-                        )
-                        delta_space, average_char_width = unpack2(
-                            pack2(space_half * spacing_tolerance, char_sum / 2)
-                        )
-                        delta_char_width = unpack1(
-                            pack1(average_char_width * average_char_tolerance)
-                        )[0]
-                        expected_start_of_next_word_x = unpack1(
-                            pack1(end_of_last_text_x + min(delta_space, delta_char_width))
-                        )[0]
-                    except OverflowError:
-                        within_low = None
-                if within_low is None:
+                    # ``_word_metrics_reference`` for a glyph inside a line
+                    # (so after a first position), with the ``within`` bounds
+                    # of ``_java_overlap`` and the ``x`` distance to the last
+                    # glyph.
+                    if (
+                        word_spacing == memo_word_spacing
+                        and last_word_spacing == memo_last_word_spacing
+                    ):
+                        delta_space = memo_delta_space
+                        space_limit = memo_space_limit
+                    else:
+                        scratch[0] = word_spacing + last_word_spacing
+                        scratch[0] = scratch[0] / 2
+                        scratch[0] = scratch[0] * spacing_tolerance
+                        delta_space = scratch[0]
+                        scratch[0] = word_spacing + delta_space
+                        space_limit = scratch[0]
+                        memo_word_spacing = word_spacing
+                        memo_last_word_spacing = last_word_spacing
+                        memo_delta_space = delta_space
+                        memo_space_limit = space_limit
+                    if position_y != memo_y:
+                        scratch[0] = position_y - variance
+                        scratch[1] = position_y + variance
+                        memo_within_low = scratch[0]
+                        memo_within_high = scratch[1]
+                        memo_y = position_y
+                    within_low = memo_within_low
+                    within_high = memo_within_high
+                    scratch[0] = position_width / word_char_count
+                    scratch[1] = position_x + position_width
+                    scratch[2] = g.x - last_geometry.x
+                    new_end_of_text_x = scratch[1]
+                    x_distance = scratch[2]
+                    scratch[0] = previous_ave_char_width + scratch[0]
+                    char_sum = scratch[0]
+                    if char_sum >= _F32_MIN_HALVABLE:
+                        # Halving a float32 this large is exact.
+                        average_char_width = char_sum / 2
+                    else:
+                        scratch[0] = char_sum / 2
+                        average_char_width = scratch[0]
+                    scratch[0] = average_char_width * average_char_tolerance
+                    delta_char_width = scratch[0]
+                    # ``min(delta_space, delta_char_width)``, NaN cases included.
+                    scratch[0] = end_of_last_text_x + (
+                        delta_char_width if delta_char_width < delta_space else delta_space  # noqa: FURB136
+                    )
+                    expected_start_of_next_word_x = scratch[0]
+                else:
                     (
                         delta_space,
                         average_char_width,
@@ -3521,24 +4179,35 @@ class PDFTextStripper:
                         spacing_tolerance,
                         average_char_tolerance,
                     )
-                if last_position is not None:
+                if last_text is not None:
                     if start_of_article:
-                        last_position.set_article_start()
+                        if last_wrapper is None:
+                            last_wrapper = PositionWrapper(last_text)
+                        last_wrapper.set_article_start()
                         start_of_article = False
                     if not (
                         within_low is not None and within_low < max_y_for_line < within_high
                     ) and not _java_overlap(
                         position_y, position_height, max_y_for_line, max_height_for_line
                     ):
-                        self.write_line(self.normalize(line), sink)
+                        if bare_write:
+                            write_bare_line(line, sink)
+                        else:
+                            self.write_line(
+                                normalize_positions(line) if bare_line else self.normalize(line),
+                                sink,
+                            )
                         line = []
+                        if last_wrapper is None:
+                            last_wrapper = PositionWrapper(last_text)
+                        current = PositionWrapper(position)
                         last_line_start = self._java_handle_line_separation(
-                            current, last_position, last_line_start, max_height_for_line, sink
+                            current, last_wrapper, last_line_start, max_height_for_line, sink
                         )
                         expected_start_of_next_word_x = -_FLT_MAX
                         max_y_for_line = -_FLT_MAX
                         max_height_for_line = -1.0
-                    last_unicode = last_position.get_text_position().get_unicode()
+                    last_unicode = last_text.text if last_stock else last_text.get_unicode()
                     if (
                         expected_start_of_next_word_x != -_FLT_MAX
                         and expected_start_of_next_word_x < position_x
@@ -3547,34 +4216,50 @@ class PDFTextStripper:
                             or (last_unicode is not None and not last_unicode.endswith(separator))
                         )
                     ):
-                        line.append(word_separator_item)
-                    x_distance, space_limit = _f32x2(
-                        g.x - last_geometry.x,
-                        word_spacing + delta_space,
-                    )
-                    if abs(x_distance) > space_limit:
+                        line.append(None if bare_line else word_separator_item)
+                    if x_distance is None:
+                        x_distance, space_limit = _f32x2(
+                            g.x - last_geometry.x,
+                            word_spacing + delta_space,
+                        )
+                    if x_distance > space_limit or -x_distance > space_limit:
+                        # (``abs(x_distance) > space_limit``.)
                         max_y_for_line = -_FLT_MAX
                         max_height_for_line = -1.0
                 if position_y >= max_y_for_line:
                     max_y_for_line = position_y
                 end_of_last_text_x = new_end_of_text_x
                 if character_value is not None:
-                    if start_of_page and last_position is None and emit_paragraph_markers:
+                    if start_of_page and last_text is None and emit_paragraph_markers:
                         self.write_paragraph_start(sink)
-                    line.append(_LineItem(position))
+                    if bare_line:
+                        line.append(position)
+                    else:
+                        item = new_line_item(line_item)
+                        item._text_position = position
+                        line.append(item)
                 if position_height > max_height_for_line:
                     max_height_for_line = position_height
-                last_position = current
+                last_text = position
+                last_stock = stock
+                last_wrapper = current
                 last_geometry = g
                 if start_of_page:
-                    last_position.set_paragraph_start()
-                    last_position.set_line_start()
-                    last_line_start = last_position
+                    if last_wrapper is None:
+                        last_wrapper = PositionWrapper(position)
+                    last_wrapper.set_paragraph_start()
+                    last_wrapper.set_line_start()
+                    last_line_start = last_wrapper
                     start_of_page = False
                 last_word_spacing = word_spacing
                 previous_ave_char_width = average_char_width
             if line:
-                self.write_line(self.normalize(line), sink)
+                if bare_write:
+                    write_bare_line(line, sink)
+                else:
+                    self.write_line(
+                        normalize_positions(line) if bare_line else self.normalize(line), sink
+                    )
                 if emit_paragraph_markers:
                     self.write_paragraph_end(sink)
             if self._article_end:
@@ -4734,11 +5419,12 @@ class PDFTextStripper:
         # (grown when a run's tolerance exceeds the cell) neighbourhood always
         # contains every origin the window could match. The suppression
         # decision is therefore byte-for-byte identical to the linear scan for
-        # every input. Each bucket is ``[cell, grid, overflow]``:
-        #   * ``cell``     — grid cell size, fixed to twice the first finite
-        #                    positive tolerance recorded for the text
-        #                    (constant in the common fake-bold case → 2x2
-        #                    probes);
+        # every input. Each bucket is ``[cell, grid, overflow, last width,
+        # last tolerance]``:
+        #   * ``cell``     — grid cell size, fixed to four times the first
+        #                    finite positive tolerance recorded for the text
+        #                    (constant in the common fake-bold case → at
+        #                    most 2x2 probes);
         #   * ``grid``     — ``{cx * _GRID_ROW + cy: [x0, y0, x1, y1, ...]}``
         #                    cell buckets (flat, so no per-origin tuple);
         #   * ``overflow`` — origins that predate a grid cell (empty-text
@@ -4754,6 +5440,8 @@ class PDFTextStripper:
         pack4 = _f32x4_pack
         unpack4 = _f32x4_unpack
         row_stride = _GRID_ROW
+        window_hit = _dup_window_hit_flat
+        fast = _USE_FAST_PATHS
         # ``floor(v / cell)`` raises one of these for a zero cell or a
         # non-finite ``v``: the cases the grid cannot index.
         not_indexable = (ZeroDivisionError, OverflowError, ValueError)
@@ -4762,31 +5450,47 @@ class PDFTextStripper:
                 append(pos)
                 continue
             text = pos.text
-            char_count = len(text)
-            geometry = getattr(pos, "_java_geometry", None) or _java_geometry(pos)
+            try:
+                geometry = pos._java_geometry or _java_geometry(pos)
+            except AttributeError:
+                geometry = _java_geometry(pos)
             pos_x = geometry.x
             pos_y = geometry.y
-            # Java: text.getWidth() / textCharacter.length() / 3.0f — float
-            # division, so length 0 yields +Infinity (or NaN for a zero
-            # width, which never matches). A non-finite value packs as is.
-            if char_count:
-                tol = geometry.width / char_count / 3.0
-                try:
-                    tol = unpack1(pack1(tol))[0]
-                except OverflowError:
-                    tol = f32(tol)
-            else:
-                tol = _fdiv(_fdiv(geometry.width, 0.0), 3.0)
+            width = geometry.width
             bucket = seen.get(text)
+            # The tolerance is a function of the width and the text length
+            # alone; each bucket remembers the last one it computed.
+            if fast and bucket is not None and width == bucket[3]:
+                tol = bucket[4]
+            else:
+                # Java: text.getWidth() / textCharacter.length() / 3.0f —
+                # float division, so length 0 yields +Infinity (or NaN for a
+                # zero width, which never matches). A non-finite value packs
+                # as is.
+                char_count = len(text)
+                if char_count:
+                    tol = width / char_count / 3.0
+                    try:
+                        tol = unpack1(pack1(tol))[0]
+                    except OverflowError:
+                        tol = f32(tol)
+                else:
+                    tol = _fdiv(_fdiv(width, 0.0), 3.0)
+                if bucket is not None:
+                    bucket[3] = width
+                    bucket[4] = tol
+            # Grid column of this origin when the probe already pinned it.
+            known_cx = None
+            known_cy = None
             if bucket is None:
                 # First run of this text on the page: nothing to match.
-                # ``[cell, grid, overflow]``.
-                bucket = seen[text] = [0.0, {}, []]
+                # ``[cell, grid, overflow, last width, last tolerance]``.
+                bucket = seen[text] = [0.0, {}, [], width, tol]
                 cell = 0.0
                 grid = bucket[1]
                 overflow = bucket[2]
             else:
-                cell, grid, overflow = bucket
+                cell, grid, overflow = bucket[0], bucket[1], bucket[2]
                 try:
                     x_lo, x_hi, y_lo, y_hi = unpack4(
                         pack4(pos_x - tol, pos_x + tol, pos_y - tol, pos_y + tol)
@@ -4794,7 +5498,7 @@ class PDFTextStripper:
                 except OverflowError:
                     x_lo, x_hi = _f32x2(pos_x - tol, pos_x + tol)
                     y_lo, y_hi = _f32x2(pos_y - tol, pos_y + tol)
-                if overflow and _dup_window_hit_flat(overflow, x_lo, x_hi, y_lo, y_hi):
+                if overflow and window_hit(overflow, x_lo, x_hi, y_lo, y_hi):
                     continue
                 if grid:
                     try:
@@ -4804,41 +5508,46 @@ class PDFTextStripper:
                         cy1 = floor(y_hi / cell)
                     except not_indexable:
                         cx0 = None
-                    hit = False
-                    if cx0 is None or (cx1 - cx0 + 1) * (cy1 - cy0 + 1) > 128:
-                        # No cell yet, a non-finite window (inf tolerance), or
-                        # a tolerance spanning a huge multiple of the cell
-                        # (widely varying per-run tol): scanning every
-                        # recorded origin is still exact and never slower
-                        # than the original linear scan.
-                        for cell_pts in grid.values():
-                            if _dup_window_hit_flat(cell_pts, x_lo, x_hi, y_lo, y_hi):
-                                hit = True
-                                break
-                    else:
-                        grid_get = grid.get
-                        for cx in range(cx0, cx1 + 1):
-                            row = cx * row_stride
-                            for cy in range(cy0, cy1 + 1):
-                                cell_pts = grid_get(row + cy)
-                                if cell_pts:
-                                    pts = iter(cell_pts)
-                                    for x_key, y_val in zip(pts, pts, strict=False):
-                                        if x_lo <= x_key < x_hi and y_lo <= y_val < y_hi:
-                                            hit = True
-                                            break
-                                    if hit:
-                                        break
-                            if hit:
-                                break
-                    if hit:
+                        cx1 = cy0 = cy1 = 0
+                    if fast and cx0 is not None and cx1 - cx0 <= 1 and cy1 - cy0 <= 1:
+                        # The common case: the window spans at most two
+                        # cells per axis (the cell is four times the first
+                        # tolerance), probed without loops. ``floor(v /
+                        # cell)`` is monotonic, so a one-cell span also pins
+                        # the origin's own cell for the insertion below.
+                        row = cx0 * row_stride
+                        key = row + cy0
+                        if key in grid and window_hit(grid[key], x_lo, x_hi, y_lo, y_hi):
+                            continue
+                        if cy1 != cy0:
+                            key = row + cy1
+                            if key in grid and window_hit(grid[key], x_lo, x_hi, y_lo, y_hi):
+                                continue
+                        elif y_lo <= pos_y <= y_hi:
+                            known_cy = cy0
+                        if cx1 != cx0:
+                            row = cx1 * row_stride
+                            key = row + cy0
+                            if key in grid and window_hit(grid[key], x_lo, x_hi, y_lo, y_hi):
+                                continue
+                            if cy1 != cy0:
+                                key = row + cy1
+                                if key in grid and window_hit(
+                                    grid[key], x_lo, x_hi, y_lo, y_hi
+                                ):
+                                    continue
+                        elif x_lo <= pos_x <= x_hi:
+                            known_cx = cx0
+                    elif _dup_grid_hit(grid, cx0, cx1, cy0, cy1, x_lo, x_hi, y_lo, y_hi):
                         continue
             if cell <= 0.0 and 0.0 < tol < inf:
-                # Twice the tolerance: a ``2 * tol`` wide window then spans
-                # at most two cells per axis.
-                cell = bucket[0] = 2.0 * tol
+                # Four times the tolerance: a ``2 * tol`` wide window then
+                # usually stays inside one cell per axis.
+                cell = bucket[0] = 4.0 * tol
             try:
-                key = floor(pos_x / cell) * row_stride + floor(pos_y / cell)
+                key = (floor(pos_x / cell) if known_cx is None else known_cx) * row_stride + (
+                    floor(pos_y / cell) if known_cy is None else known_cy
+                )
             except not_indexable:
                 overflow.append(pos_x)
                 overflow.append(pos_y)
@@ -4894,8 +5603,13 @@ class PDFTextStripper:
         """Hook for emitting a decoded text run. Default writes
         ``text`` to ``sink``. Subclasses may inspect ``text_positions``
         to filter or transform the run before writing."""
-        for tp in text_positions:
-            self.process_text_position(tp)
+        if (
+            not _USE_FAST_PATHS
+            or type(self).process_text_position is not _BASE_PROCESS_TEXT_POSITION
+        ):
+            # (The base hook is a no-op.)
+            for tp in text_positions:
+                self.process_text_position(tp)
         sink(text)
 
     def write_string_with_positions(
@@ -5266,6 +5980,28 @@ class PDFTextStripper:
         compose their own line list can plug into the same hook surface.
         """
         n = len(line)
+        cls = type(self)
+        if (
+            _USE_FAST_PATHS
+            and cls.write_string_with_positions is _BASE_WRITE_STRING_WITH_POSITIONS
+            and cls.write_string is _BASE_WRITE_STRING
+            and cls.process_text_position is _BASE_PROCESS_TEXT_POSITION
+            and cls.write_word_separator is _BASE_WRITE_WORD_SEPARATOR
+        ):
+            # The stock hooks write a non-empty word and the separator.
+            separator = self._word_separator
+            last = n - 1
+            for i, word in enumerate(line):
+                if type(word) is WordWithTextPositions:
+                    text = word.text
+                else:
+                    text = word.get_text()
+                    word.get_text_positions()
+                if text:
+                    sink(text)
+                if i < last:
+                    sink(separator)
+            return
         for i, word in enumerate(line):
             self.write_string_with_positions(
                 word.get_text(), word.get_text_positions(), sink
@@ -5304,6 +6040,14 @@ class PDFTextStripper:
 
         Mirrors upstream's private ``createWord``
         (PDFTextStripper.java:2035)."""
+        if (
+            _USE_FAST_PATHS
+            and word.isascii()
+            and type(self).normalize_word is _BASE_NORMALIZE_WORD
+            and type(self).handle_direction is _BASE_HANDLE_DIRECTION
+        ):
+            # The stock hooks return an ASCII word unchanged.
+            return WordWithTextPositions(word, word_positions)
         return WordWithTextPositions(self.normalize_word(word), word_positions)
 
     def normalize_word(self, word: str) -> str:
@@ -5316,6 +6060,9 @@ class PDFTextStripper:
         (FE70–FEFF) via NFKC, with the upstream-specific quirks for
         U+FDF2 (the ``Allah`` ligature) and reversed Hebrew/Arabic
         decompositions preserved."""
+        if _USE_FAST_PATHS and (word.isascii() or _PRESENTATION_FORM.search(word) is None):
+            # No presentation form to decompose.
+            return self.handle_direction(word)
         builder: list[str] = []
         p = 0
         q = 0
@@ -5363,7 +6110,9 @@ class PDFTextStripper:
         (`L4`) on every RTL-level codepoint that declares
         :func:`unicodedata.mirrored`.
         """
-        if not word:
+        if not word or (_USE_FAST_PATHS and word.isascii()):
+            # (No ASCII character has a right-to-left or explicit-embedding
+            # bidi class.)
             return word
         # Fast-path: scan for any strong-RTL character or explicit
         # formatting; if absent, the paragraph is pure LTR and the bidi
@@ -5412,14 +6161,105 @@ class PDFTextStripper:
         normalized: list[WordWithTextPositions] = []
         line_builder: list[str] = []
         word_positions: list[TextPosition] = []
-        for item in line:
-            self.normalize_add(normalized, line_builder, word_positions, item)
+        if not _USE_FAST_PATHS or type(self).normalize_add is not _BASE_NORMALIZE_ADD:
+            for item in line:
+                self.normalize_add(normalized, line_builder, word_positions, item)
+        else:
+            # :meth:`normalize_add` inline for the stock line items and
+            # positions (a one-character text is its own visual order).
+            create_word = self.create_word
+            add_piece = line_builder.append
+            add_position = word_positions.append
+            for item in line:
+                if type(item) is not _LineItem:
+                    self.normalize_add(normalized, line_builder, word_positions, item)
+                    continue
+                text = item._text_position
+                if text is None:
+                    normalized.append(create_word("".join(line_builder), list(word_positions)))
+                    line_builder.clear()
+                    word_positions.clear()
+                    continue
+                if type(text) is TextPosition and len(piece := text.text) <= 1:
+                    add_piece(piece)
+                else:
+                    add_piece(text.get_visually_ordered_unicode())
+                add_position(text)
         # Upstream tests the builder's *length*: trailing empty-unicode glyphs
         # (e.g. the tail of an ``/ActualText`` span) do not form a word.
         last_word = "".join(line_builder)
         if last_word:
             normalized.append(self.create_word(last_word, list(word_positions)))
         return normalized
+
+    def _normalize_positions(
+        self, line: list[TextPosition | None]
+    ) -> list[WordWithTextPositions]:
+        """The stock :meth:`normalize` for a line queued as positions, with
+        ``None`` for each word separator item."""
+        normalized: list[WordWithTextPositions] = []
+        line_builder: list[str] = []
+        word_positions: list[TextPosition] = []
+        create_word = self.create_word
+        add_piece = line_builder.append
+        add_position = word_positions.append
+        for text in line:
+            if text is None:
+                normalized.append(create_word("".join(line_builder), list(word_positions)))
+                line_builder.clear()
+                word_positions.clear()
+                continue
+            # (A one-character text is its own visual order.)
+            if type(text) is TextPosition and len(piece := text.text) <= 1:
+                add_piece(piece)
+            else:
+                add_piece(text.get_visually_ordered_unicode())
+            add_position(text)
+        # Upstream tests the builder's *length*: trailing empty-unicode glyphs
+        # (e.g. the tail of an ``/ActualText`` span) do not form a word.
+        last_word = "".join(line_builder)
+        if last_word:
+            normalized.append(create_word(last_word, list(word_positions)))
+        return normalized
+
+    def _write_bare_line(
+        self, line: list[TextPosition | None], sink: Callable[[str], None]
+    ) -> None:
+        """``write_line(normalize(line))`` with the stock hooks, for a line
+        queued as positions (``None`` for each word separator item): each
+        word's normalized text is written when not empty, with the word
+        separator between consecutive words."""
+        words: list[str] = []
+        add_word = words.append
+        line_builder: list[str] = []
+        add_piece = line_builder.append
+        normalize_word = self.normalize_word
+        stock_word = (
+            type(self).normalize_word is _BASE_NORMALIZE_WORD
+            and type(self).handle_direction is _BASE_HANDLE_DIRECTION
+        )
+        for text in line:
+            if text is None:
+                word = "".join(line_builder)
+                line_builder.clear()
+                # ``create_word``: the stock hooks return an ASCII word as is.
+                add_word(word if stock_word and word.isascii() else normalize_word(word))
+                continue
+            # (A one-character text is its own visual order.)
+            if type(text) is TextPosition and len(piece := text.text) <= 1:
+                add_piece(piece)
+            else:
+                add_piece(text.get_visually_ordered_unicode())
+        word = "".join(line_builder)
+        if word:
+            add_word(word if stock_word and word.isascii() else normalize_word(word))
+        separator = self._word_separator
+        last = len(words) - 1
+        for i, word in enumerate(words):
+            if word:
+                sink(word)
+            if i < last:
+                sink(separator)
 
     def normalize_add(
         self,
@@ -5626,6 +6466,20 @@ class _LineItem:
 
 _LineItem.WORD_SEPARATOR = _LineItem()
 
+# The stock hooks, so the hot paths can tell when a subclass (or a patch)
+# replaced one.
+_BASE_PROCESS_TEXT_POSITION = PDFTextStripper.process_text_position
+_BASE_NORMALIZE_ADD = PDFTextStripper.normalize_add
+_BASE_NORMALIZE = PDFTextStripper.normalize
+_BASE_WRITE_LINE = PDFTextStripper.write_line
+_BASE_CREATE_WORD = PDFTextStripper.create_word
+_BASE_SHOULD_SKIP_GLYPH = PDFTextStripper.should_skip_glyph
+_BASE_WRITE_STRING = PDFTextStripper.write_string
+_BASE_WRITE_STRING_WITH_POSITIONS = PDFTextStripper.write_string_with_positions
+_BASE_WRITE_WORD_SEPARATOR = PDFTextStripper.write_word_separator
+_BASE_NORMALIZE_WORD = PDFTextStripper.normalize_word
+_BASE_HANDLE_DIRECTION = PDFTextStripper.handle_direction
+
 
 class _TextState:
     """Mutable text-state bag shared by the dispatcher and emitters."""
@@ -5650,6 +6504,7 @@ class _TextState:
         "gs_stack",
         "in_text_object",
         "_trm_cache",
+        "_run_ctx",
     )
 
     def __init__(self) -> None:
@@ -5721,6 +6576,9 @@ class _TextState:
         # can never be observed. ``q`` needs no invalidation: it clones the CTM
         # onto the stack without reassigning ``self.ctm``.
         self._trm_cache: tuple[float, float, float] | None = None
+        # ``PDFTextStripper._emit_glyphs``'s run-invariant inputs and the
+        # values derived from them (see ``PDFTextStripper._run_context``).
+        self._run_ctx: tuple[object, ...] | None = None
 
 
 def _move_text_line(state: _TextState, tx: float, ty: float) -> None:

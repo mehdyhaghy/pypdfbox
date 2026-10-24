@@ -565,10 +565,8 @@ class PDFStreamParser(COSParser):
                 append(COSString(_fast_unescape(m.group(kind))))
             else:  # "]"
                 break
-        array = COSArray()
-        add = array.add
-        for item in items:
-            add(item)
+        # (``COSArray.add`` on a new array is a plain append.)
+        array = COSArray(items)
         # The reference parse skips the whitespace after ``]``.
         self._src._buf.seek(index)
         self.skip_whitespace()
