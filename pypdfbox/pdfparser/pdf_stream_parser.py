@@ -1,3 +1,4 @@
+import re
 from collections.abc import Iterator
 from threading import Lock
 from typing import TYPE_CHECKING, ClassVar
@@ -7,6 +8,8 @@ from pypdfbox.cos import (
     COSBase,
     COSBoolean,
     COSDictionary,
+    COSFloat,
+    COSInteger,
     COSName,
     COSNull,
     COSNumber,
@@ -26,6 +29,88 @@ if TYPE_CHECKING:
 _OP_BEGIN_INLINE_IMAGE = "BI"
 _OP_BEGIN_INLINE_IMAGE_DATA = "ID"
 _OP_END_INLINE_IMAGE = "EI"
+
+
+# Fast tokenizer for :meth:`PDFStreamParser.tokens` over an in-memory buffer.
+# Each alternative matches only token shapes whose reference parse is plain
+# (no escapes, comments, recovery or lookahead quirks) and must be followed
+# by a byte the reference reader stops at; anything else (``%`` comments,
+# ``<<`` dictionaries, ``#`` name escapes, ``\`` / nested parentheses in
+# strings, ``+`` or doubled ``-`` signs, ``BI`` / ``ID`` inline images, the
+# ``d0`` / ``d1`` digit quirk, ...) fails to match and is handed to
+# :meth:`PDFStreamParser.parse_next_token` at the same offset.
+_FAST_NUMBER = rb"-?(?:[0-9]++(?:\.[0-9]*+)?|\.[0-9]++)(?![0-9.\-])"
+# A literal string without nested parentheses whose backslash escapes are all
+# complete (``BaseParser._consume_escape``): a mapped or unknown escaped byte,
+# one to three octal digits, or a line continuation.
+_FAST_ESCAPED_STRING = (
+    rb"\((?P<estr>(?:[^()\\]++|\\(?:[0-7]{1,3}|\r\n?|\n|[^0-7\r\n]))*+)\)"
+)
+_FAST_TOKEN = re.compile(
+    rb"[\x00\t\n\x0c\r ]*+(?:"
+    rb"(?P<num>" + _FAST_NUMBER + rb")"
+    rb"|/(?P<name>[^\x00\t\n\x0c\r ()<>\[\]/%#]*+)(?!#)"
+    rb"|\((?P<str>[^()\\]*+)\)"
+    rb"|" + _FAST_ESCAPED_STRING + rb"|<(?P<hex>[0-9A-Fa-f]*+)>"
+    rb"|(?P<op>[A-Za-z*]++)(?=[\x00\t\n\x0c\r \[<(/%]|\Z)"
+    rb"|(?P<quote>['\"])"
+    rb"|(?P<array>\[)"
+    rb"|(?P<eof>\Z)"
+    rb")"
+).match
+# One element of an array of numbers and strings (a ``TJ`` operand), or its
+# closing bracket. NUL is left out of the separators to stay clear of the
+# reference loop's ``peek() <= 0`` end test.
+_FAST_ARRAY_ITEM = re.compile(
+    rb"[\t\n\x0c\r ]*+(?:"
+    rb"(?P<num>" + _FAST_NUMBER + rb")"
+    rb"|\((?P<str>[^()\\]*+)\)"
+    rb"|" + _FAST_ESCAPED_STRING + rb"|<(?P<hex>[0-9A-Fa-f]*+)>"
+    rb"|(?P<end>\])"
+    rb")"
+).match
+_FAST_ESCAPE = re.compile(rb"\\(?:([0-7]{1,3})|(\r\n?|\n)|(.))", re.DOTALL)
+_FAST_ESCAPE_MAP = {
+    ord("n"): b"\n",
+    ord("r"): b"\r",
+    ord("t"): b"\t",
+    ord("b"): b"\b",
+    ord("f"): b"\f",
+}
+
+
+def _fast_unescape_match(m: re.Match[bytes]) -> bytes:
+    octal, eol, other = m.groups()
+    if octal is not None:
+        return bytes((int(octal, 8) & 0xFF,))
+    if eol is not None:
+        return b""
+    return _FAST_ESCAPE_MAP.get(other[0], other)
+
+
+def _fast_unescape(content: bytes) -> bytes:
+    """``BaseParser.read_literal_string`` for the body of a string matched by
+    ``_FAST_ESCAPED_STRING``: escapes decoded, other bytes verbatim."""
+    return _FAST_ESCAPE.sub(_fast_unescape_match, content)
+
+
+def _fast_number(text: bytes) -> COSBase:
+    """``COSNumber.get`` for a literal matched by ``_FAST_NUMBER``: a real is
+    a ``COSFloat`` of its text, and an integer short enough to be in Java
+    ``long`` range is ``COSInteger.get`` of its value (``_parse_long``)."""
+    if b"." in text:
+        return COSFloat(text.decode("ascii"))
+    if len(text) <= 18:
+        return COSInteger.get(int(text))
+    return COSNumber.get(text.decode("ascii"))
+
+
+def _fast_hex_bytes(digits: bytes) -> bytes:
+    """``BaseParser.read_hex_string`` for a run of hex digits: an odd
+    trailing digit is padded with ``0``."""
+    if len(digits) % 2:
+        digits += b"0"
+    return bytes.fromhex(digits.decode("ascii"))
 
 
 class Operator:
@@ -354,11 +439,140 @@ class PDFStreamParser(COSParser):
         return list(self.tokens())
 
     def tokens(self) -> Iterator[COSBase | Operator]:
+        src = self._src
+        if (
+            type(self) is PDFStreamParser
+            and type(src) is RandomAccessReadBuffer
+            and not src._closed
+        ):
+            yield from self._fast_tokens()
+            return
         while True:
             tok = self.parse_next_token()
             if tok is None:
                 return
             yield tok
+
+    def _fast_tokens(self) -> Iterator[COSBase | Operator]:
+        """:meth:`tokens` over a :class:`RandomAccessReadBuffer`.
+
+        Common tokens are matched straight off the buffer's bytes (see
+        ``_FAST_TOKEN``) and built with the same constructors the reference
+        parse uses, so they are identical to what
+        :meth:`parse_next_token` returns; every other token is read by
+        :meth:`parse_next_token` itself from the same offset. The buffer
+        position is kept in step before each token is handed out.
+        """
+        src = self._src
+        buf = src._buf
+        data = buf.getvalue()
+        seek = buf.seek
+        tell = buf.tell
+        match_token = _FAST_TOKEN
+        match_item = _FAST_ARRAY_ITEM
+        get_name = COSName.get_pdf_name
+        get_operator = Operator.get_operator
+        null = COSNull.NULL
+        true = COSBoolean.TRUE
+        false = COSBoolean.FALSE
+        while True:
+            if src._closed:
+                return
+            m = match_token(data, tell())
+            kind = m.lastgroup if m is not None else None
+            if kind == "num":
+                seek(m.end())
+                yield _fast_number(m.group(kind))
+            elif kind == "op":
+                word = m.group(kind)
+                first = word[0]
+                if first == 0x49 or word == b"BI":  # 'I' (ID) / BI
+                    tok = self.parse_next_token()
+                    if tok is None:
+                        return
+                    yield tok
+                    continue
+                seek(m.end())
+                if word == b"null":
+                    yield null
+                elif word == b"true":
+                    yield true
+                elif word == b"false":
+                    yield false
+                else:
+                    yield get_operator(word.decode("ascii"))
+            elif kind == "name":
+                seek(m.end())
+                yield get_name(m.group(kind))
+            elif kind == "str":
+                seek(m.end())
+                yield COSString(m.group(kind))
+            elif kind == "array":
+                array = self._fast_array(data, m.end(), match_item)
+                if array is None:
+                    # Not a plain array: the reference parse from the '['.
+                    seek(m.start(kind))
+                    tok = self.parse_next_token()
+                    if tok is None:
+                        return
+                    yield tok
+                    continue
+                yield array
+            elif kind == "hex":
+                seek(m.end())
+                yield COSString(_fast_hex_bytes(m.group(kind)))
+            elif kind == "estr":
+                seek(m.end())
+                yield COSString(_fast_unescape(m.group(kind)))
+            elif kind == "quote":
+                seek(m.end())
+                yield get_operator(m.group(kind).decode("ascii"))
+            elif kind == "eof":
+                seek(m.end())
+                return
+            else:
+                tok = self.parse_next_token()
+                if tok is None:
+                    return
+                yield tok
+
+    def _fast_array(self, data: bytes, index: int, match_item) -> COSArray | None:
+        """Parse an array of numbers and strings starting after its ``[``,
+        or return ``None`` (position untouched) when it holds anything else.
+
+        Elements are built as ``BaseParser.parse_cos_array`` builds them: an
+        integer through ``COSNumber.get`` and a real as ``COSFloat`` of its
+        literal text (``_wrap_number``), strings as ``COSString``."""
+        items: list[COSBase] = []
+        append = items.append
+        while True:
+            m = match_item(data, index)
+            if m is None:
+                return None
+            kind = m.lastgroup
+            index = m.end()
+            if kind == "num":
+                text = m.group(kind)
+                if len(text) > 64:
+                    # Leave out-of-range literals to the reference reader.
+                    return None
+                append(_fast_number(text))
+            elif kind == "str":
+                append(COSString(m.group(kind)))
+            elif kind == "hex":
+                append(COSString(_fast_hex_bytes(m.group(kind))))
+            elif kind == "estr":
+                append(COSString(_fast_unescape(m.group(kind))))
+            else:  # "]"
+                break
+        array = COSArray()
+        add = array.add
+        for item in items:
+            add(item)
+        # The reference parse skips the whitespace after ``]``.
+        self._src._buf.seek(index)
+        self.skip_whitespace()
+        return array
 
     # ---------- upstream-named aliases ----------
 

@@ -57,6 +57,9 @@ def _create_diacritics() -> dict[int, str]:
 
 _DIACRITICS: dict[int, str] = _create_diacritics()
 
+# ``TextPosition.is_diacritic`` per character (Unicode categories are fixed).
+_IS_DIACRITIC: dict[str, bool] = {}
+
 
 @dataclass
 class TextPosition:
@@ -545,12 +548,14 @@ class TextPosition:
         text = self.text
         if len(text) != 1:
             return False
-        if text == "ー":
+        result = _IS_DIACRITIC.get(text)
+        if result is None:
             # PDFBOX-3833: U+30FC (ー) is a prolonged sound mark, not a
             # real combining diacritic; treating it as one mis-merges it
             # onto an overlapping neighbour.
-            return False
-        return unicodedata.category(text) in ("Mn", "Sk", "Lm")
+            result = text != "ー" and unicodedata.category(text) in ("Mn", "Sk", "Lm")
+            _IS_DIACRITIC[text] = result
+        return result
 
     def merge_diacritic(
         self,
