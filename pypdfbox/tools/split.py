@@ -129,11 +129,14 @@ def run(args: argparse.Namespace) -> int:
         splitter.set_start_page(start)
         splitter.set_end_page(end)
         chunks = splitter.split(doc)
-        for ordinal, out_doc in enumerate(chunks, start=1):
-            try:
+        # Like upstream PDFSplit, close every chunk even when a save fails.
+        try:
+            for ordinal, out_doc in enumerate(chunks, start=1):
                 out_path = out_dir / f"{prefix}-{ordinal}.pdf"
                 out_doc.save(out_path)
+                out_doc.close()
                 print(str(out_path))
-            finally:
+        finally:
+            for out_doc in chunks:
                 out_doc.close()
     return 0

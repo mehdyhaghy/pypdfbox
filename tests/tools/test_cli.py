@@ -46,3 +46,23 @@ def test_main_calls_sys_exit(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(SystemExit) as excinfo:
         cli.main()
     assert excinfo.value.code == 0
+
+
+def test_main_raises_gc_threshold_but_run_cli_does_not(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import gc
+
+    from pypdfbox.tools import cli as cli_module
+
+    before = gc.get_threshold()
+    try:
+        assert cli_module.run_cli(["version"]) == 0
+        assert gc.get_threshold() == before
+        monkeypatch.setattr("sys.argv", ["pypdfbox", "version"])
+        with pytest.raises(SystemExit) as exc:
+            cli_module.main()
+        assert exc.value.code == 0
+        assert gc.get_threshold() == cli_module._CLI_GC_THRESHOLD
+    finally:
+        gc.set_threshold(*before)

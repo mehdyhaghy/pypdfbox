@@ -138,3 +138,28 @@ def test_split_missing_input(
     rc = cli.run_cli(["split", "-i", str(tmp_path / "nope.pdf")])
     assert rc == 4
     assert "not a file" in capsys.readouterr().out
+
+
+def test_split_closes_every_chunk_when_a_save_fails(
+    make_pdf: MakePdf, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pdf = make_pdf("failing.pdf", page_count=3)
+    chunks: list[PDDocument] = []
+    from pypdfbox.multipdf.splitter import Splitter
+
+    original_split = Splitter.split
+
+    def recording_split(self, doc):
+        result = original_split(self, doc)
+        chunks.extend(result)
+        return result
+
+    def failing_save(self, *args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Splitter, "split", recording_split)
+    monkeypatch.setattr(PDDocument, "save", failing_save)
+    rc = cli.run_cli(["split", "-i", str(pdf)])
+    assert rc == 4
+    assert len(chunks) == 3
+    assert all(chunk.is_closed() for chunk in chunks)
