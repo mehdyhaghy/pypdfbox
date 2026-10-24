@@ -1,5 +1,5 @@
+import inspect
 import logging
-import operator
 import re
 from typing import TYPE_CHECKING, ClassVar
 
@@ -255,7 +255,10 @@ class BaseParser:
         closed), in which case the caller uses its reference loop."""
         src = self._src
         src_type = type(src)
-        if _FAST_GUARD(type(self)) != _FAST_REFERENCE:
+        enabled = _FAST_ENABLED.get(type(self))
+        if enabled is None:
+            enabled = _fast_paths_apply(type(self))
+        if not enabled:
             return None
         if src_type is RandomAccessReadBuffer:
             if src._closed:
@@ -1500,7 +1503,16 @@ class BaseParser:
 # The helpers the reference loops of ``skip_whitespace`` / ``read_int`` /
 # ``read_keyword`` / ``read_string`` call and their fast paths bypass. A
 # parser class that overrides any of them keeps the reference loops.
-_FAST_GUARD = operator.attrgetter(
-    "_skip_to_eol", "is_digit", "is_regular", "is_whitespace", "position"
-)
-_FAST_REFERENCE = _FAST_GUARD(BaseParser)
+# Compared as raw class attributes: bound classmethods (``is_digit`` ...)
+# differ for every subclass even when it does not override them.
+_FAST_GUARDED = ("_skip_to_eol", "is_digit", "is_regular", "is_whitespace", "position")
+_FAST_ENABLED: dict[type, bool] = {}
+
+
+def _fast_paths_apply(cls: type) -> bool:
+    enabled = all(
+        inspect.getattr_static(cls, name, None) is BaseParser.__dict__[name]
+        for name in _FAST_GUARDED
+    )
+    _FAST_ENABLED[cls] = enabled
+    return enabled

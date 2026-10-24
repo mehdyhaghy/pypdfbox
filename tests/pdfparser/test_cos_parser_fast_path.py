@@ -223,3 +223,20 @@ def test_base_token_readers_match_reference(data: bytes, tmp_path: Path) -> None
         finally:
             src.close()
     assert results[0] == results[1]
+
+
+def test_chunk_fast_paths_apply_to_subclasses_that_keep_the_helpers() -> None:
+    from pypdfbox.pdfparser import base_parser as base_parser_module
+    from pypdfbox.pdfparser.pdf_stream_parser import PDFStreamParser
+
+    for cls in (BaseParser, COSParser, PDFStreamParser):
+        assert base_parser_module._fast_paths_apply(cls)
+        assert cls(RandomAccessReadBuffer(b"12 0 obj"))._fast_chunk() is not None
+
+    class DigitParser(COSParser):
+        @classmethod
+        def is_digit(cls, b: int) -> bool:
+            return False
+
+    assert not base_parser_module._fast_paths_apply(DigitParser)
+    assert DigitParser(RandomAccessReadBuffer(b"12"))._fast_chunk() is None
