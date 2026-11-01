@@ -125,10 +125,12 @@ def test_encode_decode_round_trip_identity_h() -> None:
     string through :meth:`PDType0Font.encode` and :meth:`PDType0Font.decode`.
     """
     font = _build_type0(_build_cid_font_type2(), encoding="Identity-H")
+    descendant = font.get_descendant_font()
     encoded = font.encode("ABC")
-    assert encoded == b"\x00\x41\x00\x42\x00\x43"
+    # non-embedded: each 2-byte code is the substitute's glyph id
+    assert encoded == b"".join(descendant.encode(ord(c)) for c in "ABC")
     # Decode reads the *first* code only — the upstream contract.
-    assert font.decode(encoded) == 0x41
+    assert font.decode(encoded) == int.from_bytes(encoded[:2], "big")
 
 
 def test_get_string_width_identity_h_uniform_widths() -> None:
