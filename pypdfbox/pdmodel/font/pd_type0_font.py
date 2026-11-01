@@ -1356,10 +1356,14 @@ class PDType0Font(PDFont):
         # a freshly embedded font renders the wrong glyphs because the
         # content-stream codes would be Unicode codepoints, not glyph ids.
         use_embedded = self._use_embedded_encode(cmap)
-        # PDFBOX-5953 (3.0 branch): a non-embedded CIDFontType2 under a
-        # predefined "Uni..." CMap writes the raw Unicode value; delegate
-        # to the descendant exactly as upstream's encode(int) does.
-        use_predefined = not use_embedded and self._use_predefined_unicode_encode()
+        # A non-embedded CIDFontType2 under an Identity- CMap writes the
+        # substitute font's glyph id, and under a predefined "Uni..." CMap
+        # the raw Unicode value (PDFBOX-5953, 3.0 branch); delegate to the
+        # descendant exactly as upstream's encode(int) does.
+        use_predefined = not use_embedded and (
+            self._use_substitute_identity_encode(cmap)
+            or self._use_predefined_unicode_encode()
+        )
         if isinstance(text, int):
             return self._encode_unicode(text, cmap, use_embedded, use_predefined)
         out = bytearray()
@@ -1382,7 +1386,12 @@ class PDType0Font(PDFont):
         if encoded is not None:
             return encoded
         if use_predefined:
-            encoded = self.get_descendant_font().encode(cp, self)
+            try:
+                encoded = self.get_descendant_font().encode(cp, self)
+            except ValueError:
+                # Lenient .notdef substitution (intentional divergence):
+                # upstream raises when the substitute has no glyph.
+                return (0).to_bytes(2, "big")
         elif use_embedded:
             encoded = self._lookup_embedded_codepoint(cp)
             if encoded is None:
@@ -1425,6 +1434,28 @@ class PDType0Font(PDFont):
         try:
             return bool(descendant.is_embedded())
         except Exception:  # defensive: missing /FontFile2 etc.
+            return False
+
+    def _use_substitute_identity_encode(self, cmap: CMap | None) -> bool:
+        """``True`` for a non-embedded :class:`PDCIDFontType2` descendant
+        under an ``Identity-`` CMap: upstream ``PDCIDFontType2.encode``
+        then writes ``cmap.getGlyphId(unicode)`` of the substitute font,
+        which ``code_to_gid`` reads back as the glyph id (no ``/ToUnicode``)
+        or maps through Unicode."""
+        if cmap is None:
+            return False
+        name_getter = getattr(cmap, "get_name", None)
+        name = (name_getter() or "") if callable(name_getter) else ""
+        if not name.startswith("Identity-"):
+            return False
+        from .pd_cid_font_type2 import PDCIDFontType2
+
+        descendant = self.get_descendant_font()
+        if not isinstance(descendant, PDCIDFontType2):
+            return False
+        try:
+            return not descendant.is_embedded()
+        except Exception:  # defensive: malformed descriptor
             return False
 
     def _use_predefined_unicode_encode(self) -> bool:

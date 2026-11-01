@@ -269,17 +269,21 @@ def test_is_damaged_false_for_unembedded_descendant() -> None:
 
 
 def test_encode_identity_h_writes_two_byte_be() -> None:
+    # Non-embedded CIDFontType2: the 2-byte big-endian code is the
+    # substitute font's glyph id (upstream PDCIDFontType2.encode).
     font = _build_type0(_build_descendant(), encoding_name="Identity-H")
+    descendant = font.get_descendant_font()
     out = font.encode("AB")
-    assert out == b"\x00\x41\x00\x42"
+    assert out == descendant.encode(0x41, font) + descendant.encode(0x42, font)
+    assert len(out) == 4
 
 
 def test_encode_supplementary_codepoint_truncates_to_bmp() -> None:
-    # Identity-H is a 16-bit codespace; codepoints above 0xFFFF are
-    # masked to their low 16 bits per the BMP-only Identity contract.
+    # The substitute has no glyph for U+10041: upstream raises, pypdfbox
+    # writes .notdef (CID 0) like its other lenient encode paths.
     font = _build_type0(_build_descendant(), encoding_name="Identity-H")
-    out = font.encode("\U00010041")  # U+10041 -> low 16 bits = 0x0041
-    assert out == b"\x00\x41"
+    out = font.encode("\U00010041")
+    assert out == b"\x00\x00"
 
 
 def test_decode_returns_first_code_only() -> None:
