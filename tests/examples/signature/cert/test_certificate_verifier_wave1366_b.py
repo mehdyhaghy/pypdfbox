@@ -32,6 +32,7 @@ from pypdfbox.examples.signature.cert.certificate_verifier import (
     CertificateVerificationException,
     CertificateVerifier,
 )
+from tests._rsa_key_pool import pooled_rsa_key
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -39,7 +40,7 @@ from pypdfbox.examples.signature.cert.certificate_verifier import (
 
 
 def _self_signed(cn: str = "wave1366-b") -> tuple[x509.Certificate, rsa.RSAPrivateKey]:
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, cn)])
     cert = (
         x509.CertificateBuilder()
@@ -155,7 +156,7 @@ def test_extract_ocsp_url_skips_non_uri_access_location() -> None:
     """An OCSP descriptor whose ``access_location`` is not a
     :class:`UniformResourceIdentifier` (e.g. a directory name) is
     silently ignored — ``_first_aia`` returns ``None``."""
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "no-uri")])
     cert = (
         x509.CertificateBuilder()
@@ -192,7 +193,7 @@ def test_extract_ca_issuers_url_returns_empty_when_only_ocsp_aia(
     """The CRL-and-OCSP fixture carries BOTH OCSP + caIssuers. When the
     only AIA entry is OCSP, the caIssuers extractor should return ``[]``.
     """
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "only-ocsp")])
     cert = (
         x509.CertificateBuilder()
@@ -229,7 +230,7 @@ def test_extract_ca_issuers_url_returns_empty_when_only_ocsp_aia(
 def test_extract_ca_issuers_url_skips_non_uri_locations() -> None:
     """A caIssuers descriptor with a non-URI access location is skipped
     (the ``isinstance(loc, x509.UniformResourceIdentifier)`` guard)."""
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "ca-dir")])
     cert = (
         x509.CertificateBuilder()

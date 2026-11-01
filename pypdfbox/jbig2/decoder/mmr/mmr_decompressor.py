@@ -537,8 +537,10 @@ class MMRDecompressor:
     def fill_bitmap(
         self, result: Bitmap, line: int, current_offsets: list[int], count: int
     ) -> None:
-        x = 0
         target_byte = result.get_byte_index(0, line)
+        if self._fill_line_bulk(result, target_byte, current_offsets, count):
+            return
+        x = 0
         target_byte_value = 0
         for index in range(count):
             offset = current_offsets[index]
@@ -558,6 +560,43 @@ class MMRDecompressor:
         if (x & 7) != 0:
             target_byte_value = (target_byte_value << (8 - (x & 7))) & 0xFF
             result.set_byte(target_byte, target_byte_value)
+
+    @staticmethod
+    def _fill_line_bulk(
+        result: Bitmap, target_byte: int, current_offsets: list[int], count: int
+    ) -> bool:
+        """Write one line's runs as a single byte slice, as :meth:`fill_bitmap`.
+
+        Builds the same MSB-first bit sequence the per-pixel loop produces
+        (white runs for even indices, black for odd, each run ending at its
+        offset when that lies past the current position) and stores the bytes
+        it would store, the last partial byte zero-padded. Returns ``False``
+        without writing when a run would reach past the bitmap data (so the
+        per-pixel loop raises exactly where upstream does).
+        """
+        data = result.bitmap_bytes
+        if target_byte < 0 or count <= 0:
+            return target_byte >= 0
+        limit = (len(data) - target_byte) * 8
+        x = 0
+        bits = 0
+        for index in range(count):
+            offset = current_offsets[index]
+            if offset > x:
+                if offset > limit:
+                    return False
+                run = offset - x
+                bits <<= run
+                if index & 1:
+                    bits |= (1 << run) - 1
+                x = offset
+        remainder = x & 7
+        if remainder:
+            bits <<= 8 - remainder
+        n_bytes = (x + 7) >> 3
+        if n_bytes:
+            data[target_byte : target_byte + n_bytes] = bits.to_bytes(n_bytes)
+        return True
 
     def uncompress_1d(
         self, run_data: RunData, run_offsets: list[int], width: int

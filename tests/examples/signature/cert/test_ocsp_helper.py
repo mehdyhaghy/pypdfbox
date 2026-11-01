@@ -14,6 +14,7 @@ from pypdfbox.examples.signature.cert.ocsp_helper import OcspException, OcspHelp
 from pypdfbox.examples.signature.cert.revoked_certificate_exception import (
     RevokedCertificateException,
 )
+from tests._rsa_key_pool import pooled_rsa_key
 
 # ---------------------------------------------------------------------------
 # Local helpers
@@ -21,7 +22,7 @@ from pypdfbox.examples.signature.cert.revoked_certificate_exception import (
 
 
 def _build_cert_with_key() -> tuple[x509.Certificate, rsa.RSAPrivateKey]:
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "ocsp-test")])
     cert = (
         x509.CertificateBuilder()

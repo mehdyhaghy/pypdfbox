@@ -49,13 +49,14 @@ from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import (
     _verify_signed_attrs_signature,
     _walk_signer_info,
 )
+from tests._rsa_key_pool import pooled_rsa_key
 
 # ---------- helpers ----------
 
 
 def _make_root_rsa(name: str) -> tuple[x509.Certificate, rsa.RSAPrivateKey]:
     """Build a self-signed RSA root cert."""
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, name)])
     now = datetime.datetime.now(tz=datetime.UTC)
     cert = (
@@ -543,7 +544,7 @@ def test_verify_chain_trust_chain_broken_when_no_issuer() -> None:
     # subject → self-signed-but-not-root branch is taken (line 358),
     # NOT line 360-363. To hit 360-363 we need a non-self-signed cert
     # whose issuer is not in the pool.
-    leaf_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    leaf_key = pooled_rsa_key()
     leaf_subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "leaf-orphan")])
     issuer_subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "missing-issuer")])
     now = datetime.datetime.now(tz=datetime.UTC)

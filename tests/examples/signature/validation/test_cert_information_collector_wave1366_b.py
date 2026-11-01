@@ -36,6 +36,7 @@ from pypdfbox.examples.signature.validation.cert_information_collector import (
 from pypdfbox.examples.signature.validation.cert_signature_information import (
     CertSignatureInformation,
 )
+from tests._rsa_key_pool import pooled_rsa_key
 
 # ---------------------------------------------------------------------------
 # Chain builder helpers
@@ -45,7 +46,7 @@ from pypdfbox.examples.signature.validation.cert_signature_information import (
 def _build_ca(
     cn: str = "wave1366-root",
 ) -> tuple[x509.Certificate, rsa.RSAPrivateKey]:
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, cn)])
     cert = (
         x509.CertificateBuilder()
@@ -71,7 +72,7 @@ def _issue(
     cn: str,
     is_ca: bool = False,
 ) -> tuple[x509.Certificate, rsa.RSAPrivateKey]:
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, cn)])
     builder = (
         x509.CertificateBuilder()
@@ -112,7 +113,7 @@ def _build_signed_pkcs7(
 ) -> bytes:
     """Build a CMS PKCS#7 signed-data blob that carries leaf + chain."""
     # Sign with a fresh key so we don't need the original leaf private key.
-    signer_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    signer_key = pooled_rsa_key()
     builder = pkcs7.PKCS7SignatureBuilder().set_data(payload)
     builder = builder.add_signer(leaf_cert, signer_key, hashes.SHA256())
     builder = builder.add_certificate(intermediate_cert)

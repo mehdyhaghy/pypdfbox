@@ -22,6 +22,7 @@ from pypdfbox.pdmodel.encryption.public_key_security_handler import (
     PublicKeySecurityHandler,
 )
 from pypdfbox.pdmodel.pd_document import PDDocument
+from tests._rsa_key_pool import pooled_rsa_key
 
 
 def _build_self_signed_rsa() -> tuple[object, object]:
@@ -32,10 +33,9 @@ def _build_self_signed_rsa() -> tuple[object, object]:
     """
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes
-    from cryptography.hazmat.primitives.asymmetric import rsa
     from cryptography.x509.oid import NameOID
 
-    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_key = pooled_rsa_key()
     name = x509.Name(
         [x509.NameAttribute(NameOID.COMMON_NAME, "pypdfbox-wave1289-recipient")]
     )

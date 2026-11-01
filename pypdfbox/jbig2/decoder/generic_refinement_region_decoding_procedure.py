@@ -29,13 +29,13 @@ as a plain right shift on those already-non-negative masked values. ``short``
 casts of context bytes wrap to 16 bits via ``& 0xFFFF``.
 """
 
-from typing import TYPE_CHECKING
-
 from pypdfbox.jbig2.bitmap import Bitmap
-
-if TYPE_CHECKING:
-    from pypdfbox.jbig2.decoder.arithmetic.arithmetic_decoder import ArithmeticDecoder
-    from pypdfbox.jbig2.decoder.arithmetic.cx import CX
+from pypdfbox.jbig2.decoder.arithmetic.arithmetic_decoder import (
+    QE_DECODE,
+    RENORM_SHIFTS,
+    ArithmeticDecoder,
+)
+from pypdfbox.jbig2.decoder.arithmetic.cx import CX
 
 _MASK32 = 0xFFFFFFFF
 
@@ -54,6 +54,21 @@ def _java_mod(a: int, b: int) -> int:
     """
     r = abs(a) % abs(b)
     return -r if a < 0 else r
+
+def _row_bits(bitmap: Bitmap, y: int, x0: int, n: int) -> list[int]:
+    """Return the ``n`` pixel values of row ``y`` for ``x = x0 .. x0 + n - 1``.
+
+    Pixels outside the bitmap are 0 (§6.3.5.2), as ``_get_pixel_safe``.
+    """
+    out = [0] * n
+    if y < 0 or y >= bitmap.height:
+        return out
+    data = bitmap.bitmap_bytes
+    base = y * bitmap.row_stride
+    for x in range(max(x0, 0), min(x0 + n, bitmap.width)):
+        out[x - x0] = (data[base + (x >> 3)] >> (7 - (x & 7))) & 1
+    return out
+
 
 # §6.3.5.6, Figure 14
 _SLTP_CONTEXT_TEMPLATE0 = 0x100
@@ -312,31 +327,106 @@ class GenericRefinementRegionDecodingProcedure:
     # Template 1 — explicit decode (LTP=0 path, §6.3.5.6 step 3c)
 
     def _decode_line_explicit_t1(self, y: int, width: int) -> None:
+        # Same context bits as _build_context_t1, read from per-line bit rows
+        # (zero outside the bitmaps, §6.3.5.2) instead of per-pixel accessors.
+        above, ref_above, ref_row, ref_below = self._t1_line_rows(y, width)
+        reg = self.region_bitmap
+        reg_bytes = reg.bitmap_bytes
+        reg_row = y * reg.row_stride
+        cx = self.cx
+        set_index = cx.set_index
+        decode = self.arith_decoder.decode
+        left = 0
         for x in range(width):
-            self.cx.set_index(self._build_context_t1(x, y))
-            self.region_bitmap.set_pixel(x, y, self.arith_decoder.decode(self.cx))
+            set_index(
+                (above[x] << 9)
+                | (above[x + 1] << 8)
+                | (above[x + 2] << 7)
+                | (left << 6)
+                | (ref_above[x + 1] << 5)
+                | (ref_row[x] << 4)
+                | (ref_row[x + 1] << 3)
+                | (ref_row[x + 2] << 2)
+                | (ref_below[x + 1] << 1)
+                | ref_below[x + 2]
+            )
+            bit = decode(cx)
+            pixel_index = reg_row + (x >> 3)
+            if bit & 1:
+                reg_bytes[pixel_index] |= 0x80 >> (x & 7)
+                left = 1
+            else:
+                reg_bytes[pixel_index] &= ~(0x80 >> (x & 7)) & 0xFF
+                left = 0
 
     # Template 1 — typical prediction decode (LTP=1 path, §6.3.5.6 step 3d)
     # TPGRPIX=1 when the 3x3 reference neighbourhood is uniform (§6.3.5.6 3d-i)
 
     def _decode_line_tpgr_t1(self, y: int, width: int) -> None:
+        above, ref_above, ref_row, ref_below = self._t1_line_rows(y, width)
+        reg = self.region_bitmap
+        reg_bytes = reg.bitmap_bytes
+        reg_row = y * reg.row_stride
+        cx = self.cx
+        set_index = cx.set_index
+        decode = self.arith_decoder.decode
+        left = 0
         for x in range(width):
-            center = self._get_reference_bit(x, y)
-            uniform = True
-            for dy in range(-1, 2):
-                for dx in range(-1, 2):
-                    if self._get_reference_bit(x + dx, y + dy) != center:
-                        uniform = False
-                        break
-                if not uniform:
-                    break
-
-            if uniform:
+            center = ref_row[x + 1]
+            if (
+                ref_above[x] == center
+                and ref_above[x + 1] == center
+                and ref_above[x + 2] == center
+                and ref_row[x] == center
+                and ref_row[x + 2] == center
+                and ref_below[x] == center
+                and ref_below[x + 1] == center
+                and ref_below[x + 2] == center
+            ):
                 bit = center
             else:
-                self.cx.set_index(self._build_context_t1(x, y))
-                bit = self.arith_decoder.decode(self.cx)
-            self.region_bitmap.set_pixel(x, y, bit)
+                set_index(
+                    (above[x] << 9)
+                    | (above[x + 1] << 8)
+                    | (above[x + 2] << 7)
+                    | (left << 6)
+                    | (ref_above[x + 1] << 5)
+                    | (ref_row[x] << 4)
+                    | (ref_row[x + 1] << 3)
+                    | (ref_row[x + 2] << 2)
+                    | (ref_below[x + 1] << 1)
+                    | ref_below[x + 2]
+                )
+                bit = decode(cx)
+            pixel_index = reg_row + (x >> 3)
+            if bit & 1:
+                reg_bytes[pixel_index] |= 0x80 >> (x & 7)
+                left = 1
+            else:
+                reg_bytes[pixel_index] &= ~(0x80 >> (x & 7)) & 0xFF
+                left = 0
+
+    def _t1_line_rows(
+        self, y: int, width: int
+    ) -> tuple[list[int], list[int], list[int], list[int]]:
+        """Return the template-1 neighbour rows for line ``y``.
+
+        Each list holds ``width + 2`` pixel values for ``x = -1 .. width``
+        (entry ``k`` is column ``x = k - 1``): the region row ``y - 1`` and the
+        reference rows ``y - 1``, ``y``, ``y + 1`` (in region coordinates,
+        i.e. shifted by the reference offsets). Pixels outside a bitmap are 0,
+        exactly as :meth:`_get_pixel_safe` returns them.
+        """
+        n = width + 2
+        rdx = self.reference_dx
+        rdy = self.reference_dy
+        ref = self.reference_bitmap
+        return (
+            _row_bits(self.region_bitmap, y - 1, -1, n),
+            _row_bits(ref, y - 1 - rdy, -1 - rdx, n),
+            _row_bits(ref, y - rdy, -1 - rdx, n),
+            _row_bits(ref, y + 1 - rdy, -1 - rdx, n),
+        )
 
     # Private decoding helpers (§6.3.5.6 sub-steps)
 
@@ -491,48 +581,148 @@ class GenericRefinementRegionDecodingProcedure:
 
         w4 = (w4 << 2) & _MASK32
 
+        # Per-pixel loop with the reference/region bitmap accessors, the
+        # template-0 context formation and the MQ DECODE procedure of
+        # ArithmeticDecoder.decode inlined (registers in locals, written back
+        # after the line). The line-constant reference-row bounds checks are
+        # hoisted; ``_java_mod(x - referenceDX, 8) == 5`` is only possible for
+        # a non-negative dividend, where it equals ``(x - referenceDX) & 7``.
+        ref_bytes = ref.bitmap_bytes
+        reg_bytes = reg.bitmap_bytes
+        ref_height = ref.height
+        reg_stride = reg.row_stride
+        has_w1 = current_line >= 1 and (current_line - 1 < ref_height)
+        has_w2 = current_line >= 0 and current_line < ref_height
+        has_w3 = current_line >= -1 and (current_line + 1) < ref_height
+        reference_dx = self.reference_dx
+        is_t0 = template_formation is T0
+        form = template_formation.form
+        override = self.override
+        override_at = self._override_at_template0
+        reg_row = line_number * reg_stride
+
+        dec = self.arith_decoder
+        cx = self.cx
+        # The inlined DECODE needs the concrete decoder / context classes; any
+        # other decoder object is driven through its ``decode`` method.
+        inline = type(dec) is ArithmeticDecoder and type(cx) is CX
+        cx_arr = cx._cx if inline else None
+        mps_arr = cx._mps if inline else None
+        qe_table = QE_DECODE
+        renorm_shifts = RENORM_SHIFTS
+        a = dec.a if inline else 0
+        c = dec.c if inline else 0
+        ct = dec.ct if inline else 0
+        index = cx.index
+
         for x in range(width):
             minor_x = x & 0x07
 
-            tval = template_formation.form(c1, c2, c3, c4, c5)
+            if is_t0:
+                tval = ((c1 << 10) | (c2 << 7) | (c3 << 4) | (c4 << 1) | c5) & 0xFFFF
+            else:
+                tval = form(c1, c2, c3, c4, c5)
 
-            if self.override:
-                self.cx.set_index(
-                    self._override_at_template0(
-                        tval,
-                        x,
-                        line_number,
-                        reg.get_byte(reg.get_byte_index(x, line_number)),
-                        minor_x,
-                    )
+            if override:
+                index = override_at(
+                    tval, x, line_number, reg_bytes[reg_row + (x >> 3)], minor_x
                 )
             else:
-                self.cx.set_index(tval)
-            bit = self.arith_decoder.decode(self.cx)
-            reg.set_pixel(x, line_number, bit)
+                index = tval
 
-            c1 = (((c1 << 1) | (0x01 & (w1 >> 7))) & 0x07) & 0xFFFF
-            c2 = (((c2 << 1) | (0x01 & (w2 >> 7))) & 0x07) & 0xFFFF
-            c3 = (((c3 << 1) | (0x01 & (w3 >> 7))) & 0x07) & 0xFFFF
-            c4 = (((c4 << 1) | (0x01 & (w4 >> 7))) & 0x07) & 0xFFFF
+            if not inline:
+                cx.set_index(index)
+                bit = dec.decode(cx)
+            else:
+                # Inlined ArithmeticDecoder.decode (E.3.2).
+                row = qe_table[cx_arr[index] & 0x7F]
+                qe_value = row[0]
+                a -= qe_value
+                if c < row[4]:
+                    # LPS_EXCHANGE
+                    mps = mps_arr[index]
+                    if a < qe_value:
+                        cx_arr[index] = row[1]
+                        bit = mps
+                    else:
+                        if row[3] == 1:
+                            mps_arr[index] = mps ^ 1
+                        cx_arr[index] = row[2]
+                        bit = 1 - mps
+                    a = qe_value
+                    # RENORMD
+                    n = renorm_shifts[a]
+                    if ct >= n:
+                        a <<= n
+                        c = (c << n) & _MASK32
+                        ct -= n
+                    else:
+                        while True:
+                            if ct == 0:
+                                dec.c = c
+                                dec._byte_in()
+                                c = dec.c
+                                ct = dec.ct
+                            a <<= 1
+                            c = (c << 1) & _MASK32
+                            ct -= 1
+                            if a & 0x8000:
+                                break
+                else:
+                    c -= row[4]
+                    if a & 0x8000:
+                        bit = mps_arr[index]
+                    else:
+                        # MPS_EXCHANGE
+                        mps = mps_arr[index]
+                        if a < qe_value:
+                            if row[3] == 1:
+                                mps_arr[index] = mps ^ 1
+                            cx_arr[index] = row[2]
+                            bit = 1 - mps
+                        else:
+                            cx_arr[index] = row[1]
+                            bit = mps
+                        # RENORMD
+                        n = renorm_shifts[a]
+                        if ct >= n:
+                            a <<= n
+                            c = (c << n) & _MASK32
+                            ct -= n
+                        else:
+                            while True:
+                                if ct == 0:
+                                    dec.c = c
+                                    dec._byte_in()
+                                    c = dec.c
+                                    ct = dec.ct
+                                a <<= 1
+                                c = (c << 1) & _MASK32
+                                ct -= 1
+                                if a & 0x8000:
+                                    break
+
+            # reg.set_pixel(x, line_number, bit)
+            pixel_index = reg_row + (x >> 3)
+            if bit & 1:
+                reg_bytes[pixel_index] |= 0x80 >> minor_x
+            else:
+                reg_bytes[pixel_index] &= ~(0x80 >> minor_x) & 0xFF
+
+            c1 = ((c1 << 1) | (0x01 & (w1 >> 7))) & 0x07
+            c2 = ((c2 << 1) | (0x01 & (w2 >> 7))) & 0x07
+            c3 = ((c3 << 1) | (0x01 & (w3 >> 7))) & 0x07
+            c4 = ((c4 << 1) | (0x01 & (w4 >> 7))) & 0x07
             c5 = bit & 0xFFFF
 
-            if _java_mod(x - self.reference_dx, 8) == 5:
-                if ((x - self.reference_dx) // 8) + 1 >= ref.get_row_stride():
+            ref_x = x - reference_dx
+            if ref_x >= 0 and (ref_x & 0x07) == 5:
+                if (ref_x >> 3) + 1 >= ref_row_stride:
                     w1 = w2 = w3 = 0
                 else:
-                    if current_line >= 1 and (current_line - 1 < ref.get_height()):
-                        w1 = ref.get_byte_as_integer(ref_byte_index - ref_row_stride)
-                    else:
-                        w1 = 0
-                    if current_line >= 0 and current_line < ref.get_height():
-                        w2 = ref.get_byte_as_integer(ref_byte_index)
-                    else:
-                        w2 = 0
-                    if current_line >= -1 and (current_line + 1) < ref.get_height():
-                        w3 = ref.get_byte_as_integer(ref_byte_index + ref_row_stride)
-                    else:
-                        w3 = 0
+                    w1 = ref_bytes[ref_byte_index - ref_row_stride] if has_w1 else 0
+                    w2 = ref_bytes[ref_byte_index] if has_w2 else 0
+                    w3 = ref_bytes[ref_byte_index + ref_row_stride] if has_w3 else 0
                 ref_byte_index += 1
             else:
                 w1 = (w1 << 1) & _MASK32
@@ -540,13 +730,16 @@ class GenericRefinementRegionDecodingProcedure:
                 w3 = (w3 << 1) & _MASK32
 
             if minor_x == 5 and line_number >= 1:
-                if (x >> 3) + 1 >= reg.get_row_stride():
-                    w4 = 0
-                else:
-                    w4 = reg.get_byte_as_integer(byte_index - row_stride)
+                w4 = 0 if (x >> 3) + 1 >= reg_stride else reg_bytes[byte_index - row_stride]
                 byte_index += 1
             else:
                 w4 = (w4 << 1) & _MASK32
+
+        if inline:
+            dec.a = a
+            dec.c = c
+            dec.ct = ct
+            cx.index = index
 
     def _update_override(self) -> None:
         if self.gr_at_x is None or self.gr_at_y is None:

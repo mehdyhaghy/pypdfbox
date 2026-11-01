@@ -18,6 +18,7 @@ from pypdfbox.examples.signature.validation.cert_information_collector import (
 from pypdfbox.examples.signature.validation.cert_signature_information import (
     CertSignatureInformation,
 )
+from tests._rsa_key_pool import pooled_rsa_key
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -47,7 +48,7 @@ def _build_cert(
 
 def _build_chain(depth: int) -> tuple[list[x509.Certificate], list[rsa.RSAPrivateKey]]:
     """Build a chain of ``depth`` certs: leaf -> int1 -> ... -> root."""
-    keys = [rsa.generate_private_key(public_exponent=65537, key_size=2048) for _ in range(depth)]
+    keys = [pooled_rsa_key() for _ in range(depth)]
     certs: list[x509.Certificate] = []
     # root self-signed at index depth-1
     root_name = f"root-{depth - 1}"
@@ -148,8 +149,8 @@ def test_get_last_cert_info_self_signed(self_signed_cert):
 
 def test_get_last_cert_info_with_chain():
     """A non-self-signed leaf links to its root via _build_node directly."""
-    root_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    leaf_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    root_key = pooled_rsa_key()
+    leaf_key = pooled_rsa_key()
     root = _build_cert("root", "root", root_key)
     leaf = _build_cert("leaf", "root", root_key, subject_key=leaf_key)
     # call _build_node directly with leaf at index 0 to avoid PKCS#7 reordering
@@ -202,8 +203,8 @@ def test_get_cert_info_returns_none_when_pool_empty(monkeypatch):
 
 def test_find_issuer_skips_self_and_finds_match():
     collector = CertInformationCollector()
-    root_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    leaf_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    root_key = pooled_rsa_key()
+    leaf_key = pooled_rsa_key()
     root = _build_cert("rootA", "rootA", root_key)
     leaf = _build_cert("leafA", "rootA", root_key, subject_key=leaf_key)
     issuer = collector._find_issuer(leaf, [leaf, root])
@@ -212,8 +213,8 @@ def test_find_issuer_skips_self_and_finds_match():
 
 def test_find_issuer_returns_none_when_missing():
     collector = CertInformationCollector()
-    root_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    leaf_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    root_key = pooled_rsa_key()
+    leaf_key = pooled_rsa_key()
     leaf = _build_cert("only", "missing-issuer", root_key, subject_key=leaf_key)
     assert collector._find_issuer(leaf, [leaf]) is None
 
@@ -383,8 +384,8 @@ def test_process_signature_certificate(self_signed_cert):
 
 
 def test_process_signature_certificate_non_self_signed():
-    root_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    leaf_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    root_key = pooled_rsa_key()
+    leaf_key = pooled_rsa_key()
     leaf = _build_cert("L", "R", root_key, subject_key=leaf_key)
     collector = CertInformationCollector()
     info = CertSignatureInformation()

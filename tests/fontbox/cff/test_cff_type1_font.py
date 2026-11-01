@@ -70,32 +70,18 @@ class TestCFFType1FontEmptyInstance:
 
 class TestCFFType1FontFromCIDFontRaises:
     def test_from_bytes_rejects_cid_keyed(self) -> None:
-        try:
-            from fontTools.ttLib import TTFont
-        except ImportError:
-            pytest.skip("fontTools not installed")
-        candidates = [
-            "/System/Library/Fonts/Hiragino Sans GB.ttc",
-            "/System/Library/Fonts/PingFang.ttc",
-        ]
-        data: bytes | None = None
-        for c in candidates:
-            p = Path(c)
-            if not p.exists():
-                continue
-            try:
-                ttf = TTFont(str(p), fontNumber=0)
-                if "CFF " not in ttf:
-                    continue
-                buf = io.BytesIO()
-                ttf["CFF "].cff.compile(buf, ttf, isCFF2=False)
-                data = buf.getvalue()
-                break
-            except Exception:
-                continue
-        if data is None:
-            pytest.skip("no CIDKeyed font available")
-        with pytest.raises(OSError):
+        # A small real CID-keyed CFF fixture (has /ROS, /FDArray, /FDSelect).
+        # Previously this recompiled the CFF table of a macOS system CJK font,
+        # which took several seconds and skipped on other platforms.
+        data = (
+            Path(__file__).resolve().parents[2]
+            / "fixtures"
+            / "fontbox"
+            / "cff"
+            / "cid_multifd_3fd.cff"
+        ).read_bytes()
+        assert CFFFont.from_bytes(data).is_cid_font()
+        with pytest.raises(OSError, match="CIDKeyed"):
             CFFType1Font.from_bytes(data)
 
 

@@ -45,6 +45,7 @@ from pypdfbox.pdmodel.interactive.digitalsignature.cms_helpers import (
     _wrap_tlv,
     inject_timestamp_token,
 )
+from tests._rsa_key_pool import pooled_rsa_key
 
 # Reusable DER OID for the embedded attribute (id-aa-timeStampToken).
 _ID_AA_TS_OID_DER = bytes.fromhex("060B2A864886F70D010910020E")
@@ -163,7 +164,7 @@ def test_build_time_stamp_attribute_structure() -> None:
 
 
 def _self_signed_cert() -> tuple[x509.Certificate, rsa.RSAPrivateKey]:
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subj = x509.Name(
         [
             x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),

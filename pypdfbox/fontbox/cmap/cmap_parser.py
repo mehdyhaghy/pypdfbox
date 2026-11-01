@@ -1,3 +1,5 @@
+import re
+from binascii import unhexlify
 from pathlib import Path
 from typing import BinaryIO
 
@@ -48,6 +50,216 @@ class _Operator:
         self.op = op
 
 
+class _ByteCursor(RandomAccessRead):
+    """In-memory ``RandomAccessRead`` the parser tokenizes from directly.
+
+    :meth:`CMapParser.parse` wraps its input in one of these so the
+    tokenizer can scan the underlying ``bytes`` with index arithmetic and
+    compiled regular expressions instead of one ``read()`` call per byte.
+    It still implements the full ``RandomAccessRead`` contract, so the
+    body-parser hooks (and any override that reads the stream itself)
+    observe the same byte sequence and positions as with any other source.
+    """
+
+    __slots__ = ("_closed", "_data", "_len", "_pos")
+
+    def __init__(self, data: bytes, pos: int = 0) -> None:
+        self._data = data
+        self._len = len(data)
+        self._pos = pos
+        self._closed = False
+
+    def _check(self) -> None:
+        if self._closed:
+            raise OSError("RandomAccessBuffer already closed")
+
+    def read(self) -> int:
+        self._check()
+        pos = self._pos
+        if pos >= self._len:
+            return -1
+        self._pos = pos + 1
+        return self._data[pos]
+
+    def peek(self) -> int:
+        self._check()
+        pos = self._pos
+        return self._data[pos] if pos < self._len else -1
+
+    def rewind(self, n: int) -> None:
+        self._check()
+        position = self._pos - n
+        if position < 0:
+            raise OSError(f"Invalid position {position}")
+        self._pos = min(position, self._len)
+
+    def read_into(
+        self, buf: bytearray, offset: int = 0, length: int | None = None
+    ) -> int:
+        self._check()
+        if length is None:
+            length = len(buf) - offset
+        if length == 0:
+            return 0
+        pos = self._pos
+        if pos >= self._len:
+            return -1
+        chunk = self._data[pos : pos + length]
+        buf[offset : offset + len(chunk)] = chunk
+        self._pos = pos + len(chunk)
+        return len(chunk)
+
+    def get_position(self) -> int:
+        self._check()
+        return self._pos
+
+    def seek(self, position: int) -> None:
+        self._check()
+        if position < 0:
+            raise OSError(f"Invalid position {position}")
+        self._pos = min(position, self._len)
+
+    def length(self) -> int:
+        self._check()
+        return self._len
+
+    def is_eof(self) -> bool:
+        self._check()
+        return self._pos >= self._len
+
+    def close(self) -> None:
+        self._closed = True
+
+    def is_closed(self) -> bool:
+        return self._closed
+
+
+# Token-boundary skipping: the parser's whitespace set (NUL, TAB, LF, FF,
+# CR, SPACE) plus ``%`` comments, each of which consumes the text up to and
+# including the first CR or LF (exactly what ``read_line`` consumes).
+_SKIP_RE = re.compile(rb"(?:[\x00\t\n\x0c\r ]+|%[^\r\n]*[\r\n]?)*")
+# Body of a literal name: everything up to whitespace, EOF or a delimiter.
+_NAME_RE = re.compile(rb"[^\x00\t\n\x0c\r ()<>\[\]{}/%]*")
+# Tail of an operator: as a name, but digits also terminate (PDFBOX-2035).
+_OPERATOR_RE = re.compile(rb"[^\x00\t\n\x0c\r ()<>\[\]{}/%0-9]*")
+# Tail of a number literal.
+_NUMBER_RE = re.compile(rb"[0-9.]*")
+# First byte of a hex string body that is neither a hex digit nor whitespace.
+_BAD_HEX_RE = re.compile(rb"[^0-9A-Fa-f\x00\t\n\x0c\r ]")
+_HEX_WHITESPACE = b"\x00\t\n\x0c\r "
+_WHITESPACE_BYTES = frozenset(_HEX_WHITESPACE)
+
+# Whole-entry patterns for the common, well-formed body lines of the range /
+# char blocks. Each one matches only input whose token-by-token parse is
+# unambiguous (plain whitespace, no comments, hex strings without embedded
+# whitespace, an integer not followed by a digit or ``.``); anything else
+# falls back to the generic token path, so results are identical.
+_WS = rb"[\x00\t\n\x0c\r ]*"
+_HEX = rb"<([0-9A-Fa-f]*)>"
+_INT = rb"([0-9]+)(?![0-9.])"
+_HEX_HEX_INT_RE = re.compile(_WS + _HEX + _WS + _HEX + _WS + _INT)
+_HEX_INT_RE = re.compile(_WS + _HEX + _WS + _INT)
+_HEX_HEX_RE = re.compile(_WS + _HEX + _WS + _HEX)
+_HEX_HEX_HEX_RE = re.compile(_WS + _HEX + _WS + _HEX + _WS + _HEX)
+
+
+def _hex_to_bytes(digits: bytes) -> bytes:
+    """Decode a run of hex digits; an odd trailing digit keeps only its high
+    nibble (upstream ``readDictionary`` behavior)."""
+    if len(digits) & 1:
+        return unhexlify(digits[:-1]) + bytes((int(digits[-1:], 16) << 4,))
+    return unhexlify(digits)
+
+
+def _fast_next_token(parser: CMapParser, cur: _ByteCursor) -> object:
+    """``parse_next_token`` over a :class:`_ByteCursor`.
+
+    Byte-for-byte equivalent to the generic ``RandomAccessRead`` path
+    (same tokens, same exceptions and messages, same final position) but
+    scans the buffer with slicing / regular expressions.
+    """
+    if cur._closed:
+        raise OSError("RandomAccessBuffer already closed")
+    data = cur._data
+    n = cur._len
+    pos = _SKIP_RE.match(data, cur._pos).end()
+    if pos >= n:
+        cur._pos = n
+        return None
+    b = data[pos]
+    pos += 1
+    if b == 0x28:  # '('
+        end = data.find(b")", pos)
+        if end < 0:
+            cur._pos = n
+            return data[pos:].decode("latin-1")
+        cur._pos = end + 1
+        return data[pos:end].decode("latin-1")
+    if b == 0x3E:  # '>'
+        if pos < n:
+            cur._pos = pos + 1
+            if data[pos] == 0x3E:
+                return _MARK_END_OF_DICTIONARY
+        else:
+            cur._pos = n
+        raise OSError("Error: expected the end of a dictionary.")
+    if b == 0x5D:  # ']'
+        cur._pos = pos
+        return _MARK_END_OF_ARRAY
+    if b == 0x5B:  # '['
+        cur._pos = pos
+        out: list[object] = []
+        nxt = _fast_next_token(parser, cur)
+        while nxt is not None and not (type(nxt) is str and nxt == _MARK_END_OF_ARRAY):
+            out.append(nxt)
+            nxt = _fast_next_token(parser, cur)
+        return out
+    if b == 0x3C:  # '<'
+        if pos < n and data[pos] == 0x3C:
+            # Dictionary ``<< ... >>``.
+            cur._pos = pos + 1
+            result: dict[str, object] = {}
+            key = _fast_next_token(parser, cur)
+            while isinstance(key, _LiteralName) and key.name != _MARK_END_OF_DICTIONARY:
+                result[key.name] = _fast_next_token(parser, cur)
+                key = _fast_next_token(parser, cur)
+            return result
+        end = data.find(b">", pos)
+        stop = n if end < 0 else end
+        body = data[pos:stop]
+        bad = _BAD_HEX_RE.search(body)
+        if bad is not None:
+            cur._pos = pos + bad.start() + 1
+            c = body[bad.start()]
+            raise OSError(f"Error: expected hex character and not {chr(c)}:{c}")
+        cur._pos = n if end < 0 else end + 1
+        return _hex_to_bytes(body.translate(None, _HEX_WHITESPACE))
+    if b == 0x2F:  # '/'
+        end = _NAME_RE.match(data, pos).end()
+        name = data[pos:end].decode("latin-1")
+        # Trailing whitespace is consumed; a delimiter is left in place.
+        if end < n and data[end] in _WHITESPACE_BYTES:
+            end += 1
+        cur._pos = end
+        return _LiteralName(name)
+    if 0x30 <= b <= 0x39:  # digit
+        end = _NUMBER_RE.match(data, pos).end()
+        cur._pos = end
+        text = data[pos - 1 : end].decode("latin-1")
+        try:
+            if "." in text:
+                return float(text)
+            return int(text)
+        except ValueError as exc:
+            raise OSError(f"Invalid number '{text}'") from exc
+    end = _OPERATOR_RE.match(data, pos).end()
+    op = data[pos - 1 : end].decode("latin-1")
+    if end < n and data[end] in _WHITESPACE_BYTES:
+        end += 1
+    cur._pos = end
+    return _Operator(op)
+
+
 class CMapParser:
     """
     Parses a PostScript CMap (PDF 32000-1 §9.7) into a ``CMap`` instance.
@@ -66,7 +278,21 @@ class CMapParser:
         """Parse a CMap from a ``RandomAccessRead`` (PDFBox parity) or
         any bytes-like / file-like source. Returns the resulting
         ``CMap``."""
+        if isinstance(source, (bytes, bytearray, memoryview)):
+            return self._parse_tokens(_ByteCursor(bytes(source)))
         ras = self._coerce(source)
+        if type(ras) is RandomAccessReadBuffer and not ras.is_closed():
+            # Tokenize straight from the buffer's bytes, then leave the
+            # caller's stream positioned exactly where the byte-by-byte
+            # parse would have left it.
+            cursor = _ByteCursor(ras._buf.getvalue(), ras.get_position())
+            try:
+                return self._parse_tokens(cursor)
+            finally:
+                ras.seek(cursor._pos)
+        return self._parse_tokens(ras)
+
+    def _parse_tokens(self, ras: RandomAccessRead) -> CMap:
         result = CMap()
         previous_token: object = None
         token = self.parse_next_token(ras)
@@ -336,15 +562,24 @@ class CMapParser:
     ) -> None:
         """Parse ``count`` codespace-range entries and register each on
         ``result``. Mirrors upstream ``parseBegincodespacerange``."""
+        fast = type(ras) is _ByteCursor and not ras._closed
         for _ in range(count):
-            nxt = self.parse_next_token(ras)
-            if isinstance(nxt, _Operator):
-                self.check_expected_operator(nxt, "endcodespacerange", "codespacerange")
-                break
-            if not isinstance(nxt, (bytes, bytearray)):
-                raise OSError("start range missing")
-            start_range = bytes(nxt)
-            end_range = self.parse_byte_array(ras)
+            m = _HEX_HEX_RE.match(ras._data, ras._pos) if fast else None
+            if m is not None:
+                ras._pos = m.end()
+                start_range = _hex_to_bytes(m[1])
+                end_range = _hex_to_bytes(m[2])
+            else:
+                nxt = self.parse_next_token(ras)
+                if isinstance(nxt, _Operator):
+                    self.check_expected_operator(
+                        nxt, "endcodespacerange", "codespacerange"
+                    )
+                    break
+                if not isinstance(nxt, (bytes, bytearray)):
+                    raise OSError("start range missing")
+                start_range = bytes(nxt)
+                end_range = self.parse_byte_array(ras)
             try:
                 result.add_codespace_range(CodespaceRange(start_range, end_range))
             except ValueError as exc:
@@ -355,7 +590,16 @@ class CMapParser:
     ) -> None:
         """Parse ``count`` ``beginbfchar`` entries (one-to-one Unicode
         mappings). Mirrors upstream ``parseBeginbfchar``."""
+        fast = type(ras) is _ByteCursor and not ras._closed
         for _ in range(count):
+            m = _HEX_HEX_RE.match(ras._data, ras._pos) if fast else None
+            if m is not None:
+                ras._pos = m.end()
+                result.add_base_font_character(
+                    _hex_to_bytes(m[1]),
+                    self.create_string_from_bytes(_hex_to_bytes(m[2])),
+                )
+                continue
             nxt = self.parse_next_token(ras)
             if isinstance(nxt, _Operator):
                 self.check_expected_operator(nxt, "endbfchar", "bfchar")
@@ -381,16 +625,24 @@ class CMapParser:
         """Parse ``number_of_lines`` ``begincidrange`` entries (CID
         mappings whose dst CID increments across the range). Mirrors
         upstream ``parseBegincidrange``."""
+        fast = type(ras) is _ByteCursor and not ras._closed
         for _ in range(number_of_lines):
-            nxt = self.parse_next_token(ras)
-            if isinstance(nxt, _Operator):
-                self.check_expected_operator(nxt, "endcidrange", "cidrange")
-                break
-            if not isinstance(nxt, (bytes, bytearray)):
-                raise OSError("start code missing")
-            start_code = bytes(nxt)
-            end_code = self.parse_byte_array(ras)
-            mapped_code = self.parse_integer(ras)
+            m = _HEX_HEX_INT_RE.match(ras._data, ras._pos) if fast else None
+            if m is not None:
+                ras._pos = m.end()
+                start_code = _hex_to_bytes(m[1])
+                end_code = _hex_to_bytes(m[2])
+                mapped_code = int(m[3])
+            else:
+                nxt = self.parse_next_token(ras)
+                if isinstance(nxt, _Operator):
+                    self.check_expected_operator(nxt, "endcidrange", "cidrange")
+                    break
+                if not isinstance(nxt, (bytes, bytearray)):
+                    raise OSError("start code missing")
+                start_code = bytes(nxt)
+                end_code = self.parse_byte_array(ras)
+                mapped_code = self.parse_integer(ras)
             if len(start_code) == len(end_code):
                 if start_code == end_code:
                     # Single-value "range" — collapse into a CID mapping.
@@ -407,7 +659,13 @@ class CMapParser:
     ) -> None:
         """Parse ``count`` ``begincidchar`` entries (single CID
         mappings). Mirrors upstream ``parseBegincidchar``."""
+        fast = type(ras) is _ByteCursor and not ras._closed
         for _ in range(count):
+            m = _HEX_INT_RE.match(ras._data, ras._pos) if fast else None
+            if m is not None:
+                ras._pos = m.end()
+                result.add_cid_mapping(_hex_to_bytes(m[1]), int(m[2]))
+                continue
             nxt = self.parse_next_token(ras)
             if isinstance(nxt, _Operator):
                 self.check_expected_operator(nxt, "endcidchar", "cidchar")
@@ -430,7 +688,13 @@ class CMapParser:
         codes that fall in a notdef range. See ``CHANGES.md`` for the
         divergence note.
         """
+        fast = type(ras) is _ByteCursor and not ras._closed
         for _ in range(count):
+            m = _HEX_INT_RE.match(ras._data, ras._pos) if fast else None
+            if m is not None:
+                ras._pos = m.end()
+                result.add_cid_mapping(_hex_to_bytes(m[1]), int(m[2]))
+                continue
             nxt = self.parse_next_token(ras)
             if isinstance(nxt, _Operator):
                 self.check_expected_operator(nxt, "endnotdefchar", "notdefchar")
@@ -488,27 +752,41 @@ class CMapParser:
         the PDFBOX-4550 / PDFBOX-3807 / PDFBOX-3450 / PDFBOX-4720 /
         PDFBOX-4661 / PDFBOX-5090 quirks called out in the upstream
         comments."""
+        fast = type(ras) is _ByteCursor and not ras._closed
         for _ in range(count):
-            nxt = self.parse_next_token(ras)
-            if isinstance(nxt, _Operator):
-                self.check_expected_operator(nxt, "endbfrange", "bfrange")
-                break
-            if not isinstance(nxt, (bytes, bytearray)):
-                raise OSError("start code missing")
-            start_code = bytearray(nxt)
-            nxt = self.parse_next_token(ras)
-            if isinstance(nxt, _Operator):
-                self.check_expected_operator(nxt, "endbfrange", "bfrange")
-                break
-            if not isinstance(nxt, (bytes, bytearray)):
-                raise OSError("end code missing")
-            end_code = bytes(nxt)
-            start = _to_int(start_code)
-            end = _to_int(end_code)
-            if end < start:
-                # PDFBOX-4550: likely corrupt stream — bail out of this range list.
-                break
-            nxt = self.parse_next_token(ras)
+            m = _HEX_HEX_HEX_RE.match(ras._data, ras._pos) if fast else None
+            if m is not None:
+                start_code = bytearray(_hex_to_bytes(m[1]))
+                start = _to_int(start_code)
+                end = _to_int(_hex_to_bytes(m[2]))
+                if end < start:
+                    # PDFBOX-4550 (see below); the dst token stays unread.
+                    ras._pos = m.end(2) + 1
+                    break
+                ras._pos = m.end()
+                nxt: object = _hex_to_bytes(m[3])
+            else:
+                nxt = self.parse_next_token(ras)
+                if isinstance(nxt, _Operator):
+                    self.check_expected_operator(nxt, "endbfrange", "bfrange")
+                    break
+                if not isinstance(nxt, (bytes, bytearray)):
+                    raise OSError("start code missing")
+                start_code = bytearray(nxt)
+                nxt = self.parse_next_token(ras)
+                if isinstance(nxt, _Operator):
+                    self.check_expected_operator(nxt, "endbfrange", "bfrange")
+                    break
+                if not isinstance(nxt, (bytes, bytearray)):
+                    raise OSError("end code missing")
+                end_code = bytes(nxt)
+                start = _to_int(start_code)
+                end = _to_int(end_code)
+                if end < start:
+                    # PDFBOX-4550: likely corrupt stream — bail out of this
+                    # range list.
+                    break
+                nxt = self.parse_next_token(ras)
             if isinstance(nxt, list):
                 # Array-form bfrange: [<u1> <u2> ...] one entry per code.
                 # Upstream guard is `array.size() >= end - start` (not +1) — match
@@ -581,6 +859,34 @@ class CMapParser:
             raise TypeError(
                 "add_mapping_frombfrange count form requires an int count"
             )
+        length_s = len(start_code)
+        length_t = len(token_bytes)
+        if (
+            length_s
+            and length_t
+            and type(start_code) is bytearray
+            and type(token_bytes) is bytearray
+        ):
+            # Integer form of the byte-wise ``increment`` loop below: a
+            # non-strict increment is +1 modulo 256**len with carry; a strict
+            # one refuses (and stops the range) when a multi-byte value's
+            # lowest byte is 0xFF. Final values are written back in place.
+            code = int.from_bytes(start_code, "big")
+            token = int.from_bytes(token_bytes, "big")
+            mask_s = (1 << (8 * length_s)) - 1
+            mask_t = (1 << (8 * length_t)) - 1
+            strict_guard = self._strict_mode and length_t > 1
+            to_string = self.create_string_from_bytes
+            add = cmap.add_base_font_character
+            for _ in range(values_or_list):
+                add(code.to_bytes(length_s, "big"), to_string(token.to_bytes(length_t, "big")))
+                if strict_guard and (token & 0xFF) == 0xFF:
+                    break
+                token = (token + 1) & mask_t
+                code = (code + 1) & mask_s
+            start_code[:] = code.to_bytes(length_s, "big")
+            token_bytes[:] = token.to_bytes(length_t, "big")
+            return
         for _ in range(values_or_list):
             value = self.create_string_from_bytes(bytes(token_bytes))
             cmap.add_base_font_character(bytes(start_code), value)
@@ -597,6 +903,8 @@ class CMapParser:
         ``str`` / ``list`` / ``dict`` / :class:`_LiteralName` /
         :class:`_Operator` / ``None`` at EOF). Mirrors upstream
         ``parseNextToken``."""
+        if type(ras) is _ByteCursor:
+            return _fast_next_token(self, ras)
         next_byte = ras.read()
         while True:
             # Skip PDF whitespace and comments at token boundaries. The

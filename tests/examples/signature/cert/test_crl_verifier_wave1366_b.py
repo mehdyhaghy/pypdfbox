@@ -25,6 +25,7 @@ from pypdfbox.examples.signature.cert.crl_verifier import CRLVerifier
 from pypdfbox.examples.signature.cert.revoked_certificate_exception import (
     RevokedCertificateException,
 )
+from tests._rsa_key_pool import pooled_rsa_key
 
 
 def _now_utc() -> _dt.datetime:
@@ -34,7 +35,7 @@ def _now_utc() -> _dt.datetime:
 def _self_signed(common_name: str = "wave1366-b") -> tuple[
     x509.Certificate, rsa.RSAPrivateKey
 ]:
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, common_name)])
     cert = (
         x509.CertificateBuilder()
@@ -52,7 +53,7 @@ def _self_signed(common_name: str = "wave1366-b") -> tuple[
 def _self_signed_with_two_crl_urls(
     urls: tuple[str, str],
 ) -> tuple[x509.Certificate, rsa.RSAPrivateKey]:
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name(
         [x509.NameAttribute(NameOID.COMMON_NAME, "two-crl-dps")]
     )
@@ -123,7 +124,7 @@ def test_get_crl_distribution_points_returns_two_urls() -> None:
 def test_get_crl_distribution_points_skips_non_http() -> None:
     """``ldap://`` URLs in the CRL DP fall through the
     ``startswith("http")`` guard."""
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name(
         [x509.NameAttribute(NameOID.COMMON_NAME, "ldap-crl-dp")]
     )
@@ -160,7 +161,7 @@ def test_get_crl_distribution_points_skips_non_http() -> None:
 def test_get_crl_distribution_points_skips_non_uri_full_name_entries() -> None:
     """A CRL DP whose ``full_name`` contains a :class:`DirectoryName` (not
     a URI) is filtered out by the inner ``isinstance(...)`` guard."""
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name(
         [x509.NameAttribute(NameOID.COMMON_NAME, "mixed-fullname")]
     )

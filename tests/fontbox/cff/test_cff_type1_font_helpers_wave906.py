@@ -53,31 +53,12 @@ def test_wave906_type1_loader_skips_cid_keyed_cff_candidates(
     assert type1_mod._load_type1_cff_bytes() is None
 
 
-class _NoCFFTTFont:
-    def __init__(self, *_args: object, **_kwargs: object) -> None:
-        pass
-
-    def __contains__(self, _tag: str) -> bool:
-        return False
-
-
-class _RaisesTTFont:
-    def __init__(self, *_args: object, **_kwargs: object) -> None:
-        raise RuntimeError("broken fixture")
-
-
-def test_wave906_cid_rejection_helper_skips_after_no_cff_and_broken_candidate(
+def test_wave906_cid_rejection_test_checks_fixture_is_cid_keyed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from fontTools import ttLib
+    # The CID rejection test asserts its fixture really is CID-keyed before
+    # checking the rejection, so a wrong fixture cannot pass silently.
+    monkeypatch.setattr(type1_mod.CFFFont, "is_cid_font", lambda self: False)
 
-    calls = iter([_NoCFFTTFont, _RaisesTTFont])
-
-    def fake_ttfont(*args: object, **kwargs: object) -> object:
-        return next(calls)(*args, **kwargs)
-
-    monkeypatch.setattr(type1_mod, "Path", _ExistingPath)
-    monkeypatch.setattr(ttLib, "TTFont", fake_ttfont)
-
-    with pytest.raises(pytest.skip.Exception, match="no CIDKeyed font"):
+    with pytest.raises(AssertionError):
         type1_mod.TestCFFType1FontFromCIDFontRaises().test_from_bytes_rejects_cid_keyed()

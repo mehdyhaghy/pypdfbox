@@ -244,6 +244,17 @@ _VALUE_KEYED_POOL_TYPES: tuple[type, ...] = (
     COSBoolean,
 )
 
+_VALUE_KEYED_CACHE: dict[type, bool] = {}
+
+
+def _is_value_keyed_type(tp: type) -> bool:
+    """``issubclass(tp, _VALUE_KEYED_POOL_TYPES)``, memoised per type (the
+    ``COSBase`` ABC makes a missed ``isinstance`` comparatively slow)."""
+    hit = _VALUE_KEYED_CACHE.get(tp)
+    if hit is None:
+        hit = _VALUE_KEYED_CACHE[tp] = issubclass(tp, _VALUE_KEYED_POOL_TYPES)
+    return hit
+
 
 class _ObjStmPoolShim:
     """Adapt ``COSWriter``'s key tables to the ``contains`` / ``get_key``
@@ -444,6 +455,7 @@ class COSWriter(ICOSVisitor):
         # indirect is emitted as a reference, mirroring upstream's
         # value-hashed ``COSObjectPool``.
         self._objstm_value_pool: dict[COSBase, COSObjectKey] = {}
+        self._objstm_ref_cache: dict[int, tuple[COSObjectKey, bytes]] = {}
         # In incremental mode the body, xref, and trailer are accumulated in
         # an in-memory buffer; the final ``doWriteIncrement`` copies the
         # source bytes to the real output and then drains the buffer
@@ -2328,12 +2340,6 @@ class COSWriter(ICOSVisitor):
         # honour the wrapper's declared ``(num, gen)`` because their type-2
         # entry geometry and ObjStm packability decisions depend on the
         # caller-declared numbering being preserved.
-        honor_declared = (
-            self._object_stream
-            or self._xref_stream
-            or self._hybrid_xref
-            or self._incremental_update
-        )
         actual: COSBase
         is_wrapper = _kind_of(type(obj)) == _KIND_OBJECT
         if is_wrapper:
@@ -2355,6 +2361,12 @@ class COSWriter(ICOSVisitor):
                 self._key_holders[id(obj)] = obj
             return existing
 
+        honor_declared = (
+            self._object_stream
+            or self._xref_stream
+            or self._hybrid_xref
+            or self._incremental_update
+        )
         # Only a not-yet-keyed actual needs the wrapper's declared key.
         declared_key = (
             COSObjectKey(obj.get_object_number(), obj.get_generation_number())
@@ -2614,30 +2626,46 @@ class COSWriter(ICOSVisitor):
         identical to what the subsequent emit pass would assign, just
         without writing bytes.
         """
+        # Explicit LIFO stack (no recursion); the visiting order — and so
+        # the order fresh keys are minted in — is the plain depth-first
+        # "pop last, push children in order" walk.
         seen: set[int] = set()
+        seen_add = seen.add
         stack: list[COSBase] = [r for r in roots if r is not None]
+        pop = stack.pop
+        extend = stack.extend
+        get_key = self._get_object_key
+        kind_get = _KIND_CACHE.get
         while stack:
-            current = stack.pop()
-            if id(current) in seen:
+            current = pop()
+            cid = id(current)
+            if cid in seen:
                 continue
-            seen.add(id(current))
+            seen_add(cid)
+            tp = type(current)
+            kind = kind_get(tp)
+            if kind is None:
+                kind = _kind_of(tp)
             actual: COSBase | None
-            if isinstance(current, COSObject):
-                actual = current.get_object()
+            if kind == _KIND_OBJECT:
+                actual = current.get_object()  # type: ignore[attr-defined]
                 if actual is None:
                     continue
-                self._get_object_key(current)
-            elif isinstance(current, (COSDictionary, COSArray)) and not current.is_direct():
-                actual = current
-                self._get_object_key(current)
-            elif isinstance(current, (COSDictionary, COSArray)):
-                actual = current
-            else:
+                get_key(current)
+                atp = type(actual)
+                kind = kind_get(atp)
+                if kind is None:
+                    kind = _kind_of(atp)
+            elif kind == _KIND_OTHER:
                 continue
-            if isinstance(actual, COSArray):
-                stack.extend(v for v in list(actual) if v is not None)
-            elif isinstance(actual, COSDictionary):
-                stack.extend(v for v in actual.values() if v is not None)
+            else:
+                actual = current
+                if not current.is_direct():
+                    get_key(current)
+            if kind == _KIND_ARRAY:
+                extend([v for v in actual if v is not None])  # type: ignore[union-attr]
+            elif kind == _KIND_DICTIONARY:
+                extend([v for v in actual.values() if v is not None])  # type: ignore[union-attr]
 
     def _pack_object_streams(self, doc: COSDocument) -> None:
         """Bundle eligible non-stream indirect objects into one or more
@@ -2692,14 +2720,19 @@ class COSWriter(ICOSVisitor):
         # (deterministic stand-in for upstream's first-``put``-wins on the
         # structure walk). Containers stay identity-keyed via ``_object_keys``.
         self._objstm_value_pool = {}
+        # Formatted ``N G R`` references shared by every ObjStm of this pass.
+        self._objstm_ref_cache = {}
+        # Filter first, then sort only the (rare) indirect scalars: the
+        # relative order of the survivors is what a full sort would give.
         for key, actual in sorted(
-            self._key_object.items(),
+            (
+                kv
+                for kv in self._key_object.items()
+                if _is_value_keyed_type(type(kv[1]))
+            ),
             key=lambda kv: (kv[0].object_number, kv[0].generation_number),
         ):
-            if (
-                isinstance(actual, _VALUE_KEYED_POOL_TYPES)
-                and actual not in self._objstm_value_pool
-            ):
+            if actual not in self._objstm_value_pool:
                 self._objstm_value_pool[actual] = key
 
         candidates: list[tuple[COSObjectKey, COSBase]] = []
@@ -2804,17 +2837,20 @@ class COSWriter(ICOSVisitor):
         # graph discovery.
         # Lazy import — ``cos_writer_object_stream`` imports ``COSWriter`` at
         # call time, so importing it at module top would be cyclic.
+        # ``serialize_packed_objects`` produces exactly what
+        # ``COSWriterObjectStream(_ObjStmPoolShim(...)).write_object(buf,
+        # actual, top_level=True)`` writes, without the per-token method
+        # dispatch and with an explicit stack instead of recursion.
         from pypdfbox.pdfwriter.compress.cos_writer_object_stream import (
-            COSWriterObjectStream,
+            serialize_packed_objects,
         )
 
-        pool_shim = _ObjStmPoolShim(self._object_keys, self._objstm_value_pool)
-        objstm_writer = COSWriterObjectStream(pool_shim)
-        bodies: list[bytes] = []
-        for _key, actual in chunk:
-            buf = io.BytesIO()
-            objstm_writer.write_object(buf, actual, top_level=True)
-            bodies.append(buf.getvalue())
+        bodies = serialize_packed_objects(
+            [actual for _key, actual in chunk],
+            self._object_keys,
+            self._objstm_value_pool,
+            self._objstm_ref_cache,
+        )
 
         # Build the index header EXACTLY as upstream
         # ``COSWriterObjectStream.writeObjectsToStream`` (PDFBox 3.0.7): for
@@ -2825,13 +2861,15 @@ class COSWriter(ICOSVisitor):
         # this byte-for-byte (rather than the previous space-joined +
         # trailing-``\n`` form) makes the decoded ObjStm body identical to
         # PDFBox's.
-        index_blob = bytearray()
+        index_parts: list[bytes] = []
         running = 0
         for (key, _), body in zip(chunk, bodies, strict=False):
-            index_blob += f"{key.object_number} {running} ".encode("ascii")
+            index_parts.append(b"%d %d " % (key.object_number, running))
             running += len(body)
+        index_blob = b"".join(index_parts)
         first_offset = len(index_blob)
-        payload = bytes(index_blob) + b"".join(bodies)
+        index_parts.extend(bodies)
+        payload = b"".join(index_parts)
 
         # Mint a fresh object number for the ObjStm itself (skip past any
         # declared keys that haven't been ``_get_object_key``-funneled).
@@ -2932,6 +2970,8 @@ class COSWriter(ICOSVisitor):
         # Note: we intentionally do not call ``_fill_gaps_with_free_entries``
         # in either the full or hybrid xref-stream sub-path.
         records: list[tuple[int, int, int, int, bool]] = []
+        comp_get = self._compressed_locations.get
+        kind_get = _KIND_CACHE.get
         for entry in self._xref_entries:
             if entry.free:
                 # Defensive: the xref-stream path no longer seeds free
@@ -2939,16 +2979,14 @@ class COSWriter(ICOSVisitor):
                 # the implicit object-0 NULL row belongs in an xref stream.
                 continue
             objnum = entry.key.object_number
-            actual = (
-                entry.obj.get_object()
-                if isinstance(entry.obj, COSObject)
-                else entry.obj
-            )
-            comp = (
-                self._compressed_locations.get(id(actual))
-                if actual is not None
-                else None
-            )
+            actual = entry.obj
+            otp = type(actual)
+            okind = kind_get(otp)
+            if okind is None:
+                okind = _kind_of(otp)
+            if okind == _KIND_OBJECT:
+                actual = actual.get_object()  # type: ignore[union-attr]
+            comp = comp_get(id(actual)) if actual is not None else None
             if comp is not None:
                 objstm_num, idx = comp
                 records.append((objnum, 2, objstm_num, idx, False))
@@ -3011,12 +3049,31 @@ class COSWriter(ICOSVisitor):
         body.extend(
             _pack_unsigned(0xFFFF & ((1 << (8 * w3)) - 1) if w3 else 0, w3)
         )
-        for _objnum, t, f2, f3, _fr in records:
-            body.extend(_pack_unsigned(t, w1))
-            body.extend(_pack_unsigned(f2, w2))
-            body.extend(
-                _pack_unsigned(f3 & ((1 << (8 * w3)) - 1) if w3 else 0, w3)
-            )
+        if all(t >= 0 and f2 >= 0 and f3 >= 0 for _n, t, f2, f3, _fr in records):
+            # Every column value fits its max-derived width (and field 3 is
+            # masked to it), so each row is one big-endian integer of
+            # ``w1 + w2 + w3`` bytes: the same bytes as three
+            # ``_pack_unsigned`` calls, with one ``to_bytes`` per row.
+            row_width = w1 + w2 + w3
+            shift1 = 8 * (w2 + w3)
+            shift2 = 8 * w3
+            mask3 = (1 << (8 * w3)) - 1
+            if row_width:
+                body.extend(
+                    b"".join(
+                        (
+                            (t << shift1) | (f2 << shift2) | (f3 & mask3)
+                        ).to_bytes(row_width, "big")
+                        for _n, t, f2, f3, _fr in records
+                    )
+                )
+        else:
+            for _objnum, t, f2, f3, _fr in records:
+                body.extend(_pack_unsigned(t, w1))
+                body.extend(_pack_unsigned(f2, w2))
+                body.extend(
+                    _pack_unsigned(f3 & ((1 << (8 * w3)) - 1) if w3 else 0, w3)
+                )
 
         # /Index — sparse list of (first, count) ranges over the union of the
         # real object numbers and object 0 (``getIndexEntry`` seeds its TreeSet

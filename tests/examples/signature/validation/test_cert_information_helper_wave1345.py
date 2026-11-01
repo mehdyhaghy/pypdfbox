@@ -16,13 +16,13 @@ import datetime as _dt
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
 from pypdfbox.examples.signature.validation import cert_information_helper
 from pypdfbox.examples.signature.validation.cert_information_helper import (
     CertInformationHelper,
 )
+from tests._rsa_key_pool import pooled_rsa_key
 
 
 def test_get_sha1_hash_swallows_runtime_failures(
@@ -50,7 +50,7 @@ def _self_signed_with_dirname_only_crl() -> x509.Certificate:
     final ``return None`` branch of
     :meth:`get_crl_url_from_extension_value`.
     """
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name(
         [x509.NameAttribute(NameOID.COMMON_NAME, "pypdfbox-no-http-crl")]
     )

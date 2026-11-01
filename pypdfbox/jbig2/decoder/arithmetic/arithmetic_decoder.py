@@ -72,6 +72,18 @@ QE = (
     (0x5601, 46, 46, 0),
 )
 
+# Decoder-side view of ``QE``: each row extended with ``Qe << 16``, so the
+# ``(C >> 16) < Qe`` test of DECODE can be evaluated as ``C < (Qe << 16)``
+# (equivalent for the non-negative C register) and ``C -= Qe << 16`` needs no
+# shift.
+QE_DECODE = tuple((qe, nmps, nlps, switch, qe << 16) for qe, nmps, nlps, switch in QE)
+
+# RENORMD shift count for an A register value 1..0x7FFF: the number of left
+# shifts until bit 15 (0x8000) is set. When CT covers that many shifts no
+# BYTEIN can occur in between, so RENORMD reduces to one multi-bit shift of A
+# and C (with C masked to 32 bits) and ``CT -= n``.
+RENORM_SHIFTS = bytes([0] + [16 - a.bit_length() for a in range(1, 0x8000)])
+
 
 class ArithmeticDecoder:
     """The MQ arithmetic decoder (ISO/IEC 14492:2001 E.3)."""
@@ -105,45 +117,102 @@ class ArithmeticDecoder:
         self.a = 0x8000
 
     def decode(self, cx: CX) -> int:
-        icx = cx.cx()
-        qe_value = QE[icx][0]
+        """Decode one binary decision in context ``cx`` (E.3.2 DECODE).
 
-        self.a -= qe_value
+        This is the ``DECODE`` / ``LPS_EXCHANGE`` / ``MPS_EXCHANGE`` /
+        ``RENORMD`` procedure fused into one body with the registers held in
+        locals and the context arrays indexed directly. It performs the same
+        arithmetic in the same order as the separate helper methods below
+        (which are kept for structural fidelity with upstream).
+        """
+        index = cx.index
+        cx_arr = cx._cx
+        row = QE_DECODE[cx_arr[index] & 0x7F]
+        qe_value = row[0]
 
-        if (self.c >> 16) < qe_value:
-            d = self._lps_exchange(cx, icx, qe_value)
-            self._renormalize()
-        else:
-            self.c = (self.c - (qe_value << 16)) & _MASK32
-            if (self.a & 0x8000) == 0:
-                d = self._mps_exchange(cx, icx)
-                self._renormalize()
+        a = self.a - qe_value
+        c = self.c
+
+        if c < row[4]:
+            # LPS_EXCHANGE
+            mps_arr = cx._mps
+            mps = mps_arr[index]
+            if a < qe_value:
+                cx_arr[index] = row[1]
+                d = mps
             else:
-                return cx.mps()
+                if row[3] == 1:
+                    mps_arr[index] = mps ^ 1
+                cx_arr[index] = row[2]
+                d = 1 - mps
+            a = qe_value
+        else:
+            c -= row[4]
+            if a & 0x8000:
+                self.a = a
+                self.c = c
+                return cx._mps[index]
+            # MPS_EXCHANGE
+            mps_arr = cx._mps
+            mps = mps_arr[index]
+            if a < qe_value:
+                if row[3] == 1:
+                    mps_arr[index] = mps ^ 1
+                cx_arr[index] = row[2]
+                d = 1 - mps
+            else:
+                cx_arr[index] = row[1]
+                d = mps
 
+        # RENORMD. ``a`` is below 0x8000 here, so the shifts stay within
+        # 16 bits and the 32-bit mask on ``a`` is a no-op.
+        ct = self.ct
+        n = RENORM_SHIFTS[a]
+        if ct >= n:
+            a <<= n
+            c = (c << n) & _MASK32
+            ct -= n
+        else:
+            while True:
+                if ct == 0:
+                    self.c = c
+                    self._byte_in()
+                    c = self.c
+                    ct = self.ct
+                a <<= 1
+                c = (c << 1) & _MASK32
+                ct -= 1
+                if a & 0x8000:
+                    break
+
+        self.a = a
+        self.c = c
+        self.ct = ct
         return d
 
     def _byte_in(self) -> None:
-        if self.iis.get_stream_position() > self.stream_pos0:
-            self.iis.seek(self.iis.get_stream_position() - 1)
+        iis = self.iis
+        stream_pos = iis.get_stream_position()
+        if stream_pos > self.stream_pos0:
+            iis.seek(stream_pos - 1)
 
-        self.b = self.iis.read()
+        b = iis.read()
 
-        if self.b == 0xFF:
-            b1 = self.iis.read()
+        if b == 0xFF:
+            self.b = b
+            b1 = iis.read()
             if b1 > 0x8F:
-                self.c += 0xFF00
+                self.c = (self.c + 0xFF00) & _MASK32
                 self.ct = 8
-                self.iis.seek(self.iis.get_stream_position() - 2)
+                iis.seek(iis.get_stream_position() - 2)
             else:
-                self.c += b1 << 9
+                self.c = (self.c + (b1 << 9)) & _MASK32
                 self.ct = 7
         else:
-            self.b = self.iis.read()
-            self.c += self.b << 8
+            b = iis.read()
+            self.b = b
+            self.c = (self.c + (b << 8)) & _MASK32
             self.ct = 8
-
-        self.c &= _MASK32
 
     def _renormalize(self) -> None:
         while True:

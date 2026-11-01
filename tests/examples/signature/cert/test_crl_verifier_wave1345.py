@@ -19,10 +19,10 @@ import logging
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
 from pypdfbox.examples.signature.cert.crl_verifier import CRLVerifier
+from tests._rsa_key_pool import pooled_rsa_key
 
 
 def _build_crl(issuer_cert, issuer_key, revoked_serials: list[int]):
@@ -118,7 +118,7 @@ def _self_signed_crl_dp_without_full_name() -> x509.Certificate:
     (covered by a ``relative_name`` instead). The walker's ``if not
     full_name`` branch (line 113) takes the ``continue``.
     """
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name(
         [x509.NameAttribute(NameOID.COMMON_NAME, "pypdfbox-empty-fullname")]
     )

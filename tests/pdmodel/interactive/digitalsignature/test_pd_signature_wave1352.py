@@ -26,6 +26,7 @@ from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import (
     _verify_chain_trust,
     _verify_signed_attrs_signature,
 )
+from tests._rsa_key_pool import pooled_rsa_key
 
 
 def _ec_self_signed(name: str) -> tuple[x509.Certificate, ec.EllipticCurvePrivateKey]:
@@ -49,7 +50,7 @@ def _ec_self_signed(name: str) -> tuple[x509.Certificate, ec.EllipticCurvePrivat
 
 
 def _rsa_self_signed(name: str) -> tuple[x509.Certificate, rsa.RSAPrivateKey]:
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, name)])
     now = datetime.datetime.now(tz=datetime.UTC)
     cert = (
@@ -139,7 +140,7 @@ def test_verify_chain_trust_intermediate_signature_invalid() -> None:
     that's in the embedded pool, but the leaf's actual signature was made
     with the wrong key. The chain walk reaches ``_verify_cert_signature``,
     that returns ok=False, and the ``return False, err`` line (366) fires."""
-    root_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    root_key = pooled_rsa_key()
     root_subject = x509.Name(
         [x509.NameAttribute(NameOID.COMMON_NAME, "rsa-root")]
     )
@@ -159,7 +160,7 @@ def test_verify_chain_trust_intermediate_signature_invalid() -> None:
     )
     # Leaf claims root_subject as issuer but is signed with its own (leaf)
     # key — so verifying leaf.signature with root's public key fails.
-    leaf_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    leaf_key = pooled_rsa_key()
     leaf_subject = x509.Name(
         [x509.NameAttribute(NameOID.COMMON_NAME, "rsa-leaf-mismatch")]
     )
@@ -199,8 +200,8 @@ def test_verify_chain_trust_loop_guard() -> None:
     verifies the signature against the (other) cert's public key, and
     keeps walking until the counter expires.
     """
-    key_a = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    key_b = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key_a = pooled_rsa_key()
+    key_b = pooled_rsa_key()
     subj_a = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "A")])
     subj_b = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "B")])
     now = datetime.datetime.now(tz=datetime.UTC)

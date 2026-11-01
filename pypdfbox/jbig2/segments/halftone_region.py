@@ -261,6 +261,17 @@ class HalftoneRegion(Region):
     def _combine_gray_scale_planes(
         self, gray_scale_planes: list[Bitmap], j: int
     ) -> list[Bitmap]:
+        target = gray_scale_planes[j]
+        source = gray_scale_planes[j + 1]
+        n_bytes = target.get_height() * target.get_row_stride()
+        if n_bytes == len(target.bitmap_bytes) and n_bytes <= len(source.bitmap_bytes):
+            # Whole-plane XOR: the same bytes the per-byte loop below writes
+            # (it visits every byte of every row exactly once, in order).
+            target.bitmap_bytes[:] = (
+                int.from_bytes(target.bitmap_bytes)
+                ^ int.from_bytes(source.bitmap_bytes[:n_bytes])
+            ).to_bytes(n_bytes)
+            return gray_scale_planes
         byte_index = 0
         for _y in range(gray_scale_planes[j].get_height()):
             x = 0
@@ -282,6 +293,9 @@ class HalftoneRegion(Region):
         self, gray_scale_planes: list[Bitmap], bits_per_value: int
     ) -> list[list[int]]:
         # Gray-scale decoding procedure, page 98
+        fast = self._compute_gray_scale_values_bulk(gray_scale_planes, bits_per_value)
+        if fast is not None:
+            return fast
         gray_scale_values = [
             [0] * self.h_grid_width for _ in range(self.h_grid_height)
         ]
@@ -304,6 +318,40 @@ class HalftoneRegion(Region):
                         ) * (1 << j)
                 x += 8
         return gray_scale_values
+
+    def _compute_gray_scale_values_bulk(
+        self, gray_scale_planes: list[Bitmap], bits_per_value: int
+    ) -> list[list[int]] | None:
+        """Vectorised :meth:`_compute_gray_scale_values` (C.5 step 4).
+
+        Value ``(y, x)`` is ``sum(bit_j(x, y) << j)`` over the planes, with
+        ``bit_j`` read from plane ``j`` at plane 0's byte index for ``(x, y)``
+        exactly as the per-pixel loop reads it. Returns ``None`` (use the
+        per-pixel loop) unless every plane has plane 0's geometry and the grid
+        lies within it.
+        """
+        width = self.h_grid_width
+        height = self.h_grid_height
+        if width <= 0 or height <= 0 or bits_per_value <= 0:
+            return None
+        first = gray_scale_planes[0]
+        stride = first.get_row_stride()
+        if width > stride * 8 or height * stride > len(first.bitmap_bytes):
+            return None
+        for plane in gray_scale_planes:
+            if plane.get_row_stride() != stride or len(plane.bitmap_bytes) < height * stride:
+                return None
+
+        import numpy as np
+
+        total = np.zeros((height, width), dtype=object if bits_per_value > 62 else np.int64)
+        for j in range(bits_per_value):
+            plane_bytes = np.frombuffer(
+                bytes(gray_scale_planes[j].bitmap_bytes[: height * stride]), dtype=np.uint8
+            ).reshape(height, stride)
+            bits = np.unpackbits(plane_bytes, axis=1)[:, :width].astype(total.dtype)
+            total += bits << j
+        return total.tolist()
 
     def _compute_x(self, m: int, n: int) -> int:
         return (self.h_grid_x + m * self.h_region_y + n * self.h_region_x) >> 8

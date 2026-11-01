@@ -5,7 +5,6 @@ import datetime as _dt
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import (
     ExtendedKeyUsageOID,
     NameOID,
@@ -19,6 +18,7 @@ from pypdfbox.examples.signature.sig_utils import SigUtils
 from pypdfbox.pdmodel import PDPage
 from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import PDSignature
 from pypdfbox.pdmodel.pd_document import PDDocument
+from tests._rsa_key_pool import pooled_rsa_key
 
 # ---------------------------------------------------------------------------
 # Register the static COSName constants referenced by SigUtils. The cos_name
@@ -58,7 +58,7 @@ def _build_cert(
     include_key_usage: bool = True,
 ) -> x509.Certificate:
     """Build an in-memory self-signed certificate with explicit KU / EKU."""
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "test")])
     builder = (
         x509.CertificateBuilder()

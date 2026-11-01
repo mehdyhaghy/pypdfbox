@@ -95,3 +95,31 @@ def should_skip_tk() -> bool:
     opt out of Tk-heavy tests without editing every conftest.
     """
     return os.environ.get("PYPDFBOX_SKIP_TK", "") == "1"
+
+
+# Shared RSA test keys
+# --------------------
+# ``tests/_rsa_key_pool.pooled_rsa_key`` reuses RSA keys across tests (key
+# generation was ~10 s of the suite). These hooks tell it where it is
+# running: inside a test (keys distinct per call, reused across tests) or
+# in an import / class-, module-, package-, session-scoped fixture (key
+# reserved, never handed to another test).
+from tests import _rsa_key_pool  # noqa: E402
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_protocol(item, nextitem):
+    _rsa_key_pool.begin_test()
+    try:
+        yield
+    finally:
+        _rsa_key_pool.end_test()
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_fixture_setup(fixturedef, request):
+    wide = _rsa_key_pool.enter_fixture(fixturedef.scope)
+    try:
+        yield
+    finally:
+        _rsa_key_pool.exit_fixture(wide)
