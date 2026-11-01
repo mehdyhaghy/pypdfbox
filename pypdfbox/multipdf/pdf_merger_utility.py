@@ -560,9 +560,10 @@ class PDFMergerUtility:
 
         Unlike :meth:`legacy_merge_documents`, this path does NOT merge
         document-level structures (``/AcroForm``, ``/Outlines``, ``/Names``,
-        ``/StructTreeRoot``, ``/PageLabels``, ``/Metadata`` etc.). Mirrors
-        upstream behaviour — callers that need those substructures should
-        use the legacy path.
+        ``/StructTreeRoot``, ``/PageLabels``, ``/Metadata`` etc.) and does
+        not apply :meth:`set_destination_document_information` or
+        :meth:`set_destination_metadata`. Mirrors upstream behaviour —
+        callers that need those substructures should use the legacy path.
         """
         if stream_cache_create_function is not None:
             self.set_stream_cache_create_function(stream_cache_create_function)
@@ -595,6 +596,7 @@ class PDFMergerUtility:
 
         from pypdfbox.pdmodel.pd_document import PDDocument
         from pypdfbox.pdmodel.pd_page import PDPage
+        from pypdfbox.pdmodel.pd_resources import PDResources
 
         destination = PDDocument()
         opened_sources: list[tuple[PDDocument, bool]] = []
@@ -620,12 +622,8 @@ class PDFMergerUtility:
                 opened_sources.append((source_doc, owns))
                 try:
                     max_version = max(max_version, float(source_doc.get_version()))
-                    src_catalog = source_doc.get_document_catalog()
-                    if self._is_dynamic_xfa(src_catalog.get_acro_form()):
-                        raise OSError(
-                            "Error: can't merge source document containing "
-                            "dynamic XFA form content."
-                        )
+                    # Upstream copies only pages here: no dynamic XFA check,
+                    # no AcroForm merge (that is the legacy path).
                     for page in source_doc.get_pages():
                         old_page_dict = page.get_cos_object()
                         new_page_dict = cloner.clone_for_new_document(
@@ -633,6 +631,22 @@ class PDFMergerUtility:
                         )
                         assert isinstance(new_page_dict, COSDictionary)
                         new_page_dict.remove_item(_PARENT)
+                        new_page = PDPage(new_page_dict)
+                        # Upstream materializes the inheritable attributes
+                        # (crop box, media box, rotation, resources) on the
+                        # cloned page because /Parent is not carried over.
+                        new_page.set_crop_box(page.get_crop_box())
+                        new_page.set_media_box(page.get_media_box())
+                        new_page.set_rotation(page.get_rotation())
+                        resources = page.get_resources()
+                        if resources is not None:
+                            cloned_resources = cloner.clone_for_new_document(
+                                resources.get_cos_object()
+                            )
+                            assert isinstance(cloned_resources, COSDictionary)
+                            new_page.set_resources(PDResources(cloned_resources))
+                        else:
+                            new_page.set_resources(PDResources())
                         # Resources are folded through the cross-doc
                         # hash-dedup cache so two source pages that
                         # reference the same font / image don't bloat
@@ -640,13 +654,7 @@ class PDFMergerUtility:
                         self._dedup_page_resources(
                             new_page_dict, resource_hash_cache, hash_memo
                         )
-                        destination.get_pages().add(PDPage(new_page_dict))
-                    # AcroForm fields: optimize mode still carries them
-                    # over so widget annotations on imported pages stay
-                    # navigable from the destination's form. Name-collision
-                    # handling matches the legacy path.
-                    dest_catalog = destination.get_document_catalog()
-                    self._merge_acro_form(cloner, dest_catalog, src_catalog)
+                        destination.get_pages().add(new_page)
                 finally:
                     if owns:
                         try:
@@ -662,14 +670,8 @@ class PDFMergerUtility:
             if max_version > float(destination.get_version()):
                 destination.set_version(max_version)
 
-            if self._destination_document_information is not None:
-                destination.set_document_information(
-                    self._destination_document_information
-                )
-            if self._destination_metadata is not None:
-                destination.get_document_catalog().set_metadata(
-                    self._destination_metadata
-                )
+            # Upstream optimizedMergeDocuments applies neither the
+            # destination document information nor the destination metadata.
 
             if self._destination_stream is None:
                 assert self._destination_file_name is not None

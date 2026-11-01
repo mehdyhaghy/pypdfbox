@@ -73,10 +73,17 @@ def test_wave387_configuration_predicates_and_fluent_setters() -> None:
     assert splitter.has_memory_usage_setting()
 
 
-def test_wave387_post_pass_exceptions_are_logged_and_do_not_abort(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    class ResilientSplitter(Splitter):
+def test_wave387_post_pass_exceptions_propagate() -> None:
+    """Upstream ``split()`` does not catch post-pass failures: the first one
+    escapes and the created chunk is closed."""
+    created: list[PDDocument] = []
+
+    class FailingSplitter(Splitter):
+        def create_new_document(self) -> PDDocument:
+            document = super().create_new_document()
+            created.append(document)
+            return document
+
         def _clone_structure_tree(self, destination_document: PDDocument) -> None:
             raise RuntimeError("struct boom")
 
@@ -84,15 +91,13 @@ def test_wave387_post_pass_exceptions_are_logged_and_do_not_abort(
             raise RuntimeError("dest boom")
 
     src = _make_doc(1)
-
-    with caplog.at_level(logging.ERROR, logger="pypdfbox.multipdf.splitter"):
-        chunks = ResilientSplitter().split(src)
-
-    assert len(chunks) == 1
-    messages = [record.getMessage() for record in caplog.records]
-    assert any("structure-tree clone failed" in message for message in messages)
-    assert any("destination fix-up failed" in message for message in messages)
-    _close_all(src, chunks)
+    try:
+        with pytest.raises(RuntimeError, match="struct boom"):
+            FailingSplitter().split(src)
+    finally:
+        src.close()
+    assert len(created) == 1
+    assert created[0].get_document().is_closed()
 
 
 def _page_with_link(link: PDAnnotationLink) -> PDPage:

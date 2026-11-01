@@ -11,13 +11,15 @@ suite:
 - Splitter does NOT carry ``/OpenAction`` from source catalog into each
   chunk's catalog (parity with upstream — chunks are independent docs
   whose viewers shouldn't auto-trigger source's open action).
-- Splitter does NOT carry ``/Names`` legacy ``/Dests`` from source.
+- A malformed source ``/Names /Dests`` tree makes ``split()`` raise.
 - Split chunks contain blank pages when the chunk-size > 1 and the
   tail chunk has fewer source pages than the chunk size (chunk size is
   a hard upper bound, NOT a fixed page count).
 - Splitter result chunks are independently saveable/loadable.
 """
 from pathlib import Path
+
+import pytest
 
 from pypdfbox import PDDocument, PDPage
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
@@ -157,11 +159,10 @@ def test_split_does_not_carry_open_action_into_chunks() -> None:
 # ---------- /Names tree not carried into chunks ----------
 
 
-def test_split_does_not_carry_legacy_dests_tree_into_chunks() -> None:
-    """The source's catalog-level /Names /Dests tree is NOT copied
-    into each chunk's catalog. Source-side named destinations get
-    resolved at link-stage time via ``_stage_link_destination`` — the
-    raw name tree itself isn't propagated."""
+def test_split_malformed_dests_name_tree_raises() -> None:
+    """A /Names /Dests leaf whose key is a name instead of a string makes
+    the named-destination fix-up raise; ``split()`` propagates it as
+    upstream does."""
     src = _make_doc(3)
     # Build a /Names /Dests structure on the source.
     names_root = COSDictionary()
@@ -176,16 +177,10 @@ def test_split_does_not_carry_legacy_dests_tree_into_chunks() -> None:
     names_root.set_item(_DESTS, dests_root)
     src.get_document_catalog().get_cos_object().set_item(_NAMES, names_root)
 
-    chunks = Splitter().split(src)
     try:
-        for chunk in chunks:
-            catalog_dict = chunk.get_document_catalog().get_cos_object()
-            # /Names absent on chunks (upstream parity: splitter
-            # produces independent docs; the /Names tree isn't replicated).
-            assert catalog_dict.get_dictionary_object(_NAMES) is None
+        with pytest.raises(OSError, match="Expected string"):
+            Splitter().split(src)
     finally:
-        for c in chunks:
-            c.close()
         src.close()
 
 

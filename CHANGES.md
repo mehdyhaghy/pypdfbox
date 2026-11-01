@@ -33,6 +33,14 @@ Divergences that remain live (will affect observable behaviour vs Java PDFBox):
   upstream: PDFBox 4.0.0-SNAPSHOT (trunk) PDFBOX-6175, commits `b0715897`, `51111f06`, `7ee9ce66`, `bf37c60d`
   reason: alignment with trunk for a future pypdfbox major version; sharing descendants reduces memory on font-heavy documents.
 
+- **BREAKING (pypdfbox 3.0, upstream parity): optimized-mode `PDFMergerUtility` copies only pages.** Each page dict is cloned with its crop box, media box, rotation and resources set on it (inherited values included; a page with no resources gets an empty `/Resources`), and the result takes the highest source version. `set_destination_document_information` and `set_destination_metadata` are no longer applied, the AcroForm is no longer merged, and a dynamic XFA source is no longer rejected. Use the legacy mode for those. pypdfbox 2.x keeps the old behavior.
+  upstream: PDFBox 3.0 branch `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFMergerUtility.java#optimizedMergeDocuments`
+  reason: parity; the old behavior was a pypdfbox superset.
+
+- **BREAKING (pypdfbox 3.0, upstream parity): `Splitter.split()` raises when a post pass fails.** A failure in a chunk's structure-tree clone, its destination fix-up, or the named-destination fix-ups (`fix_name_destinations`, `fix_name_destinations2`) now propagates instead of being logged; `split()` closes every document it created before the exception escapes and returns nothing. A malformed source `/Names /Dests` tree (for example a name key that is not a string) therefore aborts the split. pypdfbox 2.x keeps logging and continuing.
+  upstream: PDFBox 3.0 branch `pdfbox/src/main/java/org/apache/pdfbox/multipdf/Splitter.java#split`
+  reason: parity.
+
 - **/W2 CID ranges are stored compactly (PDFBOX-6175, trunk `bcf78963`).** Range entries (`c1 c2 w1y vx vy`) are kept as range records and no longer expanded into `get_widths2()`; individual entries win over ranges, then the first matching range. New accessor `PDCIDFont.get_vertical_displacement_ranges()`.
   upstream: PDFBox 4.0.0-SNAPSHOT (trunk) `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDCIDFont.java#readVerticalDisplacements`
   reason: memory (the original out-of-memory report); matches upstream lookup order.
@@ -213,7 +221,7 @@ Divergences that remain live (will affect observable behaviour vs Java PDFBox):
   upstream: PDFBox 3.0 branch `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDFont.java`, `PDType0Font.java`, `PDType1CFont.java`
   reason: forward-port of an upstream performance change ahead of the 3.0.9 release.
 
-- **`Splitter` takes the PDFBOX-6283 follow-ups of the 3.0 branch (behavior change).** `split()` (not `set_end_page`) rejects an end page below the start page, so the setters can be called in any order; ids and roles are collected per split document, so `/IDTree` and `/RoleMap` no longer carry entries of earlier chunks (PDFBOX-5792-240045 role maps: `[3,3,4,3,5,6]`, was `[3,3,4,4,6,7]`); a dropped structure element's clone is unregistered, so `/ParentTree` and `/IDTree` no longer reach half-built clones; an empty `/IDTree` is not written; if `split()` raises, every document it created is closed before the exception propagates, and per-run state is released after every run. Kept: a failed structure-tree clone or destination fix-up of one chunk is still logged, not raised. This DIVERGES from the 3.0.8 baseline and oracle jar (the archived Splitter probe embeds the current 3.0 branch `Splitter`).
+- **`Splitter` takes the PDFBOX-6283 follow-ups of the 3.0 branch (behavior change).** `split()` (not `set_end_page`) rejects an end page below the start page, so the setters can be called in any order; ids and roles are collected per split document, so `/IDTree` and `/RoleMap` no longer carry entries of earlier chunks (PDFBOX-5792-240045 role maps: `[3,3,4,3,5,6]`, was `[3,3,4,4,6,7]`); a dropped structure element's clone is unregistered, so `/ParentTree` and `/IDTree` no longer reach half-built clones; an empty `/IDTree` is not written; if `split()` raises, every document it created is closed before the exception propagates, and per-run state is released after every run. This DIVERGES from the 3.0.8 baseline and oracle jar (the archived Splitter probe embeds the current 3.0 branch `Splitter`).
   upstream: PDFBox 3.0 branch `pdfbox/src/main/java/org/apache/pdfbox/multipdf/Splitter.java` (PDFBOX-6283 116a1529 696cd934 6b6fad22 d6a68cee e15ac79c 3956ecc6 07594946 9bf8a0b7 b8bc5592 76a4d8e4 735e61bd ab978b65 f4e84663 892ca762 529d5c31)
   reason: forward-port of upstream bug fixes ahead of the 3.0.9 release.
 
@@ -224,10 +232,6 @@ Divergences that remain live (will affect observable behaviour vs Java PDFBox):
 - **FIX: signature examples produced invalid or failing signatures.** `CreateSignatureBase.sign` built the CMS without `PKCS7Options.Binary`, so the digest covered LF to CRLF converted bytes and didn't match the byte range; `SigUtils.set_mdp_permission` stored the `PDSignature` wrapper in `/Perms /DocMDP` (upstream stores its dictionary), which made every non-external `CreateSignature` save fail; `get_last_relevant_signature` referenced the missing `COSName.SIG`. `CreateSignature.sign_detached` takes the PDF `password` (PDFBOX-6289), so encrypted files can be signed.
   upstream: PDFBox 3.0 branch `examples/src/main/java/org/apache/pdfbox/examples/signature/CreateSignature.java` (5ee9525e), `CreateSignatureBase.java` (abcfaa6a), `SigUtils.java`
   reason: bug fix toward parity.
-
-- **Optimized-mode `PDFMergerUtility` still merges document information, metadata and the AcroForm.** Upstream's optimized mode (documented in 3.0 branch commit ba25bb85) skips them; pypdfbox has always applied `set_destination_document_information`, `set_destination_metadata` and `_merge_acro_form` there, and keeps doing so to avoid dropping data callers rely on.
-  upstream: PDFBox 3.0 branch `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFMergerUtility.java#optimizedMergeDocuments`
-  reason: pre-existing superset behavior, recorded here.
 
 - **Visible-signature AcroForm default appearance is `/Helv 0 Tf 0 g` instead of `/sylfaen 0 Tf 0 g` (PDFBOX-6221).** Forward-port from the unreleased PDFBox 3.0.9 (3.0 branch commit 6263ebe24b) in `PDVisibleSigBuilder.create_acro_form_dictionary`. This DIVERGES from the 3.0.8 baseline and oracle jar. No sylfaen font file was ever bundled, so no resource changes were needed.
   upstream: PDFBox 3.0 branch `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/visible/PDVisibleSigBuilder.java`

@@ -385,11 +385,48 @@ def test_successful_split_releases_per_run_state() -> None:
         doc.close()
 
 
-def test_post_pass_failure_is_still_logged_not_raised(
+@pytest.mark.parametrize(
+    "method",
+    [
+        "_clone_structure_tree",
+        "_fix_destinations",
+        "fix_name_destinations",
+        "fix_name_destinations2",
+    ],
+)
+def test_post_pass_failure_propagates_and_closes_documents(method: str) -> None:
+    """Upstream ``split()`` lets a failed structure-tree clone, destination
+    fix-up or named-destination fix-up escape; every created document is
+    closed and nothing is returned."""
+    created: list[PDDocument] = []
+
+    def fail(*_args: object) -> None:
+        raise OSError("broken post pass")
+
+    class Failing(Splitter):
+        def create_new_document(self) -> PDDocument:
+            document = super().create_new_document()
+            created.append(document)
+            return document
+
+    setattr(Failing, method, fail)
+
+    doc = _make_doc(2)
+    splitter = Failing()
+    try:
+        with pytest.raises(OSError, match="broken post pass"):
+            splitter.split(doc)
+    finally:
+        doc.close()
+    assert len(created) == 2
+    assert all(document.get_document().is_closed() for document in created)
+    assert splitter._destination_documents == []
+
+
+def test_post_pass_failure_is_not_logged(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """pypdfbox keeps logging a failed structure-tree clone of one chunk and
-    shipping that chunk without it (upstream aborts split())."""
+    """The failure is raised, not swallowed into an error log."""
 
     class Failing(Splitter):
         def clone_structure_tree(self, destination_document: PDDocument) -> None:
@@ -399,13 +436,12 @@ def test_post_pass_failure_is_still_logged_not_raised(
 
     doc = _make_doc(2)
     try:
-        with caplog.at_level(logging.ERROR, logger="pypdfbox.multipdf.splitter"):
-            chunks = Failing().split(doc)
-        assert len(chunks) == 2
-        assert "structure-tree clone failed" in caplog.text
-        for chunk in chunks:
-            assert not chunk.get_document().is_closed()
-            chunk.close()
+        with (
+            caplog.at_level(logging.ERROR, logger="pypdfbox.multipdf.splitter"),
+            pytest.raises(OSError, match="broken tree"),
+        ):
+            Failing().split(doc)
+        assert "structure-tree clone failed" not in caplog.text
     finally:
         doc.close()
 

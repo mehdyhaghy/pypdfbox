@@ -95,7 +95,11 @@ with Loader.load_pdf("base.pdf") as base, Loader.load_pdf("logo.pdf") as logo:
 `/Resources` dictionary on the way in and de-duplicates fonts, color
 spaces, ExtGStates, X-objects, patterns, and shadings by content
 hash. The output PDF is typically 10-30 % smaller than the
-`PDFBOX_LEGACY_MODE` equivalent on real-world inputs.
+`PDFBOX_LEGACY_MODE` equivalent on real-world inputs. Like upstream, it
+copies only pages: document information, metadata, the AcroForm, outlines
+and other catalog-level structures are not merged, and
+`set_destination_document_information` / `set_destination_metadata` are
+ignored. Use `PDFBOX_LEGACY_MODE` when you need them.
 
 `AcroFormMergeMode.JOIN_FORM_FIELDS_MODE` (default) merges field trees
 across source documents, renaming colliding fully-qualified names with a

@@ -15,6 +15,8 @@ Targets the remaining uncovered branches:
 
 from typing import Any
 
+import pytest
+
 from pypdfbox import PDDocument, PDPage
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.multipdf import Splitter
@@ -445,8 +447,8 @@ def test_clone_structure_tree_walks_annotation_appearance_resources() -> None:
 
 def test_clone_structure_tree_appearance_get_resources_raises() -> None:
     """When an annotation's normal appearance stream raises on
-    ``get_resources()``, the clone walker swallows it and falls through
-    to process_resources(None, ...) (covers lines 1116-1117)."""
+    ``get_resources()``, the error escapes ``split()`` as it does upstream
+    (``cloneStructureTree`` has no catch)."""
     from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
         PDStructureElement,
         PDStructureTreeRoot,
@@ -507,12 +509,11 @@ def test_clone_structure_tree_appearance_get_resources_raises() -> None:
 
     PDAnnotation.get_normal_appearance_stream = bad_get  # type: ignore[method-assign]
     try:
-        chunks = Splitter().split(src)
+        with pytest.raises(RuntimeError, match="simulated"):
+            Splitter().split(src)
     finally:
         PDAnnotation.get_normal_appearance_stream = real_method  # type: ignore[method-assign]
-    assert len(chunks) == 1
-    chunks[0].close()
-    src.close()
+        src.close()
 
 
 def test_process_resources_form_xobject_with_struct_parents() -> None:

@@ -399,9 +399,9 @@ def test_optimize_mode_requires_destination() -> None:
         src.close()
 
 
-def test_optimize_mode_dynamic_xfa_raises_oserror(tmp_path: Path) -> None:
-    """A source carrying a dynamic-XFA AcroForm is rejected under the
-    optimize path too (same guard as legacy)."""
+def test_optimize_mode_dynamic_xfa_is_not_rejected(tmp_path: Path) -> None:
+    """Upstream ``optimizedMergeDocuments`` copies only pages and has no
+    dynamic-XFA guard (that is the legacy path), so the merge succeeds."""
     util = PDFMergerUtility()
     util.set_document_merge_mode(DocumentMergeMode.OPTIMIZE_RESOURCES_MODE)
 
@@ -432,8 +432,8 @@ def test_optimize_mode_dynamic_xfa_raises_oserror(tmp_path: Path) -> None:
 
     # Patch _open_source to return our fake without touching disk.
     util._open_source = lambda src: (src, False)  # type: ignore[method-assign]
-    with pytest.raises(OSError, match="dynamic XFA"):
-        util.merge_documents()
+    util.merge_documents()
+    assert (tmp_path / "out.pdf").exists()
 
 
 def test_optimize_mode_source_close_failure_is_logged(

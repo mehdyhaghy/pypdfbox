@@ -384,42 +384,19 @@ class Splitter:
                 self._page_dict_map = self._page_dict_maps[index]
                 self._annot_dict_map = self._annot_dict_maps[index]
                 self._k_chunk_index = index
-                try:
-                    # Dispatch via the underscored alias so subclasses can
-                    # override either the public ``clone_structure_tree``
-                    # or the upstream-private ``_clone_structure_tree``.
-                    self._clone_structure_tree(destination_document)
-                except Exception:
-                    _LOG.exception(
-                        "structure-tree clone failed for chunk %d; chunk will "
-                        "ship without /StructTreeRoot",
-                        index,
-                    )
-                try:
-                    self._fix_destinations(destination_document)
-                except Exception:
-                    _LOG.exception(
-                        "destination fix-up failed for chunk %d; cross-chunk "
-                        "/Dest links may dangle",
-                        index,
-                    )
+                # Upstream propagates structure-tree, destination and
+                # named-destination failures; the finally block below closes
+                # every created document before the exception escapes.
+                # Dispatch via the underscored alias so subclasses can
+                # override either the public ``clone_structure_tree`` or the
+                # upstream-private ``_clone_structure_tree``.
+                self._clone_structure_tree(destination_document)
+                self._fix_destinations(destination_document)
             # PDFBOX-6283: carry the named destinations (/Names /Dests name
             # tree and legacy /Root/Dests) over to the chunks that own their
             # pages.
-            try:
-                self.fix_name_destinations()
-            except Exception:
-                _LOG.exception(
-                    "named destinations fix-up failed; chunks will ship "
-                    "without /Names /Dests"
-                )
-            try:
-                self.fix_name_destinations2()
-            except Exception:
-                _LOG.exception(
-                    "named destinations fix-up failed; chunks will ship "
-                    "without /Root/Dests"
-                )
+            self.fix_name_destinations()
+            self.fix_name_destinations2()
             success = True
         finally:
             # release the per-run state (upstream nulls these fields)

@@ -233,11 +233,11 @@ def _build_doc_with_acroform_field(field_name: str) -> PDDocument:
     return doc
 
 
-def test_wave1289_optimize_mode_carries_over_acroform_fields_from_source(
+def test_wave1289_optimize_mode_does_not_merge_acroform(
     tmp_path: Path,
 ) -> None:
-    """AcroForm fields from the (only) source must end up in the
-    destination's /AcroForm /Fields under the optimize path."""
+    """Upstream ``optimizedMergeDocuments`` copies only pages: the source
+    /AcroForm is not merged into the destination catalog."""
     a = tmp_path / "a.pdf"
     out = tmp_path / "out.pdf"
     _save(_build_doc_with_acroform_field("Field1"), a)
@@ -249,18 +249,15 @@ def test_wave1289_optimize_mode_carries_over_acroform_fields_from_source(
     util.merge_documents()
 
     with PDDocument.load(str(out)) as merged:
-        form = merged.get_document_catalog().get_acro_form()
-        assert form is not None
-        names = [f.get_partial_name() for f in form.get_fields()]
-        assert names == ["Field1"]
+        assert merged.get_document_catalog().get_acro_form() is None
 
 
-def test_wave1289_optimize_mode_acroform_name_collision_is_uniquified(
+def test_wave1289_optimize_mode_two_acroform_sources_yield_no_acroform(
     tmp_path: Path,
 ) -> None:
-    """Two sources, both with a /T = 'common' field. Optimize-mode
-    AcroForm merge must keep the first one verbatim and rename the
-    second with the dummyFieldName-prefix collision-handling rule."""
+    """Two sources, both with a /T = 'common' field. Optimize mode does
+    not merge either form, so no field renaming happens and the
+    destination has no /AcroForm."""
     a = tmp_path / "a.pdf"
     b = tmp_path / "b.pdf"
     out = tmp_path / "out.pdf"
@@ -274,13 +271,8 @@ def test_wave1289_optimize_mode_acroform_name_collision_is_uniquified(
     util.merge_documents()
 
     with PDDocument.load(str(out)) as merged:
-        form = merged.get_document_catalog().get_acro_form()
-        assert form is not None
-        names = sorted(f.get_partial_name() for f in form.get_fields())
-        assert "common" in names
-        assert any(
-            n is not None and n.startswith("dummyFieldName") for n in names
-        )
+        assert merged.get_document_catalog().get_acro_form() is None
+        assert merged.get_number_of_pages() == 2
 
 
 # ---------- annotation /Parent fix-up via import_page ----------

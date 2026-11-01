@@ -1,5 +1,5 @@
 """Wave 1352 — PDFMergerUtility: defensive close-on-error finally
-clauses, optimize-mode document-info / metadata override, viewer-prefs
+clauses, optimize-mode document-info / metadata handling, viewer-prefs
 toggle guards, and the ``_hash_cos`` indirect-reference recursion.
 
 Targets the under-covered branches in
@@ -7,9 +7,8 @@ Targets the under-covered branches in
 
 * lines 50-51 — ``_hash_cos`` recursion through a ``COSObject``
   indirect reference (deref + re-enter on the resolved value);
-* lines 635, 639 — optimize-mode honours
-  ``set_destination_document_information`` /
-  ``set_destination_metadata``;
+* optimize mode ignores ``set_destination_document_information`` /
+  ``set_destination_metadata`` (upstream parity);
 * lines 651-652 — optimize-mode ``destination.close()`` raises in the
   ``finally`` block; logged-and-swallowed;
 * lines 655-658 — optimize-mode ``src_doc.close()`` raises in the
@@ -93,15 +92,15 @@ def test_hash_cos_indirect_reference_to_none_resolves_clean() -> None:
     assert h.digest() == h_direct.digest()
 
 
-# ---------- optimize-mode set_destination_*  (lines 635, 639) -------------
+# ---------- optimize-mode set_destination_* is ignored -------------------
 
 
-def test_optimize_mode_honours_destination_document_information(
+def test_optimize_mode_ignores_destination_document_information(
     tmp_path: Path,
 ) -> None:
-    """Line 635: the optimize merge path also honours
-    ``set_destination_document_information`` (separate code branch from
-    the legacy path covered by ``test_destination_document_information_overrides``).
+    """Upstream ``optimizedMergeDocuments`` does not apply
+    ``set_destination_document_information``; only the legacy path does
+    (covered by ``test_destination_document_information_overrides``).
     """
     from pypdfbox.pdmodel.pd_document_information import PDDocumentInformation
 
@@ -120,13 +119,13 @@ def test_optimize_mode_honours_destination_document_information(
     util.merge_documents()
 
     with PDDocument.load(str(out)) as merged:
-        assert merged.get_document_information().get_title() == "optimize-title"
+        assert merged.get_document_information().get_title() is None
 
 
-def test_optimize_mode_honours_destination_metadata(tmp_path: Path) -> None:
-    """Line 639: the optimize merge path also honours
-    ``set_destination_metadata`` (separate code branch from the legacy
-    path covered by ``test_set_destination_metadata_overrides_source``).
+def test_optimize_mode_ignores_destination_metadata(tmp_path: Path) -> None:
+    """Upstream ``optimizedMergeDocuments`` does not apply
+    ``set_destination_metadata``; only the legacy path does (covered by
+    ``test_set_destination_metadata_overrides_source``).
     """
     from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
 
@@ -147,9 +146,84 @@ def test_optimize_mode_honours_destination_metadata(tmp_path: Path) -> None:
     util.merge_documents()
 
     with PDDocument.load(str(out)) as merged:
-        md = merged.get_document_catalog().get_metadata()
-        assert md is not None
-        assert b"x:xmpmeta" in md.get_cos_object().get_raw_data()
+        assert merged.get_document_catalog().get_metadata() is None
+
+
+def test_optimize_mode_materializes_inherited_page_attributes(
+    tmp_path: Path,
+) -> None:
+    """Upstream sets the crop box, media box, rotation and resources on
+    each cloned page, so attributes inherited from the source /Pages node
+    survive even though /Parent is dropped."""
+    from pypdfbox.cos import COSArray, COSInteger
+
+    src = _build_doc(2)
+    pages_dict = src.get_document_catalog().get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("Pages")
+    )
+    box = COSArray()
+    for v in (0, 0, 300, 400):
+        box.add(COSInteger.get(v))
+    font = COSDictionary()
+    font.set_name("Type", "Font")
+    font.set_name("Subtype", "Type1")
+    font.set_name("BaseFont", "Helvetica")
+    fonts = COSDictionary()
+    fonts.set_item(COSName.get_pdf_name("F1"), font)
+    resources = COSDictionary()
+    resources.set_item(COSName.get_pdf_name("Font"), fonts)
+    pages_dict.set_item(COSName.get_pdf_name("MediaBox"), box)
+    pages_dict.set_item(COSName.get_pdf_name("Rotate"), COSInteger.get(90))
+    pages_dict.set_item(COSName.get_pdf_name("Resources"), resources)
+    for page in src.get_pages():
+        page.get_cos_object().remove_item(COSName.get_pdf_name("MediaBox"))
+        page.get_cos_object().remove_item(COSName.get_pdf_name("Resources"))
+    a = tmp_path / "a.pdf"
+    out = tmp_path / "out.pdf"
+    _save_to_path(src, a)
+
+    util = PDFMergerUtility()
+    util.set_document_merge_mode(DocumentMergeMode.OPTIMIZE_RESOURCES_MODE)
+    util.add_source(str(a))
+    util.set_destination_file_name(str(out))
+    util.merge_documents()
+
+    with PDDocument.load(str(out)) as merged:
+        assert merged.get_number_of_pages() == 2
+        for page in merged.get_pages():
+            cos = page.get_cos_object()
+            assert cos.contains_key(COSName.get_pdf_name("MediaBox"))
+            assert cos.contains_key(COSName.get_pdf_name("CropBox"))
+            assert page.get_media_box().get_width() == 300
+            assert page.get_media_box().get_height() == 400
+            assert page.get_rotation() == 90
+            res = page.get_resources()
+            assert res is not None
+            assert COSName.get_pdf_name("F1") in list(res.get_font_names())
+
+
+def test_optimize_mode_page_without_resources_gets_empty_resources(
+    tmp_path: Path,
+) -> None:
+    """A source page with no /Resources anywhere gets an empty one."""
+    src = _build_doc(1)
+    src.get_page(0).get_cos_object().remove_item(COSName.get_pdf_name("Resources"))
+    a = tmp_path / "a.pdf"
+    out = tmp_path / "out.pdf"
+    _save_to_path(src, a)
+
+    util = PDFMergerUtility()
+    util.set_document_merge_mode(DocumentMergeMode.OPTIMIZE_RESOURCES_MODE)
+    util.add_source(str(a))
+    util.set_destination_file_name(str(out))
+    util.merge_documents()
+
+    with PDDocument.load(str(out)) as merged:
+        res = merged.get_page(0).get_cos_object().get_dictionary_object(
+            COSName.get_pdf_name("Resources")
+        )
+        assert isinstance(res, COSDictionary)
+        assert res.size() == 0
 
 
 # ---------- optimize-mode close-on-error finally (lines 651-652, 655-658) -
