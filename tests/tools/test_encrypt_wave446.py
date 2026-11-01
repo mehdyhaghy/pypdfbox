@@ -86,7 +86,7 @@ def test_encrypt_pdf_uses_public_key_policy_for_cert_files(
     document = _FakeDocument()
     certs = [object(), object()]
 
-    monkeypatch.setattr(encrypt_tool.PDDocument, "load", lambda path: document)
+    monkeypatch.setattr(encrypt_tool.PDDocument, "load", lambda path, password=None: document)
     monkeypatch.setattr(encrypt_tool, "_load_certificates", lambda paths: certs)
 
     permissions = AccessPermission()
@@ -122,7 +122,7 @@ def test_encrypt_pdf_closes_document_when_standard_policy_save_fails(
         raise OSError("disk full")
 
     document.save = fail_save  # type: ignore[method-assign]
-    monkeypatch.setattr(encrypt_tool.PDDocument, "load", lambda path: document)
+    monkeypatch.setattr(encrypt_tool.PDDocument, "load", lambda path, password=None: document)
 
     with pytest.raises(OSError, match="disk full"):
         encrypt_tool.encrypt_pdf(tmp_path / "plain.pdf", tmp_path / "out.pdf")
@@ -141,7 +141,7 @@ def test_run_warns_for_signed_document_and_continues(
     src.write_bytes(b"%PDF-1.7\n")
     probe = _FakeDocument(signatures=True)
 
-    monkeypatch.setattr(encrypt_tool.PDDocument, "load", lambda path: probe)
+    monkeypatch.setattr(encrypt_tool.PDDocument, "load", lambda path, password=None: probe)
 
     calls: list[tuple[Path, Path]] = []
 
@@ -184,7 +184,7 @@ def test_run_returns_four_when_probe_load_raises_oserror(
     src = tmp_path / "broken.pdf"
     src.write_bytes(b"%PDF-1.7\n")
 
-    def fail_load(path: Path) -> _FakeDocument:
+    def fail_load(path: Path, password: str | None = None) -> _FakeDocument:
         raise OSError("cannot parse")
 
     monkeypatch.setattr(encrypt_tool.PDDocument, "load", fail_load)

@@ -2,8 +2,7 @@ import io
 from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING, BinaryIO
 
-from PIL import Image
-
+from pypdfbox._lazy_exports import lazy_modules
 from pypdfbox.cos import (
     COSArray,
     COSBase,
@@ -15,6 +14,9 @@ from pypdfbox.cos import (
 )
 from pypdfbox.filter.filter_factory import FilterFactory
 from pypdfbox.pdmodel.graphics.color import PDColorSpace
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_resources import PDResources
@@ -611,6 +613,8 @@ class PDInlineImage:
         rendering-cluster work and currently fall through to ``None`` —
         same scope as :meth:`PDImageXObject.get_image`.
         """
+        from PIL import Image
+
         image = self.to_pil_image()
         if image is None:
             return None
@@ -661,3 +665,5 @@ class PDInlineImage:
 
 
 __all__ = ["PDInlineImage"]
+
+__getattr__ = lazy_modules(__name__, {"Image": "PIL.Image"})

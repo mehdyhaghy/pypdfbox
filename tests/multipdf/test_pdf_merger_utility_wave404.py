@@ -93,8 +93,18 @@ def test_wave404_merge_with_sources_requires_destination() -> None:
     source.close()
 
 
-def test_wave404_merge_without_sources_is_noop_even_without_destination() -> None:
-    PDFMergerUtility().merge_documents()
+def test_wave404_merge_without_sources_still_requires_destination() -> None:
+    # PDFBOX-6299: the destination is validated before the empty-source check.
+    with pytest.raises(ValueError, match="set_destination_file_name"):
+        PDFMergerUtility().merge_documents()
+
+
+def test_wave404_merge_without_sources_is_noop_with_destination() -> None:
+    util = PDFMergerUtility()
+    out = io.BytesIO()
+    util.set_destination_stream(out)
+    util.merge_documents()
+    assert out.getvalue() == b""
 
 
 def test_wave404_merge_documents_stages_overload_arguments_under_optimize(
@@ -107,6 +117,7 @@ def test_wave404_merge_documents_stages_overload_arguments_under_optimize(
     cache_factory = object()
     compress_parameters = object()
     util.set_document_merge_mode(DocumentMergeMode.OPTIMIZE_RESOURCES_MODE)
+    util.set_destination_stream(io.BytesIO())
 
     with caplog.at_level(
         logging.INFO, logger="pypdfbox.multipdf.pdf_merger_utility"
@@ -135,14 +146,10 @@ def test_wave404_merge_to_stream_from_bytes_and_bytearray_sources() -> None:
 
 
 def test_wave404_catalog_scalar_merge_matches_upstream_gating() -> None:
-    """Wave 1506: upstream ``appendDocument`` carries /PageMode first-source-wins
-    OUTSIDE the structure-tree block, but merges /Lang and /ViewerPreferences
-    ONLY inside the ``if (mergeStructTree)`` block (alongside /MarkInfo), and
-    never merges /PageLayout at all (oracle-confirmed: a non-tagged two-source
-    merge leaves Lang / ViewerPreferences / PageLayout absent on the
-    destination). These sources are plain (untagged) → no structure-tree merge →
-    Lang / ViewerPreferences / PageLayout are NOT carried; only the existing
-    dest /PageMode survives."""
+    """Upstream ``appendDocument`` carries /PageMode first-source-wins and
+    never merges /PageLayout. Since PDFBOX-6299 (3.0 branch, unreleased 3.0.9)
+    /Lang and /ViewerPreferences are merged outside the structure-tree block,
+    so plain (untagged) sources carry them too."""
     source = _make_doc(1)
     destination = _make_doc(1)
     src_catalog = source.get_document_catalog().get_cos_object()
@@ -162,10 +169,11 @@ def test_wave404_catalog_scalar_merge_matches_upstream_gating() -> None:
     assert dest_catalog.get_dictionary_object(_PAGE_MODE) == COSName.get_pdf_name(
         "UseNone"
     )
-    # No structure-tree merge → these three are NOT carried, matching upstream.
     assert dest_catalog.get_dictionary_object(_PAGE_LAYOUT) is None
-    assert dest_catalog.get_string(_LANG) is None
-    assert dest_catalog.get_dictionary_object(_VIEWER_PREFS) is None
+    assert dest_catalog.get_string(_LANG) == "en-US"
+    merged_prefs = dest_catalog.get_dictionary_object(_VIEWER_PREFS)
+    assert isinstance(merged_prefs, COSDictionary)
+    assert merged_prefs.get_boolean(COSName.get_pdf_name("HideToolbar")) is True
     source.close()
     destination.close()
 

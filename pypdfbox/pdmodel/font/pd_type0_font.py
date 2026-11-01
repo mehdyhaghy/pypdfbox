@@ -825,6 +825,29 @@ class PDType0Font(PDFont):
             return False
         return descendant.is_embedded()
 
+    def is_encoded_via_substitute(self) -> bool:
+        """PDFBOX-6292: an Identity CMap without ``/ToUnicode`` over a
+        non-embedded CIDFontType2: upstream ``encode()`` returns the
+        substitute's GIDs, so the codes need not exist in the PDF.
+
+        Mirrors upstream ``PDType0Font.isEncodedViaSubstitute``.
+        """
+        from .pd_cid_font_type2 import PDCIDFontType2
+
+        if self.is_embedded():
+            return False
+        if not isinstance(self.get_descendant_font(), PDCIDFontType2):
+            return False
+        cmap = self.get_cmap()
+        if cmap is None:
+            return False
+        name = cmap.get_name()
+        return (
+            name is not None
+            and name.startswith("Identity-")
+            and not self._dict.contains_key(_TO_UNICODE)
+        )
+
     def is_damaged(self) -> bool:
         """``True`` when the descendant CIDFont's embedded font program
         failed to parse. Mirrors upstream ``PDType0Font.isDamaged`` which
@@ -1261,20 +1284,35 @@ class PDType0Font(PDFont):
     def get_string_width(self, text: str) -> float:
         """Total advance width of ``text`` in 1/1000 em.
 
-        Encodes ``text`` via :meth:`encode`, walks the resulting bytes
-        through :meth:`read_code`, and accumulates :meth:`get_glyph_width`
-        for each code. Mirrors upstream ``PDType0Font.getStringWidth(String)``.
+        Mirrors upstream ``PDType0Font.getStringWidth(String)``
+        (PDFBOX-6287): per codepoint, the bytes from :meth:`encode` are
+        walked through :meth:`read_code`, and :meth:`get_glyph_width` is
+        accumulated for each code. The per-codepoint total is cached in
+        ``_codepoint_to_width_map``, except for the lenient ``.notdef``
+        substitutions that :meth:`encode` itself does not cache (upstream
+        throws there), so a later ``/ToUnicode`` or CMap change can still
+        resolve them.
         """
-        encoded = self.encode(text)
+        cache = self._codepoint_to_width_map
+        encoded_cache = self._codepoint_to_encoding_map
         total = 0.0
-        offset = 0
-        n = len(encoded)
-        while offset < n:
-            code, consumed = self.read_code(encoded, offset)
-            if consumed <= 0:
-                break
-            total += self.get_glyph_width(code)
-            offset += consumed
+        for ch in text:
+            code_point = ord(ch)
+            code_point_width = cache.get(code_point)
+            if code_point_width is None:
+                code_point_width = 0.0
+                encoded = self.encode(code_point)
+                offset = 0
+                n = len(encoded)
+                while offset < n:
+                    code, consumed = self.read_code(encoded, offset)
+                    if consumed <= 0:
+                        break
+                    code_point_width += self.get_glyph_width(code)
+                    offset += consumed
+                if code_point in encoded_cache:
+                    cache[code_point] = code_point_width
+            total += code_point_width
         return total
 
     # ---------- str <-> bytes (encoding via the active CMap) ----------
@@ -1302,7 +1340,7 @@ class PDType0Font(PDFont):
         replaced with the bytes of CID 0 (``.notdef``).
 
         Per-codepoint results are memoised in the shared
-        :attr:`PDFont._codepoint_encoding` cache (PDFBOX-6287). The lenient
+        :attr:`PDFont._codepoint_to_encoding_map` cache (PDFBOX-6287). The lenient
         ``.notdef`` substitutions (where upstream raises instead) are not
         cached, so a later ``/ToUnicode`` or CMap change can still resolve
         them.
@@ -1338,9 +1376,9 @@ class PDType0Font(PDFont):
         use_embedded: bool,
         use_predefined: bool,
     ) -> bytes:
-        """Encode one codepoint through the shared ``codepointEncoding``
+        """Encode one codepoint through the shared ``codepointToEncodingMap``
         cache (upstream ``PDType0Font.encode(int)``, PDFBOX-6287)."""
-        encoded = self._codepoint_encoding.get(cp)
+        encoded = self._codepoint_to_encoding_map.get(cp)
         if encoded is not None:
             return encoded
         if use_predefined:
@@ -1354,7 +1392,7 @@ class PDType0Font(PDFont):
             encoded = self._lookup_codepoint(cp, cmap)
             if encoded is None:
                 return self._notdef_bytes(cmap)
-        self._codepoint_encoding[cp] = encoded
+        self._codepoint_to_encoding_map[cp] = encoded
         return encoded
 
     def _use_embedded_encode(self, cmap: CMap | None) -> bool:

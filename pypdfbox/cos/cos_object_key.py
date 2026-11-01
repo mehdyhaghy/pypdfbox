@@ -31,8 +31,10 @@ class COSObjectKey:
             raise ValueError("Generation number must not be a negative value")
         # Match upstream Java (COSObjectKey.java) — no strict 16-bit guard
         # at construction time; the writer enforces it on serialization.
-        object.__setattr__(self, "_number_and_generation", self.compute_internal_hash(num, gen))
-        object.__setattr__(self, "_stream_index", index)
+        # Same packing as :meth:`compute_internal_hash`, inlined: keys are
+        # built once per parsed indirect reference.
+        self._number_and_generation = (num << _NUMBER_OFFSET) | (gen & _GENERATION_MASK)
+        self._stream_index = index
 
     # ------------------------------------------------------------------
     # Static helpers
@@ -87,11 +89,11 @@ class COSObjectKey:
 
     @property
     def object_number(self) -> int:
-        return self.get_number()
+        return self._number_and_generation >> _NUMBER_OFFSET
 
     @property
     def generation_number(self) -> int:
-        return self.get_generation()
+        return self._number_and_generation & _GENERATION_MASK
 
     @property
     def stream_index(self) -> int:
@@ -114,7 +116,8 @@ class COSObjectKey:
         return not result
 
     def __hash__(self) -> int:
-        return hash(self._number_and_generation)
+        # Same value as ``hash(int)``: Python reduces the returned int itself.
+        return self._number_and_generation
 
     def __lt__(self, other: Any) -> bool:
         if not isinstance(other, COSObjectKey):

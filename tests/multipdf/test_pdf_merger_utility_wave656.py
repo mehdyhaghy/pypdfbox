@@ -43,6 +43,17 @@ class _Catalog:
     def get_pages(self) -> list[object]:
         return []
 
+    def get_page_labels(self) -> object | None:
+        from pypdfbox.pdmodel.pd_page_labels import PDPageLabels
+
+        v = self._dict.get_dictionary_object(_PAGE_LABELS)
+        if isinstance(v, COSDictionary):
+            return PDPageLabels(None, v)  # type: ignore[arg-type]
+        return None
+
+    def set_page_labels(self, labels: object) -> None:
+        self._dict.set_item(_PAGE_LABELS, labels.get_cos_object())  # type: ignore[attr-defined]
+
 
 class _Document:
     def __init__(self, catalog: _Catalog, page_count: int = 0) -> None:
@@ -142,7 +153,9 @@ def test_wave656_merge_outline_ignores_cycles_and_stops_when_insert_yields_no_ne
 
 
 def test_wave656_merge_page_labels_replaces_malformed_destination_nums() -> None:
-    src_nums = COSArray([COSInteger.get(0), COSString("cover")])
+    cover = COSDictionary()
+    cover.set_string(COSName.get_pdf_name("P"), "cover")
+    src_nums = COSArray([COSInteger.get(0), cover])
     src_labels = COSDictionary()
     src_labels.set_item(_NUMS, src_nums)
     src_catalog_dict = COSDictionary()
@@ -159,10 +172,31 @@ def test_wave656_merge_page_labels_replaces_malformed_destination_nums() -> None
         _Document(_Catalog(dest_catalog_dict), page_count=4),
     )
 
-    dest_nums = dest_labels.get_dictionary_object(_NUMS)
+    # PDFBOX-6296: the merged labels go through PDPageLabels, which replaces
+    # the catalog's /PageLabels with a fresh dictionary holding the seeded
+    # page-0 default followed by the shifted source range.
+    merged = dest_catalog_dict.get_dictionary_object(_PAGE_LABELS)
+    assert isinstance(merged, COSDictionary)
+    dest_nums = merged.get_dictionary_object(_NUMS)
     assert isinstance(dest_nums, COSArray)
-    assert dest_nums.get_object(0) == COSInteger.get(4)
-    assert dest_nums.get_object(1) == COSString("cover")
+    assert dest_nums.get_object(0) == COSInteger.get(0)
+    assert dest_nums.get_object(2) == COSInteger.get(4)
+    assert dest_nums.get_object(3).get_string(COSName.get_pdf_name("P")) == "cover"
+
+
+def test_wave656_merge_page_labels_rejects_non_dictionary_source_range() -> None:
+    # Upstream's PDPageLabels raises IOException for a non-dictionary range.
+    src_labels = COSDictionary()
+    src_labels.set_item(_NUMS, COSArray([COSInteger.get(0), COSString("cover")]))
+    src_catalog_dict = COSDictionary()
+    src_catalog_dict.set_item(_PAGE_LABELS, src_labels)
+
+    with pytest.raises(OSError, match="PDPageLabelRange"):
+        PDFMergerUtility()._merge_page_labels(  # type: ignore[arg-type]
+            _IdentityCloner(),
+            _Document(_Catalog(src_catalog_dict)),
+            _Document(_Catalog(), page_count=4),
+        )
 
 
 def test_wave656_prepare_struct_tree_merge_derives_negative_next_key_from_dest_map() -> None:

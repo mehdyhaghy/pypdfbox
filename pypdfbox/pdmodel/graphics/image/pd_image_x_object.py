@@ -6,8 +6,7 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO
 
-from PIL import Image
-
+from pypdfbox._lazy_exports import lazy_modules
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSFloat, COSInteger, COSName, COSStream
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 from pypdfbox.pdmodel.graphics.color import PDColorSpace
@@ -16,6 +15,8 @@ from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
 _LOG = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from PIL import Image
+
     from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
     from pypdfbox.pdmodel.graphics.pd_property_list import PDPropertyList
     from pypdfbox.pdmodel.pd_document import PDDocument
@@ -146,6 +147,8 @@ class PDImageXObject(PDXObject):
         factory; TIFF routes through CCITTFactory (with PNG fallback);
         JPEG routes through JPEGFactory.
         """
+        from PIL import Image
+
         from pypdfbox.pdmodel.graphics.image.ccitt_factory import CCITTFactory
         from pypdfbox.pdmodel.graphics.image.jpeg_factory import JPEGFactory
         from pypdfbox.pdmodel.graphics.image.lossless_factory import (
@@ -213,6 +216,8 @@ class PDImageXObject(PDXObject):
         ``create_from_byte_array(document, byte_array)`` and is preferred
         over the default Pillow + ``LosslessFactory`` path.
         """
+        from PIL import Image
+
         from pypdfbox.pdmodel.graphics.image.ccitt_factory import CCITTFactory
         from pypdfbox.pdmodel.graphics.image.jpeg_factory import JPEGFactory
         from pypdfbox.pdmodel.graphics.image.lossless_factory import (
@@ -842,6 +847,8 @@ class PDImageXObject(PDXObject):
         :meth:`to_pil_image`). When no mask is present the opaque raster is
         returned unchanged.
         """
+        from PIL import Image
+
         # Upstream caches full-region renders only, returning the cached
         # raster when the same subsampling level is requested again
         # (``region == null && subsampling == cachedImageSubsampling``).
@@ -934,6 +941,8 @@ class PDImageXObject(PDXObject):
         matching upstream's ``getOpaqueImage`` (which decodes the raster
         without the alpha-mask step). ``region`` / ``subsampling`` are
         applied identically to :meth:`get_image`."""
+        from PIL import Image
+
         image = self.to_pil_image()
         if image is None:
             return None
@@ -1043,6 +1052,8 @@ class PDImageXObject(PDXObject):
         matte fixed-point compositing path is rendering-cluster work and
         is not exercised here — the simple mask path uses Pillow's
         ``putalpha`` (or alpha inversion for stencil masks)."""
+        from PIL import Image
+
         del interpolate_mask, matte  # rendering-cluster fidelity, not yet exercised
         if mask is None:
             return image
@@ -1066,6 +1077,8 @@ class PDImageXObject(PDXObject):
         the actual resampling — bicubic when ``interpolate`` is set,
         nearest-neighbour otherwise. ``mode`` is a PIL mode string
         (``"L"``, ``"RGBA"``, …)."""
+        from PIL import Image
+
         scaled = image.resize(
             (int(width), int(height)),
             Image.BICUBIC if interpolate else Image.NEAREST,
@@ -1138,6 +1151,8 @@ def decode_pdimage_to_pil(
     non-device colour models remain rendering-cluster work and return
     ``None``.
     """
+    from PIL import Image
+
     width = pd_image.get_width()
     height = pd_image.get_height()
     if width <= 0 or height <= 0:
@@ -1305,6 +1320,8 @@ def _apply_soft_mask(
     un-pre-multiplied (``c = m + (c' - m) / alpha``) — mirroring upstream
     ``PDImageXObject.applyMask``. Any decode failure returns ``image``
     unchanged."""
+    from PIL import Image
+
     try:
         mask_image = smask.to_pil_image()
     except Exception:  # best-effort; opaque raster on failure
@@ -1345,6 +1362,8 @@ def _unpremultiply_matte(
     recovered as ``c = m + (c' - m) / alpha``. Pixels with alpha 0 are left
     untouched and every recovered component is clamped to ``[0, 255]``. An
     absent matte (or any resolution failure) returns ``rgba`` unchanged."""
+    from PIL import Image
+
     try:
         matte = base.extract_matte(smask)
     except Exception:  # best-effort
@@ -1380,6 +1399,8 @@ def _apply_explicit_mask(image: Image.Image, mask: PDImageXObject) -> Image.Imag
     image's dimensions with nearest-neighbour sampling (the spec's per-sample
     selection — no bilinear blur of the stencil edge), and applied as alpha.
     Any decode failure returns ``image`` unchanged."""
+    from PIL import Image
+
     try:
         mw = int(mask.get_width())
         mh = int(mask.get_height())
@@ -1435,6 +1456,8 @@ def _apply_color_key_mask(
     A mask whose pair-count does not match the image's component count, an odd
     or too-short range, or a raster we cannot read back as raw samples leaves
     ``image`` unchanged (best-effort — never raise)."""
+    from PIL import Image
+
     if len(ranges) < 2 or len(ranges) % 2 != 0:
         return image
     components = len(ranges) // 2
@@ -1821,6 +1844,8 @@ def _decode_devicen_to_rgb(
     when any step fails — emitted at debug level rather than raising
     so a single bad pixel cannot abort decoding of the whole page.
     """
+    from PIL import Image
+
     n = color_space.get_number_of_components()
     if n <= 0:
         _LOG.debug(
@@ -1886,6 +1911,8 @@ def _luminance_fallback(
     """Render an N-component raster as a grayscale image by averaging
     the per-pixel tint bytes. Used only when the tint transform cannot
     be evaluated."""
+    from PIL import Image
+
     expected = width * height * n
     if len(data) < expected:
         return None
@@ -1938,3 +1965,5 @@ def _detect_file_type(head: bytes) -> str | None:
     if head[:4] in (b"II*\x00", b"MM\x00*"):
         return "TIFF"
     return None
+
+__getattr__ = lazy_modules(__name__, {"Image": "PIL.Image"})

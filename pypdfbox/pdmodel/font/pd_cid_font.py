@@ -1,3 +1,4 @@
+import math
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Any
 
@@ -10,6 +11,7 @@ from pypdfbox.cos import (
     COSStream,
 )
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+from pypdfbox.util.matrix import f32
 
 from .pd_cid_system_info import PDCIDSystemInfo
 from .vertical_displacement_range import VerticalDisplacementRange
@@ -640,15 +642,21 @@ class PDCIDFont:
     # ---------- average advance ----------
 
     def get_average_font_width(self) -> float:
-        """Mean glyph advance across the parsed ``/W`` table, falling back
-        to ``/DW`` when ``/W`` contributes no positive entries. Matches the
-        scale upstream ``PDCIDFont.getAverageFontWidth`` returns (1/1000 em).
+        """Mean of the positive ``/W`` widths, falling back to ``/DW``.
+
+        Mirrors upstream ``PDCIDFont.getAverageFontWidth``, summing in
+        float like upstream.
         """
-        widths = self.get_widths()
-        positive = [w for w in widths.values() if w > 0.0]
-        if positive:
-            return sum(positive) / len(positive)
-        return float(self.get_default_width())
+        total = 0.0
+        count = 0
+        for width in self.get_widths().values():
+            if width > 0.0:
+                total = f32(total + width)
+                count += 1
+        average = f32(total / count) if count else 0.0
+        if average <= 0.0 or math.isnan(average):
+            average = float(self.get_default_width())
+        return average
 
     # ---------- damage state ----------
 

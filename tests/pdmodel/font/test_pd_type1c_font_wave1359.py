@@ -1,26 +1,16 @@
-"""Wave 1359 — close upstream's ``// todo: not implemented, highly suspect``
-on :meth:`PDType1CFont.get_average_character_width`.
+"""``PDType1CFont.get_average_character_width`` / ``get_average_font_width``.
 
-Upstream's ``PDType1CFont.getAverageCharacterWidth`` returned a hard-coded
-``500``. We replace that with a real mean computed from the available
-signals (``/Widths`` -> embedded CFF charstring widths -> ``defaultWidthX``
--> Standard 14 AFM mean -> ``500`` floor). The CFF-charstring branch
-relies on ``fontTools.cffLib`` via :class:`pypdfbox.fontbox.cff.cff_font.CFFFont`.
-
-Coverage targets:
-
-* ``/Widths`` branch — non-zero entries average.
-* Embedded-CFF mean-of-glyph-widths branch — varying glyph IDs yield
-  different widths, mean differs from any single width.
-* Embedded-CFF ``defaultWidthX`` branch — exercised when every
-  charstring's leading-operand width is zero so the per-glyph mean is
-  empty.
-* Standard 14 AFM branch — exercised by selecting a Standard 14
-  ``/BaseFont`` with no ``/Widths`` and no embedded program.
-* Final ``500`` floor — exercised by the empty-font case.
+Upstream ``PDType1CFont.getAverageFontWidth`` returns its private
+``getAverageCharacterWidth``, a hard-coded ``500`` (marked "not
+implemented, highly suspect"). pypdfbox used to estimate a real mean from
+``/Widths``, the embedded CFF charstrings, ``defaultWidthX`` and the
+Standard 14 AFM; the value feeds text extraction's space-width fallback, so
+it now matches upstream for every input below.
 """
 
 import io
+
+import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from pypdfbox.fontbox.cff.cff_font import CFFFont
@@ -95,113 +85,47 @@ def _inject_font(widths_by_name: dict[str, int]) -> PDType1CFont:
     return font
 
 
-# ---------- /Widths branch ----------
+# ---------- upstream's constant, whatever the font carries ----------
 
 
-def test_get_average_character_width_uses_widths_array_when_present() -> None:
-    """When ``/Widths`` has positive entries, the mean of those wins —
-    the embedded program is not consulted on that branch."""
-    font = PDType1CFont(COSDictionary())
-    font.get_cos_object().set_item(
-        _WIDTHS,
-        COSArray([COSFloat(400.0), COSFloat(600.0), COSFloat(0.0), COSFloat(800.0)]),
-    )
-    # mean of positive entries = (400 + 600 + 800) / 3 = 600
-    assert font.get_average_character_width() == 600.0
+def _with_widths(font: PDType1CFont, *widths: float) -> PDType1CFont:
+    font.get_cos_object().set_item(_WIDTHS, COSArray([COSFloat(w) for w in widths]))
+    return font
 
 
-def test_get_average_character_width_widths_branch_ignores_program() -> None:
-    """When ``/Widths`` is set, even an embedded program with different
-    widths does not override it."""
-    font = _inject_font({"A": 500, "B": 300})
-    font.get_cos_object().set_item(_WIDTHS, COSArray([COSFloat(100.0), COSFloat(200.0)]))
-    # /Widths mean = 150, NOT the CFF program mean of 400.
-    assert font.get_average_character_width() == 150.0
-
-
-# ---------- embedded CFF: mean of glyph charstring widths ----------
-
-
-def test_get_average_character_width_means_cff_glyph_widths() -> None:
-    """Varying glyph IDs -> different per-glyph widths -> mean differs
-    from any individual width. This is the headline TODO-closure path:
-    the CFF charstring widths are extracted via fontTools'
-    ``T2WidthExtractor`` (see :meth:`CFFFont.get_width`) and averaged
-    here.
-    """
-    font = _inject_font({"A": 500, "B": 300})
-    # mean of (500, 300) = 400, rescaled by units_per_em 1000 -> 400 in 1/1000 em.
-    assert font.get_average_character_width() == 400.0
-
-
-def test_get_average_character_width_three_glyphs_distinct_widths() -> None:
-    """Three glyphs with three distinct widths -> the mean is a strict
-    average of all three, not a single sentinel."""
-    font = _inject_font({"A": 600, "B": 800, "C": 1000})
-    # mean = (600 + 800 + 1000) / 3 = 800
-    assert font.get_average_character_width() == 800.0
-
-
-def test_get_average_character_width_varies_with_glyph_id() -> None:
-    """Two fonts whose only difference is per-GID width should produce
-    different means — pinpoints the GID-sensitivity the TODO promised.
-    """
-    narrow = _inject_font({"A": 200, "B": 250})
-    wide = _inject_font({"A": 700, "B": 900})
-    narrow_mean = narrow.get_average_character_width()
-    wide_mean = wide.get_average_character_width()
-    assert narrow_mean != wide_mean
-    assert narrow_mean == 225.0
-    assert wide_mean == 800.0
-
-
-def test_get_average_character_width_skips_notdef() -> None:
-    """``.notdef`` is excluded from the mean — it carries no
-    representative width and would skew the average toward zero."""
-    # If .notdef were included its width-zero entry would be skipped by
-    # the "positive only" filter anyway. Pin the contract by checking
-    # the mean equals the mean of the *non-notdef* glyphs precisely.
-    font = _inject_font({"A": 400, "B": 600})
-    assert font.get_average_character_width() == 500.0
-
-
-# ---------- empty / fallback branches ----------
-
-
-def test_get_average_character_width_falls_back_to_500_on_empty_font() -> None:
-    """No ``/Widths``, no embedded program, no Standard 14 AFM -> the
-    only branch that surfaces upstream's hard-coded ``500``."""
-    assert PDType1CFont().get_average_character_width() == 500.0
-
-
-def test_get_average_character_width_uses_standard14_afm() -> None:
-    """Non-embedded Standard 14 font with no ``/Widths`` -> the AFM
-    bundled with the Standard 14 metrics provides the mean (a real
-    value, not ``500``)."""
+def _standard14() -> PDType1CFont:
     font = PDType1CFont(COSDictionary())
     font.get_cos_object().set_name(_BASE_FONT, "Helvetica")
-    afm = font.get_standard_14_font_metrics()
-    assert afm is not None  # sanity-check the bundled AFM resolves
-    expected_afm_mean = afm.get_average_width()
-    assert expected_afm_mean > 0.0
-    average = font.get_average_character_width()
-    assert average == expected_afm_mean
+    return font
 
 
-# ---------- non-default units-per-em rescaling ----------
-
-
-def test_get_average_character_width_rescales_to_1000_em() -> None:
-    """When the embedded program declares a non-default em (here 2048,
-    the TrueType-flavoured CFF case), the per-glyph mean is rescaled to
-    1/1000 em before being returned — so the output is comparable across
-    fonts regardless of internal em."""
-    # Build a CFF then patch its units_per_em via the cached property
-    # backing field. Easier than coaxing FontBuilder to emit a non-1000
-    # font matrix.
+def _non_default_em() -> PDType1CFont:
     font = _inject_font({"A": 1024, "B": 2048})
     program = font.get_cff_font()
     assert program is not None
     program._units_per_em = 2048  # type: ignore[attr-defined]
-    # mean of (1024, 2048) = 1536; rescaled: 1536 * 1000 / 2048 = 750.
-    assert font.get_average_character_width() == 750.0
+    return font
+
+
+@pytest.mark.parametrize(
+    "make_font",
+    [
+        pytest.param(lambda: PDType1CFont(), id="empty"),
+        pytest.param(
+            lambda: _with_widths(PDType1CFont(COSDictionary()), 400.0, 600.0, 0.0, 800.0),
+            id="widths",
+        ),
+        pytest.param(
+            lambda: _with_widths(_inject_font({"A": 500, "B": 300}), 100.0, 200.0),
+            id="widths_and_program",
+        ),
+        pytest.param(lambda: _inject_font({"A": 500, "B": 300}), id="program"),
+        pytest.param(lambda: _inject_font({"A": 600, "B": 800, "C": 1000}), id="three_glyphs"),
+        pytest.param(_standard14, id="standard14"),
+        pytest.param(_non_default_em, id="em_2048"),
+    ],
+)
+def test_average_width_is_upstream_constant(make_font) -> None:  # type: ignore[no-untyped-def]
+    font = make_font()
+    assert font.get_average_character_width() == 500.0
+    assert font.get_average_font_width() == 500.0

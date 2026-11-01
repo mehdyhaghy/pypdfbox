@@ -60,15 +60,20 @@ def _glyph_list_for(encoding: Encoding) -> GlyphList:
 
 def _build_unicode_to_code(encoding: Encoding) -> dict[str, int]:
     glyph_list = _glyph_list_for(encoding)
+    name_to_code = encoding.get_name_to_code_map()
     out: dict[str, int] = {}
     # Iterate code -> name (rather than name -> code) so that the *first*
     # code wins when several names map to the same unicode point — this
     # matches the lowest-code-first behaviour expected by writers.
     for code, name in sorted(encoding.get_code_to_name_map().items()):
         unicode = glyph_list.to_unicode(name)
-        if unicode is None:
+        if unicode is None or unicode in out:
             continue
-        out.setdefault(unicode, code)
+        # A glyph name listed at several codes encodes to the code the
+        # encoding's name -> code map holds, as upstream's
+        # ``getNameToCodeMap().get(name)`` does (WinAnsi ``bullet`` is 0x95,
+        # not the 0x7F filler slot).
+        out[unicode] = name_to_code.get(name, code)
     return out
 
 
@@ -253,22 +258,6 @@ class PDSimpleFont(PDFont):
     # PDFBox find what they expect. Snake-cased per house style.
     def is_standard14(self) -> bool:
         return self.is_standard_14()
-
-    def get_average_font_width(self) -> float:
-        """Return the average glyph advance for this font in *thousandths
-        of an em* (the same scale upstream's ``getAverageFontWidth``
-        returns). Computed as the arithmetic mean of the entries in
-        ``/Widths``; zero-width entries (typically ``.notdef`` slots) are
-        skipped because they would otherwise drag the mean toward zero
-        for sparsely-mapped fonts. Returns ``0.0`` when the font has no
-        ``/Widths`` array or every entry is zero — callers should use
-        their own fallback in that case.
-        """
-        widths = self.get_widths()
-        non_zero = [w for w in widths if w is not None and w > 0.0]
-        if not non_zero:
-            return 0.0
-        return sum(non_zero) / len(non_zero)
 
     # ---------- encoding ----------
 

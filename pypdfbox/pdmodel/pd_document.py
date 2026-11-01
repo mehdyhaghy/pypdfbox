@@ -2,7 +2,19 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any, BinaryIO
 
-from pypdfbox.cos import COSArray, COSDictionary, COSDocument, COSName
+from pypdfbox.cos import (
+    COSArray,
+    COSBoolean,
+    COSDictionary,
+    COSDocument,
+    COSFloat,
+    COSInteger,
+    COSName,
+    COSNull,
+    COSObject,
+    COSStream,
+    COSString,
+)
 from pypdfbox.io import RandomAccessRead, RandomAccessWrite
 
 from .pd_page import PDPage
@@ -517,8 +529,10 @@ class PDDocument:
             if trailer is not None:
                 import contextlib
 
-                # Force a decode pass on every stream so its raw bytes are
-                # plaintext before the writer snapshots them.
+                # Undo the cipher on every stream so its raw bytes are
+                # plaintext before the writer snapshots them. Only the
+                # decrypt step is needed; running the full /Filter chain
+                # here decoded every image just to discard the result.
                 from pypdfbox.cos import COSStream as _COSStream
 
                 for cos_obj in self._document.get_objects():
@@ -528,7 +542,7 @@ class PDDocument:
                             # If decryption hasn't been wired yet the raw
                             # bytes stay as-is; matches upstream's "best
                             # effort" stripping behaviour.
-                            actual.create_input_stream().close()
+                            actual.ensure_decrypted()
                 trailer.remove_item(_ENCRYPT)
 
         opened: BinaryIO | None = None
@@ -1012,9 +1026,9 @@ class PDDocument:
 
     def decrypt(self, password: str | bytes = "") -> None:
         """Validate ``password`` against the document's ``/Encrypt``
-        dictionary and attach the resulting security handler to every
-        ``COSStream`` in the object pool so subsequent reads decrypt
-        on-the-fly. Mirrors upstream's load-time decryption pipeline.
+        dictionary, decipher the objects already loaded, and register the
+        security handler so the parser deciphers every object it loads
+        afterwards. Mirrors upstream's load-time decryption pipeline.
 
         Raises :class:`InvalidPasswordException` when the password is
         rejected (or when no password was supplied for an owner/user
@@ -1079,140 +1093,54 @@ class PDDocument:
             StandardDecryptionMaterial(password_material),
         )
 
-        # Walk every loaded indirect in two passes.
+        # Upstream decrypts each object as ``COSParser#parseObjectDynamically``
+        # reads it from its file offset; it never walks the whole pool. Mirror
+        # that: objects the parser has already materialised (trailer targets,
+        # the /Encrypt dictionary, anything a caller touched before
+        # ``decrypt``) are deciphered here, and the handler is then registered
+        # on the COSDocument so the parser deciphers every later lazy load
+        # (see ``PDFParser._decrypt_file_object``). Forcing every object up
+        # front made opening a large encrypted file parse its whole body.
         #
-        # Pass 1: attach the handler to each ``COSStream`` so that
-        # ``create_input_stream`` decrypts before the filter chain. This
-        # also covers xref-stream objects (PDF 1.5+ encrypted xref
-        # streams, /Type /XRef): they live in the same pool and inherit
-        # from ``COSStream``, so the same hook deciphers their body when
-        # the parser cluster reads it back. We *also* pre-seed the
-        # handler's ``_objects_seen`` set with every stream's identity so
-        # pass 2's dictionary walk doesn't re-enter the stream body via
-        # the ``COSDictionary`` recursion (a stream IS a dictionary, but
-        # we want to keep its raw bytes deferred to the lazy hook).
-        from pypdfbox.cos import COSArray as _COSArray
-        from pypdfbox.cos import COSDictionary as _COSDictionary
-        from pypdfbox.cos import COSObjectKey as _COSObjectKey
-        from pypdfbox.cos import COSString as _COSString
-
         # Object-stream membership guard (PDF 32000-1 §7.6.2): strings and
         # streams stored *inside* a /Type /ObjStm container are never
-        # individually encrypted — only the ObjStm container itself is, and
-        # decrypting the container yields the contained objects already in
-        # cleartext. The parser records membership in the COSDocument's xref
-        # table as a NEGATIVE offset (``-objstm_object_number`` per the
-        # PDFBox convention). We collect those member keys up front so both
-        # decryption passes can skip them; applying a per-object cipher to a
-        # member would double-decrypt it into garbage (observed as
-        # ``FlateDecode: invalid block type`` when its container's body was
-        # subsequently read). Mirrors upstream
-        # ``COSParser#parseObjectDynamically`` (Java line 677), which only
-        # decrypts objects loaded from a direct file offset and leaves
-        # ObjStm-resident objects untouched.
+        # individually encrypted — only the container is, and decrypting it
+        # yields the members in cleartext. The parser records membership in
+        # the xref table as a NEGATIVE offset, so members are skipped here,
+        # and the lazy hook only fires for direct-offset loads.
+        from pypdfbox.cos import COSObjectKey as _COSObjectKey
+        from pypdfbox.pdmodel.encryption.security_handler import (
+            _decrypt_file_object,
+        )
+
         objstm_member_keys: set[_COSObjectKey] = {
             key
             for key, offset in self._document.get_xref_table().items()
             if offset is not None and offset < 0
         }
-
-        # Pre-seed the handler's already-decrypted set with every stream
-        # identity so pass 2's dict walk doesn't re-enter the stream body
-        # via the ``COSDictionary`` recursion (a stream IS a dictionary,
-        # but its body decrypt is owned by the lazy ``set_security_handler``
-        # hook attached below). When the handler is a stub that doesn't
-        # expose ``_objects_seen`` (test doubles in
-        # ``test_pd_document_wave576``), the dict walk is skipped — those
-        # tests assert only on ``prepare_for_decryption`` invocation, so
-        # no functional surface is lost.
-        seen_ids = None
-        objects_seen = getattr(handler, "_objects_seen", None)
-        if callable(objects_seen):
-            seen_ids = objects_seen()
-
-        def _object_key(cos_obj: Any) -> _COSObjectKey:
-            return _COSObjectKey(
+        encrypt_dict = self._document.get_encryption_dictionary()
+        for cos_obj in self._document.get_objects():
+            if not cos_obj.is_dereferenced():
+                continue
+            key = _COSObjectKey(
                 cos_obj.get_object_number(), cos_obj.get_generation_number()
             )
-
-        # Pass 1 must attach handlers to every ObjStm *container* before any
-        # ObjStm *member* is materialised. Forcing a member's parse
-        # (``get_object()``) lazily reads its container's body through
-        # ``create_input_stream`` — if the container has no handler yet, that
-        # read decodes ciphertext as plaintext and the filter chain blows up.
-        # Members carry a negative xref offset, so iterate them last (and
-        # never attach a handler to them — they're plaintext after the
-        # container decrypts). Non-member streams (containers, xref streams,
-        # content streams written at a direct offset) are handled first.
-        for cos_obj in self._document.get_objects():
-            if _object_key(cos_obj) in objstm_member_keys:
-                continue
-            # ``get_object()`` only triggers a parse for stream-bearing
-            # entries; their body is encrypted so we materialise to attach
-            # the lazy decrypt hook.
             actual = cos_obj.get_object()
-            if isinstance(actual, _COSStream):
-                actual.set_security_handler(
-                    handler,
-                    cos_obj.get_object_number(),
-                    cos_obj.get_generation_number(),
-                )
-                if seen_ids is not None:
-                    seen_ids.add(id(actual))
-
-        # Now safe to materialise members — every container has a handler —
-        # but members are NOT individually encrypted, so we only mark them as
-        # already-seen (so pass 2 skips their body) without attaching a
-        # per-object cipher.
-        for cos_obj in self._document.get_objects():
-            if _object_key(cos_obj) not in objstm_member_keys:
+            if key in objstm_member_keys:
+                # Plaintext once the container is deciphered; only keep the
+                # string pass from re-entering a member stream body.
+                objects_seen = getattr(handler, "_objects_seen", None)
+                if isinstance(actual, _COSStream) and callable(objects_seen):
+                    objects_seen().add(id(actual))
                 continue
-            actual = cos_obj.get_object()
-            if isinstance(actual, _COSStream) and seen_ids is not None:
-                seen_ids.add(id(actual))
-
-        # Pass 2: PDFBOX-4453 — decrypt every COSString/COSArray slot
-        # reachable from each indirect dictionary, using the indirect's
-        # ``(obj_num, gen_num)`` as the per-object key seed. Upstream's
-        # ``COSParser#parseObjectDynamically`` does this inline (line 677
-        # of ``COSParser.java``) by calling ``securityHandler.decrypt``
-        # on every non-stream parsed object. pypdfbox parses without an
-        # active handler and recovers it here once the trailer's
-        # ``/Encrypt`` entry has yielded the file-encryption key.
-        decrypt_dict = getattr(handler, "_decrypt_dictionary", None)
-        decrypt_dispatch = getattr(handler, "decrypt", None)
-        if callable(decrypt_dict) and callable(decrypt_dispatch):
-            encrypt_dict = self._document.get_encryption_dictionary()
-            for cos_obj in self._document.get_objects():
-                # ObjStm members are plaintext once their container has been
-                # decrypted (see the membership guard above) — never run a
-                # per-object string/array decrypt over them.
-                if _object_key(cos_obj) in objstm_member_keys:
-                    continue
-                actual = cos_obj.get_object()
-                # The /Encrypt dictionary itself was never encrypted —
-                # its contents (e.g. /U, /O, /OE, /UE byte strings) are
-                # key material, not ciphertext. Skip it.
-                if actual is encrypt_dict:
-                    continue
-                if isinstance(actual, _COSStream):
-                    # Body is lazy; the stream's *dictionary* entries
-                    # may still contain encrypted strings (rare but
-                    # legal, e.g. an Outline-level /Title pulled into a
-                    # stream dict). ``_decrypt_dictionary`` iterates
-                    # entries and recurses; the pre-seeded ``seen_ids``
-                    # guards against re-entering nested streams.
-                    decrypt_dict(
-                        actual,
-                        cos_obj.get_object_number(),
-                        cos_obj.get_generation_number(),
-                    )
-                elif isinstance(actual, (_COSDictionary, _COSArray, _COSString)):
-                    decrypt_dispatch(
-                        actual,
-                        cos_obj.get_object_number(),
-                        cos_obj.get_generation_number(),
-                    )
+            _decrypt_file_object(
+                handler,
+                actual,
+                cos_obj.get_object_number(),
+                cos_obj.get_generation_number(),
+                encrypt_dict,
+            )
+        self._document._object_security_handler = handler
 
         self._security_handler = handler
         self._encryption = encryption
@@ -1716,203 +1644,50 @@ class PDDocument:
         return self._signature_added
 
     def import_page(self, page: PDPage) -> PDPage:
-        """Deep-copy ``page`` into this document and return the new
-        :class:`PDPage`.
+        """Import ``page`` from another document and return the new
+        :class:`PDPage`. Mirrors upstream ``PDDocument.importPage``.
 
-        The page's dictionary, ``/Resources``, ``/Contents`` stream(s), and
-        inheritable attributes are copied. Widget-annotation ``/Parent``
-        chains are walked to their top-most field root and that root is
-        promoted into this document's ``/AcroForm /Fields`` (name
-        collisions are resolved with a per-document ``dummyFieldName``
-        counter mirroring :class:`PDFMergerUtility` legacy mode), so
-        AcroForm widgets imported from another document remain navigable
-        from the destination's form. Cross-document ``/Names`` tree
-        merging, ``/Dest`` resolution, and font / image resource
-        deduplication are deferred — see ``CHANGES.md``."""
-        src_dict = page.get_cos_object()
-        # Copy key-by-key, skipping /Parent BEFORE the deep copy — the
-        # parent chain reaches the source page tree and therefore every
-        # page in the source document, so copy-then-strip deep-copied the
-        # whole document per imported page (O(n^2) across a full
-        # ``Splitter.split``). Seeding ``seen`` with the page dict itself
-        # preserves the old cycle behaviour: a subtree reference back to
-        # the page resolves to the shared original, exactly as it did when
-        # ``_deep_copy_cos`` visited ``src_dict`` first.
-        parent_key = COSName.get_pdf_name("Parent")
-        seen: set[int] = {id(src_dict)}
-        new_dict = COSDictionary()
-        for key in list(src_dict.key_set()):
-            if key == parent_key:
-                continue
-            new_dict.set_item(
-                key, self._deep_copy_cos(src_dict.get_item(key), seen)
+        The page dictionary is copied shallowly (minus ``/Parent``), so
+        resources and annotations stay shared with the source document.
+        The decoded ``/Contents`` are re-embedded as one FlateDecode
+        stream, imported object keys are reset, and the resolved
+        CropBox, MediaBox and Rotate are set on the new page. Inherited
+        resources are not imported; call
+        ``imported.set_resources(page.get_resources())`` if needed."""
+        from pypdfbox.pdmodel.common.pd_stream import PDStream
+
+        page_dict = COSDictionary()
+        page_dict.add_all(page.get_cos_object())
+        imported_page = PDPage(page_dict, self.get_resource_cache())
+        page_dict.remove_item(COSName.PARENT)
+        dest = PDStream(self, _page_contents(page), COSName.FLATE_DECODE)
+        imported_page.set_contents(dest)
+        # reset imported object keys to avoid overlapping object numbers
+        page_dict.reset_imported_object_keys()
+        self.add_page(imported_page)
+        imported_page.set_crop_box(page.get_crop_box())
+        imported_page.set_media_box(page.get_media_box())
+        imported_page.set_rotation(page.get_rotation())
+        if page.get_resources() is not None and not page.get_cos_object().contains_key(
+            COSName.RESOURCES
+        ):
+            _LOG.warning(
+                "inherited resources of source document are not imported to "
+                "destination page"
             )
-        new_page = PDPage(new_dict)
-        self._import_page_acroform_fixup(new_dict)
-        self.get_pages().add(new_page)
-        return new_page
-
-    def _import_page_acroform_fixup(self, page_dict: Any) -> None:
-        """For an imported page, walk its ``/Annots`` and promote any
-        widget-annot ``/Parent`` chain to a top-level field root under
-        this document's ``/AcroForm /Fields``.
-
-        Collision handling mirrors :class:`PDFMergerUtility`'s legacy
-        mode: if a field with the same ``/T`` is already present in the
-        destination's top-level field set, the imported field's ``/T``
-        is rewritten with a per-document monotonic suffix
-        (``dummyFieldName`` + counter) so callers can still resolve
-        every field by name without losing the import.
-        """
-        from pypdfbox.cos import COSArray, COSDictionary
-
-        annots_name = COSName.get_pdf_name("Annots")
-        annots = page_dict.get_dictionary_object(annots_name)
-        if not isinstance(annots, COSArray):
-            return
-        # Collect top-level field roots reached via /Parent walking.
-        roots: list[COSDictionary] = []
-        seen: set[int] = set()
-        for i in range(annots.size()):
-            annot = annots.get_object(i)
-            if not isinstance(annot, COSDictionary):
-                continue
-            subtype = annot.get_name(COSName.get_pdf_name("Subtype"))
-            # Only widget annots participate in /AcroForm. Other
-            # annot kinds use /Parent for structure-tree linking — those
-            # references are inside the cloned subgraph and stay valid.
-            if subtype != "Widget":
-                continue
-            parent = annot.get_dictionary_object(
-                COSName.get_pdf_name("Parent")
+            _LOG.warning(
+                "call importedPage.setResources(page.getResources()) to do this"
             )
-            root = parent if isinstance(parent, COSDictionary) else annot
-            # Climb to the topmost /Parent.
-            while True:
-                up = root.get_dictionary_object(
-                    COSName.get_pdf_name("Parent")
-                )
-                if not isinstance(up, COSDictionary):
-                    break
-                root = up
-            if id(root) in seen:
-                continue
-            seen.add(id(root))
-            roots.append(root)
-        if not roots:
-            return
-
-        from .interactive.form import PDAcroForm
-
-        catalog = self.get_document_catalog()
-        # Read the AcroForm *without* applying the default fixup
-        # (``get_acro_form(None)`` mirrors upstream's ``getAcroForm(null)``).
-        # This widget-field re-attachment helper is a pypdfbox-only
-        # convenience during ``import_page``; seeding Adobe /DA + /DR
-        # defaults here would mutate a form the caller never asked to fix
-        # up (upstream's ``importPage`` does not touch /AcroForm at all).
-        acro_form = catalog.get_acro_form(None)
-        if acro_form is None:
-            acro_form = PDAcroForm(self)
-            catalog.set_acro_form(acro_form)
-        form_dict = acro_form.get_cos_object()
-        fields_array = form_dict.get_dictionary_object(
-            COSName.get_pdf_name("Fields")
-        )
-        if not isinstance(fields_array, COSArray):
-            fields_array = COSArray()
-            form_dict.set_item(COSName.get_pdf_name("Fields"), fields_array)
-        if not hasattr(self, "_import_field_counter"):
-            self._import_field_counter = 1
-        # Incremental state persisted on the destination document so a long
-        # import_page loop doesn't rescan the whole /Fields array on every
-        # page (the naive rebuild-per-page was O(n^2) — 6.6s for 3200 pages).
-        #   _import_field_names     — set[str] of known /T field names
-        #   _import_field_root_ids  — set[int] of id() of appended field roots
-        #   _import_fields_array_id — id() of the tracked /Fields COSArray
-        #   _import_fields_count    — entries tracked in that array
-        # The cache is rebuilt from scratch only when the /Fields array
-        # identity changed (a swap) or its size no longer matches the tracked
-        # count (an external mutation) — otherwise it is trusted verbatim.
-        needs_rebuild = (
-            not hasattr(self, "_import_fields_array_id")
-            or self._import_fields_array_id != id(fields_array)
-            or self._import_fields_count != fields_array.size()
-        )
-        if needs_rebuild:
-            existing_names: set[str] = set()
-            root_ids: set[int] = set()
-            for i in range(fields_array.size()):
-                entry = fields_array.get_object(i)
-                root_ids.add(id(entry))
-                if isinstance(entry, COSDictionary):
-                    t = entry.get_string(COSName.get_pdf_name("T"))
-                    if t is not None:
-                        existing_names.add(t)
-            self._import_field_names = existing_names
-            self._import_field_root_ids = root_ids
-            self._import_fields_array_id = id(fields_array)
-            self._import_fields_count = fields_array.size()
-        existing_names = self._import_field_names
-        root_ids = self._import_field_root_ids
-        prefix = "dummyFieldName"
-        for root in roots:
-            if id(root) in root_ids:
-                continue
-            t = root.get_string(COSName.get_pdf_name("T"))
-            if t is not None and t in existing_names:
-                root.set_string(
-                    COSName.get_pdf_name("T"),
-                    f"{prefix}{self._import_field_counter}",
-                )
-                self._import_field_counter += 1
-            elif t is not None:
-                existing_names.add(t)
-            fields_array.add(root)
-            root_ids.add(id(root))
-            self._import_fields_count += 1
+        return imported_page
 
     def _deep_copy_cos(self, value: Any, seen: set[int]) -> Any:
-        """Recursive deep copy of a ``COSBase`` tree. Cycles are broken via
-        an ``id()``-keyed seen set — when revisited, the original instance
-        is shared (rare in well-formed PDFs but possible via /Parent loops
-        or self-referential resource trees)."""
-        from pypdfbox.cos import COSArray, COSDictionary, COSObject, COSStream
+        """Deep copy of a ``COSBase`` tree (see :func:`_deep_copy_cos_graph`).
 
-        if id(value) in seen:
-            return value
-        if isinstance(value, COSObject):
-            # Resolve indirect ref, then deep-copy the resolved value.
-            return self._deep_copy_cos(value.get_object(), seen)
-        if isinstance(value, COSStream):
-            seen.add(id(value))
-            new_stream = COSStream()
-            for key in list(value.key_set()):
-                new_stream.set_item(
-                    key, self._deep_copy_cos(value.get_item(key), seen)
-                )
-            # Copy raw (still-encoded) stream bytes verbatim — /Filter chain
-            # and /Length come along via the dict copy above.
-            if value.has_data():
-                new_stream.set_raw_data(value.get_raw_data())
-            return new_stream
-        if isinstance(value, COSDictionary):
-            seen.add(id(value))
-            new_dict = COSDictionary()
-            for key in list(value.key_set()):
-                new_dict.set_item(
-                    key, self._deep_copy_cos(value.get_item(key), seen)
-                )
-            return new_dict
-        if isinstance(value, COSArray):
-            seen.add(id(value))
-            new_arr = COSArray()
-            for item in value:
-                new_arr.add(self._deep_copy_cos(item, seen))
-            return new_arr
-        # Scalars (COSInteger, COSFloat, COSName, COSString, COSBoolean,
-        # COSNull) are immutable in practice — share the original instance.
-        return value
+        Cycles are broken via an ``id()``-keyed seen set: when a container
+        is revisited, the original instance is shared (rare in well-formed
+        PDFs but possible via /Parent loops or self-referential resource
+        trees)."""
+        return _deep_copy_cos_graph(value, seen)
 
     def get_resource_cache(self) -> Any:
         """Return the document's :class:`PDResourceCache`, lazily allocating
@@ -2255,4 +2030,131 @@ class ExternalSigningSupport:
         self._document._pending_signature_options = None
 
 
+# Exact types :func:`_deep_copy_cos_graph` shares instead of copying. They are
+# immutable in practice, and the copy has always shared them; checking the
+# exact type first just skips the dispatch for the bulk of the graph (font
+# /Widths arrays, number trees, ...).
+_COPY_LEAF_TYPES = frozenset(
+    (COSName, COSInteger, COSFloat, COSBoolean, COSNull, COSString)
+)
+_FRAME_DICT = 0
+_FRAME_STREAM = 1
+_FRAME_ARRAY = 2
+
+
+def _deep_copy_cos_graph(value: Any, seen: set[int]) -> Any:
+    """Deep copy of a ``COSBase`` graph, as used by
+    :meth:`PDDocument.import_page`.
+
+    Indirect references are resolved and their targets copied in place;
+    streams keep their raw (still-encoded) bytes. A container already in
+    ``seen`` -- either seeded by the caller or copied earlier in the same
+    walk -- is *not* copied again: the original source instance is shared.
+    Leaves (names, numbers, strings, booleans, null) are always shared.
+
+    The walk is an explicit-stack, depth-first, pre-order traversal in
+    dictionary-key / array-index order, so which occurrence of a shared
+    object receives the fresh copy is exactly what the former recursive
+    implementation produced, without its recursion-depth limit.
+    """
+    leaf_types = _COPY_LEAF_TYPES
+    stack: list[tuple[Any, ...]] = []
+
+    def enter(item: Any) -> Any:
+        while True:
+            if id(item) in seen:
+                return item
+            if not isinstance(item, COSObject):
+                break
+            item = item.get_object()
+        if isinstance(item, COSStream):
+            seen.add(id(item))
+            new_stream = COSStream()
+            stack.append(
+                (_FRAME_STREAM, item, new_stream, iter(list(item._items)))
+            )
+            return new_stream
+        if isinstance(item, COSDictionary):
+            seen.add(id(item))
+            new_dict = COSDictionary()
+            stack.append(
+                (_FRAME_DICT, item._items, new_dict._items, iter(list(item._items)))
+            )
+            return new_dict
+        if isinstance(item, COSArray):
+            seen.add(id(item))
+            new_arr = COSArray()
+            stack.append((_FRAME_ARRAY, None, new_arr._items, iter(item._items)))
+            return new_arr
+        return item
+
+    result = enter(value)
+    # A fresh container's ``set_item`` / ``add`` only links the child's update
+    # state to the container's (unset) document state, which is a no-op, so
+    # plain dict / list stores below are equivalent for COSDictionary and
+    # COSArray copies. Stream copies keep ``set_item`` (it also bumps the
+    # decode-cache generation).
+    while stack:
+        kind, src, dst, it = stack[-1]
+        depth = len(stack)
+        descended = False
+        if kind == _FRAME_ARRAY:
+            append = dst.append
+            for item in it:
+                if type(item) in leaf_types:
+                    append(item)
+                    continue
+                append(enter(item))
+                if len(stack) != depth:
+                    descended = True
+                    break
+        elif kind == _FRAME_DICT:
+            for key in it:
+                item = src.get(key)
+                if item is None:
+                    continue
+                if type(item) not in leaf_types:
+                    item = enter(item)
+                    if item is None:
+                        continue
+                dst[key] = item
+                if len(stack) != depth:
+                    descended = True
+                    break
+        else:
+            src_items = src._items
+            for key in it:
+                item = src_items.get(key)
+                if item is not None and type(item) not in leaf_types:
+                    item = enter(item)
+                dst.set_item(key, item)
+                if len(stack) != depth:
+                    descended = True
+                    break
+            if not descended and src.has_data():
+                # Copy raw (still-encoded) stream bytes verbatim; /Filter
+                # and /Length came along with the dictionary entries.
+                dst.set_raw_data(src.get_raw_data())
+        if not descended:
+            stack.pop()
+    return result
+
+
 __all__ = ["PDDocument", "PDDocumentSource", "ExternalSigningSupport"]
+
+
+def _page_contents(page: PDPage) -> bytes:
+    """Decoded ``/Contents`` as upstream ``PDPage.getContents`` streams
+    them: an array's streams are each followed by a newline."""
+    contents = page.get_cos_object().get_dictionary_object(COSName.CONTENTS)
+    if isinstance(contents, COSStream):
+        return PDPage._stream_bytes(contents)
+    if isinstance(contents, COSArray):
+        chunks: list[bytes] = []
+        for i in range(contents.size()):
+            entry = contents.get_object(i)
+            if isinstance(entry, COSStream):
+                chunks.append(PDPage._stream_bytes(entry))
+                chunks.append(b"\n")
+        return b"".join(chunks)
+    return b""

@@ -647,8 +647,11 @@ def test_illegal_splitting() -> None:
         splitter.set_end_page(0)
     assert str(ex.value) == "End page is smaller than one"
     splitter.set_start_page(2)
-    with pytest.raises(ValueError) as ex:
-        splitter.set_end_page(1)
+    # PDFBOX-6283: the range is validated by split(), regardless of the
+    # setter order
+    splitter.set_end_page(1)
+    with PDDocument() as empty, pytest.raises(ValueError) as ex:
+        splitter.split(empty)
     assert str(ex.value) == "End page is smaller than startPage"
 
 
@@ -769,7 +772,8 @@ def test_single_page_split() -> None:
     )
 
     expected_pt_sizes = [6, 6, 6, 5, 1, 1]
-    expected_role_map_sizes = [3, 3, 4, 4, 6, 7]
+    # PDFBOX-6283: the role set is reset for every split document
+    expected_role_map_sizes = [3, 3, 4, 3, 5, 6]
 
     with PDDocument.load(str(_FIXTURE_DIR / "PDFBOX-5792-240045.pdf")) as doc:
         splitter = Splitter()
@@ -1192,7 +1196,7 @@ def test_pdf_box_515(tmp_path: Path) -> None:
         )
 
 
-def test_page_labels() -> None:
+def test_merge_page_labels() -> None:
     """PDFBOX-6277 (3.0 branch, unreleased 3.0.9): check that index 0 is
     present despite missing page labels in the destination."""
     from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
@@ -1234,6 +1238,61 @@ def test_page_labels() -> None:
 
         labels = doc2.get_document_catalog().get_page_labels().get_labels_by_page_indices()
         assert labels == ["1", "2", "3", "RO III", "RO IV", "1"]
+
+
+def test_merge_page_labels_2() -> None:
+    """PDFBOX-6300 (3.0 branch, unreleased 3.0.9): if the source has no page
+    labels but the destination has non-decimal (here: roman) ones, the source
+    pages get default numbering instead of more roman."""
+    from pypdfbox.pdmodel.pd_page_label_range import PDPageLabelRange
+    from pypdfbox.pdmodel.pd_page_labels import PDPageLabels
+
+    with PDDocument() as doc1, PDDocument() as doc2:
+        doc1.add_page(PDPage())
+        doc1.add_page(PDPage())
+        doc1.add_page(PDPage())
+        page_labels = PDPageLabels(doc1)
+        page_label_range1 = PDPageLabelRange()
+        page_label_range1.set_prefix("RO ")
+        page_label_range1.set_start(3)
+        page_label_range1.set_style(PDPageLabelRange.STYLE_ROMAN_UPPER)
+        page_labels.set_label_item(0, page_label_range1)
+        doc1.get_document_catalog().set_page_labels(page_labels)
+
+        doc2.add_page(PDPage())
+        doc2.add_page(PDPage())
+        doc2.add_page(PDPage())
+
+        pdf_merger_utility = PDFMergerUtility()
+        pdf_merger_utility.append_document(doc1, doc2)
+
+        labels = doc1.get_document_catalog().get_page_labels().get_labels_by_page_indices()
+        assert labels == ["RO III", "RO IV", "RO V", "1", "2", "3"]
+
+
+def test_merge_page_labels_3() -> None:
+    """PDFBOX-6300 (3.0 branch, unreleased 3.0.9): page label merging with two
+    minimal default ranges."""
+    from pypdfbox.pdmodel.pd_page_labels import PDPageLabels
+
+    with PDDocument() as doc1, PDDocument() as doc2:
+        doc1.add_page(PDPage())
+        doc1.add_page(PDPage())
+        doc1.add_page(PDPage())
+        page_labels1 = PDPageLabels(doc1)
+        doc1.get_document_catalog().set_page_labels(page_labels1)
+
+        doc2.add_page(PDPage())
+        doc2.add_page(PDPage())
+        doc2.add_page(PDPage())
+        page_labels2 = PDPageLabels(doc2)
+        doc2.get_document_catalog().set_page_labels(page_labels2)
+
+        pdf_merger_utility = PDFMergerUtility()
+        pdf_merger_utility.append_document(doc1, doc2)
+
+        labels = doc1.get_document_catalog().get_page_labels().get_labels_by_page_indices()
+        assert labels == ["1", "2", "3", "1", "2", "3"]
 
 
 def _three_page_fit_dests(document: PDDocument) -> list:

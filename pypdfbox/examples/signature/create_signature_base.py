@@ -93,9 +93,13 @@ class CreateSignatureBase(SignatureInterface):
         )
         for extra in chain_tail:
             builder = builder.add_certificate(extra)
+        # DER, as upstream's getEncoded("DER") (PDFBOX-6289). Binary: sign
+        # the bytes as they are; without it the content is converted to
+        # canonical MIME text (LF -> CRLF) first and the signature doesn't
+        # match the signed byte range.
         signed_data = builder.sign(
             serialization.Encoding.DER,
-            [pkcs7.PKCS7Options.DetachedSignature],
+            [pkcs7.PKCS7Options.DetachedSignature, pkcs7.PKCS7Options.Binary],
         )
         if self._tsa_url:
             validation = ValidationTimeStamp(self._tsa_url)

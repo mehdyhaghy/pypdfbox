@@ -1,6 +1,7 @@
 from pypdfbox import PDDocument, PDPage
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.multipdf import Splitter
+from pypdfbox.pdmodel.interactive.documentnavigation.destination import PDDestination
 
 _ANNOTS = COSName.get_pdf_name("Annots")
 _FIT = COSName.get_pdf_name("Fit")
@@ -27,36 +28,13 @@ def _dest_array(page_dict: COSDictionary) -> COSArray:
     return dest
 
 
-def test_wave624_process_annotations_drops_signature_widget() -> None:
-    source_page = PDPage()
-    imported = PDPage()
-    sig_widget = COSDictionary()
-    sig_widget.set_item(_SUBTYPE, COSName.get_pdf_name("Widget"))
-    sig_widget.set_item(_FT, COSName.get_pdf_name("Sig"))
-    text_annot = COSDictionary()
-    text_annot.set_item(_SUBTYPE, COSName.get_pdf_name("Text"))
-    annots = COSArray()
-    annots.add(sig_widget)
-    annots.add(text_annot)
-    imported.get_cos_object().set_item(_ANNOTS, annots)
-
-    splitter = Splitter()
-    splitter._process_annotations(source_page, imported)
-
-    cloned_annots = imported.get_cos_object().get_dictionary_object(_ANNOTS)
-    assert isinstance(cloned_annots, COSArray)
-    assert cloned_annots.size() == 1
-    assert cloned_annots.get_object(0) is not text_annot
-    assert splitter._signatures_dropped is True
-
-
 def test_wave624_fix_destinations_skips_host_not_in_destination_page_tree() -> None:
     chunk = _make_doc(1)
     host_source = COSDictionary()
     target_source = COSDictionary()
     target_dest = _dest_array(target_source)
     splitter = Splitter()
-    splitter._dest_to_fix = [(target_dest, host_source)]
+    splitter._dest_to_fix = [(PDDestination.create(target_dest), host_source)]
     splitter._page_dict_map = {
         id(host_source): COSDictionary(),
         id(target_source): chunk.get_page(0).get_cos_object(),
@@ -117,21 +95,3 @@ def test_wave624_clone_tree_element_ignores_missing_parent_tree_key() -> None:
     Splitter()._clone_tree_element({}, dst_numbers, 99)
 
     assert dst_numbers == {}
-
-
-def test_wave624_fix_destinations_nulls_empty_destination_array() -> None:
-    chunk = _make_doc(1)
-    host_source = COSDictionary()
-    empty_dest = COSArray()
-    splitter = Splitter()
-    splitter._dest_to_fix = [(empty_dest, host_source)]
-    splitter._page_dict_map = {
-        id(host_source): chunk.get_page(0).get_cos_object()
-    }
-
-    try:
-        splitter._fix_destinations(chunk)
-
-        assert empty_dest.size() == 0
-    finally:
-        chunk.close()

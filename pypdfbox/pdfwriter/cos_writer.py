@@ -1,3 +1,4 @@
+import binascii
 import hashlib
 import io
 import logging
@@ -25,6 +26,7 @@ from pypdfbox.cos import (
 from pypdfbox.cos.cos_float import format_float32
 from pypdfbox.io import RandomAccessRead, RandomAccessWrite
 
+from ._name_token import name_token as _name_token
 from .compress.compress_parameters import CompressParameters
 from .cos_standard_output_stream import COSStandardOutputStream
 from .cos_writer_xref_entry import COSWriterXRefEntry
@@ -81,6 +83,33 @@ def _is_printable_name_byte(b: int) -> bool:
         or b in (0x2B, 0x2D, 0x5F, 0x40, 0x2A, 0x24, 0x3B, 0x2E)
         # + - _ @ * $ ; .
     )
+
+
+# Container dispatch kinds for the visitor's hot loops. ``COSBase`` is an
+# ABC, so a *missed* ``isinstance`` check goes through the slow
+# ``ABCMeta.__instancecheck__``; resolving the kind once per concrete type
+# (with the same ``issubclass`` order the ``isinstance`` chains used) keeps
+# the dispatch identical while avoiding that cost per value.
+_KIND_DICTIONARY = 0
+_KIND_ARRAY = 1
+_KIND_OBJECT = 2
+_KIND_OTHER = 3
+_KIND_CACHE: dict[type, int] = {}
+
+
+def _kind_of(tp: type) -> int:
+    kind = _KIND_CACHE.get(tp)
+    if kind is None:
+        if issubclass(tp, COSDictionary):
+            kind = _KIND_DICTIONARY
+        elif issubclass(tp, COSArray):
+            kind = _KIND_ARRAY
+        elif issubclass(tp, COSObject):
+            kind = _KIND_OBJECT
+        else:
+            kind = _KIND_OTHER
+        _KIND_CACHE[tp] = kind
+    return kind
 
 
 def _format_xref_offset(offset: int) -> bytes:
@@ -176,9 +205,12 @@ class _RawSinkAdapter:
 
     def __init__(self, sink: Any) -> None:
         self._sink = sink
+        # Resolved once: ``RandomAccessWrite`` is an ABC, so a per-write
+        # ``isinstance`` check was a measurable share of large saves.
+        self._is_random_access = isinstance(sink, RandomAccessWrite)
 
     def write(self, data: bytes, /) -> int:
-        if isinstance(self._sink, RandomAccessWrite):
+        if self._is_random_access:
             self._sink.write_bytes(data)
         else:
             self._sink.write(data)
@@ -418,7 +450,8 @@ class COSWriter(ICOSVisitor):
         # (mirrors PDFBox's ByteArrayOutputStream → OutputStream pipeline).
         if incremental:
             self._increment_buffer: io.BytesIO | None = io.BytesIO()
-            self._adapter = _RawSinkAdapter(self._increment_buffer)
+            # A BytesIO already exposes ``write(bytes)``; no adapter layer.
+            self._adapter = self._increment_buffer
             # ``position`` is seeded with the source length so xref offsets
             # are computed as if the increment were already concatenated to
             # the original file. Matches upstream's
@@ -431,7 +464,16 @@ class COSWriter(ICOSVisitor):
             )
         else:
             self._increment_buffer = None
-            self._adapter = _RawSinkAdapter(output)
+            # Only a ``RandomAccessWrite`` (``write_bytes``) needs the
+            # adapter; any other sink is wrapped directly so the hot write
+            # path skips one Python call per token. ``COSStandardOutputStream``
+            # ignores the sink's return value and delegates flush/close the
+            # same way the adapter does.
+            self._adapter = (
+                _RawSinkAdapter(output)
+                if isinstance(output, RandomAccessWrite)
+                else output
+            )
             self._standard_output = COSStandardOutputStream(self._adapter)
 
         # writer state — mirrors private fields on the upstream class.
@@ -2106,7 +2148,7 @@ class COSWriter(ICOSVisitor):
 
     def _add_object_to_write(self, obj: COSBase) -> None:
         actual: COSBase | None = obj
-        if isinstance(obj, COSObject):
+        if _kind_of(type(obj)) == _KIND_OBJECT:
             actual = obj.get_object()
 
         # Already written / already queued / its actual already accounted.
@@ -2156,14 +2198,15 @@ class COSWriter(ICOSVisitor):
             self._actuals_added.add(id(actual))
 
     def _do_write_object(self, obj: COSBase) -> None:
+        is_wrapper = _kind_of(type(obj)) == _KIND_OBJECT
         # Skip dangling references (matches upstream).
-        if isinstance(obj, COSObject) and obj.get_object() is None:
+        if is_wrapper and obj.get_object() is None:
             return
         # Object-stream packing: any object that has been packed into an
         # ObjStm must NOT also be emitted as a free-standing indirect frame
         # (the xref stream points at its in-objstm location instead).
         actual_for_skip: COSBase | None = (
-            obj.get_object() if isinstance(obj, COSObject) else obj
+            obj.get_object() if is_wrapper else obj
         )
         if (
             actual_for_skip is not None
@@ -2192,7 +2235,7 @@ class COSWriter(ICOSVisitor):
         # Detect whether this indirect object IS the /Encrypt dictionary so
         # the leaf visitors can suppress string encryption while we serialise
         # it (per ISO 32000-1 §7.6.1, the /Encrypt dict is never enciphered).
-        actual = obj.get_object() if isinstance(obj, COSObject) else obj
+        actual = obj.get_object() if is_wrapper else obj
         previous_in_encrypt = self._in_encrypt_subtree
         if (
             self._encrypt_dict_id is not None
@@ -2217,16 +2260,14 @@ class COSWriter(ICOSVisitor):
             COSWriterXRefEntry(offset=out.get_position(), key=key, obj=obj, free=False)
         )
 
-        out.write_int(key.object_number)
-        out.write(SPACE)
-        out.write_int(key.generation_number)
-        out.write(SPACE)
-        out.write(OBJ)
+        out.write(b"%d %d obj" % (key.object_number, key.generation_number))
         out.write_eol()
 
         # Emit the value. If ``obj`` is a COSObject, dereference and emit
         # the target inline (the indirect frame is the object frame).
-        target: COSBase | None = obj.get_object() if isinstance(obj, COSObject) else obj
+        target: COSBase | None = (
+            obj.get_object() if _kind_of(type(obj)) == _KIND_OBJECT else obj
+        )
         if target is None:
             COSNull.NULL.accept(self)
         else:
@@ -2294,7 +2335,8 @@ class COSWriter(ICOSVisitor):
             or self._incremental_update
         )
         actual: COSBase
-        if isinstance(obj, COSObject):
+        is_wrapper = _kind_of(type(obj)) == _KIND_OBJECT
+        if is_wrapper:
             resolved = obj.get_object()
             if resolved is None:
                 # Dangling reference; preserve the declared key.
@@ -2303,19 +2345,22 @@ class COSWriter(ICOSVisitor):
                 self._key_holders[id(obj)] = obj
                 return key
             actual = resolved
-            declared_key = COSObjectKey(
-                obj.get_object_number(), obj.get_generation_number()
-            )
         else:
             actual = obj
-            declared_key = None
 
         existing = self._object_keys.get(id(actual))
         if existing is not None:
-            if isinstance(obj, COSObject):
+            if is_wrapper:
                 self._object_keys[id(obj)] = existing
                 self._key_holders[id(obj)] = obj
             return existing
+
+        # Only a not-yet-keyed actual needs the wrapper's declared key.
+        declared_key = (
+            COSObjectKey(obj.get_object_number(), obj.get_generation_number())
+            if is_wrapper
+            else None
+        )
 
         if honor_declared:
             # Stream / compressed / incremental path: keep the caller's
@@ -2348,7 +2393,7 @@ class COSWriter(ICOSVisitor):
             # Stamp the actual with its assigned key (upstream
             # ``actual.setKey``) so a subsequent re-save preserves it.
             actual.set_key(key)
-        if isinstance(obj, COSObject):
+        if is_wrapper:
             self._object_keys[id(obj)] = key
             self._key_holders[id(obj)] = obj
         return key
@@ -3217,14 +3262,7 @@ class COSWriter(ICOSVisitor):
         return None
 
     def visit_from_name(self, obj: COSName) -> Any:
-        out = self._standard_output
-        out.write(b"/")
-        for b in obj.get_bytes():
-            if _is_printable_name_byte(b):
-                out.write_byte(b)
-            else:
-                out.write(b"#")
-                out.write(f"{b:02X}".encode("ascii"))
+        self._standard_output.write(_name_token(obj.get_bytes()))
         return None
 
     def visit_from_string(self, obj: COSString) -> Any:
@@ -3261,18 +3299,23 @@ class COSWriter(ICOSVisitor):
         out = self._standard_output
         out.write(ARRAY_OPEN)
         items = list(obj)
+        kind_cache = _KIND_CACHE
         for i, current in enumerate(items):
-            if isinstance(current, COSDictionary):
-                self._write_dictionary(current)
-            elif isinstance(current, COSArray):
-                self._write_array(current)
-            elif isinstance(current, COSObject):
-                self._add_object_to_write(current)
-                self._write_reference(current)
-            elif current is None:
+            if current is None:
                 COSNull.NULL.accept(self)
             else:
-                current.accept(self)
+                kind = kind_cache.get(type(current))
+                if kind is None:
+                    kind = _kind_of(type(current))
+                if kind == _KIND_DICTIONARY:
+                    self._write_dictionary(current)
+                elif kind == _KIND_ARRAY:
+                    self._write_array(current)
+                elif kind == _KIND_OBJECT:
+                    self._add_object_to_write(current)
+                    self._write_reference(current)
+                else:
+                    current.accept(self)
             # Match upstream ``COSWriter.visitFromArray``: the separator is
             # guarded by ``if (i.hasNext())`` so there is NO trailing space
             # before the closing ``]``. Every 10th element gets an EOL
@@ -3305,12 +3348,16 @@ class COSWriter(ICOSVisitor):
         out = self._standard_output
         out.write(DICT_OPEN)
         out.write_eol()
+        kind_cache = _KIND_CACHE
         for key, value in obj.entry_set():
             if value is None:
                 continue
             key.accept(self)
             out.write(SPACE)
-            if isinstance(value, COSDictionary):
+            kind = kind_cache.get(type(value))
+            if kind is None:
+                kind = _kind_of(type(value))
+            if kind == _KIND_DICTIONARY:
                 if not self._incremental_update:
                     # PDFBOX-3684: on a full save, write a nested /XObject or
                     # /Resources sub-dictionary as a DIRECT (inline) object to
@@ -3324,10 +3371,10 @@ class COSWriter(ICOSVisitor):
                     if resources_item is not None and key != COSName.RESOURCES:
                         resources_item.set_direct(True)
                 self._write_dictionary(value)
-            elif isinstance(value, COSObject):
+            elif kind == _KIND_OBJECT:
                 self._add_object_to_write(value)
                 self._write_reference(value)
-            elif isinstance(value, COSArray):
+            elif kind == _KIND_ARRAY:
                 self._write_array(value)
             else:
                 value.accept(self)
@@ -3476,13 +3523,10 @@ class COSWriter(ICOSVisitor):
         return None
 
     def _write_reference(self, obj: COSBase) -> None:
-        out = self._standard_output
         key = self._get_object_key(obj)
-        out.write_int(key.object_number)
-        out.write(SPACE)
-        out.write_int(key.generation_number)
-        out.write(SPACE)
-        out.write(REFERENCE)
+        self._standard_output.write(
+            b"%d %d R" % (key.object_number, key.generation_number)
+        )
 
     # ---------- statics: number / string formatting ----------
 
@@ -3543,36 +3587,23 @@ class COSWriter(ICOSVisitor):
                 "write_string expects a COSString or bytes-like input; "
                 f"got {type(string).__name__}"
             )
-        is_ascii = True
-        if not force_hex:
-            for b in data:
-                # bytes >= 0x80 → non-ASCII; also avoid CR/LF to dodge EOL
-                # ambiguity inside literal strings (PDFBOX-3107).
-                if b >= 0x80 or b in (0x0D, 0x0A):
-                    is_ascii = False
-                    break
-        # Branch on the output API surface so callers can pass either a
-        # ``COSStandardOutputStream`` (writeByte support) or a plain
-        # ``write(bytes)`` sink. The byte-by-byte path is hot when escaping
-        # literal-form payloads, so we cache the resolved write function.
-        write_byte = getattr(output, "write_byte", None)
-
-        def _emit_byte(b: int) -> None:
-            if write_byte is not None:
-                write_byte(b)
-            else:
-                output.write(bytes((b,)))
-
-        if is_ascii and not force_hex:
-            output.write(b"(")
-            for b in data:
-                if b in (0x28, 0x29, 0x5C):  # ( ) \
-                    output.write(b"\\")
-                    _emit_byte(b)
-                else:
-                    _emit_byte(b)
-            output.write(b")")
+        # Literal form only for pure 7-bit data without CR/LF (EOL markers
+        # inside a literal string are ambiguous, PDFBOX-3107). Upstream
+        # escapes every ``(``, ``)`` and ``\\`` unconditionally (no
+        # balanced-parenthesis shortcut), so three ``replace`` passes give
+        # the same bytes as its per-byte switch.
+        if (
+            not force_hex
+            and data.isascii()
+            and b"\r" not in data
+            and b"\n" not in data
+        ):
+            if b"\\" in data or b"(" in data or b")" in data:
+                data = (
+                    data.replace(b"\\", b"\\\\")
+                    .replace(b"(", b"\\(")
+                    .replace(b")", b"\\)")
+                )
+            output.write(b"(" + data + b")")
         else:
-            output.write(b"<")
-            output.write(data.hex().upper().encode("ascii"))
-            output.write(b">")
+            output.write(b"<" + binascii.hexlify(data).upper() + b">")

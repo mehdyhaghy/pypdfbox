@@ -147,7 +147,8 @@ def test_get_space_width_uses_widths_offset_by_first_char() -> None:
     font = _BarePDFont()
     cos = font.get_cos_object()
     cos.set_int(COSName.get_pdf_name("FirstChar"), 30)
-    # Index 32 - 30 = 2 → expect 600.0
+    cos.set_int(COSName.get_pdf_name("LastChar"), 33)
+    # getWidth(32): index 32 - 30 = 2 → expect 600.0
     arr = COSArray(
         [COSInteger.get(100), COSInteger.get(200), COSInteger.get(600), COSInteger.get(800)]
     )
@@ -157,10 +158,14 @@ def test_get_space_width_uses_widths_offset_by_first_char() -> None:
 
 def test_get_space_width_falls_back_to_average_when_index_out_of_range() -> None:
     # /FirstChar = 100 puts code 32 below the start of /Widths so the
-    # direct lookup fails. Mirroring upstream PDFBox ``getSpaceWidth``,
-    # the chain then reaches ``getAverageFontWidth`` (the only positive
-    # entry is 500 → avg 500) before falling through to 250.
-    font = _BarePDFont()
+    # ``getWidth(32)`` lookup misses. Mirroring upstream PDFBox
+    # ``getSpaceWidth``, a font program without a usable space width then
+    # leaves ``getAverageFontWidth`` (the only positive entry is 500).
+    class _NoProgramWidth(_BarePDFont):
+        def get_width_from_font(self, code: int) -> float:
+            return 0.0
+
+    font = _NoProgramWidth()
     cos = font.get_cos_object()
     cos.set_int(COSName.get_pdf_name("FirstChar"), 100)
     cos.set_item(COSName.get_pdf_name("Widths"), COSArray([COSInteger.get(500)]))
@@ -486,11 +491,11 @@ def test_encode_empty_string_returns_empty_bytes_on_bare_base() -> None:
     assert _BarePDFont().encode("") == b""
 
 
-def test_read_code_raises_not_implemented_on_bare_base() -> None:
-    import pytest
-
-    with pytest.raises(NotImplementedError):
-        _BarePDFont().read_code(b"\x41")
+def test_read_code_reads_one_byte_on_bare_base() -> None:
+    # PDFBOX-6287: upstream's PDFont.readCode default is ``in.read()``.
+    assert _BarePDFont().read_code(b"\x41\x42") == (0x41, 1)
+    assert _BarePDFont().read_code(b"\x41\x42", 1) == (0x42, 1)
+    assert _BarePDFont().read_code(b"\x41", 1) == (0, 0)
 
 
 def test_get_width_from_font_raises_not_implemented_on_bare_base() -> None:
@@ -671,6 +676,7 @@ def test_get_space_width_cached_after_first_call() -> None:
     font = _BarePDFont()
     cos = font.get_cos_object()
     cos.set_int(COSName.get_pdf_name("FirstChar"), 32)
+    cos.set_int(COSName.get_pdf_name("LastChar"), 32)
     cos.set_item(COSName.get_pdf_name("Widths"), COSArray([COSInteger.get(600)]))
     assert font.get_space_width() == 600.0
     # Drop /Widths — cached value still wins.

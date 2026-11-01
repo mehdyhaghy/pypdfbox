@@ -2,42 +2,11 @@ from typing import Any, cast
 
 from pypdfbox.pdmodel.font import PDType1Font
 from pypdfbox.text import PDFTextStripper, TextPosition
-from pypdfbox.text.pdf_text_stripper import _TextState
 
 
 class ExplodingFont(PDType1Font):
     def decode(self, _data: bytes) -> str:
         raise AssertionError("font decode should not run when CMap is active")
-
-
-def test_wave944_emit_ignoring_space_glyphs_keeps_chunk_offsets_and_total_advance() -> None:
-    stripper = PDFTextStripper()
-    state = _TextState()
-    state.text_x = 10.0
-    state.text_y = 20.0
-    state.font_size = 10.0
-    state.font_name = "F0"
-    positions: list[TextPosition] = []
-
-    stripper._emit_ignoring_space_glyphs(
-        " A  BC ",
-        state,
-        positions,
-        None,
-        None,
-        5.0,
-        5.0,
-    )
-
-    assert [(pos.text, pos.x, pos.y, pos.width) for pos in positions] == [
-        ("A", 15.0, 20.0, 5.0),
-        ("BC", 30.0, 20.0, 10.0),
-    ]
-    assert [pos.text_matrix for pos in positions] == [
-        [1.0, 0.0, 0.0, 1.0, 15.0, 20.0],
-        [1.0, 0.0, 0.0, 1.0, 30.0, 20.0],
-    ]
-    assert state.text_x == 45.0
 
 
 def test_wave944_decode_show_text_prefers_cmap_before_simple_font_decode() -> None:

@@ -12,12 +12,7 @@ to the resolved upstream table — verified against the Java samples in
 transcribing 256 SID rows.
 """
 
-# Imported unaliased: aliasing a CamelCase third-party symbol trips one of
-# pep8-naming's N81x rules whatever the alias looks like, and the upstream
-# name is the clearer one here.
-from fontTools.encodings.StandardEncoding import (  # type: ignore[import-untyped]
-    StandardEncoding,
-)
+from pypdfbox._lazy_exports import lazy_modules
 
 from .cff_encoding import CFFEncoding
 
@@ -28,6 +23,12 @@ class CFFStandardEncoding(CFFEncoding):
     _instance: CFFStandardEncoding | None = None
 
     def __init__(self) -> None:
+        # Imported lazily (fontTools is only needed once a CFF font is read)
+        # and unaliased: aliasing a CamelCase third-party symbol trips one of
+        # pep8-naming's N81x rules whatever the alias looks like, and the
+        # upstream name is the clearer one here.
+        from fontTools.encodings.StandardEncoding import StandardEncoding
+
         super().__init__()
         # Walk fontTools' StandardEncoding list; each index is the char
         # code, each value is the glyph name (or ".notdef" for unmapped
@@ -52,3 +53,10 @@ class CFFStandardEncoding(CFFEncoding):
 
 
 __all__ = ["CFFStandardEncoding"]
+
+__getattr__ = lazy_modules(
+    __name__,
+    {
+        "StandardEncoding": "fontTools.encodings.StandardEncoding:StandardEncoding",
+    },
+)

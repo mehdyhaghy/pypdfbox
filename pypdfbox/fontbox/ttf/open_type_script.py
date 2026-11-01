@@ -16,9 +16,20 @@ special-case here.
 """
 
 import sys
+from typing import Any
 
-from fontTools.unicodedata import script as _ft_script
-from fontTools.unicodedata import script_name as _ft_script_name
+
+def _ft_script(*args: Any, **kwargs: Any) -> Any:
+    # fontTools is imported on first use so loading this module stays cheap.
+    from fontTools.unicodedata import script
+
+    return script(*args, **kwargs)
+
+
+def _ft_script_name(*args: Any, **kwargs: Any) -> Any:
+    from fontTools.unicodedata import script_name
+
+    return script_name(*args, **kwargs)
 
 # String constants — preserved from upstream so callers comparing
 # against ``OpenTypeScript.INHERITED`` etc. behave identically.

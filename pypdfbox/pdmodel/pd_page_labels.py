@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any
 
@@ -13,6 +14,8 @@ from .pd_page_label_range import PDPageLabelRange
 if TYPE_CHECKING:
     from .pd_document import PDDocument
 
+
+_LOG = logging.getLogger(__name__)
 
 _NUMS: COSName = COSName.get_pdf_name("Nums")
 _KIDS: COSName = COSName.get_pdf_name("Kids")
@@ -124,34 +127,57 @@ class PDPageLabels:
         self._find_labels(node)
 
     def _find_labels(self, node: COSDictionary) -> None:
+        # Upstream walks ``PDNumberTreeNode.getKids()``: a /Kids array (even
+        # an empty one) makes the node intermediate, so its /Nums is never
+        # read. A non-dictionary kid becomes an empty node that yields nothing.
         kids = node.get_dictionary_object(_KIDS)
         if isinstance(kids, COSArray):
-            found_child = False
             for i in range(kids.size()):
                 child = kids.get_object(i)
                 if isinstance(child, COSDictionary):
-                    found_child = True
                     self._find_labels(child)
-            if found_child:
-                return
+                else:
+                    _LOG.warning("Bad child node at position %d", i)
+            return
         nums = node.get_dictionary_object(_NUMS)
         if not isinstance(nums, COSArray):
             return
+        # Mirrors ``PDNumberTreeNode.getNumbers()``: a non-integer key makes
+        # the whole /Nums array of this node unusable (upstream returns null).
+        found: dict[int, PDPageLabelRange | None] = {}
+        size = nums.size()
+        if size % 2 != 0:
+            _LOG.warning("Numbers array has odd size: %d", size)
         i = 0
-        while i + 1 < nums.size():
+        while i + 1 < size:
             key_obj = nums.get_object(i)
-            value_obj = nums.get_object(i + 1)
-            i += 2
             if not isinstance(key_obj, COSInteger):
-                continue
-            key = key_obj.value
-            if key < 0:
-                continue
-            if not isinstance(value_obj, COSDictionary):
-                raise OSError(
-                    f"Page label range at index {key} is not a COSDictionary"
+                _LOG.error(
+                    "page labels ignored, index %d should be a number, but is %s",
+                    i,
+                    key_obj,
                 )
-            self._labels[key] = PDPageLabelRange(value_obj, start_index=key)
+                return
+            value_obj = nums.get_object(i + 1)
+            key = key_obj.value
+            i += 2
+            if value_obj is None:
+                found[key] = None
+                continue
+            # Upstream builds the value reflectively through
+            # ``PDPageLabelRange(COSDictionary)``; any other COS type fails.
+            if type(value_obj) is not COSDictionary:
+                raise OSError(
+                    "Error while trying to create PDPageLabelRange-typed value "
+                    f"in number tree: page label range at index {key} is not "
+                    "a COSDictionary"
+                )
+            found[key] = PDPageLabelRange(value_obj, start_index=key)
+        # PDFBOX-6296: only accept PDPageLabelRange values (a null value no
+        # longer replaces an existing range, e.g. the seeded page-0 entry).
+        for key, page_label_range in found.items():
+            if key >= 0 and page_label_range is not None:
+                self._labels[key] = page_label_range
 
     # ---------- COS surface ----------
 

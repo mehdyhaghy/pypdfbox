@@ -5,6 +5,7 @@ import pytest
 from pypdfbox import PDDocument, PDPage
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSNull
 from pypdfbox.multipdf import Splitter
+from pypdfbox.pdmodel.interactive.documentnavigation.destination import PDDestination
 
 _ANNOTS = COSName.get_pdf_name("Annots")
 _OBJ = COSName.get_pdf_name("Obj")
@@ -51,7 +52,6 @@ def test_wave453_create_new_document_sanitizes_info_dictionary(
 
 
 def test_wave453_process_annotations_clones_popup_reference_without_source_alias() -> None:
-    source_page = PDPage()
     imported = PDPage()
     popup = _annotation("Popup")
     markup = _annotation("Text")
@@ -62,11 +62,7 @@ def test_wave453_process_annotations_clones_popup_reference_without_source_alias
     imported.get_cos_object().set_item(_ANNOTS, annots)
 
     splitter = Splitter()
-    # Wave 1373: chunk-level deferred second pass — drain manually when
-    # calling ``_process_annotations`` outside the ``split()`` driver.
-    splitter._pending_annot_passes = []
-    splitter._process_annotations(source_page, imported)
-    splitter._finalize_annotation_links()
+    splitter._process_annotations(imported)
 
     cloned_annots = imported.get_cos_object().get_dictionary_object(_ANNOTS)
     assert isinstance(cloned_annots, COSArray)
@@ -129,7 +125,9 @@ def test_wave453_fix_destinations_rewrites_in_chunk_target() -> None:
     dest.add(COSName.get_pdf_name("Fit"))
 
     splitter = Splitter()
-    splitter._dest_to_fix = [(dest, source_pages[0].get_cos_object())]
+    splitter._dest_to_fix = [
+        (PDDestination.create(dest), chunk_pages[0].get_cos_object())
+    ]
     splitter._page_dict_map = {
         id(source_pages[0].get_cos_object()): chunk_pages[0].get_cos_object(),
         id(source_pages[1].get_cos_object()): chunk_pages[1].get_cos_object(),

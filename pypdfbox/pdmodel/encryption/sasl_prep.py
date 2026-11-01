@@ -148,13 +148,16 @@ def _sasl_prep(value: str, *, allow_unassigned: bool) -> str:
             raise ValueError(
                 f"Prohibited character at position {i}: U+{cp:04X}"
             )
-        directionality = unicodedata.bidirectional(ch)
+        # Java reports no directionality for unassigned code points;
+        # Python 3.15+ returns their derived default class instead.
+        category = unicodedata.category(ch)
+        directionality = "" if category == "Cn" else unicodedata.bidirectional(ch)
         is_randal_cat = directionality in {"R", "AL"}
         contains_randal_cat |= is_randal_cat
         contains_l_cat |= directionality == "L"
         if i == 0 and is_randal_cat:
             initial_randal_cat = True
-        if not allow_unassigned and unicodedata.category(ch) == "Cn":
+        if not allow_unassigned and category == "Cn":
             raise ValueError(f"Character at position {i} is unassigned")
         if initial_randal_cat and i == len(normalized) - 1 and not is_randal_cat:
             raise ValueError(

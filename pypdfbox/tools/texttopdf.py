@@ -206,7 +206,9 @@ def _font_bbox_height(font: PDFont) -> float:
     return 1000.0
 
 
-def _string_width_units(font: PDFont, text: str) -> float:
+def _string_width_units(
+    font: PDFont, text: str, width_cache: dict[int, float] | None = None
+) -> float:
     """Return the advance width of ``text`` in font units (1/1000 em).
 
     Mirrors upstream ``font.getStringWidth(text)``. We encode the string
@@ -214,6 +216,13 @@ def _string_width_units(font: PDFont, text: str) -> float:
     Standard 14 PDType1Font path resolves the codes through
     ``StandardEncoding`` / ``WinAnsiEncoding`` and looks the per-glyph
     advance up in the bundled AFM).
+
+    ``width_cache`` is an optional per-layout ``code -> width`` memo. The
+    layout loop re-measures the growing line once per candidate word (the
+    upstream algorithm), so without a memo every glyph width is resolved
+    ~10 times per character. The caller owns the memo and scopes it to a
+    single layout run, during which the font dictionary is not mutated;
+    the summation order is unchanged, so the totals are bit-identical.
     """
     width_total = 0.0
     if not text:
@@ -221,8 +230,16 @@ def _string_width_units(font: PDFont, text: str) -> float:
     if hasattr(font, "encode") and hasattr(font, "get_glyph_width"):
         width_font = cast("_WidthCapableFont", font)
         encoded = width_font.encode(text)
+        if width_cache is None:
+            for code in encoded:
+                width_total += float(width_font.get_glyph_width(code))
+            return width_total
         for code in encoded:
-            width_total += float(width_font.get_glyph_width(code))
+            width = width_cache.get(code)
+            if width is None:
+                width = float(width_font.get_glyph_width(code))
+                width_cache[code] = width
+            width_total += width
         return width_total
     # Last-ditch fallback for fonts that don't yet expose encode/get_glyph_width:
     # treat every character as a half-em (500 units in 1/1000 em). Better than
@@ -345,6 +362,8 @@ def create_pdf_from_text(
     page = PDPage(actual_media_box)
     content_stream: PDPageContentStream | None = None
     y = -1.0
+    # Per-run glyph-width memo; see ``_string_width_units``.
+    width_cache: dict[int, float] = {}
 
     def _start_new_page() -> tuple[PDPage, PDPageContentStream, float]:
         new_page = PDPage(actual_media_box)
@@ -411,7 +430,9 @@ def create_pdf_from_text(
                         "".join(next_line_to_draw) + " " + next_word
                     )
                     length_if_using_next_word = (
-                        _string_width_units(font, line_with_next_word)
+                        _string_width_units(
+                            font, line_with_next_word, width_cache
+                        )
                         / _FONTSCALE
                     ) * font_size
                 if not (

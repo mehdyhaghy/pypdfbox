@@ -307,9 +307,8 @@ def test_get_average_font_width_skips_zero_widths_and_uses_cff_default() -> None
     cos.set_int(_FIRST_CHAR, 32)
     cos.set_int(_LAST_CHAR, 33)
     cos.set_item(_WIDTHS, COSArray([COSInteger.get(0), COSInteger.get(0)]))
-    # No CFF program injected; non-Standard-14 base name; no Standard 14
-    # AFM fallback either. Result must be 0.0 (the final fall-through).
-    assert font.get_average_font_width() == 0.0
+    # Upstream PDType1CFont returns its constant 500 regardless.
+    assert font.get_average_font_width() == 500.0
 
 
 def test_get_average_font_width_uses_cff_default_width_x_when_no_widths() -> None:

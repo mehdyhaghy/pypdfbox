@@ -406,4 +406,6 @@ def test_sort_by_position_is_stable_for_equal_y_equal_x() -> None:
     s = PDFTextStripper()
     s.set_sort_by_position(True)
     out = s.get_text(doc)
-    assert out.index("one") < out.index("two")
+    # Upstream sorts glyphs, so the two words interleave; at each shared x
+    # the earlier-painted glyph stays first (verified against PDFBox 3.0.8).
+    assert out == "otwnoe\n"

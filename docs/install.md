@@ -6,11 +6,10 @@ the [project README](../README.md). This page is the full version.
 
 ## Python version support
 
-pypdfbox requires **CPython 3.12 or newer** (tested on 3.12, 3.13,
-and 3.14). Older releases are not supported. On 3.14 the free-threaded
-("nogil") build is additionally available for parallel parsing and
-rendering work where the user opts in; the regular GIL build is the
-default on every supported version.
+pypdfbox requires **CPython 3.14 or newer** (tested on 3.14 and
+3.15). Older releases are not supported. Free-threaded builds
+(3.14t, 3.15t) install, since every dependency ships wheels for them,
+but pypdfbox is not yet tested for thread safety on them.
 
 Other interpreters (PyPy, GraalPy, MicroPython, …) are not tested.
 You are welcome to try them, but please flag bugs as

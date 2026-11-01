@@ -14,6 +14,7 @@ functions are the primary surface; the ``PDFDocEncoding`` class with
 classmethods is provided for upstream-name parity.
 """
 
+import codecs
 from typing import Final
 
 _REPLACEMENT_CHARACTER: Final[str] = "�"
@@ -100,6 +101,26 @@ _CODE_TO_UNI: list[str]
 _UNI_TO_CODE: dict[str, int]
 _CODE_TO_UNI, _UNI_TO_CODE = _build_tables()
 
+# Bulk-codec views of the two tables, rebuilt by ``set()`` whenever a mapping
+# changes. ``_DECODE_TABLE`` is the 256-char ``charmap_decode`` table (code ->
+# char) and ``_ENCODE_MAP`` the ``charmap_encode`` mapping (code point ->
+# code). ``charmap_decode`` treats U+FFFE in a table as "undefined", so the
+# C decoder is only used while no slot holds U+FFFE (never true for the
+# built-in table; only reachable through ``set()``).
+_DECODE_TABLE: str = ""
+_DECODE_TABLE_OK: bool = False
+_ENCODE_MAP: dict[int, int] = {}
+
+
+def _rebuild_codec_tables() -> None:
+    global _DECODE_TABLE, _DECODE_TABLE_OK, _ENCODE_MAP
+    _DECODE_TABLE = "".join(_CODE_TO_UNI)
+    _DECODE_TABLE_OK = len(_DECODE_TABLE) == 256 and "\ufffe" not in _DECODE_TABLE
+    _ENCODE_MAP = {ord(c): code for c, code in _UNI_TO_CODE.items()}
+
+
+_rebuild_codec_tables()
+
 
 def contains_char(character: str) -> bool:
     """Return ``True`` if the given UTF-16 character is available in
@@ -121,6 +142,16 @@ def decode_bytes(data: bytes | bytearray | memoryview) -> str:
     any slot with no table entry at all (only ``0xAD``) maps to ``U+0000`` —
     matching upstream's ``int[]`` default-of-0 / ``(char)`` cast.
     """
+    if _DECODE_TABLE_OK and (
+        type(data) is bytes
+        or type(data) is bytearray
+        or (type(data) is memoryview and data.format == "B" and data.ndim == 1)
+    ):
+        # One C-level table lookup per byte; identical to the loop below
+        # because every unsigned byte value indexes one of the 256 slots.
+        # Anything else (int sequences, multi-byte or signed memoryviews)
+        # keeps the loop's per-item semantics.
+        return codecs.charmap_decode(data, "strict", _DECODE_TABLE)[0]
     out: list[str] = []
     for b in data:
         if b >= len(_CODE_TO_UNI):
@@ -139,7 +170,14 @@ def encode_bytes(text: str) -> bytes:
     to detect unmappable characters should pre-check with
     :func:`contains_char`.
     """
-    return bytes(_UNI_TO_CODE.get(c, 0) for c in text)
+    try:
+        # Fast path: every character is mapped (the common case, since
+        # ``COSString`` only picks PDFDocEncoding when all characters are).
+        return codecs.charmap_encode(text, "strict", _ENCODE_MAP)[0]
+    except (UnicodeEncodeError, TypeError):
+        # Unmappable characters (-> 0x00) or a non-``str`` character
+        # sequence: the per-character lookup handles both.
+        return bytes(_UNI_TO_CODE.get(c, 0) for c in text)
 
 
 def get_char_code(character: str) -> int | None:
@@ -175,6 +213,7 @@ def set(code: int, unicode_char: str) -> None:  # mirror upstream name
         )
     _CODE_TO_UNI[code] = unicode_char
     _UNI_TO_CODE[unicode_char] = code
+    _rebuild_codec_tables()
 
 
 class PDFDocEncoding:

@@ -7,9 +7,6 @@ from pypdfbox.cos import (
     COSDictionary,
     COSInteger,
     COSName,
-    COSObject,
-    COSStream,
-    COSString,
 )
 from pypdfbox.io import RandomAccessWriteBuffer
 from pypdfbox.pdmodel import PDDocument, PDPage
@@ -21,80 +18,6 @@ _PARENT = COSName.get_pdf_name("Parent")
 _RESOURCES = COSName.get_pdf_name("Resources")
 _T = COSName.get_pdf_name("T")
 _V = COSName.get_pdf_name("V")
-
-
-def test_wave535_import_page_deep_copies_streams_arrays_and_drops_parent() -> None:
-    source_page = PDPage()
-    page_dict = source_page.get_cos_object()
-    parent = COSDictionary()
-    resources = COSDictionary()
-    nested_array = COSArray()
-    nested_array.add(COSString("nested"))
-    stream = COSStream()
-    stream.set_raw_data(b"stream-bytes")
-    stream.set_item(COSName.get_pdf_name("Meta"), nested_array)
-
-    page_dict.set_item(_PARENT, parent)
-    page_dict.set_item(_RESOURCES, resources)
-    page_dict.set_item(_CONTENTS, stream)
-
-    destination = PDDocument()
-    try:
-        imported = destination.import_page(source_page)
-        imported_dict = imported.get_cos_object()
-
-        assert imported_dict is not page_dict
-        assert imported_dict.get_dictionary_object(_PARENT) is not parent
-        assert imported_dict.get_dictionary_object(_RESOURCES) is not resources
-
-        imported_stream = imported_dict.get_dictionary_object(_CONTENTS)
-        assert isinstance(imported_stream, COSStream)
-        assert imported_stream is not stream
-        assert imported_stream.get_raw_data() == b"stream-bytes"
-        copied_meta = imported_stream.get_dictionary_object(COSName.get_pdf_name("Meta"))
-        assert copied_meta is not nested_array
-        assert destination.get_number_of_pages() == 1
-    finally:
-        destination.close()
-
-
-def test_wave535_import_page_breaks_cycles_by_reusing_seen_object() -> None:
-    cyclic = COSDictionary()
-    cyclic.set_item(COSName.get_pdf_name("Self"), cyclic)
-    page = PDPage()
-    page.get_cos_object().set_item(COSName.get_pdf_name("Cycle"), cyclic)
-
-    doc = PDDocument()
-    try:
-        imported = doc.import_page(page)
-
-        copied_cycle = imported.get_cos_object().get_dictionary_object(
-            COSName.get_pdf_name("Cycle")
-        )
-        assert isinstance(copied_cycle, COSDictionary)
-        assert copied_cycle is not cyclic
-        assert copied_cycle.get_dictionary_object(COSName.get_pdf_name("Self")) is cyclic
-    finally:
-        doc.close()
-
-
-def test_wave535_deep_copy_resolves_cos_object_references() -> None:
-    target = COSDictionary()
-    target.set_string(COSName.get_pdf_name("Name"), "resolved")
-    ref = COSObject(7, resolved=target)
-    page = PDPage()
-    page.get_cos_object().set_item(COSName.get_pdf_name("Ref"), ref)
-
-    doc = PDDocument()
-    try:
-        imported = doc.import_page(page)
-
-        copied = imported.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Ref"))
-        assert isinstance(copied, COSDictionary)
-        assert copied is not target
-        assert copied.get_string(COSName.get_pdf_name("Name")) == "resolved"
-    finally:
-        doc.close()
 
 
 def test_wave535_write_bytes_to_random_access_write_buffer() -> None:

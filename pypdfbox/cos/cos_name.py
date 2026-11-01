@@ -1,3 +1,4 @@
+import re
 from typing import Any, BinaryIO
 
 from .cos_base import COSBase
@@ -23,7 +24,7 @@ class COSName(COSBase):
     _common_name_map: dict[bytes, COSName] = {}
     _name_map: dict[bytes, COSName] = {}
 
-    __slots__ = ("_bytes", "_direct", "_needs_to_be_updated")
+    __slots__ = ("_bytes", "_direct", "_needs_to_be_updated", "_token")
 
     def __new__(
         cls,
@@ -32,18 +33,13 @@ class COSName(COSBase):
         _static: bool = False,
     ) -> COSName:
         data = cls._coerce_name_bytes(name)
-        existing = cls._common_name_map.get(data)
+        existing = _common_name_get(data)
         if existing is not None:
             return existing
-        existing = cls._name_map.get(data)
+        existing = _name_get(data)
         if existing is not None:
             return existing
-        inst = super().__new__(cls)
-        if _static:
-            cls._common_name_map[data] = inst
-        else:
-            cls._name_map[data] = inst
-        return inst
+        return cls._create(data, _static)
 
     def __init__(
         self,
@@ -51,11 +47,25 @@ class COSName(COSBase):
         *,
         _static: bool = False,
     ) -> None:
-        # Re-init guard: __new__ may return an interned instance.
-        if getattr(self, "_bytes", None) is not None:
-            return
-        super().__init__()
-        self._bytes = self._coerce_name_bytes(name)
+        # All state is set once, in ``_create``: ``__new__`` may return an
+        # already-interned instance, which must not be re-initialized.
+        pass
+
+    @classmethod
+    def _create(cls, data: bytes, static: bool) -> COSName:
+        """Build a new name for ``data`` (not yet interned) and register it
+        in the static or the dynamic registry."""
+        inst = super().__new__(cls)
+        COSBase.__init__(inst)
+        inst._bytes = data
+        # Serialized ``/Name`` token, built on first ``write_pdf``. Safe to
+        # cache: ``_bytes`` never changes after construction.
+        inst._token = None
+        if static:
+            cls._common_name_map[data] = inst
+        else:
+            cls._name_map[data] = inst
+        return inst
 
     @staticmethod
     def _coerce_name_bytes(name: str | bytes | bytearray | memoryview) -> bytes:
@@ -66,7 +76,21 @@ class COSName(COSBase):
     @classmethod
     def get_pdf_name(cls, name: str | bytes | bytearray | memoryview) -> COSName:
         """Canonical accessor — returns the interned instance."""
-        return cls(name)
+        # Hot path (the parser hands over ``bytes``): probe both registries
+        # directly, in the same order ``__new__`` does, so an already-interned
+        # name costs two dict lookups instead of ``__new__`` + ``__init__``.
+        if type(name) is bytes:
+            key = name
+        elif type(name) is str:
+            key = name.encode("utf-8")
+        else:
+            key = cls._coerce_name_bytes(name)
+        inst = _common_name_get(key)
+        if inst is None:
+            inst = _name_get(key)
+            if inst is None:
+                return cls._create(key, False)
+        return inst
 
     @property
     def name(self) -> str:
@@ -98,13 +122,11 @@ class COSName(COSBase):
         return len(self._bytes) == 0
 
     def write_pdf(self, output: BinaryIO) -> None:
-        output.write(b"/")
-        for b in self._bytes:
-            if _is_printable_name_byte(b):
-                output.write(bytes((b,)))
-            else:
-                output.write(b"#")
-                output.write(f"{b:02X}".encode("ascii"))
+        token = self._token
+        if token is None:
+            token = b"/" + _NAME_ESCAPE_RE.sub(_escape_name_byte, self._bytes)
+            self._token = token
+        output.write(token)
 
     def accept(self, visitor: ICOSVisitor) -> Any:
         return visitor.visit_from_name(self)
@@ -204,6 +226,23 @@ class COSName(COSBase):
 
     def __str__(self) -> str:
         return f"/{self.get_name()}"
+
+
+# Bound ``get`` of both registries for ``get_pdf_name``'s hot path. The dicts
+# are never rebound (``clear_resources`` clears ``_name_map`` in place), so
+# these stay valid for the life of the process.
+_common_name_get = COSName._common_name_map.get
+_name_get = COSName._name_map.get
+
+
+# Any byte outside the printable allowlist below (A-Z a-z 0-9 and
+# ``+ - _ @ * $ ; .``). ``write_pdf`` escapes a whole name in one ``re.sub``
+# pass; kept in sync with ``_is_printable_name_byte``.
+_NAME_ESCAPE_RE = re.compile(rb"[^A-Za-z0-9+\-_@*$;.]")
+
+
+def _escape_name_byte(match: re.Match[bytes]) -> bytes:
+    return b"#%02X" % match.group()[0]
 
 
 def _is_printable_name_byte(b: int) -> bool:

@@ -1,3 +1,5 @@
+import base64
+import binascii
 from typing import BinaryIO, Final
 
 from pypdfbox.cos import COSDictionary
@@ -79,6 +81,10 @@ _U32_MASK: Final[int] = 0xFFFFFFFF
 # rest are placeholders. Used by the fast path to convert a whole whitespace-
 # free buffer to raw digit values in one C-level pass.
 _SUB_OFFSET: Final[bytes] = bytes((i - _DIGIT_OFFSET) & 0xFF for i in range(256))
+# The stdlib decoder is only a win where it is implemented in C
+# (``binascii.a2b_ascii85``, Python 3.15+); the pure-Python 3.14 version is
+# no faster than the bulk path below, so it is not used there.
+_STDLIB_DECODE: Final[bool] = hasattr(binascii, "a2b_ascii85")
 
 
 class ASCII85Decode(Filter):
@@ -156,6 +162,19 @@ class ASCII85Decode(Filter):
         data = data.translate(None, _WHITESPACE_BYTES)
         if not data:
             return b""
+
+        # Stdlib fast path. On the whitespace-free, EOD-truncated buffer the
+        # stdlib decoder (no ignorechars, no y/adobe) accepts only b'!'..b'u'
+        # digits plus b'z' at a group boundary, and its padded-partial-group
+        # rule is upstream's. Whenever it returns, upstream's 32-bit mask was a
+        # no-op (stdlib raises on overflow), so the bytes are identical. Every
+        # input it rejects (overflow, mid-group b'z', b'v'..b'}' digits, a
+        # lone trailing digit, invalid bytes) falls through to the exact port.
+        if _STDLIB_DECODE:
+            try:
+                return base64.a85decode(data, ignorechars=b"")
+            except ValueError:
+                pass
 
         # The b'z' 4-zero shortcut only fires at a group boundary, so its
         # effect depends on the running digit count — that path stays

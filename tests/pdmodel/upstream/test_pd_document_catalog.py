@@ -3,13 +3,14 @@
 Upstream baseline: PDFBox 3.0.
 """
 
-import pytest
+from pathlib import Path
 
 from pypdfbox import PDDocument, PDPage
-from pypdfbox.cos import COSArray, COSBoolean, COSDictionary, COSInteger, COSName
+from pypdfbox.cos import COSBoolean, COSName
 from pypdfbox.pdmodel.graphics.color import PDOutputIntent
-from pypdfbox.pdmodel.pd_page_label_range import PDPageLabelRange
 from pypdfbox.pdmodel.pd_page_labels import PDPageLabels
+
+_FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "pdmodel"
 
 
 def test_retrieve_page_labels() -> None:
@@ -45,28 +46,13 @@ def test_retrieve_page_labels() -> None:
 
 
 def test_retrieve_page_labels_on_malformed_pdf() -> None:
-    with PDDocument() as doc:
-        for _ in range(4):
-            doc.add_page(PDPage())
-        nums = COSArray()
-        nums.add(COSName.get_pdf_name("NotAnInt"))
-        nums.add(COSDictionary())
-        nums.add(COSInteger.get(-1))
-        nums.add(COSDictionary())
-        nums.add(COSInteger.get(1))
-        nums.add(COSName.get_pdf_name("NotARange"))
-        nums.add(COSInteger.get(2))
-        valid = COSDictionary()
-        valid.set_name(COSName.get_pdf_name("S"), PDPageLabelRange.STYLE_ROMAN_LOWER)
-        nums.add(valid)
-        tree = COSDictionary()
-        tree.set_item(COSName.get_pdf_name("Nums"), nums)
-        doc.get_document_catalog().get_cos_object().set_item(
-            COSName.get_pdf_name("PageLabels"), tree
-        )
-
-        with pytest.raises(OSError, match="index 1"):
-            doc.get_document_catalog().get_page_labels()
+    # PDFBOX-900: getLabelsByPageIndices() should not throw on a malformed
+    # /PageLabels number tree.
+    with PDDocument.load(_FIXTURES / "badpagelabels.pdf") as doc:
+        cat = doc.get_document_catalog()
+        page_labels = cat.get_page_labels()
+        assert page_labels is not None
+        page_labels.get_labels_by_page_indices()
 
 
 def test_retrieve_number_of_pages() -> None:

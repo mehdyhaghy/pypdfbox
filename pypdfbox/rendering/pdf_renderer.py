@@ -187,6 +187,11 @@ def _no_rotate_matrix(rotation: int, pivot_x: float, pivot_y: float) -> _Matrix:
     return (a, b, c, d, e, f)
 
 
+# Sentinel for a paint whose device-space footprint is empty (no drawable
+# segment, or entirely off-canvas).
+_EMPTY_BBOX = (0, 0, 0, 0)
+
+
 def _to_pil_affine(m: _Matrix) -> tuple[float, float, float, float, float, float]:
     """Convert a PDF CTM ``(a, b, c, d, e, f)`` to PIL/aggdraw's
     ``(a, b, c, d, e, f)`` row-vector form where ``x' = a*x + b*y + c``,
@@ -3653,7 +3658,201 @@ class PDFRenderer(PDFStreamEngine):
         soft_mask: Any | None = None,
         blend_mode: Any | None = None,
     ) -> None:
-        """Composite the painted result through ``clip_mask`` / ``soft_mask``.
+        """Composite the painted path through ``clip_mask`` / ``soft_mask``
+        / ``blend_mode``.
+
+        Perf: the paint is rasterised and composited only over the path's
+        device-space bounding box (control-point bounds through the CTM,
+        inflated by the stroke extent plus an anti-aliasing margin) and
+        the composite reads from / writes to the live draw's pixel buffer
+        directly (:meth:`~pypdfbox.rendering._aggdraw_compat.Draw.
+        read_region` / ``write_region``). The previous per-paint strategy
+        (:meth:`_paint_through_clip_full`) allocated a canvas-sized layer,
+        blitted the base draw out and back, split the full-canvas alpha
+        and pasted the whole canvas — pixels outside the bbox receive zero
+        layer alpha, so that paste never changed them. The layer is drawn
+        on a persistent canvas-sized scratch at the same absolute device
+        coordinates, so anti-aliased coverage is bit-identical.
+
+        The full-canvas path is kept where the region form is not provably
+        identical: a blend mode onto an RGBA (transparency-group) canvas
+        (the full paste re-weights the backdrop alpha outside the painted
+        area), a non-RGB/RGBA canvas, a draw that does not wrap the active
+        image, and non-finite geometry.
+        """
+        assert self._image is not None
+        assert self._draw is not None
+        image = self._image
+        if (
+            image.mode not in ("RGB", "RGBA")
+            or self._draw._pil is not image
+            or (blend_mode is not None and image.mode == "RGBA")
+        ):
+            self._paint_through_clip_full(
+                stroke=stroke, fill=fill, even_odd=even_odd,
+                clip_mask=clip_mask, soft_mask=soft_mask,
+                blend_mode=blend_mode,
+            )
+            return
+        bbox = self._path_paint_device_bbox(stroke=stroke)
+        if bbox is None:
+            self._paint_through_clip_full(
+                stroke=stroke, fill=fill, even_odd=even_odd,
+                clip_mask=clip_mask, soft_mask=soft_mask,
+                blend_mode=blend_mode,
+            )
+            return
+        if bbox == _EMPTY_BBOX or not (stroke or fill):
+            # Nothing reaches the canvas: zero layer alpha everywhere means
+            # the full-canvas composite would have left every pixel as-is.
+            return
+        scratch = self._acquire_glyph_clip_scratch()
+
+        def _paint_layer(layer_draw: aggdraw.Draw) -> None:
+            prev_draw = self._draw
+            self._draw = layer_draw
+            try:
+                self._draw_via_aggdraw(
+                    stroke=stroke, fill=fill, even_odd=even_odd,
+                )
+            finally:
+                self._draw = prev_draw
+
+        region = scratch.paint_region_bytes(bbox, _paint_layer)
+        self._composite_layer_region(
+            bbox, region, clip_mask=clip_mask, soft_mask=soft_mask,
+            blend_mode=blend_mode,
+        )
+
+    def _path_paint_device_bbox(
+        self, *, stroke: bool
+    ) -> tuple[int, int, int, int] | None:
+        """Integer device-space box, clamped to the canvas, that contains
+        every pixel a fill and/or device-space stroke of the current path
+        can touch. Returns :data:`_EMPTY_BBOX` when the path has no
+        drawable segment or lies entirely off-canvas, and ``None`` when
+        the geometry is non-finite (callers fall back to the full-canvas
+        composite)."""
+        assert self._image is not None
+        a, b, c, d, e, f = self._full_ctm()
+        min_x = min_y = math.inf
+        max_x = max_y = -math.inf
+        for subpath in self._subpaths:
+            for seg in subpath:
+                if seg[0] == "Z":
+                    continue
+                for i in range(1, len(seg), 2):
+                    ux = seg[i]
+                    uy = seg[i + 1]
+                    x = a * ux + c * uy + e
+                    y = b * ux + d * uy + f
+                    if x < min_x:
+                        min_x = x
+                    if x > max_x:
+                        max_x = x
+                    if y < min_y:
+                        min_y = y
+                    if y > max_y:
+                        max_y = y
+        if min_x == math.inf:
+            return _EMPTY_BBOX
+        # Anti-aliasing safety margin. A stroke additionally extends the
+        # geometry by half its device width, times the miter limit at a
+        # miter join (square caps reach width/2 * sqrt(2)); mirrors the
+        # width / miter clamps of ``_stroke_path_device_space``.
+        margin = 4.0
+        if stroke:
+            width_px = self._gs.line_width * self._transform_width_scale(
+                (a, b, c, d, e, f)
+            )
+            width_px = max(width_px, 0.25)
+            miter_limit = self._gs.miter_limit
+            if miter_limit < 1.0:
+                miter_limit = 10.0
+            margin += width_px * (max(miter_limit, 1.5) * 0.5 + 1.0)
+        bounds = (min_x - margin, min_y - margin, max_x + margin, max_y + margin)
+        if not all(math.isfinite(v) for v in bounds):
+            return None
+        canvas_w, canvas_h = self._image.size
+        x0 = max(0, math.floor(bounds[0]))
+        y0 = max(0, math.floor(bounds[1]))
+        x1 = min(canvas_w, math.ceil(bounds[2]))
+        y1 = min(canvas_h, math.ceil(bounds[3]))
+        if x0 >= x1 or y0 >= y1:
+            return _EMPTY_BBOX
+        return (x0, y0, x1, y1)
+
+    def _composite_layer_region(
+        self,
+        bbox: tuple[int, int, int, int],
+        region: bytes,
+        *,
+        clip_mask: Image.Image | None,
+        soft_mask: Any | None = None,
+        blend_mode: Any | None = None,
+    ) -> None:
+        """Composite the straight-alpha RGBA ``region`` (a painted layer
+        restricted to ``bbox``) onto the live canvas through ``clip_mask``
+        / ``soft_mask`` / ``blend_mode``, in place in the draw's pixel
+        buffer.
+
+        Region-restricted twin of the composite tail of
+        :meth:`_paint_through_clip_full`; every step is per-pixel, so the
+        result inside ``bbox`` matches the full-canvas composite exactly.
+        The canvas must be RGB or RGBA and wrapped by ``self._draw``; a
+        blend mode is only supported on an RGB canvas (see
+        :meth:`_paint_through_clip`). On an RGB canvas the draw buffer is
+        RGBA with an opaque alpha plane, and PIL's masked paste blends the
+        four bytes of RGB and RGBA pixels alike, so compositing in RGBA
+        and dropping the alpha on flush equals the old RGB paste.
+        """
+        assert self._image is not None
+        assert self._draw is not None
+        x0, y0, x1, y1 = bbox
+        size = (x1 - x0, y1 - y0)
+        layer = Image.frombytes("RGBA", size, region)
+        combined = layer.getchannel("A")
+        if clip_mask is not None:
+            combined = ImageChops.multiply(combined, clip_mask.crop(bbox))
+        if soft_mask is not None:
+            try:
+                mask_alpha = self._render_soft_mask_alpha(
+                    soft_mask, self._image.size
+                )
+            except Exception as exc:
+                _log.debug("rendering: soft-mask paint failed: %s", exc)
+                mask_alpha = None
+            if mask_alpha is not None:
+                combined = ImageChops.multiply(combined, mask_alpha.crop(bbox))
+        draw = self._draw
+        dst = Image.frombytes("RGBA", size, draw.read_region(bbox))
+        if blend_mode is not None:
+            # See ``_paint_through_clip_full``: the blended result is the
+            # fully composited backdrop, pasted through its own alpha.
+            layer.putalpha(combined)
+            blended = PDFRenderer._blend(layer, dst, blend_mode)
+            dst.paste(blended.convert("RGB"), (0, 0), blended.getchannel("A"))
+        elif self._image.mode == "RGBA":
+            # Straight-alpha source-over onto the group canvas (see
+            # ``_paint_through_clip_full`` for why ``paste`` is wrong here).
+            layer.putalpha(combined)
+            dst.alpha_composite(layer)
+        else:
+            dst.paste(layer.convert("RGB"), (0, 0), combined)
+        draw.write_region(bbox, dst.tobytes())
+
+    def _paint_through_clip_full(
+        self,
+        *,
+        stroke: bool,
+        fill: bool,
+        even_odd: bool,
+        clip_mask: Image.Image | None,
+        soft_mask: Any | None = None,
+        blend_mode: Any | None = None,
+    ) -> None:
+        """Composite the painted result through ``clip_mask`` / ``soft_mask``
+        over the whole canvas (fallback for :meth:`_paint_through_clip`).
 
         Strategy: render the path onto a fresh transparent RGBA layer,
         then ``Image.composite(layer, base, layer.split()[3] * clip_mask
@@ -3711,7 +3910,7 @@ class PDFRenderer(PDFStreamEngine):
 
         # Combine layer alpha with clip mask + soft mask:
         # out_alpha = layer.a * clip * smask_alpha / 255**k.
-        layer_alpha = layer.split()[3]
+        layer_alpha = layer.getchannel("A")
         combined = layer_alpha
         if clip_mask is not None:
             combined = ImageChops.multiply(combined, clip_mask)
@@ -3740,7 +3939,14 @@ class PDFRenderer(PDFStreamEngine):
             source = layer.copy()
             source.putalpha(combined)
             blended = PDFRenderer._blend(source, backdrop, blend_mode)
-            prev_image.paste(blended.convert("RGB"), (0, 0), blended.split()[3])
+            if prev_image.mode == "RGBA":
+                # ``blended`` already carries the composited alpha; a masked
+                # paste would re-weight the backdrop alpha outside the paint.
+                prev_image.paste(blended, (0, 0))
+            else:
+                prev_image.paste(
+                    blended.convert("RGB"), (0, 0), blended.getchannel("A")
+                )
         elif prev_image.mode == "RGBA":
             # Compositing onto a transparency-group canvas (RGBA, seeded
             # transparent for an isolated group). PIL's ``paste(rgb, mask)``
@@ -4134,12 +4340,16 @@ class PDFRenderer(PDFStreamEngine):
         if not any_segments:
             return None
 
-        row_bytes = width_px * 4
-        pixels = bytearray(width_px * height_px * 4)
+        # Coverage-only A8 surface: the mask is just the alpha plane, and
+        # skia's A8 coverage is bit-identical to the alpha channel of an
+        # RGBA8888 raster of the same opaque-white paint, at a quarter of
+        # the memory and with no channel split afterwards.
+        row_bytes = width_px
+        pixels = bytearray(width_px * height_px)
         info = skia.ImageInfo.Make(
             width_px, height_px,
-            skia.kRGBA_8888_ColorType,
-            skia.kUnpremul_AlphaType,
+            skia.kAlpha_8_ColorType,
+            skia.kPremul_AlphaType,
         )
         surface = skia.Surface.MakeRasterDirect(info, pixels, row_bytes)
         if surface is None:  # pragma: no cover - skia always succeeds
@@ -4193,10 +4403,7 @@ class PDFRenderer(PDFStreamEngine):
                     paint.setPathEffect(effect)
         canvas.drawPath(sk_path, paint)
         surface.flushAndSubmit()
-        rgba = Image.frombytes(
-            "RGBA", (width_px, height_px), bytes(pixels),
-        )
-        return rgba.split()[3]
+        return Image.frombytes("L", (width_px, height_px), bytes(pixels))
 
     def _build_skia_path_alpha_mask_rgba(
         self, sk_path: Any, width_px: int, height_px: int,
@@ -4206,12 +4413,16 @@ class PDFRenderer(PDFStreamEngine):
         """
         import skia
 
-        row_bytes = width_px * 4
-        pixels = bytearray(width_px * height_px * 4)
+        # Coverage-only A8 surface: the mask is just the alpha plane, and
+        # skia's A8 coverage is bit-identical to the alpha channel of an
+        # RGBA8888 raster of the same opaque-white paint, at a quarter of
+        # the memory and with no channel split afterwards.
+        row_bytes = width_px
+        pixels = bytearray(width_px * height_px)
         info = skia.ImageInfo.Make(
             width_px, height_px,
-            skia.kRGBA_8888_ColorType,
-            skia.kUnpremul_AlphaType,
+            skia.kAlpha_8_ColorType,
+            skia.kPremul_AlphaType,
         )
         surface = skia.Surface.MakeRasterDirect(info, pixels, row_bytes)
         if surface is None:  # pragma: no cover - skia always succeeds
@@ -4233,10 +4444,7 @@ class PDFRenderer(PDFStreamEngine):
         )
         canvas.drawPath(sk_path, paint)
         surface.flushAndSubmit()
-        rgba = Image.frombytes(
-            "RGBA", (width_px, height_px), bytes(pixels),
-        )
-        return rgba.split()[3]
+        return Image.frombytes("L", (width_px, height_px), bytes(pixels))
 
     @staticmethod
     def _pattern_matrix(pattern: Any) -> _Matrix:
@@ -4526,7 +4734,7 @@ class PDFRenderer(PDFStreamEngine):
         # A tile without an alpha channel (e.g. an RGB cell from a caller that
         # pre-rasterised one) is treated as fully opaque.
         if tile.mode == "RGBA":
-            tile_alpha: Image.Image | None = tile.split()[3]
+            tile_alpha: Image.Image | None = tile.getchannel("A")
         else:
             tile_alpha = None
         for ty in range(phase_y - tile_h_px, canvas_h, tile_h_px):
@@ -4535,7 +4743,7 @@ class PDFRenderer(PDFStreamEngine):
         # Combine the tiled alpha with ``region_mask`` so only the path
         # interior receives pattern pixels and only the cell-painted
         # portion of each tile contributes (gap pixels stay transparent).
-        tiled_alpha = tiled.split()[3]
+        tiled_alpha = tiled.getchannel("A")
         combined = ImageChops.multiply(tiled_alpha, region_mask)
         rgb_tile = tiled.convert("RGB")
         self._image.paste(rgb_tile, (0, 0), combined)
@@ -6891,13 +7099,9 @@ class PDFRenderer(PDFStreamEngine):
                 out = backdrop.copy()
                 out.alpha_composite(source)
                 return out
-            inv_sa = ImageChops.invert(sa)
-            ba_keep = ImageChops.multiply(ba, inv_sa)
-            out_a = ImageChops.add(sa, ba_keep)
-            cr = Image.composite(cr, br, sa)
-            cg = Image.composite(cg, bg, sa)
-            cb = Image.composite(cb, bb, sa)
-            return Image.merge("RGBA", (cr, cg, cb, out_a))
+            return PDFRenderer._blend_result(
+                (cr, cg, cb), (sr, sg, sb, sa), (br, bg, bb, ba)
+            )
 
         # ImageChops paths are vectorised in C — prefer them whenever the
         # blend formula maps cleanly to a single primitive.
@@ -6929,23 +7133,68 @@ class PDFRenderer(PDFStreamEngine):
             cg = PDFRenderer._blend_channel(bg, sg, name)
             cb = PDFRenderer._blend_channel(bb, sb, name)
 
-        # Porter-Duff alpha-over for the resulting alpha channel:
-        #   a_out = a_s + a_b * (1 - a_s)
-        inv_sa = ImageChops.invert(sa)
-        ba_keep = ImageChops.multiply(ba, inv_sa)
-        out_a = ImageChops.add(sa, ba_keep)
+        return PDFRenderer._blend_result(
+            (cr, cg, cb), (sr, sg, sb, sa), (br, bg, bb, ba), name
+        )
 
-        # Where source is fully transparent the backdrop colour wins; where
-        # source is fully opaque the blend result wins. For partial alpha
-        # interpolate the per-channel blend back toward the backdrop using
-        # ``a_s`` as the weight (the simplified compositing equation when
-        # no shape coverage is involved):
-        #   c_out = (1 - a_s) * c_b + a_s * blend(c_b, c_s)
-        cr = Image.composite(cr, br, sa)
-        cg = Image.composite(cg, bg, sa)
-        cb = Image.composite(cb, bb, sa)
+    @staticmethod
+    def _blend_result(
+        mixed: tuple[Image.Image, Image.Image, Image.Image],
+        source: tuple[Image.Image, Image.Image, Image.Image, Image.Image],
+        backdrop: tuple[Image.Image, Image.Image, Image.Image, Image.Image],
+        separable_name: str | None = None,
+    ) -> Image.Image:
+        """Composite the per-channel blend result ``mixed`` = B(c_b, c_s)
+        back onto the backdrop, as upstream ``BlendComposite.compose``:
 
-        return Image.merge("RGBA", (cr, cg, cb, out_a))
+            a_r = a_b + a_s - a_s * a_b
+            v   = c_s + a_b * (B - c_s)
+            c   = c_b + (a_s / a_r) * (v - c_b)
+
+        On an opaque backdrop (``a_b`` = 1) this reduces to
+        ``c_b + a_s * (B - c_b)``, done with the PIL channel ops. A
+        backdrop with transparency (a transparency-group canvas) takes
+        the float path, where a separable ``B`` named by
+        ``separable_name`` is recomputed in float like upstream instead of
+        reusing the 8-bit ``mixed`` planes."""
+        cr, cg, cb = mixed
+        sr, sg, sb, sa = source
+        br, bg, bb, ba = backdrop
+        if ba.getextrema() == (255, 255):
+            # Porter-Duff alpha-over: a_out = a_s + a_b * (1 - a_s).
+            inv_sa = ImageChops.invert(sa)
+            ba_keep = ImageChops.multiply(ba, inv_sa)
+            out_a = ImageChops.add(sa, ba_keep)
+            cr = Image.composite(cr, br, sa)
+            cg = Image.composite(cg, bg, sa)
+            cb = Image.composite(cb, bb, sa)
+            return Image.merge("RGBA", (cr, cg, cb, out_a))
+
+        import numpy as np
+
+        def plane(img: Image.Image) -> Any:
+            return np.asarray(img, dtype=np.float32) / np.float32(255)
+
+        a_s = plane(sa)
+        a_b = plane(ba)
+        a_r = a_b + a_s - a_s * a_b
+        ratio = np.divide(a_s, a_r, out=np.zeros_like(a_s), where=a_r > 0)
+        out = []
+        for c_mix, c_src, c_dst in ((cr, sr, br), (cg, sg, bg), (cb, sb, bb)):
+            s = plane(c_src)
+            d = plane(c_dst)
+            mix = _separable_blend_float(separable_name, s, d)
+            if mix is None:
+                mix = plane(c_mix)
+            v = s + a_b * (mix - s)
+            out.append(d + ratio * (v - d))
+        out.append(a_r)
+
+        def to_l(values: Any) -> Image.Image:
+            data = np.floor(np.clip(values, 0, 1) * 255 + 0.5).astype(np.uint8)
+            return Image.fromarray(data, "L")
+
+        return Image.merge("RGBA", tuple(to_l(v) for v in out))
 
     @staticmethod
     def _blend_channel(
@@ -7665,10 +7914,10 @@ class PDFRenderer(PDFStreamEngine):
             # uncovered pixel (alpha 0) contributes mask alpha 0 (page
             # backdrop shows), matching PDFBox.
             luminance = mask_canvas.convert("RGB").convert("L")
-            coverage = mask_canvas.split()[3]
+            coverage = mask_canvas.getchannel("A")
             alpha_plane = ImageChops.multiply(luminance, coverage)
         else:
-            alpha_plane = mask_canvas.split()[3]
+            alpha_plane = mask_canvas.getchannel("A")
 
         # Wave 1386 — /AIS (alpha-is-shape, PDF §11.6.4.3): when the
         # active ExtGState carries AIS=true, the mask source's coverage
@@ -8448,7 +8697,7 @@ class PDFRenderer(PDFStreamEngine):
         # mask so transparent pixels don't overwrite the canvas.
         alpha: Image.Image | None = None
         if flipped.mode == "RGBA":
-            alpha = flipped.split()[3]
+            alpha = flipped.getchannel("A")
             flipped_rgb = flipped.convert("RGB")
         else:
             flipped_rgb = flipped
@@ -9062,12 +9311,16 @@ class PDFRenderer(PDFStreamEngine):
             return
         # Rasterise directly — the path is already in device pixels so
         # we do not need the page CTM here.
-        row_bytes = width_px * 4
-        pixels = bytearray(width_px * height_px * 4)
+        # Coverage-only A8 surface: the mask is just the alpha plane, and
+        # skia's A8 coverage is bit-identical to the alpha channel of an
+        # RGBA8888 raster of the same opaque-white paint, at a quarter of
+        # the memory and with no channel split afterwards.
+        row_bytes = width_px
+        pixels = bytearray(width_px * height_px)
         info = skia.ImageInfo.Make(
             width_px, height_px,
-            skia.kRGBA_8888_ColorType,
-            skia.kUnpremul_AlphaType,
+            skia.kAlpha_8_ColorType,
+            skia.kPremul_AlphaType,
         )
         surface = skia.Surface.MakeRasterDirect(info, pixels, row_bytes)
         if surface is None:  # pragma: no cover - skia always succeeds
@@ -9080,10 +9333,7 @@ class PDFRenderer(PDFStreamEngine):
         )
         canvas.drawPath(union, paint)
         surface.flushAndSubmit()
-        rgba = Image.frombytes(
-            "RGBA", (width_px, height_px), bytes(pixels),
-        )
-        new_clip = rgba.split()[3]
+        new_clip = Image.frombytes("L", (width_px, height_px), bytes(pixels))
         existing = self._gs.clip_mask
         if existing is not None:
             new_clip = ImageChops.multiply(existing, new_clip)
@@ -10127,7 +10377,9 @@ class PDFRenderer(PDFStreamEngine):
         path_region_bytes` uses a pixel-aligned skia clip to guarantee
         only the bbox region is touched (and re-cleared) per glyph. All
         pixels outside the bbox received zero layer alpha under the old
-        full-canvas code, so the masked paste never changed them.
+        full-canvas code, so the masked paste never changed them. The
+        composite reads and writes the live draw's pixel buffer region
+        directly, so the base draw needs no full-canvas flush or reseed.
         """
         assert self._image is not None
         assert self._draw is not None
@@ -10163,28 +10415,36 @@ class PDFRenderer(PDFStreamEngine):
             # Entirely off-canvas — the full-canvas paint would not have
             # changed a pixel either (zero alpha everywhere on canvas).
             return
-        self._draw.flush()
+        bbox = (x0, y0, x1, y1)
+        draw = self._draw
+        in_buffer = draw._pil is self._image and self._image.mode in (
+            "RGB", "RGBA",
+        )
+        if not in_buffer:  # pragma: no cover - draw/image are always paired
+            draw.flush()
         scratch = self._acquire_glyph_clip_scratch()
         region = scratch.path_region_bytes(
-            path, (x0, y0, x1, y1), pen, brush, transform=affine,
+            path, bbox, pen, brush, transform=affine,
         )
-        layer = Image.frombytes("RGBA", (x1 - x0, y1 - y0), region)
-        layer_alpha = layer.split()[3]
-        combined = ImageChops.multiply(
-            layer_alpha, clip_mask.crop((x0, y0, x1, y1))
-        )
+        size = (x1 - x0, y1 - y0)
+        layer = Image.frombytes("RGBA", size, region)
+        layer_alpha = layer.getchannel("A")
+        combined = ImageChops.multiply(layer_alpha, clip_mask.crop(bbox))
         rgb_layer = layer.convert("RGB")
-        self._image.paste(rgb_layer, (x0, y0), combined)
-        # The flush above synchronised the draw's pixel buffer with the
-        # image, and the paste only touched the bbox — so a region-sized
-        # reseed replaces the old full-canvas ``aggdraw.Draw(self._image)``
-        # rebind. (Fall back to the rebind if the draw wraps another
-        # image — defensive; the renderer keeps them paired.)
-        if self._draw._pil is self._image:
-            self._draw.reseed_region((x0, y0, x1, y1))
-        else:  # pragma: no cover - draw/image are always rebound together
-            self._draw = aggdraw.Draw(self._image)
-            self._draw.setantialias(True)
+        if in_buffer:
+            # Composite straight into the live draw's pixel buffer (the
+            # ground truth since the last flush) — no full-canvas flush,
+            # no image paste, no reseed. PIL's masked paste blends the four
+            # bytes of RGB and RGBA pixels alike, so pasting onto the RGBA
+            # buffer region equals the old paste onto the image.
+            dst = Image.frombytes("RGBA", size, draw.read_region(bbox))
+            dst.paste(rgb_layer, (0, 0), combined)
+            draw.write_region(bbox, dst.tobytes())
+            return
+        # Defensive fallback (draw/image are always rebound together).
+        self._image.paste(rgb_layer, (x0, y0), combined)  # pragma: no cover
+        self._draw = aggdraw.Draw(self._image)  # pragma: no cover
+        self._draw.setantialias(True)  # pragma: no cover
 
     def _acquire_glyph_clip_scratch(self) -> aggdraw.Draw:
         """Return the persistent transparent scratch :class:`aggdraw.Draw`
@@ -10198,11 +10458,12 @@ class PDFRenderer(PDFStreamEngine):
         """
         assert self._image is not None
         size = self._image.size
-        scratch = self._glyph_clip_scratch.get(size)
+        cache = self.__dict__.setdefault("_glyph_clip_scratch", {})
+        scratch = cache.get(size)
         if scratch is None:
             scratch = aggdraw.Draw(Image.new("RGBA", size, (0, 0, 0, 0)))
             scratch.setantialias(True)
-            self._glyph_clip_scratch[size] = scratch
+            cache[size] = scratch
         return scratch
 
     def _build_stroke_pen(self, ctm: _Matrix) -> aggdraw.Pen:
@@ -10992,3 +11253,49 @@ _COLOR_OPS: frozenset[str] = frozenset({
 
 
 __all__ = ["PDFRenderer"]
+
+
+def _separable_blend_float(name: str | None, src: Any, dst: Any) -> Any:
+    """Upstream ``BlendMode`` separable channel functions on float32
+    planes in [0, 1]; ``None`` for a name without one."""
+    import numpy as np
+
+    one = np.float32(1)
+    two = np.float32(2)
+    half = np.float32(0.5)
+    if name == "Multiply":
+        return src * dst
+    if name == "Screen":
+        return src + dst - src * dst
+    if name in ("Overlay", "HardLight"):
+        # Overlay is HardLight with the operands swapped.
+        cond = (dst if name == "Overlay" else src) <= half
+        return np.where(cond, two * dst * src, two * (src + dst - src * dst) - one)
+    if name == "Darken":
+        return np.minimum(src, dst)
+    if name == "Lighten":
+        return np.maximum(src, dst)
+    if name == "ColorDodge":
+        with np.errstate(divide="ignore", invalid="ignore"):
+            q = dst / (one - src)
+        return np.where(dst == 0, 0, np.where(dst >= one - src, one, q))
+    if name == "ColorBurn":
+        with np.errstate(divide="ignore", invalid="ignore"):
+            q = one - (one - dst) / src
+        return np.where(dst == one, one, np.where(one - dst >= src, 0, q))
+    if name == "SoftLight":
+        d = np.where(
+            dst <= np.float32(0.25),
+            ((np.float32(16) * dst - np.float32(12)) * dst + np.float32(4)) * dst,
+            np.sqrt(dst),
+        )
+        return np.where(
+            src <= half,
+            dst - (one - two * src) * dst * (one - dst),
+            dst + (two * src - one) * (d - dst),
+        )
+    if name == "Difference":
+        return np.abs(dst - src)
+    if name == "Exclusion":
+        return dst + src - two * dst * src
+    return None

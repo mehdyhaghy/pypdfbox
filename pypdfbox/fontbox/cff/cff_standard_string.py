@@ -1,10 +1,12 @@
-from fontTools.cffLib import cffStandardStrings  # type: ignore[import-untyped]
+
+from pypdfbox._lazy_exports import lazy_modules
 
 # Number of CFF Standard Strings per Adobe Technote #5176 §10:
 # SIDs 0..390 index the immutable, font-independent table; SIDs >= 391
 # index a per-font STRING INDEX. The fontTools constant
-# ``cffStandardStrings`` is exactly that 391-entry table.
-NUM_STANDARD_STRINGS: int = len(cffStandardStrings)
+# ``cffStandardStrings`` is exactly that 391-entry table (spelled out here
+# so importing this module does not load fontTools.cffLib).
+NUM_STANDARD_STRINGS: int = 391
 
 
 class CFFStandardString:
@@ -42,9 +44,13 @@ class CFFStandardString:
         per-font STRING INDEX (see upstream ``CFFParser.readString``,
         line 909).
         """
+        from fontTools.cffLib import cffStandardStrings
+
         if 0 <= sid < NUM_STANDARD_STRINGS:
             return str(cffStandardStrings[sid])
         return None
 
 
 __all__ = ["NUM_STANDARD_STRINGS", "CFFStandardString"]
+
+__getattr__ = lazy_modules(__name__, {"cffStandardStrings": "fontTools.cffLib:cffStandardStrings"})

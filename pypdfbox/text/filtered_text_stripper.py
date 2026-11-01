@@ -18,13 +18,12 @@ Upstream's strategy for handling rotated text in ``ExtractText``:
    skips any glyph whose post-rotation angle is not zero).
 3. Restore the page's content stream and ``/Rotate`` entry.
 
-The pypdfbox lite stripper does not currently track the CTM, so the
-"prepend a transform" trick is a no-op for us. Instead,
-:class:`FilteredTextStripper` accepts a ``target_angle`` parameter that
-defaults to ``0`` (matching upstream's hard-coded check) but can be set
-to ``90`` / ``180`` / ``270`` directly. This skips the prepend dance
-entirely while preserving the upstream contract that the stripper only
-emits text whose text matrix matches the requested angle.
+Instead of editing the content stream, :class:`FilteredTextStripper`
+takes a ``target_angle`` (default ``0``, upstream's hard-coded check): it
+starts the page with the same ``-target_angle`` rotation as its CTM and an
+unrotated page (upstream sets ``/Rotate`` to 0 for the passes), so the
+selected text is laid out upright exactly as in upstream's pass, and it
+emits only text whose text matrix has that angle.
 
 The angle is computed exactly as upstream does (see ``getAngle`` in
 ``ExtractText.java``):
@@ -41,6 +40,7 @@ from collections.abc import Iterator
 from typing import Any, cast
 
 from pypdfbox.cos import COSArray, COSString
+from pypdfbox.util.matrix import Matrix
 
 from .pdf_text_stripper import PDFTextStripper, _TextState
 from .text_position import TextPosition
@@ -162,6 +162,10 @@ class AngleCollector(PDFTextStripper):
         self.process_text_position(text)
         return True
 
+    def _effective_page_rotation(self, page: Any) -> int:
+        # Upstream collects the angles with the page /Rotate set to 0.
+        return 0
+
     def _emit(
         self,
         s: COSString,
@@ -210,6 +214,16 @@ class FilteredTextStripper(PDFTextStripper):
     def process_text_position(self, text: TextPosition) -> None:
         if get_angle(text) == self._target_angle:
             super().process_text_position(text)
+
+    def _effective_page_rotation(self, page: Any) -> int:
+        # Upstream's rotation-magic pass runs with the page /Rotate set to 0.
+        return 0
+
+    def _initial_ctm(self) -> Matrix:
+        # Upstream prepends ``cm`` with ``Matrix.getRotateInstance(-angle)``.
+        if self._target_angle == 0:
+            return Matrix()
+        return Matrix.get_rotate_instance(-math.radians(self._target_angle), 0.0, 0.0)
 
     def should_skip_glyph(self, text: TextPosition) -> bool:
         return get_angle(text) != self._target_angle

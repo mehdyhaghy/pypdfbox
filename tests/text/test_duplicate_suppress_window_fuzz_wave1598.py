@@ -279,11 +279,9 @@ def test_empty_text_with_zero_width_never_suppressed() -> None:
     assert out == ["@10,10", "@10,10", "@10,10"]
 
 
-def test_widthless_run_uses_font_size_fallback_window() -> None:
-    # Lite-only fallback (documented in _drop_overlapping_duplicates): the
-    # vertical emitter and synthetic positions carry no run width, so a
-    # quarter-font-size window applies instead of upstream's literal 0
-    # tolerance (upstream positions always carry the real glyph advance).
+def test_widthless_run_never_suppressed() -> None:
+    # A glyph without width has upstream's literal 0 tolerance: the window
+    # [x, x) is empty, so nothing is suppressed.
     out = _dedup(
         [
             _tp("X", 0.0, 0.0, font_size=8.0),
@@ -291,7 +289,7 @@ def test_widthless_run_uses_font_size_fallback_window() -> None:
             _tp("X", 3.0, 0.0, font_size=8.0),
         ]
     )
-    assert out == ["X@0,0", "X@3,0"]
+    assert out == ["X@0,0", "X@1,1", "X@3,0"]
 
 
 def test_negative_width_run_uses_fallback_window() -> None:
@@ -331,22 +329,24 @@ def test_double_painted_word_block_kept_when_suppression_off() -> None:
         b"1 0 0 1 %d.3 700.2 Tm (w%d) Tj" % (72 + 80 * i, i) for i in range(6)
     )
     content = b"BT /F0 18 Tf " + first + b" " + second + b" ET"
-    out = _text(content, suppress=False, sort=True)
-    for i in range(6):
-        assert out.count(f"w{i}") == 2
+    # Sorting interleaves the two paints glyph by glyph (PDFBox 3.0.8 gives
+    # the same text).
+    assert _text(content, suppress=False, sort=True) == "ww00 ww11 ww22 ww33 ww44 ww55\n"
+    assert _text(content, suppress=False) == "w0 w1 w2 w3 w4 w5w0 w1 w2 w3 w4 w5\n"
 
 
 def test_fake_bold_y_offset_within_width_tolerance_suppressed() -> None:
-    # 12pt metric-less font -> per-char advance 6, run width 5*6 = 30,
-    # tol = 30/5/3 = 2. A 0.9pt vertical stroke offset is a duplicate
-    # (the old 0.05*font_size = 0.6 y window kept it).
+    # Duplicates are judged per glyph against a third of that glyph's width
+    # (Helvetica fallback, 12pt): a 0.9pt vertical offset is inside the
+    # window of the wide glyphs but not of the narrow "l" (2.664 / 3), so
+    # the repainted "ll" survives, as in PDFBox 3.0.8.
     content = (
         b"BT /F0 12 Tf "
         b"1 0 0 1 100 700 Tm (Hello) Tj "
         b"1 0 0 1 100 700.9 Tm (Hello) Tj "
         b"ET"
     )
-    assert _text(content) == "Hello\n"
+    assert _text(content) == "Helloll\n"
 
 
 def test_same_word_repainted_far_later_on_page_suppressed() -> None:

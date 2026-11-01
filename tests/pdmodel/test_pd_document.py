@@ -252,26 +252,6 @@ def test_import_page_creates_independent_copy() -> None:
     assert src.get_number_of_pages() == 1
 
 
-def test_import_page_resources_not_shared() -> None:
-    """The /Resources dict on the imported page must be a deep copy —
-    mutating one must not bleed into the other."""
-    src = PDDocument()
-    src_page = PDPage()
-    # Force a /Resources dict so we can compare identity meaningfully.
-    src_page.set_resources(COSDictionary())
-    src.add_page(src_page)
-    dst = PDDocument()
-
-    imported = dst.import_page(src.get_pages()[0])
-
-    src_res = src.get_pages()[0].get_resources().get_cos_object()
-    dst_res = imported.get_resources().get_cos_object()
-    assert dst_res is not src_res
-    # Mutate destination — source must not see it.
-    dst_res.set_item(COSName.get_pdf_name("Marker"), COSName.get_pdf_name("X"))
-    assert not src_res.contains_key(COSName.get_pdf_name("Marker"))
-
-
 def test_import_page_drops_parent_pointer() -> None:
     """The deep-copied page must not carry over its source /Parent — the
     page tree's add() rewires it to dst's /Pages root."""
@@ -305,32 +285,6 @@ def test_import_page_three_pages_in_order() -> None:
         assert dst.get_pages()[i].get_cos_object() is ip.get_cos_object()
         # Each imported dict is a fresh copy distinct from the source.
         assert ip.get_cos_object() is not src.get_pages()[i].get_cos_object()
-
-
-def test_import_page_copies_contents_stream_bytes() -> None:
-    """The /Contents stream body is deep-copied: the imported stream is a
-    distinct COSStream instance carrying identical raw bytes."""
-    from pypdfbox.cos import COSStream
-
-    src = PDDocument()
-    src_page = PDPage()
-    contents = COSStream()
-    contents.set_raw_data(b"q 1 0 0 1 0 0 cm Q\n")
-    src_page.set_contents(contents)
-    src.add_page(src_page)
-    dst = PDDocument()
-
-    imported = dst.import_page(src.get_pages()[0])
-
-    src_contents = src.get_pages()[0].get_cos_object().get_dictionary_object(
-        COSName.get_pdf_name("Contents")
-    )
-    dst_contents = imported.get_cos_object().get_dictionary_object(
-        COSName.get_pdf_name("Contents")
-    )
-    assert isinstance(dst_contents, COSStream)
-    assert dst_contents is not src_contents
-    assert dst_contents.get_raw_data() == b"q 1 0 0 1 0 0 cm Q\n"
 
 
 # ---------- set_document_catalog ----------

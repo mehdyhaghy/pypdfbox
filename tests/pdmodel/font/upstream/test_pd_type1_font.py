@@ -321,14 +321,14 @@ def test_encode_uses_per_codepoint_cache() -> None:
     """Upstream caches the encoded byte for each unicode in
     ``codeToBytesMap`` so repeated encode calls don't re-walk the
     encoding's name->code inverse table. The Python port mirrors this
-    exactly via ``_codepoint_encoding``."""
+    exactly via ``_codepoint_to_encoding_map``."""
     font = PDType1Font()
     font.get_cos_object().set_name(_BASE_FONT, "Helvetica")
     font.get_cos_object().set_item(
         COSName.get_pdf_name("Encoding"), COSName.get_pdf_name("WinAnsiEncoding")
     )
-    # Exercise the cache; second call should pull from `_codepoint_encoding`.
+    # Exercise the cache; second call should pull from `_codepoint_to_encoding_map`.
     a1 = font.encode("A")
-    assert ord("A") in font._codepoint_encoding
+    assert ord("A") in font._codepoint_to_encoding_map
     a2 = font.encode("A")
     assert a1 == a2 == b"A"

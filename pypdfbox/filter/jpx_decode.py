@@ -1,9 +1,7 @@
 import io
 from typing import BinaryIO
 
-import imagecodecs
-from PIL import Image
-
+from pypdfbox._lazy_exports import lazy_modules
 from pypdfbox.cos import COSDictionary
 
 from .decode_result import DecodeResult
@@ -92,6 +90,9 @@ class JPXDecode(Filter):
         parameters: COSDictionary | None = None,
         index: int = 0,
     ) -> DecodeResult:
+        import imagecodecs
+        from PIL import Image
+
         encoded_bytes = encoded.read()
         out_params = COSDictionary()
         if parameters is not None:
@@ -183,6 +184,8 @@ class JPXDecode(Filter):
         stream — we route through that to avoid leaving callers without
         a writer.
         """
+        from PIL import Image
+
         if parameters is None:
             raise OSError(
                 "JPXDecode.encode: parameters are required "
@@ -247,3 +250,5 @@ class JPXDecode(Filter):
 
 
 FilterFactory.register("JPXDecode", JPXDecode())
+
+__getattr__ = lazy_modules(__name__, {"Image": "PIL.Image", "imagecodecs": "imagecodecs"})

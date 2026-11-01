@@ -217,7 +217,10 @@ def test_concurrent_modification(tmp_path: Path) -> None:
     encrypted_bytes = encrypted_sink.getvalue()
 
     # Sanity: reloading without the password reports the doc as encrypted.
-    with PDDocument.load(encrypted_bytes) as probe:
+    with (
+        pytest.warns(DeprecationWarning, match="pypdfbox 3.0"),
+        PDDocument.load(encrypted_bytes) as probe,
+    ):
         assert probe.is_encrypted() is True
 
     # ---------- step 2: load with password, strip security, re-save -------

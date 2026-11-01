@@ -417,6 +417,9 @@ def test_optimize_mode_dynamic_xfa_raises_oserror(tmp_path: Path) -> None:
         def get_document_catalog(self):
             return _FakeCatalog()
 
+        def get_version(self) -> float:
+            return 1.4
+
         def get_pages(self):
             return []
 

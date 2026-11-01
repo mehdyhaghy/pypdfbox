@@ -62,9 +62,10 @@ splitter = (
 )
 ```
 
-Each `PDDocument` returned by `split()` owns its own copy of the
-source pages and must be closed by the caller (the `with` statement
-above handles this).
+Each `PDDocument` returned by `split()` must be closed by the caller
+(the `with` statement above handles this). As in PDFBox, the split
+documents share resources, annotation values and structure elements
+with the source, so keep the source open until every part is saved.
 
 ## Split by bookmark
 
@@ -100,9 +101,9 @@ authoritative surface.
 
 ## Cross-chunk destination resolver
 
-When a link target straddles a chunk boundary the default behaviour
-is to null out the link (the target page no longer exists in the
-chunk being written). A `set_cross_chunk_destination_resolver`
+When a link target is in another chunk, the default (upstream)
+behavior is to null the page of the link destination (the target page
+is not in the chunk being written). A `set_cross_chunk_destination_resolver`
 hook lets you rewrite such links as `GoToR` actions pointing at
 the sibling chunk file.
 
@@ -111,9 +112,9 @@ from pypdfbox.multipdf.splitter import Splitter
 
 def resolver(target_page_dict):
     """Return (file_name, page_index_within_file) for cross-chunk links."""
-    # `target_page_dict` is the source target page COSDictionary (captured
-    # before deep-copy). Look up which chunk file holds the target and
-    # the 0-based page index within that file, then return the tuple.
+    # `target_page_dict` is the source target page COSDictionary. Look up
+    # which chunk file holds the target and the 0-based page index within
+    # that file, then return the tuple.
     chunk_idx, page_in_chunk = my_chunk_index_lookup(target_page_dict)
     return (f"book-{chunk_idx:03d}.pdf", page_in_chunk)
 
@@ -126,9 +127,9 @@ parts = splitter.split(doc)
 The resolver receives the *source* target page `COSDictionary`. Return
 options:
 
-- `None` — keep historical null-out behaviour.
-- `(file_name, page_index)` — explicit `GoToR` payload (preferred).
-- A bare `str` — file name only; the page index defaults to 0.
+- `None`: keep the upstream behavior (the page slot is nulled).
+- `(file_name, page_index)`: explicit `GoToR` payload (preferred).
+- A bare `str`: file name only; the page index defaults to 0.
 
 After all chunks are written you must save them with names that
 match what the resolver advertised — pypdfbox does not invent the

@@ -319,18 +319,17 @@ def test_text_positions_carry_resolved_font_and_width_metadata() -> None:
 
     stripper = _CapturingTextStripper()
     assert stripper.get_text(doc) == "Hi\n"
-    assert len(stripper.positions) == 1
+    # One position per glyph, as upstream emits them.
+    assert [p.text for p in stripper.positions] == ["H", "i"]
     pos = stripper.positions[0]
-    assert pos.text == "Hi"
     assert pos.font_name == "F0"
     assert pos.font is not None
     assert pos.resolved_font_name == "FauxSans"  # wave 1485: non-Std14 BaseFont (see builder note)
-    # Wave 1488: the run width is now the sum of real per-glyph advances
-    # (each 600/1000*12 = 7.2 plus the 1pt Tc) minus the last glyph's
-    # trailing Tc — i.e. ``(8.2 + 8.2) - 1.0 = 15.4``. Pre-1488 the width
-    # was the Tc-ignoring average ``2 * 7.2 = 14.4``. Tw does not apply (no
-    # code 32 in "Hi"), so width_of_space stays 7.2.
-    assert pos.width == pytest.approx(15.4)
+    # Upstream's glyph width is the bare advance, 600/1000*12 = 7.2: the 1pt
+    # Tc moves the next glyph but is not part of the width. Tw does not apply
+    # (no code 32 in "Hi"), so width_of_space stays 7.2.
+    assert pos.width == pytest.approx(7.2)
+    assert stripper.positions[1].x == pytest.approx(100.0 + 7.2 + 1.0)
     assert pos.width_of_space == pytest.approx(7.2)
     assert pos.char_spacing == 1.0
     assert pos.word_spacing == 3.0
@@ -375,9 +374,11 @@ def test_mixed_font_spacing_uses_previous_position_width() -> None:
     # (=18) threshold suppressed it ("foobar"). The per-run widths below are
     # unchanged (no Tc), exercising the per-font /Widths advance.
     assert stripper.get_text(doc) == "foo bar\n"
-    assert [pos.text for pos in stripper.positions] == ["foo", "bar"]
-    assert [pos.font_name for pos in stripper.positions] == ["Fwide", "Fnarrow"]
-    assert [pos.width for pos in stripper.positions] == pytest.approx([36.0, 7.2])
+    assert "".join(pos.text for pos in stripper.positions) == "foobar"
+    assert [pos.font_name for pos in stripper.positions] == ["Fwide"] * 3 + ["Fnarrow"] * 3
+    assert [pos.width for pos in stripper.positions] == pytest.approx(
+        [12.0] * 3 + [2.4] * 3, abs=1e-4
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -123,7 +123,8 @@ def test_build_encrypt_save_reload_with_password() -> None:
     doc.close()
 
     # Pre-decrypt: parser sees /Encrypt in the trailer and flags it.
-    encrypted = Loader.load_pdf(saved)
+    with pytest.warns(DeprecationWarning, match="pypdfbox 3.0"):
+        encrypted = Loader.load_pdf(saved)
     try:
         assert encrypted.is_encrypted() is True
     finally:

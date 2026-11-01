@@ -215,13 +215,15 @@ def test_set_start_page_zero_keeps_previous_value() -> None:
     assert splitter.has_start_page()
 
 
-def test_set_end_page_below_start_keeps_previous_value() -> None:
+def test_set_end_page_below_start_is_accepted_until_split() -> None:
+    # PDFBOX-6283: start and end are validated by split(), not the setters
     splitter = Splitter()
     splitter.set_start_page(5)
-    splitter.set_end_page(10)
-    with pytest.raises(ValueError, match="smaller than startPage"):
-        splitter.set_end_page(3)
-    assert splitter.get_end_page() == 10
+    splitter.set_end_page(3)
+    assert splitter.get_end_page() == 3
+    # setting the start page afterwards fixes the range
+    splitter.set_start_page(2)
+    assert splitter.get_start_page() == 2
 
 
 def test_set_end_page_zero_keeps_previous_value() -> None:

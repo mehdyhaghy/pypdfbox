@@ -66,7 +66,10 @@ def test_wave460_duplicate_overlap_suppression_can_be_disabled() -> None:
     )
 
     default = PDFTextStripper()
-    assert default.get_text(doc) == "bold\n"
+    # Duplicates are judged glyph by glyph against a third of each glyph's
+    # width: the narrow "l" (1pt offset > 2.664 / 3) survives, as in
+    # PDFBox 3.0.8.
+    assert default.get_text(doc) == "boldl\n"
 
     unsuppressed = PDFTextStripper()
     unsuppressed.set_suppress_duplicate_overlapping_text(False)
@@ -105,7 +108,10 @@ def test_wave460_text_matrix_tracks_tm_scale_and_translation_on_positions() -> N
     )
 
     stripper = PDFTextStripper()
-    assert stripper.get_text(doc) == "rotated\n"
+    # Upstream groups lines on the page axes, so text rotated by 90 degrees
+    # breaks wherever successive glyphs stop overlapping vertically
+    # (verified against PDFBox 3.0.8).
+    assert stripper.get_text(doc) == "ro\nta\nte\nd\n"
 
     pos = stripper.get_characters_by_article()[0][0]
     assert pos.text_matrix == [0.0, 1.0, -1.0, 0.0, 25.0, 50.0]

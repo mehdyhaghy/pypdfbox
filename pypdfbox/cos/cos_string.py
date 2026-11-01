@@ -1,7 +1,10 @@
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from .cos_base import COSBase
 from .i_cos_visitor import ICOSVisitor
+
+if TYPE_CHECKING:
+    from .cos_object_key import COSObjectKey
 
 _REPLACEMENT_CHARACTER = "�"
 
@@ -81,12 +84,25 @@ class COSString(COSBase):
     # (``COSString.FORCE_PARSING = True``).
     FORCE_PARSING: ClassVar[bool] = False
 
+    # ``COSBase`` state defaults, held on the class so construction (a parser
+    # hot path) skips the ``COSBase.__init__`` call: reads fall through to
+    # these until a setter stores a per-instance value, exactly the values
+    # ``COSBase.__init__`` would assign. Keep in sync with ``COSBase``.
+    _direct: bool = False
+    _needs_to_be_updated: bool = False
+    _key: COSObjectKey | None = None
+
     def __init__(
         self,
         value: bytes | bytearray | memoryview | str,
         force_hex: bool = False,
     ) -> None:
-        super().__init__()
+        if type(value) is bytes:
+            # Hot path: immutable ``bytes`` need no defensive copy
+            # (``bytes(value)`` would return the same object anyway).
+            self._bytes = value
+            self._force_hex_form = force_hex
+            return
         if isinstance(value, str):
             # Mirrors PDFBox's ``new COSString(String)`` constructor: if
             # every character can be represented in PDFDocEncoding, encode

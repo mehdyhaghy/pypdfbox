@@ -85,12 +85,18 @@ def test_wave788_splitter_parent_tree_keeps_annotation_struct_parent() -> None:
         def get_struct_parent(self) -> int:
             return 7
 
+        def get_normal_appearance_stream(self) -> None:
+            return None
+
     class Page:
         def get_struct_parents(self) -> int:
             return -1
 
         def get_annotations(self) -> list[Annotation]:
             return [Annotation()]
+
+        def get_resources(self) -> None:
+            return None
 
     class DestinationPages:
         def __len__(self) -> int:

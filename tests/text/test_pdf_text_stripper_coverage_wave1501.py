@@ -261,8 +261,9 @@ def test_actual_text_suppressed_run_with_ignore_space() -> None:
 
 
 def test_text_rise_through_ignore_space_path() -> None:
-    # Text rise (Ts) is folded through the ignore-space emission path; spaces
-    # are dropped and the rise does not corrupt the surviving text.
+    # Text rise (Ts) with ignored space glyphs: the space is skipped, but
+    # the gap it leaves still reads as a word break (verified against
+    # PDFBox 3.0.8), and the rise does not corrupt the surviving text.
     doc = PDDocument()
     try:
         _page_with_content(
@@ -270,7 +271,7 @@ def test_text_rise_through_ignore_space_path() -> None:
         )
         s = PDFTextStripper()
         s.set_ignore_content_stream_space_glyphs(True)
-        assert s.get_text(doc) == "HiThere\n"
+        assert s.get_text(doc) == "Hi There\n"
     finally:
         doc.close()
 

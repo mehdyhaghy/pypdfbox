@@ -13,12 +13,15 @@ and resolve the symbol without disturbing the existing registry wiring.
 """
 
 import io
-from typing import Any, BinaryIO, NamedTuple
+from typing import TYPE_CHECKING, Any, BinaryIO, NamedTuple
 
-from PIL import Image
+from pypdfbox._lazy_exports import lazy_modules
 
 from .dct_decode import DCTDecode
 from .filter_factory import FilterFactory
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 __all__ = ["DCTFilter", "Raster"]
 
@@ -148,6 +151,8 @@ class DCTFilter(DCTDecode):
         (YCbCr) and ``2`` (YCCK). Upstream returns ``0`` when no
         marker is present.
         """
+        from PIL import Image
+
         if metadata is None:
             return 0
         if isinstance(metadata, Image.Image):
@@ -309,3 +314,5 @@ class DCTFilter(DCTDecode):
 # and its abbreviation (``DCT``) continue to resolve to the original
 # ``DCTDecode`` instance owned by ``dct_decode.py``.
 FilterFactory.register("DCTFilter", DCTFilter())
+
+__getattr__ = lazy_modules(__name__, {"Image": "PIL.Image"})

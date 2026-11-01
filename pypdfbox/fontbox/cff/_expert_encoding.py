@@ -15,7 +15,7 @@ parsed font's STRING INDEX (which doesn't change the answer for
 predefined encodings).
 """
 
-from fontTools.cffLib import cffStandardStrings  # type: ignore[import-untyped]
+from pypdfbox._lazy_exports import lazy_modules
 
 # (charCode, charSID) — copied verbatim from CFFExpertEncoding.java.
 _RAW: tuple[tuple[int, int], ...] = (
@@ -51,6 +51,8 @@ _RAW: tuple[tuple[int, int], ...] = (
 
 
 def _build_table() -> dict[int, str]:
+    from fontTools.cffLib import cffStandardStrings
+
     out: dict[int, str] = {}
     for code, sid in _RAW:
         # Defensive guards mirrored verbatim from upstream's Java
@@ -71,3 +73,5 @@ EXPERT_ENCODING_TABLE: dict[int, str] = _build_table()
 
 
 __all__ = ["EXPERT_ENCODING_TABLE"]
+
+__getattr__ = lazy_modules(__name__, {"cffStandardStrings": "fontTools.cffLib:cffStandardStrings"})

@@ -237,7 +237,8 @@ def test_bead_partition_two_beads_uses_2n_plus_1_slots() -> None:
     gap slot ``i*2`` it is left-of / above — the upstream
     ``charactersByArticle`` layout (PDFTextStripper.java:954-1020). A run
     between two beads lands in the gap slot, so non-empty slots emit in index
-    order: gap-before-bead-0, bead-0, bead-1."""
+    order: gap-before-bead-0, bead-0, bead-1. Upstream tests the glyphs'
+    upper-left-frame origin, so the positions carry the page size."""
     s = PDFTextStripper()
     page = PDPage(PDRectangle(0.0, 0.0, 612.0, 792.0))
     _attach_beads(
@@ -248,12 +249,18 @@ def test_bead_partition_two_beads_uses_2n_plus_1_slots() -> None:
         ],
     )
     s._active_page = page
-    in0 = TextPosition(text="A", x=100.0, y=700.0, font_size=12.0)
-    in1 = TextPosition(text="B", x=400.0, y=700.0, font_size=12.0)
+    in0 = TextPosition(
+        text="A", x=100.0, y=700.0, font_size=12.0, page_width=612.0, page_height=792.0
+    )
+    in1 = TextPosition(
+        text="B", x=400.0, y=700.0, font_size=12.0, page_width=612.0, page_height=792.0
+    )
     # x between the two beads, above their bottom edge -> gap slot before
     # bead 1 (it is left of bead 1). It is NOT left of bead 0 (x>250) but IS
     # above bead 0 -> qualifies for bead 0's gap slot (slot 0) first.
-    between = TextPosition(text="C", x=300.0, y=700.0, font_size=12.0)
+    between = TextPosition(
+        text="C", x=300.0, y=700.0, font_size=12.0, page_width=612.0, page_height=792.0
+    )
     buckets = s._partition_by_beads([in0, in1, between])
     assert buckets == [[between], [in0], [in1]]
 

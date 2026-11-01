@@ -1,4 +1,6 @@
+import logging
 import os
+import warnings
 from typing import TYPE_CHECKING, Any, BinaryIO, TypeGuard
 
 from pypdfbox.cos import COSDocument
@@ -13,6 +15,11 @@ from pypdfbox.pdfparser import PDFParseError, PDFParser
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.fdf import FDFDocument
+
+_LOG = logging.getLogger(__name__)
+
+# Attribute deprecation warnings to the first caller outside pypdfbox.
+_PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Type alias for everything Loader.load_pdf accepts. Mirrors the overloads
 # of org.apache.pdfbox.Loader.loadPDF (file, byte[], RandomAccessRead,
@@ -69,8 +76,9 @@ class Loader:
         documents) and the parsed trailer carries an ``/Encrypt`` entry, the
         document is auto-decrypted: a ``StandardSecurityHandler`` is wired
         into every ``COSStream`` so subsequent reads decipher transparently.
-        Encrypted documents loaded without a password are returned encrypted —
-        the caller can wrap them in a ``PDDocument`` and call ``decrypt`` later.
+        With no password the empty password is tried, as upstream does; an
+        encrypted document it does not open is returned still encrypted —
+        the caller can wrap it in a ``PDDocument`` and call ``decrypt`` later.
 
         ``memory_usage_setting`` selects the backing store for decoded
         ``COSStream`` bodies (the ``ScratchFile`` shared by every stream
@@ -136,6 +144,16 @@ class Loader:
         # Auto-decrypt path: only kick in when the document is actually
         # encrypted AND the caller passed a password (empty string counts —
         # plenty of documents are protected with a blank user password).
+        # Upstream ``Loader.loadPDF(File)`` and friends delegate with an
+        # empty password, so a blank-user-password document (the common
+        # "restrictions only" case) is decrypted on load. With no password
+        # given we do the same, but keep returning the document still
+        # encrypted when the empty password is rejected, so callers can
+        # ``decrypt`` it later. Upstream raises there; 2.x warns and 3.0
+        # will raise.
+        implicit_password = password is None
+        if implicit_password and document.is_encrypted():
+            password = ""
         if password is not None and document.is_encrypted():
             try:
                 from pypdfbox.pdmodel import PDDocument
@@ -150,6 +168,29 @@ class Loader:
             pd._owns_document = False
             try:
                 pd.decrypt(password)
+            except OSError as exc:
+                if implicit_password:
+                    from pypdfbox.pdmodel.encryption import InvalidPasswordException
+
+                    if isinstance(exc, InvalidPasswordException):
+                        warnings.warn(
+                            "Loading an encrypted PDF that the empty password does "
+                            "not open returns it still encrypted; pypdfbox 3.0 will "
+                            "raise InvalidPasswordException instead, as PDFBox does. "
+                            "Pass the password to the loader, or catch "
+                            "InvalidPasswordException after passing password=''.",
+                            DeprecationWarning,
+                            skip_file_prefixes=(_PACKAGE_DIR,),
+                        )
+                    _LOG.debug(
+                        "empty password did not decrypt the document; "
+                        "returning it encrypted",
+                        exc_info=True,
+                    )
+                    return document
+                if owned:
+                    access.close()
+                raise
             except BaseException:
                 if owned:
                     access.close()

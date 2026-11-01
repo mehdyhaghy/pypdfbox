@@ -1,6 +1,7 @@
 from pypdfbox import PDDocument, PDPage
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.multipdf import Splitter
+from pypdfbox.pdmodel.interactive.documentnavigation.destination import PDDestination
 from pypdfbox.pdmodel.pd_document_information import PDDocumentInformation
 
 _ANNOTS = COSName.get_pdf_name("Annots")
@@ -36,7 +37,9 @@ def test_wave543_split_respects_start_end_range_and_split_alignment() -> None:
             for index in range(chunk.get_number_of_pages())
         ] == ["page-2", "page-3", "page-4", "page-5"]
         assert splitter.get_source_document() is source
-        assert splitter.get_destination_document() is chunks[-1]
+        # PDFBOX-6283: split() releases its per-run state, including the
+        # current destination document
+        assert splitter._current_destination_document is None
     finally:
         for chunk in chunks:
             chunk.close()
@@ -70,7 +73,6 @@ def test_wave543_create_new_document_copies_sanitized_info_and_version() -> None
 
 
 def test_wave543_process_annotations_rewrites_popup_to_cloned_popup() -> None:
-    source_page = PDPage()
     imported = PDPage()
     markup = COSDictionary()
     markup.set_item(_SUBTYPE, COSName.get_pdf_name("Text"))
@@ -84,9 +86,7 @@ def test_wave543_process_annotations_rewrites_popup_to_cloned_popup() -> None:
 
     splitter = Splitter()
     # Wave 1373: chunk-level deferred second pass; drain manually.
-    splitter._pending_annot_passes = []
-    splitter._process_annotations(source_page, imported)
-    splitter._finalize_annotation_links()
+    splitter._process_annotations(imported)
 
     cloned_annots = imported.get_cos_object().get_dictionary_object(_ANNOTS)
     assert isinstance(cloned_annots, COSArray)
@@ -107,7 +107,9 @@ def test_wave543_fix_destinations_ignores_non_page_targets() -> None:
     dest.add(COSName.get_pdf_name("NamedTarget"))
     dest.add(_FIT)
     splitter = Splitter()
-    splitter._dest_to_fix = [(dest, source.get_page(0).get_cos_object())]
+    splitter._dest_to_fix = [
+        (PDDestination.create(dest), chunk.get_page(0).get_cos_object())
+    ]
     splitter._page_dict_map = {
         id(source.get_page(0).get_cos_object()): chunk.get_page(0).get_cos_object()
     }

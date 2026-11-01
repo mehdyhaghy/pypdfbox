@@ -168,6 +168,9 @@ def test_fill_aggdraw_path_routes_glyph_paint_through_clip_mask() -> None:
             (1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
             (10, 20, 30),
         )
+        # The through-clip glyph composite lands in the live draw buffer;
+        # flush it to the image before reading pixels back.
+        renderer._draw.flush()
 
         assert renderer._image.getpixel((1, 1)) == (10, 20, 30)
         assert renderer._image.getpixel((6, 1)) == (255, 255, 255)

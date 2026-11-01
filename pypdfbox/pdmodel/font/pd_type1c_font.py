@@ -508,24 +508,30 @@ class PDType1CFont(PDType1Font):
 
         Raises :class:`ValueError` when the text contains a code point
         for which the embedded CFF program has no glyph (mirrors
-        upstream's ``IllegalArgumentException``).
+        upstream's ``IllegalArgumentException``). Per-codepoint widths are
+        cached in ``_codepoint_to_width_map`` (PDFBOX-6287).
         """
         program = self._get_cff_font()
         if program is None:
             _LOG.warning("No embedded CFF font, returning 0")
             return 0.0
         glyph_list = self.get_glyph_list()
+        cache = self._codepoint_to_width_map
         width = 0.0
         for ch in text:
             code_point = ord(ch)
-            name = glyph_list.code_point_to_name(code_point)
-            if not program.has_glyph(name):
-                msg = (
-                    f"U+{code_point:04X} ({name!r}) is not available in font "
-                    f"{self.get_name()}"
-                )
-                raise ValueError(msg)
-            width += program.get_width(name)
+            code_point_width = cache.get(code_point)
+            if code_point_width is None:
+                name = glyph_list.code_point_to_name(code_point)
+                if not program.has_glyph(name):
+                    msg = (
+                        f"U+{code_point:04X} ({name!r}) is not available in "
+                        f"font {self.get_name()}"
+                    )
+                    raise ValueError(msg)
+                code_point_width = program.get_width(name)
+                cache[code_point] = code_point_width
+            width += code_point_width
         return width
 
     def _code_to_font_glyph_name(self, code: int) -> str | None:
@@ -594,95 +600,16 @@ class PDType1CFont(PDType1Font):
     def get_average_font_width(self) -> float:
         """Mean glyph advance for this font in 1/1000 em.
 
-        Lookup order:
-
-        1. Mean of positive entries in ``/Widths`` (matches
-           :meth:`PDSimpleFont.get_average_font_width`).
-        2. CFF Private DICT ``defaultWidthX`` (the advance assigned to
-           glyphs whose charstring omits the leading width operand —
-           CFF spec §10) when an embedded CFF program is present.
-        3. Standard 14 AFM mean for the matching font.
-        4. ``0.0``.
-
-        Upstream ``PDType1CFont.getAverageFontWidth`` famously
-        hard-codes ``500`` (see the ``// todo: not implemented, highly
-        suspect`` comment). We deviate intentionally: the CFF default
-        width is information actually present in the embedded program
-        and is a far better answer for non-Standard-14 embedded fonts.
+        Mirrors upstream ``PDType1CFont.getAverageFontWidth``, which
+        returns its private ``getAverageCharacterWidth`` (the constant
+        ``500``, marked "not implemented, highly suspect" upstream). The
+        value feeds text extraction's space-width fallback, so it is kept
+        identical rather than estimated from the font program.
         """
-        widths = self.get_widths()
-        non_zero = [w for w in widths if w is not None and w > 0.0]
-        if non_zero:
-            return sum(non_zero) / len(non_zero)
-        program = self._get_cff_font()
-        if program is not None:
-            default = program.get_default_width_x()
-            if default > 0.0:
-                upem = program.units_per_em
-                if upem > 0:  # pragma: no branch
-                    # Defensive: any parsed CFF carries a positive UPM
-                    # (CFF spec requires it). The False arm has no live caller.
-                    return default * 1000.0 / upem
-        afm = self.get_standard_14_font_metrics()
-        if afm is not None:
-            return afm.get_average_width()
-        return 0.0
+        return self.get_average_character_width()
 
     def get_average_character_width(self) -> float:
-        """Mean character advance for this font in 1/1000 em.
-
-        Mirrors upstream's ``PDType1CFont.getAverageCharacterWidth``
-        (private, line 478) which was marked ``// todo: not implemented,
-        highly suspect`` and hard-coded ``500``. We close that TODO by
-        deriving a real mean from the available signals — using
-        ``fontTools.cffLib``'s charstring-width extractor under the hood
-        (see :meth:`pypdfbox.fontbox.cff.cff_font.CFFFont.get_width`).
-
-        Lookup order:
-
-        1. Mean of positive entries in ``/Widths``.
-        2. Mean of positive advances across every glyph in the embedded
-           CFF program's charset, rescaled to 1/1000 em via the font
-           matrix.
-        3. CFF Private DICT ``defaultWidthX`` (the advance assigned to
-           glyphs whose charstring omits the leading width operand —
-           CFF spec §10) when an embedded CFF program is present.
-        4. Standard 14 AFM mean for the matching font.
-        5. ``500.0`` — the upstream constant, retained only as the
-           absolute floor when no real signal is available.
-        """
-        widths = self.get_widths()
-        non_zero = [w for w in widths if w is not None and w > 0.0]
-        if non_zero:
-            return sum(non_zero) / len(non_zero)
-        program = self._get_cff_font()
-        if program is not None:
-            upem = program.units_per_em
-            # pragma: fontTools guarantees positive UPM for parsed CFF.
-            if upem <= 0:  # pragma: no cover -- defensive
-                upem = _CFF_DEFAULT_UNITS_PER_EM
-            charset = program.get_charset()
-            # ``.notdef`` is always GID 0 and has no business in a mean;
-            # skip it to mirror how AFM ``CharMetrics`` files report.
-            program_widths = [
-                program.get_width(name)
-                for name in charset
-                if name != ".notdef"
-            ]
-            program_widths = [w for w in program_widths if w > 0.0]
-            if program_widths:
-                mean = sum(program_widths) / len(program_widths)
-                return mean * 1000.0 / upem
-            default = program.get_default_width_x()
-            if default > 0.0:
-                return default * 1000.0 / upem
-        afm = self.get_standard_14_font_metrics()
-        if afm is not None:
-            average = afm.get_average_width()
-            if average > 0.0:  # pragma: no branch
-                # Defensive: Standard-14 AFMs always report a positive
-                # average width. The False arm has no live caller.
-                return average
+        """Upstream ``PDType1CFont.getAverageCharacterWidth``: ``500``."""
         return _UPSTREAM_AVERAGE_CHARACTER_WIDTH_FALLBACK
 
     # ---------- glyph-name resolution ----------
@@ -772,25 +699,6 @@ class PDType1CFont(PDType1Font):
 
     # ---------- byte-stream reader ----------
 
-    def read_code(
-        self,
-        data: bytes | bytearray | memoryview,
-        offset: int = 0,
-    ) -> tuple[int, int]:
-        """Read one character code from ``data`` starting at ``offset``.
-
-        Mirrors upstream ``PDType1CFont.readCode`` (line 326): Type1C
-        fonts always use single-byte character codes regardless of
-        encoding, so the reader is just a one-byte pull. Returns
-        ``(code, bytes_consumed)`` to match the uniform pypdfbox
-        renderer signature shared by composite (Type0) and simple fonts.
-        At or past end-of-buffer returns ``(0, 0)`` so callers terminate
-        the decode loop.
-        """
-        if offset < 0 or offset >= len(data):
-            return (0, 0)
-        return (data[offset] & 0xFF, 1)
-
     # ---------- encoding synthesis ----------
 
     def read_encoding_from_font(self) -> Encoding | None:  # type: ignore[override]
@@ -845,9 +753,9 @@ class PDType1CFont(PDType1Font):
         rationale.
 
         Successful results are memoised in the shared
-        :attr:`PDFont._codepoint_encoding` cache (PDFBOX-6287).
+        :attr:`PDFont._codepoint_to_encoding_map` cache (PDFBOX-6287).
         """
-        encoded_codepoint = self._codepoint_encoding.get(unicode)
+        encoded_codepoint = self._codepoint_to_encoding_map.get(unicode)
         if encoded_codepoint is not None:
             return encoded_codepoint
         encoding = self.get_encoding_typed()
@@ -880,7 +788,7 @@ class PDType1CFont(PDType1Font):
             )
             raise ValueError(msg)
         encoded_codepoint = bytes([code & 0xFF])
-        self._codepoint_encoding[unicode] = encoded_codepoint
+        self._codepoint_to_encoding_map[unicode] = encoded_codepoint
         return encoded_codepoint
 
 

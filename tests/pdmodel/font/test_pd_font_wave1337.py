@@ -100,11 +100,12 @@ def test_get_space_width_falls_through_to_average_width() -> None:
 
 
 def test_get_space_width_default_when_everything_fails() -> None:
-    """No widths, no font program → returns the 250.0 default."""
+    """No widths and a font program reporting 0: upstream returns the
+    (zero) average font width; 250 is only the fallback for an exception."""
     f = _Stub()
-    assert f.get_space_width() == 250.0
+    assert f.get_space_width() == 0.0
     # Cached on second call.
-    assert f.get_space_width() == 250.0
+    assert f.get_space_width() == 0.0
 
 
 def test_get_space_width_cached() -> None:
@@ -141,8 +142,8 @@ def test_get_space_width_via_to_unicode_cmap_space_mapping(
 def test_get_space_width_to_unicode_cmap_with_get_width_raise(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Step 1 raise-and-continue: ``get_width(space_mapping)`` raises
-    NotImplementedError → cascade continues to step 2 (lines 251-252)."""
+    """``get_width(space_mapping)`` raising ends the lookup: upstream
+    catches any exception around the whole cascade and assumes 250."""
 
     class _RaisingGetWidth(_Stub):
         def __init__(self):
@@ -169,8 +170,8 @@ def test_get_space_width_to_unicode_cmap_with_get_width_raise(
     monkeypatch.setattr(cmap, "get_space_mapping", lambda: 99)
     # Reset cached space width so we re-run the cascade.
     f._font_width_of_space = None  # type: ignore[attr-defined]
-    # Step 1 raises (caught) → step 2 returns 444.0.
-    assert f.get_space_width() == 444.0
+    # The raise is caught by the outer handler: the 250 fallback.
+    assert f.get_space_width() == 250.0
 
 
 def test_get_space_width_get_string_width_path() -> None:

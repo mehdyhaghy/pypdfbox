@@ -17,9 +17,13 @@ class PDAction:
         action: COSDictionary | None = None,
         sub_type: str | None = None,
     ) -> None:
-        self._action = action if action is not None else COSDictionary()
-        if self._action.get_dictionary_object(_TYPE) is None:
-            self._action.set_item(_TYPE, _ACTION)
+        # Upstream ``PDAction(COSDictionary)`` only wraps; ``/Type /Action``
+        # is written by the no-argument constructor alone, so reading an
+        # action never modifies its dictionary.
+        if action is None:
+            action = COSDictionary()
+            action.set_item(_TYPE, _ACTION)
+        self._action = action
         if sub_type is not None:
             self.set_sub_type(sub_type)
 

@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import TYPE_CHECKING, Any
 
 from .i_cos_visitor import ICOSVisitor
@@ -7,13 +7,41 @@ if TYPE_CHECKING:
     from .cos_object_key import COSObjectKey
 
 
-class COSBase(ABC):
+def _compute_abstract_methods(cls: type) -> frozenset[str]:
+    """Return the abstract method names of ``cls`` the way ``ABCMeta`` does:
+    names declared abstract in its own namespace plus inherited abstract
+    names it does not override with a concrete attribute."""
+    abstracts = {
+        name
+        for name, value in cls.__dict__.items()
+        if getattr(value, "__isabstractmethod__", False)
+    }
+    for base in cls.__bases__:
+        for name in getattr(base, "__abstractmethods__", ()):
+            if getattr(getattr(cls, name, None), "__isabstractmethod__", False):
+                abstracts.add(name)
+    return frozenset(abstracts)
+
+
+class COSBase:
     """
     Abstract root of every COS object. Carries the metadata shared by all
     COS types: indirect-vs-direct status (whether this object is referenced
     via the xref table) and the ``needs_to_be_updated`` flag the writer
     consults during incremental save.
+
+    Performance note: this deliberately does not use ``ABCMeta``. Every
+    ``isinstance(x, SomeCOSType)`` check that fails would otherwise run
+    ``ABCMeta.__instancecheck__`` (several times slower than the plain type
+    check), and the parser, writer and pdmodel layers do millions of them.
+    Abstract-method enforcement is kept: ``__init_subclass__`` computes
+    ``__abstractmethods__`` exactly like ``ABCMeta``, so instantiating a
+    class with an unimplemented abstract method still raises ``TypeError``.
     """
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        cls.__abstractmethods__ = _compute_abstract_methods(cls)
 
     def __init__(self) -> None:
         self._direct: bool = False
@@ -67,3 +95,6 @@ class COSBase(ABC):
         Mirrors PDFBox ``COSBase.setKey`` (Java line 96).
         """
         self._key = key
+
+
+COSBase.__abstractmethods__ = _compute_abstract_methods(COSBase)

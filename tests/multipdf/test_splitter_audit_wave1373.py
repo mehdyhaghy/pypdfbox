@@ -105,14 +105,13 @@ def test_wave1373_fix_destinations_retargets_in_chunk_pages() -> None:
 
 def test_wave1373_role_map_narrowing_matches_upstream_5792() -> None:
     """Per-chunk ``/RoleMap`` sizes on PDFBOX-5792-240045.pdf match
-    upstream's expected ``[3, 3, 4, 4, 6, 7]``.
+    upstream's expected ``[3, 3, 4, 3, 5, 6]``.
 
-    Pins the closure of audit item *role-map narrowing* — pre-wave-1295
-    the first chunk dropped one mapping ("Strong" or similar) because
-    ``_role_set`` reset per chunk discarded role names contributed by
-    discarded-annotation back-refs walked through the page resources.
+    PDFBOX-6283 (3.0 branch) resets the role set for every split document,
+    so a chunk's ``/RoleMap`` no longer carries the roles of earlier
+    chunks (it was ``[3, 3, 4, 4, 6, 7]`` in 3.0.8).
     """
-    expected_role_map_sizes = [3, 3, 4, 4, 6, 7]
+    expected_role_map_sizes = [3, 3, 4, 3, 5, 6]
     expected_parent_tree_sizes = [6, 6, 6, 5, 1, 1]
     with PDDocument.load(f"{_FIXTURE_DIR}/PDFBOX-5792-240045.pdf") as doc:
         splitter = Splitter()
@@ -178,18 +177,16 @@ def _build_cross_page_popup_doc() -> bytes:
 
 
 def test_wave1373_popup_back_pointer_identity_across_chunk_pages() -> None:
-    """A markup on chunk page A whose popup lives on chunk page B keeps
-    cross-annotation back-pointer identity after the chunk is built:
+    """A markup on chunk page A whose popup lives on chunk page B, as
+    upstream ``processAnnotations`` handles it (one page at a time):
 
-    * markup's ``/Popup`` is the cloned popup dict (not a deep-copy
-      clone of the source popup);
-    * popup's ``/Parent`` is the cloned markup dict;
-    * each annotation's ``/P`` matches the chunk's corresponding page
-      dict.
+    * while page A is processed the popup is not cloned yet, so it is
+      treated as an orphan: a separate clone is made, linked both ways
+      with the markup clone and given ``/P`` = page A;
+    * page B then clones the popup again; that clone's ``/Parent`` is the
+      markup clone, and its ``/P`` is page B.
 
-    Pre-wave-1373 the per-page second pass ran before the next page's
-    first pass populated ``_annot_dict_map``, so the markup's ``/Popup``
-    lookup missed and left the deep-copied source popup in place.
+    The saved chunks match PDFBox (SplitterStructureProbe).
     """
     pdf_bytes = _build_cross_page_popup_doc()
     with PDDocument.load(pdf_bytes) as loaded:
@@ -203,27 +200,22 @@ def test_wave1373_popup_back_pointer_identity_across_chunk_pages() -> None:
             page1_annots = chunk.get_page(1).get_annotations()
             assert len(page0_annots) == 1
             assert len(page1_annots) == 1
-            markup_clone = page0_annots[0]
-            popup_clone = page1_annots[0]
-            assert isinstance(markup_clone, PDAnnotationText)
-            assert isinstance(popup_clone, PDAnnotationPopup)
-            # Cross-page popup ↔ markup identity restored.
-            assert (
-                markup_clone.get_cos_object().get_dictionary_object("Popup")
-                is popup_clone.get_cos_object()
+            markup_clone = page0_annots[0].get_cos_object()
+            popup_clone = page1_annots[0].get_cos_object()
+            assert isinstance(page0_annots[0], PDAnnotationText)
+            assert isinstance(page1_annots[0], PDAnnotationPopup)
+            orphan_popup = markup_clone.get_dictionary_object("Popup")
+            assert orphan_popup is not popup_clone
+            assert orphan_popup.get_dictionary_object("Parent") is markup_clone
+            assert orphan_popup.get_dictionary_object("P") is (
+                chunk.get_page(0).get_cos_object()
             )
-            assert (
-                popup_clone.get_cos_object().get_dictionary_object("Parent")
-                is markup_clone.get_cos_object()
+            assert popup_clone.get_dictionary_object("Parent") is markup_clone
+            assert markup_clone.get_dictionary_object("P") is (
+                chunk.get_page(0).get_cos_object()
             )
-            # /P back-pointers match their host page dicts.
-            assert (
-                markup_clone.get_cos_object().get_dictionary_object("P")
-                is chunk.get_page(0).get_cos_object()
-            )
-            assert (
-                popup_clone.get_cos_object().get_dictionary_object("P")
-                is chunk.get_page(1).get_cos_object()
+            assert popup_clone.get_dictionary_object("P") is (
+                chunk.get_page(1).get_cos_object()
             )
 
 

@@ -6,7 +6,9 @@ def _name(name: str) -> COSName:
     return COSName.get_pdf_name(name)
 
 
-def test_malformed_kids_do_not_hide_same_node_nums_wave310() -> None:
+def test_malformed_kids_hide_same_node_nums_wave310() -> None:
+    # Upstream PDNumberTreeNode.getKids() turns a non-dictionary kid into an
+    # empty node, and a node with /Kids never has its /Nums read (PDFBOX-6296).
     nums = COSArray()
     nums.add(COSInteger.get(2))
     range_dict = COSDictionary()
@@ -24,8 +26,6 @@ def test_malformed_kids_do_not_hide_same_node_nums_wave310() -> None:
     with PDDocument() as doc:
         labels = PDPageLabels(doc, root)
 
-        parsed = labels.get_page_label_range(2)
-        assert parsed is not None
-        assert parsed.get_style() == PDPageLabelRange.STYLE_ROMAN_UPPER
-        assert parsed.get_start() == 4
-        assert labels.get_label_for_page(2) == "IV"
+        assert labels.get_page_label_range(2) is None
+        assert labels.get_page_indices() == [0]
+        assert labels.get_label_for_page(2) == "3"

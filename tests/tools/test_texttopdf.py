@@ -317,3 +317,74 @@ def test_cli_stdin_input(
 
     assert rc == 0
     assert "piped line" in _strip_text(out)
+
+
+# ------------------------------------------------- per-run glyph-width memo
+
+
+def test_string_width_units_memo_is_bit_identical() -> None:
+    from pypdfbox.pdmodel.font import PDFontFactory
+
+    font = PDFontFactory.create_default_font()
+    cache: dict[int, float] = {}
+    samples = ["lorem ipsum dolor sit amet", "AVAWAy 0.1,;:!", "", "x" * 50]
+    for text in samples:
+        uncached = texttopdf._string_width_units(font, text)
+        cached = texttopdf._string_width_units(font, text, cache)
+        # Same summation order -> exact float equality, not approx.
+        assert cached == uncached
+    assert set(cache) == set(font.encode("".join(samples)))
+
+
+def test_create_pdf_from_text_resolves_each_glyph_width_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pypdfbox.pdmodel.font import PDFontFactory
+
+    font = PDFontFactory.create_default_font()
+    calls: list[int] = []
+    original = font.get_glyph_width
+
+    def spy(code: int) -> float:
+        calls.append(code)
+        return original(code)
+
+    monkeypatch.setattr(font, "get_glyph_width", spy)
+    line = "lorem ipsum dolor sit amet " * 12
+    with PDDocument() as doc:
+        texttopdf.create_pdf_from_text(doc, [line] * 20, font=font)
+    # The wrap loop re-measures the growing line per candidate word
+    # (upstream algorithm); the memo keeps width resolution to one call
+    # per distinct code instead of ~10 per character.
+    assert sorted(calls) == sorted(set(font.encode(line.strip())))
+
+
+def test_create_pdf_from_text_memo_does_not_go_stale_across_runs() -> None:
+    from pypdfbox.cos import COSArray, COSInteger, COSName
+    from pypdfbox.pdmodel.font import PDFontFactory
+
+    font = PDFontFactory.create_default_font()
+    line = "lorem ipsum dolor sit amet " * 12
+
+    def page_text(doc: PDDocument) -> bytes:
+        return doc.get_page(0).get_contents()
+
+    with PDDocument() as doc:
+        texttopdf.create_pdf_from_text(doc, [line], font=font)
+        narrow = page_text(doc)
+
+    # Make every glyph four times as wide via an explicit /Widths array
+    # (which wins over the AFM); the next run must see the new widths.
+    font_dict = font.get_cos_object()
+    widths = COSArray()
+    for _ in range(256):
+        widths.add(COSInteger.get(2000))
+    font_dict.set_int(COSName.get_pdf_name("FirstChar"), 0)
+    font_dict.set_int(COSName.get_pdf_name("LastChar"), 255)
+    font_dict.set_item(COSName.get_pdf_name("Widths"), widths)
+
+    with PDDocument() as doc:
+        texttopdf.create_pdf_from_text(doc, [line], font=font)
+        wide = page_text(doc)
+
+    assert wide.count(b"Tj") > narrow.count(b"Tj")

@@ -30,10 +30,12 @@ def test_double_quote_operator_sets_spacing_moves_line_and_shows_text() -> None:
     )
 
     stripper = PDFTextStripper()
-    assert stripper.get_text(doc) == "first\nsecond\n"
+    # The 3pt character spacing opens a word gap between every glyph of the
+    # second line (verified against PDFBox 3.0.8).
+    assert stripper.get_text(doc) == "first\ns e c o n d\n"
 
     positions = stripper.get_characters_by_article()[0]
-    assert positions[-1].text == "second"
+    assert "".join(p.text for p in positions[-6:]) == "second"
     assert positions[-1].word_spacing == 9.0
     assert positions[-1].char_spacing == 3.0
 

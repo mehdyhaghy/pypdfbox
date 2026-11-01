@@ -1,13 +1,16 @@
-"""Hand-written tests for :class:`pypdfbox.multipdf.Splitter`'s signature
-handling. Split documents have a different byte range than the source so
-any signature carried into a chunk would be invalid; the splitter must
-drop signature widgets and clear ``/SigFlags`` from any inherited
-``/AcroForm``.
+"""Hand-written tests for how :class:`pypdfbox.multipdf.Splitter` treats
+signature widgets.
+
+Upstream ``Splitter`` has no signature special case: every annotation,
+signature widgets included, is shallow-cloned onto the imported page, a
+widget's ``/Parent`` field reference is dropped, and no ``/AcroForm`` is
+created in the split documents (so no ``/SigFlags`` either).
 """
+
 import io
 
 from pypdfbox import PDDocument, PDPage
-from pypdfbox.cos import COSArray, COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.multipdf import Splitter
 
 _TYPE = COSName.get_pdf_name("Type")
@@ -22,250 +25,88 @@ _V = COSName.get_pdf_name("V")
 _BYTERANGE = COSName.get_pdf_name("ByteRange")
 
 
-def _make_widget(subtype: str = "Widget", **extras: object) -> COSDictionary:
+def _make_widget(**extras: object) -> COSDictionary:
     d = COSDictionary()
     d.set_item(_TYPE, COSName.get_pdf_name("Annot"))
-    d.set_item(_SUBTYPE, COSName.get_pdf_name(subtype))
+    d.set_item(_SUBTYPE, COSName.get_pdf_name("Widget"))
     for k, v in extras.items():
         d.set_item(COSName.get_pdf_name(k), v)
     return d
 
 
-def _make_page_with_annots(*annots: COSDictionary) -> PDPage:
+def _signed_source() -> tuple[PDDocument, COSDictionary, COSDictionary]:
+    """One page carrying a merged signature widget and a signature widget
+    whose field is its ``/Parent``; the source has an ``/AcroForm`` with
+    ``/SigFlags``."""
+    sig_value = COSDictionary()
+    sig_value.set_item(_TYPE, COSName.get_pdf_name("Sig"))
+    byte_range = COSArray()
+    for n in (0, 10, 20, 30):
+        byte_range.add(COSInteger.get(n))
+    sig_value.set_item(_BYTERANGE, byte_range)
+    merged = _make_widget(FT=COSName.get_pdf_name("Sig"), V=sig_value)
+    field = COSDictionary()
+    field.set_item(_FT, COSName.get_pdf_name("Sig"))
+    kid = _make_widget(Parent=field)
+    kids = COSArray()
+    kids.add(kid)
+    field.set_item(COSName.get_pdf_name("Kids"), kids)
+
     page = PDPage()
-    arr = COSArray()
-    for a in annots:
-        arr.add(a)
-    page.get_cos_object().set_item(_ANNOTS, arr)
-    return page
-
-
-# ---------- signature widget detection ----------
-
-
-def test_merged_signature_widget_dropped() -> None:
-    """A widget that carries /FT=Sig directly (merged widget+field) must
-    not survive into the split chunk."""
-    sig_widget = _make_widget(FT=COSName.get_pdf_name("Sig"))
-    text_widget = _make_widget(FT=COSName.get_pdf_name("Tx"))
-    page = _make_page_with_annots(sig_widget, text_widget)
-
+    annots = COSArray()
+    annots.add(merged)
+    annots.add(kid)
+    page.get_cos_object().set_item(_ANNOTS, annots)
     src = PDDocument()
     src.add_page(page)
+    acroform = COSDictionary()
+    fields = COSArray()
+    fields.add(merged)
+    fields.add(field)
+    acroform.set_item(_FIELDS, fields)
+    acroform.set_int(_SIG_FLAGS, 3)
+    src.get_document_catalog().get_cos_object().set_item(_ACROFORM, acroform)
+    return src, merged, kid
 
-    splitter = Splitter()
-    chunks = splitter.split(src)
-    assert len(chunks) == 1
-    chunk = chunks[0]
-    chunk_page = chunk.get_pages().get(0)
-    annots = chunk_page.get_cos_object().get_dictionary_object(_ANNOTS)
+
+def test_signature_widgets_are_shallow_cloned_like_any_annotation() -> None:
+    src, merged, kid = _signed_source()
+    chunk = Splitter().split(src)[0]
+    annots = chunk.get_page(0).get_cos_object().get_dictionary_object(_ANNOTS)
     assert isinstance(annots, COSArray)
-    # Sig widget gone, text widget survives.
-    surviving_subtypes = [
-        annots.get_object(i).get_name(_FT) for i in range(annots.size())
-    ]
-    assert "Sig" not in surviving_subtypes
-    assert "Tx" in surviving_subtypes
+    assert annots.size() == 2
+    cloned_merged = annots.get_object(0)
+    cloned_kid = annots.get_object(1)
+    # clones, not the source dictionaries
+    assert cloned_merged is not merged
+    assert cloned_kid is not kid
+    # the merged widget keeps its field entries (shared values)
+    assert cloned_merged.get_name(_FT) == "Sig"
+    assert cloned_merged.get_dictionary_object(_V) is merged.get_dictionary_object(_V)
+    # a widget's /Parent is removed on the clone only
+    assert not cloned_kid.contains_key(_PARENT)
+    assert kid.contains_key(_PARENT)
     chunk.close()
     src.close()
 
 
-def test_widget_with_sig_field_parent_dropped() -> None:
-    """A widget whose /Parent chain ends in /FT=Sig is a sig widget."""
-    sig_field = COSDictionary()
-    sig_field.set_item(_FT, COSName.get_pdf_name("Sig"))
-    widget = _make_widget()
-    widget.set_item(_PARENT, sig_field)
-    page = _make_page_with_annots(widget)
-
-    src = PDDocument()
-    src.add_page(page)
-
-    splitter = Splitter()
-    chunks = splitter.split(src)
-    chunk_page = chunks[0].get_pages().get(0)
-    annots = chunk_page.get_cos_object().get_dictionary_object(_ANNOTS)
-    assert annots is None or annots.size() == 0
-    chunks[0].close()
-    src.close()
-
-
-def test_widget_with_text_parent_kept() -> None:
-    """A widget whose /Parent is /FT=Tx must NOT be classified as a sig
-    widget — only /Parent removal happens."""
-    tx_field = COSDictionary()
-    tx_field.set_item(_FT, COSName.get_pdf_name("Tx"))
-    widget = _make_widget()
-    widget.set_item(_PARENT, tx_field)
-    page = _make_page_with_annots(widget)
-
-    src = PDDocument()
-    src.add_page(page)
-
-    splitter = Splitter()
-    chunks = splitter.split(src)
-    chunk_page = chunks[0].get_pages().get(0)
-    annots = chunk_page.get_cos_object().get_dictionary_object(_ANNOTS)
-    assert isinstance(annots, COSArray) and annots.size() == 1
-    surviving = annots.get_object(0)
-    # /Parent stripped from cloned widget per upstream processAnnotations.
-    assert not surviving.contains_key(_PARENT)
-    chunks[0].close()
-    src.close()
-
-
-def test_widget_with_signature_value_dictionary_dropped() -> None:
-    """Widget with /V containing /Type=/Sig is a signature widget even
-    without a /FT entry."""
-    v_dict = COSDictionary()
-    v_dict.set_item(_TYPE, COSName.get_pdf_name("Sig"))
-    widget = _make_widget()
-    widget.set_item(_V, v_dict)
-    page = _make_page_with_annots(widget)
-
-    src = PDDocument()
-    src.add_page(page)
-
-    splitter = Splitter()
-    chunks = splitter.split(src)
-    chunk_page = chunks[0].get_pages().get(0)
-    annots = chunk_page.get_cos_object().get_dictionary_object(_ANNOTS)
-    assert annots is None or annots.size() == 0
-    chunks[0].close()
-    src.close()
-
-
-def test_widget_with_v_byterange_dropped() -> None:
-    """/V with /ByteRange (signature artifact) classifies as sig widget."""
-    from pypdfbox.cos import COSInteger
-
-    v_dict = COSDictionary()
-    br = COSArray()
-    for n in (0, 100, 200, 300):
-        br.add(COSInteger.get(n))
-    v_dict.set_item(_BYTERANGE, br)
-    widget = _make_widget()
-    widget.set_item(_V, v_dict)
-    page = _make_page_with_annots(widget)
-
-    src = PDDocument()
-    src.add_page(page)
-
-    splitter = Splitter()
-    chunks = splitter.split(src)
-    chunk_page = chunks[0].get_pages().get(0)
-    annots = chunk_page.get_cos_object().get_dictionary_object(_ANNOTS)
-    assert annots is None or annots.size() == 0
-    chunks[0].close()
-    src.close()
-
-
-# ---------- AcroForm /SigFlags scrub ----------
-
-
-def test_acroform_sigflags_cleared_when_signature_dropped() -> None:
-    """If a sig widget is dropped, any /AcroForm in the chunk catalog
-    must have /SigFlags removed."""
-    sig_widget = _make_widget(FT=COSName.get_pdf_name("Sig"))
-    page = _make_page_with_annots(sig_widget)
-
-    src = PDDocument()
-    src.add_page(page)
-
-    splitter = Splitter()
-
-    # Subclass that injects an /AcroForm with /SigFlags into the
-    # destination catalog so the scrub pass has something to clean.
-    class AcroFormSplitter(Splitter):
-        def create_new_document(self):
-            doc = super().create_new_document()
-            from pypdfbox.cos import COSInteger as _COSInt
-
-            af = COSDictionary()
-            af.set_item(_SIG_FLAGS, _COSInt.get(3))
-            doc.get_document_catalog().get_cos_object().set_item(_ACROFORM, af)
-            return doc
-
-    splitter = AcroFormSplitter()
-    chunks = splitter.split(src)
-    chunk_catalog = chunks[0].get_document_catalog().get_cos_object()
-    af = chunk_catalog.get_dictionary_object(_ACROFORM)
-    if af is not None:
-        # Either fully removed (preferred when empty) or /SigFlags gone.
-        assert not af.contains_key(_SIG_FLAGS)
-    chunks[0].close()
-    src.close()
-
-
-def test_acroform_sig_field_removed_from_fields_array() -> None:
-    """A signature-typed field in /AcroForm/Fields must be filtered out."""
-    page = _make_page_with_annots(
-        _make_widget(FT=COSName.get_pdf_name("Sig"))
+def test_split_document_has_no_acroform() -> None:
+    src, _, _ = _signed_source()
+    chunk = Splitter().split(src)[0]
+    catalog = chunk.get_document_catalog().get_cos_object()
+    assert not catalog.contains_key(_ACROFORM)
+    # the source form is untouched
+    src_form = src.get_document_catalog().get_cos_object().get_dictionary_object(
+        _ACROFORM
     )
-    src = PDDocument()
-    src.add_page(page)
-
-    sig_field = COSDictionary()
-    sig_field.set_item(_FT, COSName.get_pdf_name("Sig"))
-    tx_field = COSDictionary()
-    tx_field.set_item(_FT, COSName.get_pdf_name("Tx"))
-
-    class AcroFormSplitter(Splitter):
-        def create_new_document(self):
-            doc = super().create_new_document()
-            af = COSDictionary()
-            fields = COSArray()
-            fields.add(sig_field)
-            fields.add(tx_field)
-            af.set_item(_FIELDS, fields)
-            doc.get_document_catalog().get_cos_object().set_item(_ACROFORM, af)
-            return doc
-
-    chunks = AcroFormSplitter().split(src)
-    chunk_catalog = chunks[0].get_document_catalog().get_cos_object()
-    af = chunk_catalog.get_dictionary_object(_ACROFORM)
-    assert isinstance(af, COSDictionary)
-    fields = af.get_dictionary_object(_FIELDS)
-    assert isinstance(fields, COSArray)
-    fts = [fields.get_object(i).get_name(_FT) for i in range(fields.size())]
-    assert "Sig" not in fts
-    assert "Tx" in fts
-    chunks[0].close()
+    assert src_form.get_int(_SIG_FLAGS) == 3
+    assert src_form.get_dictionary_object(_FIELDS).size() == 2
+    chunk.close()
     src.close()
-
-
-# ---------- default chunk catalog has no AcroForm ----------
-
-
-def test_default_chunk_does_not_carry_acroform() -> None:
-    """``create_new_document`` whitelists catalog entries — AcroForm is
-    not on that whitelist, mirroring upstream Splitter."""
-    src = PDDocument()
-    src.add_page(PDPage())
-    src_catalog = src.get_document_catalog().get_cos_object()
-    af = COSDictionary()
-    af.set_item(_SIG_FLAGS, COSName.get_pdf_name("Sig"))  # any value
-    src_catalog.set_item(_ACROFORM, af)
-
-    chunks = Splitter().split(src)
-    chunk_catalog = chunks[0].get_document_catalog().get_cos_object()
-    assert not chunk_catalog.contains_key(_ACROFORM)
-    chunks[0].close()
-    src.close()
-
-
-# ---------- round-trip: split + reload ----------
 
 
 def test_split_with_sig_widget_round_trips() -> None:
-    """Save the chunk to bytes and reload — the absence of the sig widget
-    must persist through the writer."""
-    sig_widget = _make_widget(FT=COSName.get_pdf_name("Sig"))
-    text_widget = _make_widget(FT=COSName.get_pdf_name("Tx"))
-    page = _make_page_with_annots(sig_widget, text_widget)
-    src = PDDocument()
-    src.add_page(page)
-
+    src, _, _ = _signed_source()
     chunks = Splitter().split(src)
     sink = io.BytesIO()
     chunks[0].save(sink)
@@ -274,10 +115,9 @@ def test_split_with_sig_widget_round_trips() -> None:
 
     with PDDocument.load(sink.getvalue()) as reloaded:
         assert reloaded.get_number_of_pages() == 1
-        annots = reloaded.get_pages().get(0).get_cos_object().get_dictionary_object(
-            _ANNOTS
+        annots = reloaded.get_page(0).get_cos_object().get_dictionary_object(_ANNOTS)
+        assert annots.size() == 2
+        assert annots.get_object(0).get_name(_FT) == "Sig"
+        assert not reloaded.get_document_catalog().get_cos_object().contains_key(
+            _ACROFORM
         )
-        if annots is not None:
-            for i in range(annots.size()):
-                ft = annots.get_object(i).get_name(_FT)
-                assert ft != "Sig"

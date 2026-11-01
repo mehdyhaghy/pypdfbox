@@ -8,7 +8,20 @@ the debugger UI overlay text-extraction debug info on top. The Swing
 :class:`PIL.ImageDraw.ImageDraw` so we don't need a vector canvas.
 """
 
-from .debug_text_overlay import DebugTextOverlay
-from .page_pane import PagePane
+from typing import TYPE_CHECKING
+
+from pypdfbox._lazy_exports import attach as _attach
+
+if TYPE_CHECKING:
+    from .debug_text_overlay import DebugTextOverlay
+    from .page_pane import PagePane
+
+__getattr__, __dir__ = _attach(
+    __name__,
+    {
+        "DebugTextOverlay": ".debug_text_overlay",
+        "PagePane": ".page_pane",
+    },
+)
 
 __all__ = ["DebugTextOverlay", "PagePane"]

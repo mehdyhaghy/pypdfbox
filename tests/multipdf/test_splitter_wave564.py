@@ -51,30 +51,6 @@ def test_wave564_process_page_removes_bead_entry_from_imported_page() -> None:
         source.close()
 
 
-def test_wave564_signature_widget_parent_cycle_does_not_loop() -> None:
-    widget = COSDictionary()
-    widget.set_item(_SUBTYPE, COSName.get_pdf_name("Widget"))
-    parent = COSDictionary()
-    grandparent = COSDictionary()
-    widget.set_item(_PARENT, parent)
-    parent.set_item(_PARENT, grandparent)
-    grandparent.set_item(_PARENT, parent)
-
-    assert not Splitter._is_signature_widget(widget)
-
-
-def test_wave564_signature_widget_parent_chain_detects_sig_field() -> None:
-    widget = COSDictionary()
-    widget.set_item(_SUBTYPE, COSName.get_pdf_name("Widget"))
-    parent = COSDictionary()
-    grandparent = COSDictionary()
-    grandparent.set_item(_FT, COSName.get_pdf_name("Sig"))
-    parent.set_item(_PARENT, grandparent)
-    widget.set_item(_PARENT, parent)
-
-    assert Splitter._is_signature_widget(widget)
-
-
 def test_wave564_objr_without_payload_is_dropped() -> None:
     class PageTree:
         def index_of(self, page_dict: COSDictionary) -> int:

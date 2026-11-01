@@ -227,7 +227,8 @@ def test_wave362_in_place_decrypt_removes_encrypt_entry(tmp_path: Path) -> None:
     # and the decrypt tool cannot atomically overwrite it (rc=4 instead
     # of 0). POSIX platforms tolerate the unclosed handle, but the
     # explicit close pattern is portable.
-    probe = Loader.load_pdf(src)
+    with pytest.warns(DeprecationWarning, match="pypdfbox 3.0"):
+        probe = Loader.load_pdf(src)
     try:
         assert probe.is_encrypted() is True
     finally:

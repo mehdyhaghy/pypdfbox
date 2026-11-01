@@ -40,14 +40,15 @@ def test_wave540_should_skip_glyph_filters_before_processing_or_output() -> None
 
     class FilteringStripper(PDFTextStripper):
         def should_skip_glyph(self, text: TextPosition) -> bool:
-            return text.text == "drop"
+            # Glyph-level filter: everything from the second word's origin on.
+            return text.x >= 140.0
 
         def process_text_position(self, text: TextPosition) -> None:
             processed.append(text.text)
 
     try:
         assert FilteringStripper().get_text(doc) == "keep\n"
-        assert processed == ["keep"]
+        assert processed == list("keep")
     finally:
         doc.close()
 
@@ -77,7 +78,9 @@ def test_wave540_ignore_space_glyphs_all_spaces_advances_without_positions() -> 
 
     try:
         assert stripper.get_text(doc) == "\n"
-        assert stripper.get_characters_by_article() == [[]]
+        # Upstream keeps the space glyphs in the article and skips them only
+        # while writing.
+        assert [p.text for p in stripper.get_characters_by_article()[0]] == [" "] * 3
     finally:
         doc.close()
 
@@ -88,9 +91,10 @@ def test_wave540_drop_overlapping_duplicates_is_page_global() -> None:
     # suppressed no matter how many other runs were emitted in between —
     # there is no "recent window" (fixed in wave 1598; the lite dedup used
     # to look only at the four most recent kept runs).
-    original = TextPosition(text="same", x=10.0, y=10.0, font_size=8.0)
-    duplicate = TextPosition(text="same", x=11.0, y=11.0, font_size=8.0)
-    later_same_text = TextPosition(text="same", x=10.5, y=10.5, font_size=8.0)
+    # width 24 over 4 characters gives upstream's tolerance of 2.
+    original = TextPosition(text="same", x=10.0, y=10.0, font_size=8.0, width=24.0)
+    duplicate = TextPosition(text="same", x=11.0, y=11.0, font_size=8.0, width=24.0)
+    later_same_text = TextPosition(text="same", x=10.5, y=10.5, font_size=8.0, width=24.0)
     positions = [
         original,
         duplicate,

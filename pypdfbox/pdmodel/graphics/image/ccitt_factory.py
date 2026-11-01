@@ -27,12 +27,14 @@ import io
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO
 
-from PIL import Image
-
+from pypdfbox._lazy_exports import lazy_modules
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.filter import CCITTFaxDecode
 from pypdfbox.pdmodel.graphics.color import PDColorSpace, PDDeviceGray
 from pypdfbox.pdmodel.graphics.image.pd_image_x_object import PDImageXObject
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_document import PDDocument
@@ -349,6 +351,8 @@ class CCITTFactory:
             ("Only 1-bit b/w images supported"); ``ValueError`` is the
             Python analogue for an illegal argument.
         """
+        from PIL import Image
+
         if not isinstance(image, Image.Image):
             raise TypeError(
                 f"image must be a PIL.Image.Image, got {type(image).__name__}"
@@ -487,3 +491,5 @@ __all__ = [
     "read_long",
     "read_short",
 ]
+
+__getattr__ = lazy_modules(__name__, {"Image": "PIL.Image"})

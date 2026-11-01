@@ -26,9 +26,11 @@ from .i_cos_visitor import ICOSVisitor
 # Sentinel for "no default supplied" — distinguishes from a caller-passed None.
 _MISSING: Any = object()
 
+_NULL = COSNull.NULL
+
 def _as_name(key: COSName | str) -> COSName:
     """Normalize string keys to interned ``COSName`` for storage."""
-    if isinstance(key, COSName):
+    if key.__class__ is COSName or isinstance(key, COSName):
         return key
     if isinstance(key, str):
         return COSName.get_pdf_name(key)
@@ -206,22 +208,39 @@ class COSDictionary(COSBase):
 
     # ---------- core map operations ----------
 
+    # The update-state calls below are skipped while the state has no origin
+    # document state: ``COSUpdateState.update`` / ``dereference_child`` are
+    # exact no-ops then, and that is the case for every dictionary the parser
+    # is still building.
+
     def set_item(self, key: COSName | str, value: COSBase | None) -> None:
         if value is None:
             self.remove_item(key)
-        else:
-            self._items[_as_name(key)] = value
-            self._update_state.update(child=value)
+            return
+        if key.__class__ is not COSName:
+            key = _as_name(key)
+        self._items[key] = value
+        state = self._update_state
+        if state._origin_document_state is not None:
+            state.update(child=value)
 
     def _set_item_quiet(self, key: COSName | str, value: COSBase) -> None:
         """Set an internal/cache-created entry without marking it dirty."""
-        self._items[_as_name(key)] = value
-        self._update_state.dereference_child(value)
+        if key.__class__ is not COSName:
+            key = _as_name(key)
+        self._items[key] = value
+        state = self._update_state
+        if state._origin_document_state is not None:
+            state.dereference_child(value)
 
     def remove_item(self, key: COSName | str) -> COSBase | None:
-        item = self._items.pop(_as_name(key), None)
+        if key.__class__ is not COSName:
+            key = _as_name(key)
+        item = self._items.pop(key, None)
         if item is not None:
-            self._update_state.update()
+            state = self._update_state
+            if state._origin_document_state is not None:
+                state.update()
         return item
 
     def get_item(
@@ -233,20 +252,26 @@ class COSDictionary(COSBase):
         second-key overload and returns that raw item only if the first key is
         absent.
         """
-        item = self._items.get(_as_name(key))
+        if key.__class__ is not COSName:
+            key = _as_name(key)
+        item = self._items.get(key)
         if item is not None:
             return item
+        if default is None:
+            return None
         if isinstance(default, (COSName, str)):
             return self._items.get(_as_name(default))
         return default
 
     def _resolve_item(self, key: COSName | str) -> COSBase | None:
-        item = self._items.get(_as_name(key))
+        if key.__class__ is not COSName:
+            key = _as_name(key)
+        item = self._items.get(key)
         if item is None:
             return None
         if isinstance(item, COSObject):
             item = item.get_object()
-        if item is COSNull.NULL:
+        if item is _NULL:
             return None
         return item
 
@@ -259,15 +284,25 @@ class COSDictionary(COSBase):
         second-key overload and is resolved only if the first key is absent or
         resolves to ``COSNull``.
         """
-        item = self._resolve_item(key)
+        # Inlined ``_resolve_item(key)``: this is the hottest COS getter.
+        if key.__class__ is not COSName:
+            key = _as_name(key)
+        item = self._items.get(key)
         if item is not None:
-            return item
+            if isinstance(item, COSObject):
+                item = item.get_object()
+            if item is not None and item is not _NULL:
+                return item
+        if default is None:
+            return None
         if isinstance(default, (COSName, str)):
             return self._resolve_item(default)
         return default
 
     def contains_key(self, key: COSName | str) -> bool:
-        return _as_name(key) in self._items
+        if key.__class__ is not COSName:
+            key = _as_name(key)
+        return key in self._items
 
     def contains_value(self, value: object) -> bool:
         """Return true if any entry stores ``value``.
@@ -301,7 +336,9 @@ class COSDictionary(COSBase):
     def clear(self) -> None:
         if self._items:
             self._items.clear()
-            self._update_state.update()
+            state = self._update_state
+            if state._origin_document_state is not None:
+                state.update()
 
     def key_set(self) -> KeysView[COSName]:
         return self._items.keys()
@@ -316,7 +353,9 @@ class COSDictionary(COSBase):
         """Merge ``other`` into self, overwriting keys present in both."""
         if other._items:
             self._items.update(other._items)
-            self._update_state.update(children=other._items.values())
+            state = self._update_state
+            if state._origin_document_state is not None:
+                state.update(children=other._items.values())
 
     def get_update_state(self) -> COSUpdateState:
         return self._update_state
@@ -847,10 +886,11 @@ class COSDictionary(COSBase):
         return iter(self._items)
 
     def __getitem__(self, key: COSName | str) -> COSBase:
-        name = _as_name(key)
-        if name not in self._items:
-            raise KeyError(key)
-        return self._items[name]
+        name = key if key.__class__ is COSName else _as_name(key)
+        try:
+            return self._items[name]
+        except KeyError:
+            raise KeyError(key) from None
 
     def __setitem__(self, key: COSName | str, value: COSBase) -> None:
         self.set_item(key, value)
@@ -860,9 +900,13 @@ class COSDictionary(COSBase):
         if name not in self._items:
             raise KeyError(key)
         del self._items[name]
-        self._update_state.update()
+        state = self._update_state
+        if state._origin_document_state is not None:
+            state.update()
 
     def __contains__(self, key: object) -> bool:
+        if key.__class__ is COSName:
+            return key in self._items
         if isinstance(key, (COSName, str)):
             return _as_name(key) in self._items
         return False

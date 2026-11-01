@@ -99,7 +99,7 @@ def test_wave630_run_same_output_replaces_source_and_removes_temp(
     probe = _ProbeDocument()
     calls: list[tuple[Path, Path, str | None, int]] = []
 
-    monkeypatch.setattr(encrypt_tool.PDDocument, "load", lambda path: probe)
+    monkeypatch.setattr(encrypt_tool.PDDocument, "load", lambda path, password=None: probe)
 
     def fake_encrypt_pdf(
         input_path: str | Path,
@@ -138,7 +138,9 @@ def test_wave630_run_same_output_value_error_preserves_source_and_cleans_temp(
     src.write_bytes(b"original")
     tmp_seen: list[Path] = []
 
-    monkeypatch.setattr(encrypt_tool.PDDocument, "load", lambda path: _ProbeDocument())
+    monkeypatch.setattr(
+        encrypt_tool.PDDocument, "load", lambda path, password=None: _ProbeDocument()
+    )
 
     def fake_encrypt_pdf(
         input_path: str | Path,
@@ -177,7 +179,7 @@ def test_wave630_run_already_encrypted_skips_encrypt_pdf(
     monkeypatch.setattr(
         encrypt_tool.PDDocument,
         "load",
-        lambda path: _ProbeDocument(encrypted=True),
+        lambda path, password=None: _ProbeDocument(encrypted=True),
     )
 
     monkeypatch.setattr(encrypt_tool, "encrypt_pdf", _fail_encrypt_pdf)
@@ -197,7 +199,9 @@ def test_wave630_run_non_same_output_notimplemented_returns_four(
     out = tmp_path / "encrypted.pdf"
     src.write_bytes(b"%PDF-1.7\n")
 
-    monkeypatch.setattr(encrypt_tool.PDDocument, "load", lambda path: _ProbeDocument())
+    monkeypatch.setattr(
+        encrypt_tool.PDDocument, "load", lambda path, password=None: _ProbeDocument()
+    )
 
     def fake_encrypt_pdf(*args: object, **kwargs: object) -> None:
         raise NotImplementedError("public key encryption")

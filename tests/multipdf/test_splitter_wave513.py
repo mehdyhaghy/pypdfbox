@@ -1,6 +1,7 @@
 from pypdfbox import PDDocument, PDPage
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSNull
 from pypdfbox.multipdf import Splitter
+from pypdfbox.pdmodel.interactive.documentnavigation.destination import PDDestination
 
 _ACROFORM = COSName.get_pdf_name("AcroForm")
 _ANNOTS = COSName.get_pdf_name("Annots")
@@ -34,55 +35,15 @@ def _dest_array(page_dict: COSDictionary) -> COSArray:
     return dest
 
 
-def test_wave513_scrub_acroform_keeps_non_signature_fields() -> None:
-    doc = PDDocument()
-    acroform = COSDictionary()
-    acroform.set_int(_SIG_FLAGS, 3)
-    fields = COSArray()
-    sig_field = _field("Sig")
-    text_field = _field("Tx")
-    fields.add(sig_field)
-    fields.add(text_field)
-    acroform.set_item(_FIELDS, fields)
-    doc.get_document_catalog().get_cos_object().set_item(_ACROFORM, acroform)
-
-    try:
-        Splitter()._scrub_acroform(doc)
-
-        assert not acroform.contains_key(_SIG_FLAGS)
-        kept_fields = acroform.get_dictionary_object(_FIELDS)
-        assert isinstance(kept_fields, COSArray)
-        assert kept_fields.size() == 1
-        assert kept_fields.get_object(0) is text_field
-        assert doc.get_document_catalog().get_cos_object().contains_key(_ACROFORM)
-    finally:
-        doc.close()
-
-
-def test_wave513_scrub_acroform_removes_empty_signature_only_form() -> None:
-    doc = PDDocument()
-    acroform = COSDictionary()
-    acroform.set_item(_TYPE, COSName.get_pdf_name("AcroForm"))
-    fields = COSArray()
-    fields.add(_field("Sig"))
-    acroform.set_item(_FIELDS, fields)
-    doc.get_document_catalog().get_cos_object().set_item(_ACROFORM, acroform)
-
-    try:
-        Splitter()._scrub_acroform(doc)
-
-        assert not doc.get_document_catalog().get_cos_object().contains_key(_ACROFORM)
-    finally:
-        doc.close()
-
-
 def test_wave513_fix_destinations_nulls_target_outside_chunk() -> None:
     source = _make_doc(2)
     chunk = _make_doc(1)
     source_pages = list(source.get_pages())
     dest = _dest_array(source_pages[1].get_cos_object())
     splitter = Splitter()
-    splitter._dest_to_fix = [(dest, source_pages[0].get_cos_object())]
+    splitter._dest_to_fix = [
+        (PDDestination.create(dest), chunk.get_page(0).get_cos_object())
+    ]
     splitter._page_dict_map = {
         id(source_pages[0].get_cos_object()): chunk.get_page(0).get_cos_object()
     }
@@ -97,7 +58,6 @@ def test_wave513_fix_destinations_nulls_target_outside_chunk() -> None:
 
 
 def test_wave513_process_annotations_drops_widget_parent_on_clone() -> None:
-    source_page = PDPage()
     imported = PDPage()
     parent = COSDictionary()
     parent.set_item(_FT, COSName.get_pdf_name("Tx"))
@@ -108,7 +68,7 @@ def test_wave513_process_annotations_drops_widget_parent_on_clone() -> None:
     annots.add(widget)
     imported.get_cos_object().set_item(_ANNOTS, annots)
 
-    Splitter()._process_annotations(source_page, imported)
+    Splitter()._process_annotations(imported)
 
     cloned_annots = imported.get_cos_object().get_dictionary_object(_ANNOTS)
     assert isinstance(cloned_annots, COSArray)

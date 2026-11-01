@@ -59,8 +59,11 @@ class CreateSignature(CreateSignatureBase):
         in_file: Path | str,
         out_file: Path | str | None = None,
         tsa_url: str | None = None,
+        password: str | None = None,
     ) -> None:
-        """Sign ``in_file``; if ``out_file`` is None, sign in place (upstream 76)."""
+        """Sign ``in_file``; if ``out_file`` is None, sign in place (upstream 76).
+
+        ``password`` opens an encrypted ``in_file`` (PDFBOX-6289)."""
         in_path = Path(in_file)
         if not in_path.exists():
             raise FileNotFoundError("Document for signing does not exist")
@@ -71,7 +74,7 @@ class CreateSignature(CreateSignatureBase):
 
         with (
             in_path.open("rb") as fh,
-            PDDocument.load(fh) as doc,
+            PDDocument.load(fh, password) as doc,
             out_path.open("wb") as out,
         ):
             self.sign_detached_document(doc, out)

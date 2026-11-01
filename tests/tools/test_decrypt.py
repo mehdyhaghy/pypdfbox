@@ -111,7 +111,8 @@ def test_decrypt_missing_input(
 def test_decrypt_pdf_strips_encrypt_entry(tmp_path: Path) -> None:
     src = _build_encrypted_pdf(tmp_path / "secret.pdf")
     # Sanity: the source IS encrypted on disk.
-    encrypted = Loader.load_pdf(src)
+    with pytest.warns(DeprecationWarning, match="pypdfbox 3.0"):
+        encrypted = Loader.load_pdf(src)
     try:
         assert encrypted.is_encrypted() is True
     finally:

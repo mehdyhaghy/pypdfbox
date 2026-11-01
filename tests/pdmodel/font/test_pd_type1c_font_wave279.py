@@ -140,7 +140,8 @@ def test_defaults_without_encoding_resolve_standard_and_have_empty_glyph_surface
     assert font.get_path("A") == []
     assert font.has_glyph("A") is False
     assert font.get_height(65) == 0.0
-    assert font.get_average_font_width() == 0.0
+    # Upstream PDType1CFont.getAverageFontWidth: the constant 500.
+    assert font.get_average_font_width() == 500.0
 
 
 def test_winansi_encoding_drives_type1c_code_to_name_without_program() -> None:

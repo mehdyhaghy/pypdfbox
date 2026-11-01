@@ -54,6 +54,9 @@ class _NumberTree:
     def get_numbers(self) -> dict[int, COSDictionary]:
         return self._numbers
 
+    def get_tree_as_map(self) -> dict[int, COSDictionary]:
+        return dict(self._numbers)
+
     def get_kids(self) -> None:
         return None
 
@@ -67,6 +70,9 @@ class _DestinationPage:
 
     def get_annotations(self) -> list[object]:
         return []
+
+    def get_resources(self) -> None:
+        return None
 
 
 class _DestinationPages:

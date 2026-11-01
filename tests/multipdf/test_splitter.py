@@ -141,11 +141,14 @@ def test_set_end_page_rejects_zero() -> None:
         splitter.set_end_page(0)
 
 
-def test_set_end_page_rejects_below_start() -> None:
+def test_split_rejects_end_below_start() -> None:
+    # PDFBOX-6283: the setter accepts it, split() rejects it
     splitter = Splitter()
     splitter.set_start_page(5)
+    splitter.set_end_page(3)
+    src = _make_doc(1)
     with pytest.raises(ValueError, match="smaller than startPage"):
-        splitter.set_end_page(3)
+        splitter.split(src)
 
 
 # ---------- save / round-trip ----------

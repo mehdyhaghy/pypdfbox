@@ -1,3 +1,5 @@
+import pytest
+
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName, COSStream, COSString
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.text import PDFTextStripper, TextPosition
@@ -100,8 +102,11 @@ def test_wave550_dispatch_handles_text_matrix_and_spacing_operands() -> None:
 
     stripper = PDFTextStripper()
     try:
-        assert stripper.get_text(doc) == "first second\n"
-        first, second = stripper.get_characters_by_article()[0]
+        # 4pt character spacing splits every glyph of "second" into its own
+        # word (verified against PDFBox 3.0.8).
+        assert stripper.get_text(doc) == "first s e c o n d\n"
+        glyphs = stripper.get_characters_by_article()[0]
+        first, second = glyphs[0], glyphs[5]
         assert first.text_matrix == [1.0, 0.0, 0.0, 1.0, 50.0, 600.0]
         assert second.x == 100.0
         assert second.char_spacing == 4.0
@@ -163,7 +168,9 @@ def test_wave550_tj_array_ignores_non_text_and_non_number_entries() -> None:
     )
 
     assert [p.text for p in positions] == ["A", "B"]
-    assert positions[1].x == 25.0
+    # No font is set, so upstream's Helvetica fallback applies: A advances
+    # 6.67 and the -1000 adjustment another 10.
+    assert positions[1].x == pytest.approx(26.67, abs=1e-4)
 
 
 def test_wave550_paragraph_indent_helpers_honor_space_width_fallback_and_flip_axes() -> None:

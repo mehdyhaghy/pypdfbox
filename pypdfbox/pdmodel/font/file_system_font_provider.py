@@ -413,15 +413,24 @@ class FileSystemFontProvider(FontProvider):
         except ImportError:
             return
         try:
-            ttc = TTCollection(str(file))
+            # ``lazy=True``: each member reads its tables from the shared file
+            # on demand. The default makes every member slurp the whole file
+            # into its own buffer, so a large collection costs N full copies.
+            ttc = TTCollection(str(file), lazy=True)
         except Exception as ex:
             _LOG.debug("Could not parse TTC %s: %s", file, ex)
             return
-        for font in ttc.fonts:
-            try:
-                self._add_ttf_metadata(file, font)
-            except OSError as ex:
-                _LOG.debug("Could not extract metadata from %s: %s", file, ex)
+        try:
+            for font in ttc.fonts:
+                try:
+                    self._add_ttf_metadata(file, font)
+                except OSError as ex:
+                    _LOG.debug("Could not extract metadata from %s: %s", file, ex)
+        finally:
+            close = getattr(ttc, "close", None)
+            if close is not None:
+                with contextlib.suppress(OSError):
+                    close()
 
     def _add_ttf_metadata(self, file: Path, ttf: object) -> None:
         """Common metadata-extraction path for TTF/OTF and TTC entries."""

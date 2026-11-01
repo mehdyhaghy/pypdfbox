@@ -92,6 +92,9 @@ def test_wave505_lazy_load_nulls_header_object_number_mismatch() -> None:
     # object whose xref offset points at a differently-numbered ``n g obj``
     # header is rejected internally rather than returning the wrong object.
     # COSObject.getObject catches that parser I/O failure and resolves to null.
+    # Since upstream's checkXrefOffsets runs first, the entry is re-keyed to
+    # the object its header names (2 0), so 1 0 is simply absent (oracle:
+    # xref {2 0: 9}, 1 0 -> null, 2 0 -> 42).
     out = bytearray(b"%PDF-1.4\n")
     target_offset = len(out)
     out += b"2 0 obj\n42\nendobj\n"
@@ -104,8 +107,10 @@ def test_wave505_lazy_load_nulls_header_object_number_mismatch() -> None:
     doc = parser.parse()
 
     try:
+        assert doc.get_xref_table() == {COSObjectKey(2, 0): target_offset}
         target = doc.get_object_from_pool(COSObjectKey(1, 0))
         assert target.get_object() is None
-        assert target.is_dereferenced()
+        other = doc.get_object_from_pool(COSObjectKey(2, 0)).get_object()
+        assert other.int_value() == 42
     finally:
         doc.close()

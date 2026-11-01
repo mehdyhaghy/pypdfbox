@@ -1,3 +1,4 @@
+import contextlib
 import re
 from typing import TYPE_CHECKING
 
@@ -10,6 +11,7 @@ from pypdfbox.cos import (
     COSObject,
     COSStream,
 )
+from pypdfbox.util.matrix import f32
 
 from .standard14_fonts import Standard14Fonts
 
@@ -91,9 +93,14 @@ class PDFont:
         # Populated on first call to :meth:`get_width` per code.
         self._code_to_width: dict[int, float] = {}
         # Per-codepoint encoded-bytes cache — mirrors upstream's protected
-        # ``codepointEncoding`` (PDFBOX-6287, moved up from PDType1Font's
-        # ``codeToBytesMap`` so every font subtype's encoder can share it).
-        self._codepoint_encoding: dict[int, bytes] = {}
+        # ``codepointToEncodingMap`` (PDFBOX-6287, moved up from
+        # PDType1Font's ``codeToBytesMap`` so every font subtype's encoder
+        # can share it).
+        self._codepoint_to_encoding_map: dict[int, bytes] = {}
+        # Per-codepoint string-width cache — mirrors upstream's protected
+        # ``codepointToWidthMap`` (PDFBOX-6287), filled by
+        # :meth:`get_string_width`.
+        self._codepoint_to_width_map: dict[int, float] = {}
         # Per-code ``to_unicode`` cache — same shape as ``_code_to_width``
         # but keyed only for the default (``custom_glyph_list is None``)
         # call so the common per-glyph text-extraction path does not
@@ -287,87 +294,69 @@ class PDFont:
     def get_average_font_width(self) -> float:
         """Return the average glyph advance for this font in thousandths of an em.
 
-        Computed as the arithmetic mean of the positive entries in
-        ``/Widths``; zero-width entries (typically ``.notdef`` slots) are
-        skipped to avoid dragging the mean toward zero. Returns ``0.0``
-        when the font has no usable width entries. Memoised after first
-        call, mirroring upstream ``PDFont.getAverageFontWidth``.
+        Mirrors upstream ``PDFont.getAverageFontWidth``: the mean of the
+        positive numbers in ``/Widths``, summed in float, or ``0.0`` when
+        there are none. Memoised after the first call.
         """
         if self._avg_font_width_cached is not None:
             return self._avg_font_width_cached
-        widths = self.get_widths()
-        non_zero = [w for w in widths if w is not None and w > 0.0]
-        if not non_zero:
-            self._avg_font_width_cached = 0.0
-        else:
-            self._avg_font_width_cached = sum(non_zero) / len(non_zero)
+        total = 0.0
+        count = 0
+        for width in self.get_widths():
+            if width is not None and width > 0.0:
+                total = f32(total + f32(width))
+                count += 1
+        self._avg_font_width_cached = f32(total / count) if total > 0 else 0.0
         return self._avg_font_width_cached
 
-    def get_space_width(self) -> float:
-        """Return the advance width of the space glyph (character code 32).
+    def is_encoded_via_substitute(self) -> bool:
+        """Whether :meth:`encode` derives codes from a substitute font
+        program rather than from this font's encoding, so that the codes
+        need not exist in the PDF.
 
-        Mirrors upstream ``PDFont.getSpaceWidth``: tries the ``/ToUnicode``
-        CMap's recorded space mapping first, then ``getStringWidth(" ")``
-        (so encoded fonts get the right code), then a direct ``/Widths``
-        lookup at offset ``32 - /FirstChar``, then ``getWidthFromFont(32)``,
-        finally falling back to ``getAverageFontWidth`` and 250 as the
-        ultimate default. Cached on first call.
+        Mirrors upstream protected ``PDFont.isEncodedViaSubstitute``
+        (PDFBOX-6292). The base answers ``False``.
+        """
+        return False
+
+    def get_space_width(self) -> float:
+        """Return the advance width of the space glyph, in glyph units.
+
+        Mirrors upstream ``PDFont.getSpaceWidth``: with a ``/ToUnicode``
+        CMap, the width of the code it maps to a space (or nothing yet when
+        it maps none); without one, ``getStringWidth(" ")`` (the encoding's
+        space code, PDFBOX-5920), then ``getWidth(32)``. A result that is
+        still not positive falls back to the font program's width for code
+        32 and then to the average glyph width; any failure gives 250.
+        Cached on first call.
         """
         if self._font_width_of_space is not None:
             return self._font_width_of_space
-        # 1) Use /ToUnicode CMap space mapping when present.
+        width = -1.0
         try:
-            if self.has_to_unicode():
-                cmap = self.get_to_unicode_cmap()
-                if cmap is not None:
-                    space_mapping = cmap.get_space_mapping()
-                    if space_mapping > -1:
-                        try:
-                            width = self.get_width(space_mapping)
-                            if width > 0:
-                                self._font_width_of_space = width
-                                return width
-                        except (NotImplementedError, OSError, ValueError):
-                            pass
-            # 2) Try get_string_width(" ") so encoded fonts hit the right code.
-            try:
-                width = self.get_string_width(" ")
-                if width > 0:
-                    self._font_width_of_space = width
-                    return width
-            except (NotImplementedError, OSError, ValueError):
-                pass
-            # 3) Direct /Widths lookup at code 32.
-            widths = self.get_widths()
-            if widths:
-                first = self.get_first_char()
-                if first < 0:
-                    first = 0
-                index = 32 - first
-                if 0 <= index < len(widths):
-                    width = widths[index]
-                    if width is not None and width > 0.0:
-                        self._font_width_of_space = width
-                        return width
-            # 4) Ask the embedded font program directly.
-            try:
-                width = self.get_width_from_font(32)
-                if width > 0:
-                    self._font_width_of_space = width
-                    return width
-            except (NotImplementedError, OSError, ValueError):
-                pass
-            # 5) Average font width fallback.
-            avg = self.get_average_font_width()
-            if avg > 0:
-                self._font_width_of_space = avg
-                return avg
+            cmap = self.get_to_unicode_cmap() if self.has_to_unicode() else None
+            if cmap is not None:
+                space_mapping = cmap.get_space_mapping()
+                if space_mapping > -1:
+                    width = float(self.get_width(space_mapping))
+            else:
+                if not self.is_encoded_via_substitute():
+                    # PDFBOX-5920: try with encoding, which gets the correct
+                    # code. Upstream tolerates a missing space / unsupported
+                    # encoding.
+                    with contextlib.suppress(NotImplementedError, ValueError):
+                        width = float(self.get_string_width(" "))
+                if width <= 0:
+                    width = float(self.get_width(32))
+            if width <= 0:
+                width = float(self.get_width_from_font(32))
+                if width <= 0:
+                    width = float(self.get_average_font_width())
         except Exception:
-            # Mirrors upstream's broad catch — never let space-width
-            # calculation propagate; fall through to the 250 default.
-            pass
-        self._font_width_of_space = _DEFAULT_SPACE_WIDTH
-        return _DEFAULT_SPACE_WIDTH
+            # Upstream catches everything here and uses 250.
+            width = _DEFAULT_SPACE_WIDTH
+        self._font_width_of_space = width
+        return width
 
     # ---------- font matrix ----------
 
@@ -749,34 +738,41 @@ class PDFont:
         """Read one character code from ``data`` starting at ``offset``.
 
         Returns ``(code, bytes_consumed)``. Mirrors upstream
-        ``abstract int readCode(InputStream)`` in spirit, but the Python
-        port uses a buffer + offset (so the renderer can dispatch through
-        a single uniform signature across composite and simple fonts).
-        Codes may be 1–4 bytes long depending on the font subtype's CMap.
-        Base implementation raises :class:`NotImplementedError`.
+        ``PDFont.readCode(InputStream)``, whose default (PDFBOX-6287) reads
+        a single byte, which works for the simple font subtypes;
+        :class:`PDType0Font` overrides it with the CMap-driven 1-4 byte
+        read. The Python port uses a buffer + offset (so the renderer can
+        dispatch through a single uniform signature across composite and
+        simple fonts). At or past end-of-buffer returns ``(0, 0)`` so
+        callers terminate the decode loop (Java's ``read()`` gives ``-1``).
         """
-        raise NotImplementedError(
-            "read_code must be implemented by a concrete subclass"
-        )
+        if offset < 0 or offset >= len(data):
+            return (0, 0)
+        return (data[offset] & 0xFF, 1)
 
     def get_string_width(self, text: str) -> float:
         """Return the total advance of ``text`` in 1/1000 text-space units.
 
-        Mirrors upstream ``PDFont.getStringWidth``: encodes ``text`` to
-        bytes, then iterates ``read_code`` + ``get_width``. Subclasses
-        that have a tight string-level shortcut may override.
+        Mirrors upstream ``PDFont.getStringWidth`` (PDFBOX-6287): per
+        codepoint, the encoded bytes are each taken as a one-byte code and
+        their widths summed; the per-codepoint total is cached in
+        ``_codepoint_to_width_map``. Subclasses with multi-byte codes
+        (:class:`PDType0Font`) or a string-level shortcut override it.
         """
-        data = self.encode(text)
-        total = 0.0
-        offset = 0
-        n = len(data)
-        while offset < n:
-            code, consumed = self.read_code(data, offset)
-            if consumed <= 0:
-                break
-            total += self.get_width(code)
-            offset += consumed
-        return total
+        cache = self._codepoint_to_width_map
+        width = 0.0
+        for ch in text:
+            code_point = ord(ch)
+            code_point_width = cache.get(code_point)
+            if code_point_width is None:
+                code_point_width = 0.0
+                for value in self.encode(ch):
+                    # skip read_code as it simply reads the next byte in
+                    # most cases
+                    code_point_width += self.get_width(value & 0xFF)
+                cache[code_point] = code_point_width
+            width += code_point_width
+        return width
 
     # ---------- to_unicode ----------
 

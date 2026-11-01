@@ -1,9 +1,10 @@
 # Text extraction
 
 Pypdfbox ports the upstream `PDFTextStripper` and `PDFTextStripperByArea`
-class pair under [`pypdfbox.text`](../api/text.md). The lite stripper
-covers single-column reading order; the by-area subclass restricts
-extraction to one or more clipping rectangles.
+class pair under [`pypdfbox.text`](../api/text.md). The stripper emits one
+`TextPosition` per glyph and lays lines, words and paragraphs out the way
+PDFBox 3.0.8 does, so its output matches `ExtractText`; the by-area
+subclass restricts extraction to one or more clipping rectangles.
 
 ## Strip text from a PDF
 
