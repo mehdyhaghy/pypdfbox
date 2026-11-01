@@ -343,39 +343,36 @@ class PDFStreamParser(COSParser):
 
     # ---------- container operands (content-stream recovery) ----------
 
-    def parse_cos_array(self) -> COSArray:
-        """Parse a ``[ ... ]`` array operand with the *content-stream*
-        recovery semantics, not the strict document-loader ones.
-
-        ``COSParser.parse_cos_array`` (the document-loader variant) raises
-        ``unterminated array`` on a missing ``]`` and emits ``COSObject``
-        indirect references — correct for the strict document body. Upstream's
-        *content-stream* path is ``BaseParser.parseCOSArray`` (which Java's
-        ``PDFStreamParser`` uses directly): it is lenient on a missing ``]``
-        (returns the elements gathered so far), it **skips** corrupt elements
-        (logging ``Corrupt array element`` and continuing — e.g. ``[1 2 3 q``
-        → ``[1 2 3]`` with ``q`` skipped, not appended as a null), and it folds
-        a ``num gen R`` triple back into an indirect reference via
-        ``get_object_from_pool`` — which, with no bound document, raises so the
-        enclosing ``parse_next_token`` discards the whole array token (matching
-        Apache PDFBox's *"Stop reading invalid array from content stream"*).
-
-        Delegating to ``BaseParser`` rather than re-implementing keeps the
-        document-loader strictness in ``COSParser`` untouched while making the
-        content-stream tokenizer byte-exact with upstream (verified live by
-        ``oracle/probes/ContentStreamParseFuzzProbe.java``)."""
-        return BaseParser.parse_cos_array(self)
-
-    def parse_cos_dictionary(self, is_direct: bool = False) -> COSDictionary:
-        """Parse a ``<< ... >>`` dictionary operand with content-stream
-        recovery semantics. Same divergence rationale as
-        :meth:`parse_cos_array`: delegate to ``BaseParser.parseCOSDictionary``,
-        which recovers from a stray non-``/`` byte (via
-        ``read_until_end_of_cos_dictionary``) and returns the name/value pairs
-        gathered so far when the stream ends mid-dictionary — e.g.
-        ``<< /A 1 /B 2`` → ``{/A 1 /B 2}`` — instead of raising the
-        document-loader's ``unterminated dictionary``."""
-        return BaseParser.parse_cos_dictionary(self, is_direct)
+    # ``parse_cos_array`` / ``parse_cos_dictionary``: container operands are
+    # read with the *content-stream* recovery semantics, not the strict
+    # document-loader ones.
+    #
+    # ``COSParser.parse_cos_array`` (the document-loader variant) raises
+    # ``unterminated array`` on a missing ``]`` and emits ``COSObject``
+    # indirect references — correct for the strict document body. Upstream's
+    # *content-stream* path is ``BaseParser.parseCOSArray`` (which Java's
+    # ``PDFStreamParser`` uses directly): it is lenient on a missing ``]``
+    # (returns the elements gathered so far), it **skips** corrupt elements
+    # (logging ``Corrupt array element`` and continuing — e.g. ``[1 2 3 q``
+    # → ``[1 2 3]`` with ``q`` skipped, not appended as a null), and it folds
+    # a ``num gen R`` triple back into an indirect reference via
+    # ``get_object_from_pool`` — which, with no bound document, raises so the
+    # enclosing ``parse_next_token`` discards the whole array token (matching
+    # Apache PDFBox's *"Stop reading invalid array from content stream"*).
+    # Likewise ``BaseParser.parseCOSDictionary`` recovers from a stray
+    # non-``/`` byte (via ``read_until_end_of_cos_dictionary``) and returns
+    # the name/value pairs gathered so far when the stream ends
+    # mid-dictionary — e.g. ``<< /A 1 /B 2`` → ``{/A 1 /B 2}`` — instead of
+    # raising the document-loader's ``unterminated dictionary``.
+    #
+    # Using the ``BaseParser`` methods rather than re-implementing keeps the
+    # document-loader strictness in ``COSParser`` untouched while making the
+    # content-stream tokenizer byte-exact with upstream (verified live by
+    # ``oracle/probes/ContentStreamParseFuzzProbe.java``). They are bound
+    # directly, not wrapped, so each nesting level costs no extra Python
+    # frame (see ``BaseParser.MAX_RECURSION_DEPTH``).
+    parse_cos_array = BaseParser.parse_cos_array
+    parse_cos_dictionary = BaseParser.parse_cos_dictionary
 
     # ---------- public API ----------
 

@@ -183,6 +183,18 @@ Divergences that remain live (will affect observable behaviour vs Java PDFBox):
   upstream: PDFBox 3.0 branch `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFMergerUtility.java` (`mergeDocuments`, `optimizedMergeDocuments`, `appendDocument`)
   reason: forward-port of upstream bug fixes ahead of the 3.0.9 release.
 
+- **An unclosed `COSDocument` that becomes unreachable is no longer closed by its finalizer (fix).** The finalizer closed the scratch file and the source, which broke objects that outlived the document: an imported page whose destination was dropped (`PDDocument().import_page(page)`), or a page whose lazy objects still read the source. Upstream has no finalizer; pypdfbox now only logs the missing close when that warning is enabled. Unreferenced buffers are freed by Python, and scratch temp files are deleted at interpreter exit.
+  upstream: PDFBox 3.0.8 `pdfbox/src/main/java/org/apache/pdfbox/cos/COSDocument.java`
+  reason: bug fix toward parity.
+
+- **Direct-object nesting limit now matches upstream (fix, behavior change).** The parser counts every `parse_dir_object` / `parse_direct_object` call and every array and dictionary against `MAX_RECURSION_DEPTH` (500), as upstream `BaseParser` does, so about 250 levels parse. Past that it raises `PDFParseError("Reached maximum recursion depth 500")` and recovers the way PDFBox does: the object resolves to null, the trailer is rebuilt, or the content-stream token stream stops. Before, 251 to about 450 levels parsed where PDFBox fails, and deeper input leaked `RecursionError`.
+  upstream: PDFBox 3.0.8 `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/BaseParser.java` (`MAX_RECURSION_DEPTH`)
+  reason: bug fix toward parity.
+
+- **Saving deeply nested direct arrays or dictionaries no longer raises `RecursionError` (fix).** Past 64 levels `COSWriter` switches to an explicit-stack walker with byte-identical output, as the object-stream serializer already did. Upstream recurses; the Java stack is deep enough that it does not hit the limit.
+  upstream: PDFBox 3.0.8 `pdfbox/src/main/java/org/apache/pdfbox/pdfwriter/COSWriter.java`
+  reason: robustness; Python's recursion limit is far lower than the Java stack.
+
 - **`PDFCloneUtility` keeps its cloned sources alive (fix).** The clone memo is keyed by `id()`; once a source was freed, a new object could reuse its id and be handed the old clone (for example an empty `COSArray` cloned as a `COSDictionary`). The cloner now holds every source for its lifetime, as upstream's `IdentityHashMap` keys do.
   upstream: PDFBox 3.0.8 `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFCloneUtility.java`
   reason: bug fix toward parity.

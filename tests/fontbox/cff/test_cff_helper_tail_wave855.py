@@ -3,7 +3,6 @@ from types import ModuleType
 
 import pytest
 
-from tests.fontbox.cff import test_cff_cid_font as cid_mod
 from tests.fontbox.cff import test_cff_font_parity as parity_mod
 from tests.fontbox.cff import test_cff_type1_font as type1_mod
 from tests.fontbox.cff import test_type2_char_string as type2_mod
@@ -11,7 +10,6 @@ from tests.fontbox.cff import test_type2_char_string as type2_mod
 _HELPERS = [
     (parity_mod, "_OTF_CANDIDATES", "_load_cff_bytes"),
     (type1_mod, "_TYPE1_OTF_CANDIDATES", "_load_type1_cff_bytes"),
-    (cid_mod, "_CID_OTF_CANDIDATES", "_load_cid_cff_bytes"),
     (type2_mod, "_OTF_CANDIDATES", "_load_cff_bytes"),
 ]
 

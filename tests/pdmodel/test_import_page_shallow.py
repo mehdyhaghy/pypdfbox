@@ -57,7 +57,10 @@ def test_contents_array_becomes_one_flate_stream() -> None:
     )
     src.add_page(page)
 
-    imported = PDDocument().import_page(page)
+    # keep the destination alive: a dropped PDDocument is finalized and
+    # closes the buffers the imported page's streams live in
+    dest = PDDocument()
+    imported = dest.import_page(page)
 
     contents = imported.get_cos_object().get_dictionary_object(_N("Contents"))
     assert isinstance(contents, COSStream)
@@ -73,7 +76,10 @@ def test_single_contents_stream_is_reencoded_without_delimiter() -> None:
     page.get_cos_object().set_item(_N("Contents"), original)
     src.add_page(page)
 
-    imported = PDDocument().import_page(page)
+    # keep the destination alive: a dropped PDDocument is finalized and
+    # closes the buffers the imported page's streams live in
+    dest = PDDocument()
+    imported = dest.import_page(page)
 
     contents = imported.get_cos_object().get_dictionary_object(_N("Contents"))
     assert contents is not original
@@ -89,7 +95,10 @@ def test_inherited_geometry_is_materialized() -> None:
     tree.set_item(_N("MediaBox"), PDRectangle(0, 0, 200, 300).to_cos_array())
     tree.set_item(_N("Rotate"), COSInteger.get(90))
 
-    imported = PDDocument().import_page(page)
+    # keep the destination alive: a dropped PDDocument is finalized and
+    # closes the buffers the imported page's streams live in
+    dest = PDDocument()
+    imported = dest.import_page(page)
 
     imported_dict = imported.get_cos_object()
     assert imported.get_media_box().get_height() == 300
@@ -105,8 +114,11 @@ def test_inherited_resources_are_not_imported(caplog) -> None:
     page.get_cos_object().remove_item(_N("Resources"))
     src.get_pages().get_cos_object().set_item(_N("Resources"), COSDictionary())
 
+    # keep the destination alive: a dropped PDDocument is finalized and
+    # closes the buffers the imported page's streams live in
+    dest = PDDocument()
     with caplog.at_level(logging.WARNING):
-        imported = PDDocument().import_page(page)
+        imported = dest.import_page(page)
 
     assert not imported.get_cos_object().contains_key(_N("Resources"))
     assert "inherited resources" in caplog.text

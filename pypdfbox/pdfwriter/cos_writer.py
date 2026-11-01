@@ -96,6 +96,13 @@ _KIND_OBJECT = 2
 _KIND_OTHER = 3
 _KIND_CACHE: dict[type, int] = {}
 
+# Direct (inline) container nesting the recursive visitor handles before
+# handing the rest of the subtree to the explicit-stack walker
+# (``COSWriter._write_direct_iterative``), keeping deep inline structures
+# clear of Python's recursion limit. Same threshold as the object-stream
+# serializer (``compress.cos_writer_object_stream._FAST_PATH_MAX_DEPTH``).
+_DIRECT_FAST_PATH_MAX_DEPTH = 64
+
 
 def _kind_of(tp: type) -> int:
     kind = _KIND_CACHE.get(tp)
@@ -378,6 +385,10 @@ class COSWriter(ICOSVisitor):
     ) -> None:
         self._output = output
         self._incremental_update = incremental
+        # Current nesting of direct containers emitted through the recursive
+        # visitor; beyond ``_DIRECT_FAST_PATH_MAX_DEPTH`` the explicit-stack
+        # walker takes over.
+        self._direct_depth: int = 0
         # When True, emit an ``%FDF-x.y`` header instead of ``%PDF-x.y``.
         # Mirrors upstream COSWriter, whose ``doWriteHeader`` switches the
         # header marker based on whether an ``fdfDocument`` was passed to
@@ -2765,17 +2776,20 @@ class COSWriter(ICOSVisitor):
         """Record ``id()`` of every ``COSBase`` reachable from ``value``
         (resolving indirect references, cycle-safe). Used to keep the
         /Encrypt subtree out of ObjStm packing."""
-        if isinstance(value, COSObject):
-            value = value.get_object()
-        if value is None or id(value) in out:
-            return
-        out.add(id(value))
-        if isinstance(value, COSDictionary):
-            for key in list(value.key_set()):
-                self._collect_reachable_ids(value.get_item(key), out)
-        elif isinstance(value, COSArray):
-            for item in value:
-                self._collect_reachable_ids(item, out)
+        # Explicit stack (no recursion), so a deeply nested /Encrypt subtree
+        # cannot hit the recursion limit; only the visited set matters.
+        stack: list[Any] = [value]
+        while stack:
+            value = stack.pop()
+            if isinstance(value, COSObject):
+                value = value.get_object()
+            if value is None or id(value) in out:
+                continue
+            out.add(id(value))
+            if isinstance(value, COSDictionary):
+                stack.extend(value.get_item(key) for key in list(value.key_set()))
+            elif isinstance(value, COSArray):
+                stack.extend(value)
 
     def _is_packable(self, actual: COSBase, key: COSObjectKey) -> bool:
         """Per ISO 32000-1 §7.5.7: streams cannot be inside another
@@ -3389,17 +3403,172 @@ class COSWriter(ICOSVisitor):
 
     def _write_array(self, array: COSArray) -> None:
         if array.is_direct():
-            self.visit_from_array(array)
+            if self._direct_depth >= _DIRECT_FAST_PATH_MAX_DEPTH:
+                self._write_direct_iterative(array)
+                return
+            self._direct_depth += 1
+            try:
+                self.visit_from_array(array)
+            finally:
+                self._direct_depth -= 1
         else:
             self._add_object_to_write(array)
             self._write_reference(array)
 
     def _write_dictionary(self, dictionary: COSDictionary) -> None:
         if dictionary.is_direct():
-            self.visit_from_dictionary(dictionary)
+            if self._direct_depth >= _DIRECT_FAST_PATH_MAX_DEPTH:
+                self._write_direct_iterative(dictionary)
+                return
+            self._direct_depth += 1
+            try:
+                self.visit_from_dictionary(dictionary)
+            finally:
+                self._direct_depth -= 1
         else:
             self._add_object_to_write(dictionary)
             self._write_reference(dictionary)
+
+    def _write_direct_iterative(self, root: COSBase) -> None:
+        """Emit the direct container ``root`` (and everything nested in it)
+        with an explicit stack instead of recursion.
+
+        Byte-for-byte the same output, queuing order and side effects as
+        :py:meth:`visit_from_array` / :py:meth:`visit_from_dictionary`
+        recursing through :py:meth:`_write_array` /
+        :py:meth:`_write_dictionary`: the same separators and EOLs, the same
+        ``N G R`` references (queued in the same order), the PDFBOX-3684
+        ``/XObject`` / ``/Resources`` direct-flagging on full saves, and
+        leaves still dispatched through ``accept`` (so string encryption
+        applies). Upstream recurses here; Java's deeper stack hides the
+        problem, Python's does not.
+        """
+        out = self._standard_output
+        write = out.write
+        write_eol = out.write_eol
+        kind_get = _KIND_CACHE.get
+        incremental = self._incremental_update
+        add_object = self._add_object_to_write
+        write_reference = self._write_reference
+        # Frame: [is_dict, entry iterator | item list, index, item count].
+        stack: list[list[Any]] = []
+
+        def push(container: Any, is_dict: bool) -> None:
+            if is_dict:
+                write(DICT_OPEN)
+                write_eol()
+                stack.append([True, iter(container.entry_set()), 0, 0])
+            else:
+                write(ARRAY_OPEN)
+                items = list(container)
+                stack.append([False, items, 0, len(items)])
+
+        rtp = type(root)
+        rkind = kind_get(rtp)
+        if rkind is None:
+            rkind = _kind_of(rtp)
+        push(root, rkind == _KIND_DICTIONARY)
+
+        while stack:
+            frame = stack[-1]
+            descended = False
+            if frame[0]:
+                for key, value in frame[1]:
+                    if value is None:
+                        continue
+                    key.accept(self)
+                    write(SPACE)
+                    tp = type(value)
+                    kind = kind_get(tp)
+                    if kind is None:
+                        kind = _kind_of(tp)
+                    if kind == _KIND_DICTIONARY:
+                        if not incremental:
+                            # PDFBOX-3684 (see ``visit_from_dictionary``).
+                            xobject_item = value.get_item(COSName.XOBJECT)
+                            if xobject_item is not None and key != COSName.XOBJECT:
+                                xobject_item.set_direct(True)
+                            resources_item = value.get_item(COSName.RESOURCES)
+                            if (
+                                resources_item is not None
+                                and key != COSName.RESOURCES
+                            ):
+                                resources_item.set_direct(True)
+                        if value.is_direct():
+                            push(value, True)
+                            descended = True
+                            break
+                        add_object(value)
+                        write_reference(value)
+                    elif kind == _KIND_OBJECT:
+                        add_object(value)
+                        write_reference(value)
+                    elif kind == _KIND_ARRAY:
+                        if value.is_direct():
+                            push(value, False)
+                            descended = True
+                            break
+                        add_object(value)
+                        write_reference(value)
+                    else:
+                        value.accept(self)
+                    write_eol()
+                if descended:
+                    continue
+                stack.pop()
+                write(DICT_CLOSE)
+                write_eol()
+            else:
+                items = frame[1]
+                count = frame[3]
+                i = frame[2]
+                while i < count:
+                    current = items[i]
+                    if current is None:
+                        COSNull.NULL.accept(self)
+                    else:
+                        tp = type(current)
+                        kind = kind_get(tp)
+                        if kind is None:
+                            kind = _kind_of(tp)
+                        if kind in (_KIND_DICTIONARY, _KIND_ARRAY):
+                            if current.is_direct():
+                                frame[2] = i
+                                push(current, kind == _KIND_DICTIONARY)
+                                descended = True
+                                break
+                            add_object(current)
+                            write_reference(current)
+                        elif kind == _KIND_OBJECT:
+                            add_object(current)
+                            write_reference(current)
+                        else:
+                            current.accept(self)
+                    if i < count - 1:
+                        if (i + 1) % 10 == 0:
+                            write_eol()
+                        else:
+                            write(SPACE)
+                    i += 1
+                if descended:
+                    continue
+                stack.pop()
+                write(ARRAY_CLOSE)
+                write_eol()
+            # A nested container just closed: finish its slot in the parent
+            # (the parent's post-value EOL or array separator).
+            if stack:
+                parent = stack[-1]
+                if parent[0]:
+                    write_eol()
+                else:
+                    i = parent[2]
+                    if i < parent[3] - 1:
+                        if (i + 1) % 10 == 0:
+                            write_eol()
+                        else:
+                            write(SPACE)
+                    parent[2] = i + 1
 
     def visit_from_dictionary(self, obj: COSDictionary) -> Any:
         out = self._standard_output
