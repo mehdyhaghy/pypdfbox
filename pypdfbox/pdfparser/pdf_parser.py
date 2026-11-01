@@ -137,6 +137,24 @@ SYSPROP_EOFLOOKUPRANGE: str = (
 )
 
 
+class _XrefEntryLoader:
+    """Lazy loader for one xref entry (see ``PDFParser._make_loader``)."""
+
+    __slots__ = ("_entry", "_parser")
+
+    def __init__(self, parser: PDFParser, entry: XrefEntry) -> None:
+        self._parser = parser
+        self._entry = entry
+
+    def __call__(self, obj: COSObject) -> COSBase | None:
+        entry = self._entry
+        if entry.type is XrefType.COMPRESSED:
+            return self._parser._compressed_loader(
+                entry.offset, entry.compressed_index, obj
+            )
+        return self._parser._offset_loader(entry.offset, obj)
+
+
 class PDFParser:
     """
     Top-level PDF document parser.
@@ -2632,39 +2650,36 @@ class PDFParser:
         return bytes(buf)
 
     def _make_loader(self, entry: XrefEntry):  # type: ignore[no-untyped-def]
-        """Build a lazy loader callback for a single xref entry."""
-        if entry.type is XrefType.COMPRESSED:
-            objstm_obj_num = entry.offset
-            inner_index = entry.compressed_index
+        """Build a lazy loader callback for a single xref entry.
 
-            def _compressed_loader(obj: COSObject) -> COSBase | None:
-                try:
-                    return self._load_compressed_object(
-                        objstm_obj_num, inner_index, obj
-                    )
-                except PDFParseError as exc:
-                    raise OSError(str(exc)) from exc
+        A two-slot callable: one small object per ``COSObject``, where a
+        closure costs a function, a cell and (on Python 3.14+) a generated
+        ``__annotate__`` function, all tracked by the cyclic garbage
+        collector for the life of the document."""
+        return _XrefEntryLoader(self, entry)
 
-            return _compressed_loader
+    def _compressed_loader(
+        self, objstm_obj_num: int, inner_index: int, obj: COSObject
+    ) -> COSBase | None:
+        try:
+            return self._load_compressed_object(objstm_obj_num, inner_index, obj)
+        except PDFParseError as exc:
+            raise OSError(str(exc)) from exc
 
-        offset = entry.offset
-
-        def _loader(obj: COSObject) -> COSBase | None:
-            try:
-                body = self._load_indirect_object_at(offset, obj)
-            except PDFParseError as exc:
-                raise OSError(str(exc)) from exc
-            # ``_decrypt_file_object`` is a no-op without a security handler
-            # or a body; skip the call in that (unencrypted) common case.
-            if (
-                body is not None
-                and getattr(self._document, "_object_security_handler", None)
-                is not None
-            ):
-                self._decrypt_file_object(body, obj)
-            return body
-
-        return _loader
+    def _offset_loader(self, offset: int, obj: COSObject) -> COSBase | None:
+        try:
+            body = self._load_indirect_object_at(offset, obj)
+        except PDFParseError as exc:
+            raise OSError(str(exc)) from exc
+        # ``_decrypt_file_object`` is a no-op without a security handler
+        # or a body; skip the call in that (unencrypted) common case.
+        if (
+            body is not None
+            and getattr(self._document, "_object_security_handler", None)
+            is not None
+        ):
+            self._decrypt_file_object(body, obj)
+        return body
 
     def _decrypt_file_object(self, body: COSBase | None, obj: COSObject) -> None:
         """Decipher an object just read from a direct file offset when the
