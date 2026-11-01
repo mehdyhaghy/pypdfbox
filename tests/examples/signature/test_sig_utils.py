@@ -346,7 +346,9 @@ def test_set_mdp_permission_writes_perms_and_reference():
         catalog = doc.get_document_catalog().get_cos_object()
         perms = catalog.get_cos_dictionary(COSName.PERMS)
         assert perms is not None
-        assert perms.get_dictionary_object(COSName.DOCMDP) is signature
+        # the dictionary, not the PDSignature wrapper (upstream setItem(COSName,
+        # COSObjectable) stores getCOSObject())
+        assert perms.get_dictionary_object(COSName.DOCMDP) is signature.get_cos_object()
         ref_array = signature.get_cos_object().get_cos_array(COSName.REFERENCE)
         assert ref_array is not None and ref_array.size() == 1
         ref = ref_array.get_object(0)
@@ -376,7 +378,9 @@ def test_set_mdp_permission_reuses_existing_perms_dict():
         perms = catalog.get_cos_dictionary(COSName.PERMS)
         assert perms is seed
         assert perms.get_dictionary_object(COSName.get_pdf_name("UR3")) is not None
-        assert perms.get_dictionary_object(COSName.DOCMDP) is signature
+        # the dictionary, not the PDSignature wrapper (upstream setItem(COSName,
+        # COSObjectable) stores getCOSObject())
+        assert perms.get_dictionary_object(COSName.DOCMDP) is signature.get_cos_object()
     finally:
         doc.close()
 
@@ -413,7 +417,9 @@ def test_set_mdp_permission_skips_doctimestamp_when_scanning():
 
         catalog = doc.get_document_catalog().get_cos_object()
         perms = catalog.get_cos_dictionary(COSName.PERMS)
-        assert perms.get_dictionary_object(COSName.DOCMDP) is tsa_sig
+        # the dictionary, not the PDSignature wrapper (upstream setItem(COSName,
+        # COSObjectable) stores getCOSObject())
+        assert perms.get_dictionary_object(COSName.DOCMDP) is tsa_sig.get_cos_object()
     finally:
         doc.close()
 
@@ -503,8 +509,11 @@ def test_get_certificate_from_time_stamp_token_returns_none():
     assert SigUtils.get_certificate_from_time_stamp_token(object()) is None
 
 
-def test_open_url_returns_empty_bytes():
-    assert SigUtils.open_url("http://example.invalid") == b""
+def test_open_url_rejects_urls_outside_the_allow_list():
+    # open_url is no longer an offline stub (PDFBOX-6291 port); the
+    # restrictive check_access() refuses unknown URLs before any I/O
+    with pytest.raises(OSError, match="not in ALLOW_URL_SET"):
+        SigUtils.open_url("http://example.invalid")
 
 
 def test_verify_certificate_chain_delegates_to_verifier(self_signed_cert):

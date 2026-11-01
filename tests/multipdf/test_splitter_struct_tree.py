@@ -158,10 +158,9 @@ def test_chunk_id_tree_only_keys_chunk_ids() -> None:
     splitter.set_split_at_page(2)
     chunks = splitter.split(src)
 
-    # Upstream keeps the ids seen by earlier chunks and the half-built
-    # clones of their (dropped) elements, so later chunks also list them
-    # (verified against PDFBox with SplitterStructureProbe).
-    expected_per_chunk = [{"id_p0", "id_p1"}, {"id_p0", "id_p1", "id_p2", "id_p3"}]
+    # PDFBOX-6283: the id set is reset per chunk and a dropped element's
+    # clone is unregistered, so each chunk only lists its own ids.
+    expected_per_chunk = [{"id_p0", "id_p1"}, {"id_p2", "id_p3"}]
     for chunk, expected_ids in zip(chunks, expected_per_chunk, strict=True):
         chunk_root = chunk.get_document_catalog().get_struct_tree_root()
         assert chunk_root is not None

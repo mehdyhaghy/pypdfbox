@@ -105,14 +105,13 @@ def test_wave1373_fix_destinations_retargets_in_chunk_pages() -> None:
 
 def test_wave1373_role_map_narrowing_matches_upstream_5792() -> None:
     """Per-chunk ``/RoleMap`` sizes on PDFBOX-5792-240045.pdf match
-    upstream's expected ``[3, 3, 4, 4, 6, 7]``.
+    upstream's expected ``[3, 3, 4, 3, 5, 6]``.
 
-    Pins the closure of audit item *role-map narrowing* — pre-wave-1295
-    the first chunk dropped one mapping ("Strong" or similar) because
-    ``_role_set`` reset per chunk discarded role names contributed by
-    discarded-annotation back-refs walked through the page resources.
+    PDFBOX-6283 (3.0 branch) resets the role set for every split document,
+    so a chunk's ``/RoleMap`` no longer carries the roles of earlier
+    chunks (it was ``[3, 3, 4, 4, 6, 7]`` in 3.0.8).
     """
-    expected_role_map_sizes = [3, 3, 4, 4, 6, 7]
+    expected_role_map_sizes = [3, 3, 4, 3, 5, 6]
     expected_parent_tree_sizes = [6, 6, 6, 5, 1, 1]
     with PDDocument.load(f"{_FIXTURE_DIR}/PDFBOX-5792-240045.pdf") as doc:
         splitter = Splitter()

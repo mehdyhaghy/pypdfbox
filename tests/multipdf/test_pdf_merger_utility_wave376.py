@@ -13,6 +13,7 @@ _NAMES = COSName.get_pdf_name("Names")
 _NUMS = COSName.get_pdf_name("Nums")
 _PAGE_LABELS = COSName.get_pdf_name("PageLabels")
 _P = COSName.get_pdf_name("P")
+_S = COSName.get_pdf_name("S")
 _STRUCT_PARENT = COSName.get_pdf_name("StructParent")
 _STRUCT_PARENTS = COSName.get_pdf_name("StructParents")
 
@@ -119,7 +120,9 @@ def test_wave376_legacy_dests_merge_into_existing_destination_dictionary() -> No
     destination.close()
 
 
-def test_wave376_invalid_page_label_index_rolls_back_partial_append() -> None:
+def test_wave376_invalid_page_label_index_gives_source_default_numbering() -> None:
+    # PDFBOX-6296 / PDFBOX-6300: PDPageLabels ignores the source /Nums with a
+    # non-integer key, so the source pages get a default decimal range.
     destination = _build_doc(1)
     dest_nums = COSArray()
     dest_nums.add(COSInteger.get(0))
@@ -148,9 +151,12 @@ def test_wave376_invalid_page_label_index_rolls_back_partial_append() -> None:
         .get_dictionary_object(_NUMS)
     )
     assert isinstance(merged_nums, COSArray)
-    assert merged_nums.size() == 2
+    assert merged_nums.size() == 4
     assert merged_nums.get_object(0).int_value() == 0
     assert merged_nums.get_object(1).get_string(_P) == "D-"
+    assert merged_nums.get_object(2).int_value() == 1
+    assert merged_nums.get_object(3).get_name_as_string(_S) == "D"
+    assert merged_nums.get_object(3).get_string(_P) is None
     source.close()
     destination.close()
 

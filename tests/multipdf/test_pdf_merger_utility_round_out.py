@@ -218,10 +218,10 @@ def test_page_layout_not_merged_for_untagged_sources(tmp_path: Path) -> None:
         assert _catalog_dict(merged).get_name("PageLayout") is None
 
 
-def test_lang_not_merged_for_untagged_sources(tmp_path: Path) -> None:
-    """Wave 1506: upstream merges /Lang only inside the structure-tree block
-    (``mergeLanguage``). Untagged sources → no structure-tree merge → the
-    merged catalog has no /Lang (oracle-confirmed)."""
+def test_lang_merged_for_untagged_sources(tmp_path: Path) -> None:
+    """PDFBOX-6299 (3.0 branch, unreleased 3.0.9): /Lang is merged whether or
+    not the structure tree is, so untagged sources carry it too (first source
+    wins). The 3.0.8 jar merged it only inside the structure-tree block."""
     a = tmp_path / "a.pdf"
     b = tmp_path / "b.pdf"
     out = tmp_path / "out.pdf"
@@ -237,21 +237,15 @@ def test_lang_not_merged_for_untagged_sources(tmp_path: Path) -> None:
     util.set_destination_file_name(str(out))
     util.merge_documents()
     with PDDocument.load(str(out)) as merged:
-        assert (
-            _catalog_dict(merged).get_dictionary_object(
-                COSName.get_pdf_name("Lang")
-            )
-            is None
-        )
+        assert _catalog_dict(merged).get_string(COSName.get_pdf_name("Lang")) == "en-US"
 
 
-def test_viewer_preferences_not_merged_for_untagged_sources(
+def test_viewer_preferences_merged_for_untagged_sources(
     tmp_path: Path,
 ) -> None:
-    """Wave 1506: upstream merges /ViewerPreferences only inside the
-    structure-tree block (``mergeViewerPreferences``). Untagged sources → no
-    structure-tree merge → the merged catalog has no /ViewerPreferences
-    (oracle-confirmed)."""
+    """PDFBOX-6299 (3.0 branch, unreleased 3.0.9): /ViewerPreferences is
+    merged whether or not the structure tree is; the boolean toggles are
+    OR-merged across sources."""
     a = tmp_path / "a.pdf"
     b = tmp_path / "b.pdf"
     out = tmp_path / "out.pdf"
@@ -275,12 +269,12 @@ def test_viewer_preferences_not_merged_for_untagged_sources(
     util.set_destination_file_name(str(out))
     util.merge_documents()
     with PDDocument.load(str(out)) as merged:
-        assert (
-            _catalog_dict(merged).get_dictionary_object(
-                COSName.get_pdf_name("ViewerPreferences")
-            )
-            is None
+        vp = _catalog_dict(merged).get_dictionary_object(
+            COSName.get_pdf_name("ViewerPreferences")
         )
+        assert isinstance(vp, COSDictionary)
+        assert vp.get_boolean(COSName.get_pdf_name("HideToolbar"), False) is True
+        assert vp.get_boolean(COSName.get_pdf_name("HideMenubar"), False) is True
 
 
 # ---------- /Outlines concatenation ----------
@@ -374,14 +368,14 @@ def test_page_labels_indices_shifted_by_destination_page_count(
         assert isinstance(pl, COSDictionary)
         nums = pl.get_dictionary_object(COSName.get_pdf_name("Nums"))
         assert isinstance(nums, COSArray)
-        # PDFBOX-6277 (3.0 branch, unreleased 3.0.9): the empty destination
-        # first gets the mandatory decimal 0 entry, then source A's 0 entry
-        # (upstream appends without de-duplicating). Source B's "0" must
-        # shift by source A's page count (2).
+        # PDFBOX-6296 (3.0 branch, unreleased 3.0.9): the labels go through
+        # PDPageLabels, so source A's 0 entry replaces the destination's
+        # seeded default instead of being appended after it. Source B's "0"
+        # must shift by source A's page count (2).
         indices = [
             int(nums.get_object(i).int_value()) for i in range(0, nums.size(), 2)
         ]
-        assert indices == [0, 0, 2]
+        assert indices == [0, 2]
 
 
 # ---------- ignore_acro_form_errors ----------

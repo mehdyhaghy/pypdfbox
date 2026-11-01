@@ -53,6 +53,22 @@ def test_wave529_nums_parser_skips_malformed_and_negative_entries() -> None:
     root = COSDictionary()
     root.set_item(_name("Nums"), nums)
 
+    # Upstream PDNumberTreeNode.getNumbers() gives up on the whole node at the
+    # first non-integer key, before any value is converted.
+    labels = PDPageLabels(PDDocument(), root)
+    assert labels.get_page_indices() == [0]
+
+
+def test_wave529_nums_parser_rejects_non_dictionary_value() -> None:
+    nums = COSArray()
+    nums.add(COSInteger.get(-1))
+    nums.add(COSDictionary())
+    nums.add(COSInteger.get(2))
+    nums.add(COSString("not-a-range"))
+
+    root = COSDictionary()
+    root.set_item(_name("Nums"), nums)
+
     with pytest.raises(OSError, match="index 2"):
         PDPageLabels(PDDocument(), root)
 

@@ -500,24 +500,30 @@ class PDType1CFont(PDType1Font):
 
         Raises :class:`ValueError` when the text contains a code point
         for which the embedded CFF program has no glyph (mirrors
-        upstream's ``IllegalArgumentException``).
+        upstream's ``IllegalArgumentException``). Per-codepoint widths are
+        cached in ``_codepoint_to_width_map`` (PDFBOX-6287).
         """
         program = self._get_cff_font()
         if program is None:
             _LOG.warning("No embedded CFF font, returning 0")
             return 0.0
         glyph_list = self.get_glyph_list()
+        cache = self._codepoint_to_width_map
         width = 0.0
         for ch in text:
             code_point = ord(ch)
-            name = glyph_list.code_point_to_name(code_point)
-            if not program.has_glyph(name):
-                msg = (
-                    f"U+{code_point:04X} ({name!r}) is not available in font "
-                    f"{self.get_name()}"
-                )
-                raise ValueError(msg)
-            width += program.get_width(name)
+            code_point_width = cache.get(code_point)
+            if code_point_width is None:
+                name = glyph_list.code_point_to_name(code_point)
+                if not program.has_glyph(name):
+                    msg = (
+                        f"U+{code_point:04X} ({name!r}) is not available in "
+                        f"font {self.get_name()}"
+                    )
+                    raise ValueError(msg)
+                code_point_width = program.get_width(name)
+                cache[code_point] = code_point_width
+            width += code_point_width
         return width
 
     def _code_to_font_glyph_name(self, code: int) -> str | None:
@@ -685,25 +691,6 @@ class PDType1CFont(PDType1Font):
 
     # ---------- byte-stream reader ----------
 
-    def read_code(
-        self,
-        data: bytes | bytearray | memoryview,
-        offset: int = 0,
-    ) -> tuple[int, int]:
-        """Read one character code from ``data`` starting at ``offset``.
-
-        Mirrors upstream ``PDType1CFont.readCode`` (line 326): Type1C
-        fonts always use single-byte character codes regardless of
-        encoding, so the reader is just a one-byte pull. Returns
-        ``(code, bytes_consumed)`` to match the uniform pypdfbox
-        renderer signature shared by composite (Type0) and simple fonts.
-        At or past end-of-buffer returns ``(0, 0)`` so callers terminate
-        the decode loop.
-        """
-        if offset < 0 or offset >= len(data):
-            return (0, 0)
-        return (data[offset] & 0xFF, 1)
-
     # ---------- encoding synthesis ----------
 
     def read_encoding_from_font(self) -> Encoding | None:  # type: ignore[override]
@@ -758,9 +745,9 @@ class PDType1CFont(PDType1Font):
         rationale.
 
         Successful results are memoised in the shared
-        :attr:`PDFont._codepoint_encoding` cache (PDFBOX-6287).
+        :attr:`PDFont._codepoint_to_encoding_map` cache (PDFBOX-6287).
         """
-        encoded_codepoint = self._codepoint_encoding.get(unicode)
+        encoded_codepoint = self._codepoint_to_encoding_map.get(unicode)
         if encoded_codepoint is not None:
             return encoded_codepoint
         encoding = self.get_encoding_typed()
@@ -793,7 +780,7 @@ class PDType1CFont(PDType1Font):
             )
             raise ValueError(msg)
         encoded_codepoint = bytes([code & 0xFF])
-        self._codepoint_encoding[unicode] = encoded_codepoint
+        self._codepoint_to_encoding_map[unicode] = encoded_codepoint
         return encoded_codepoint
 
 

@@ -248,10 +248,9 @@ def test_struct_skip_info_marks_chunks_and_liveness() -> None:
     assert not any(info[5] for info in by_s[(None, "Art")])
     assert not any(info[5] for info in by_s[("OBJR", None)])
     assert not any(info[5] for info in by_s[("MCR", None)])
-    # parent links: a Sect's parent is the Document element, a Part's
-    # parent is its Art wrapper (through the nested /K arrays)
-    assert all(info[6].get_name(_S) == "Document" for info in by_s[(None, "Sect")])
-    assert all(info[6].get_name(_S) == "Art" for info in by_s[(None, "Part")])
+    # no parent links any more: with PDFBOX-6283 a skipped subtree leaves
+    # nothing to replay
+    assert all(len(info) == 6 for info in captured["cache"].values())
 
 
 def test_struct_skip_disabled_for_shared_nodes(monkeypatch) -> None:

@@ -74,9 +74,14 @@ class PDFont:
         # Populated on first call to :meth:`get_width` per code.
         self._code_to_width: dict[int, float] = {}
         # Per-codepoint encoded-bytes cache — mirrors upstream's protected
-        # ``codepointEncoding`` (PDFBOX-6287, moved up from PDType1Font's
-        # ``codeToBytesMap`` so every font subtype's encoder can share it).
-        self._codepoint_encoding: dict[int, bytes] = {}
+        # ``codepointToEncodingMap`` (PDFBOX-6287, moved up from
+        # PDType1Font's ``codeToBytesMap`` so every font subtype's encoder
+        # can share it).
+        self._codepoint_to_encoding_map: dict[int, bytes] = {}
+        # Per-codepoint string-width cache — mirrors upstream's protected
+        # ``codepointToWidthMap`` (PDFBOX-6287), filled by
+        # :meth:`get_string_width`.
+        self._codepoint_to_width_map: dict[int, float] = {}
         # Per-code ``to_unicode`` cache — same shape as ``_code_to_width``
         # but keyed only for the default (``custom_glyph_list is None``)
         # call so the common per-glyph text-extraction path does not
@@ -270,6 +275,16 @@ class PDFont:
         self._avg_font_width_cached = f32(total / count) if total > 0 else 0.0
         return self._avg_font_width_cached
 
+    def is_encoded_via_substitute(self) -> bool:
+        """Whether :meth:`encode` derives codes from a substitute font
+        program rather than from this font's encoding, so that the codes
+        need not exist in the PDF.
+
+        Mirrors upstream protected ``PDFont.isEncodedViaSubstitute``
+        (PDFBOX-6292). The base answers ``False``.
+        """
+        return False
+
     def get_space_width(self) -> float:
         """Return the advance width of the space glyph, in glyph units.
 
@@ -291,9 +306,12 @@ class PDFont:
                 if space_mapping > -1:
                     width = float(self.get_width(space_mapping))
             else:
-                # Upstream tolerates a missing space / unsupported encoding.
-                with contextlib.suppress(NotImplementedError, ValueError):
-                    width = float(self.get_string_width(" "))
+                if not self.is_encoded_via_substitute():
+                    # PDFBOX-5920: try with encoding, which gets the correct
+                    # code. Upstream tolerates a missing space / unsupported
+                    # encoding.
+                    with contextlib.suppress(NotImplementedError, ValueError):
+                        width = float(self.get_string_width(" "))
                 if width <= 0:
                     width = float(self.get_width(32))
             if width <= 0:
@@ -686,34 +704,41 @@ class PDFont:
         """Read one character code from ``data`` starting at ``offset``.
 
         Returns ``(code, bytes_consumed)``. Mirrors upstream
-        ``abstract int readCode(InputStream)`` in spirit, but the Python
-        port uses a buffer + offset (so the renderer can dispatch through
-        a single uniform signature across composite and simple fonts).
-        Codes may be 1–4 bytes long depending on the font subtype's CMap.
-        Base implementation raises :class:`NotImplementedError`.
+        ``PDFont.readCode(InputStream)``, whose default (PDFBOX-6287) reads
+        a single byte, which works for the simple font subtypes;
+        :class:`PDType0Font` overrides it with the CMap-driven 1-4 byte
+        read. The Python port uses a buffer + offset (so the renderer can
+        dispatch through a single uniform signature across composite and
+        simple fonts). At or past end-of-buffer returns ``(0, 0)`` so
+        callers terminate the decode loop (Java's ``read()`` gives ``-1``).
         """
-        raise NotImplementedError(
-            "read_code must be implemented by a concrete subclass"
-        )
+        if offset < 0 or offset >= len(data):
+            return (0, 0)
+        return (data[offset] & 0xFF, 1)
 
     def get_string_width(self, text: str) -> float:
         """Return the total advance of ``text`` in 1/1000 text-space units.
 
-        Mirrors upstream ``PDFont.getStringWidth``: encodes ``text`` to
-        bytes, then iterates ``read_code`` + ``get_width``. Subclasses
-        that have a tight string-level shortcut may override.
+        Mirrors upstream ``PDFont.getStringWidth`` (PDFBOX-6287): per
+        codepoint, the encoded bytes are each taken as a one-byte code and
+        their widths summed; the per-codepoint total is cached in
+        ``_codepoint_to_width_map``. Subclasses with multi-byte codes
+        (:class:`PDType0Font`) or a string-level shortcut override it.
         """
-        data = self.encode(text)
-        total = 0.0
-        offset = 0
-        n = len(data)
-        while offset < n:
-            code, consumed = self.read_code(data, offset)
-            if consumed <= 0:
-                break
-            total += self.get_width(code)
-            offset += consumed
-        return total
+        cache = self._codepoint_to_width_map
+        width = 0.0
+        for ch in text:
+            code_point = ord(ch)
+            code_point_width = cache.get(code_point)
+            if code_point_width is None:
+                code_point_width = 0.0
+                for value in self.encode(ch):
+                    # skip read_code as it simply reads the next byte in
+                    # most cases
+                    code_point_width += self.get_width(value & 0xFF)
+                cache[code_point] = code_point_width
+            width += code_point_width
+        return width
 
     # ---------- to_unicode ----------
 

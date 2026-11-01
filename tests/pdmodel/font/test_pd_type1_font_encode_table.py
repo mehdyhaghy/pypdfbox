@@ -34,7 +34,7 @@ def test_bulk_encode_matches_per_character(name: FontName) -> None:
 def test_cache_entries_are_bytes_per_codepoint() -> None:
     font = PDType1Font(FontName.HELVETICA)
     font.encode("AB•")
-    assert font._codepoint_encoding == {
+    assert font._codepoint_to_encoding_map == {
         ord("A"): b"A",
         ord("B"): b"B",
         0x2022: b"\x95",
@@ -43,17 +43,17 @@ def test_cache_entries_are_bytes_per_codepoint() -> None:
 
 def test_precached_entry_is_honoured() -> None:
     font = PDType1Font(FontName.HELVETICA)
-    font._codepoint_encoding[ord("Z")] = b"\x01"
+    font._codepoint_to_encoding_map[ord("Z")] = b"\x01"
     assert font.encode("ZZ") == b"\x01\x01"
 
 
 def test_cleared_or_replaced_cache_is_rebuilt() -> None:
     font = PDType1Font(FontName.HELVETICA)
     assert font.encode("AB") == b"AB"
-    font._codepoint_encoding.clear()
-    font._codepoint_encoding[ord("A")] = b"\x02"
+    font._codepoint_to_encoding_map.clear()
+    font._codepoint_to_encoding_map[ord("A")] = b"\x02"
     assert font.encode("A") == b"\x02"
-    font._codepoint_encoding = {ord("A"): b"\x03"}
+    font._codepoint_to_encoding_map = {ord("A"): b"\x03"}
     assert font.encode("A") == b"\x03"
 
 
@@ -61,9 +61,9 @@ def test_copied_font_uses_its_own_cache() -> None:
     font = PDType1Font(FontName.HELVETICA)
     font.encode("A")
     clone = copy.copy(font)
-    clone._codepoint_encoding = {}
+    clone._codepoint_to_encoding_map = {}
     assert clone.encode("AB") == b"AB"
-    assert set(clone._codepoint_encoding) == {ord("A"), ord("B")}
+    assert set(clone._codepoint_to_encoding_map) == {ord("A"), ord("B")}
 
 
 class _Boom(PDType1Font):
@@ -88,5 +88,5 @@ def test_resolution_errors_propagate_unchanged(error: BaseException) -> None:
         font.encode("abxc")
     assert info.value is error
     # Characters before the failure were cached, the failing one was not.
-    assert ord("a") in font._codepoint_encoding
-    assert ord("x") not in font._codepoint_encoding
+    assert ord("a") in font._codepoint_to_encoding_map
+    assert ord("x") not in font._codepoint_to_encoding_map

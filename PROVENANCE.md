@@ -1068,7 +1068,7 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 
 | pypdfbox path | upstream PDFBox version | upstream Java path |
 |---|---|---|
-| `pypdfbox/multipdf/splitter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/multipdf/Splitter.java` |
+| `pypdfbox/multipdf/splitter.py` | 3.0.x (+ 3.0 branch PDFBOX-6283 follow-ups) | `pdfbox/src/main/java/org/apache/pdfbox/multipdf/Splitter.java` |
 | `pypdfbox/multipdf/pdf_merger_utility.py` | 3.0.x + PDFBOX-6276, PDFBOX-6277 (3.0 branch, unreleased 3.0.9) | `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFMergerUtility.java` (structure-tree merging deferred) |
 | `pypdfbox/pdmodel/graphics/image/jpeg_factory.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/JPEGFactory.java` |
 | `pypdfbox/pdmodel/graphics/image/lossless_factory.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/LosslessFactory.java` |
@@ -2176,7 +2176,7 @@ Backfill of upstream Java paths for source files added in earlier waves (mostly 
 | `pypdfbox/examples/signature/create_visible_signature.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/CreateVisibleSignature.java` |
 | `pypdfbox/examples/signature/create_visible_signature2.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/CreateVisibleSignature2.java` |
 | `pypdfbox/examples/signature/show_signature.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/ShowSignature.java` |
-| `pypdfbox/examples/signature/sig_utils.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/SigUtils.java` |
+| `pypdfbox/examples/signature/sig_utils.py` | 3.0.x (+ 3.0 branch PDFBOX-6291) | `examples/src/main/java/org/apache/pdfbox/examples/signature/SigUtils.java` |
 | `pypdfbox/examples/signature/tsa_client.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/TsaClient.java` |
 | `pypdfbox/examples/signature/validation_time_stamp.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/ValidationTimeStamp.java` |
 
@@ -4819,3 +4819,12 @@ License: SIL Open Font License 1.1 (permissive; on the project allow-list)
 | `tests/pdmodel/test_pd_page_tree_resource_cache_wave1613.py` | 3.0.8 | hand-written; page resource-cache threading in `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDPageTree.java` |
 | `tests/multipdf/test_splitter_structure_oracle.py` | 3.0.8 (+ 3.0 branch Splitter for PDFBOX-6283) | hand-written; live object-graph differential of `pdfbox/src/main/java/org/apache/pdfbox/multipdf/Splitter.java` and `PageExtractor.java` output |
 | `tests/pdmodel/interactive/action/test_pd_action_wrap_keeps_dictionary.py` | 3.0.8 | hand-written; `PDAction(COSDictionary)` wrap semantics in `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDAction.java` |
+| `tests/fixtures/pdmodel/badpagelabels.pdf` | 3.0 branch (unreleased 3.0.9) | `pdfbox/src/test/resources/org/apache/pdfbox/pdmodel/badpagelabels.pdf` |
+| `tests/multipdf/upstream/test_pdf_merger_utility.py` (testMergePageLabels, testMergePageLabels2, testMergePageLabels3) | 3.0 branch (unreleased 3.0.9, commit 548d9283) | `pdfbox/src/test/java/org/apache/pdfbox/multipdf/PDFMergerUtilityTest.java` |
+| `tests/pdmodel/upstream/test_pd_document_catalog.py` (retrievePageLabelsOnMalformedPdf, fixture-based) | 3.0 branch | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/TestPDDocumentCatalog.java` |
+| `tests/pdmodel/font/upstream/test_identity_cjk_substitute.py` | 3.0 branch (unreleased 3.0.9, commit e4011543) | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/IdentityCJKSubstituteTest.java` + `IdentityCJKFixture.java` (OFL fixture font not copied; equivalent font built in memory) |
+| `tests/pdmodel/font/upstream/test_substitute_space_width.py` | 3.0 branch (unreleased 3.0.9, commit 45b614dc) | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/SubstituteSpaceWidthTest.java` |
+| `tests/multipdf/upstream/test_splitter.py` | 3.0 branch (3.0.9-SNAPSHOT) | `pdfbox/src/test/java/org/apache/pdfbox/multipdf/SplitterTest.java` (testIllegalSplitting, testSplitFixesLinkDestinationsPerDocument, testSplitStartPageBeyondLastPage, testSplitClosesCreatedDocumentsOnFailure, testSplitterCanBeReused; PDFBOX-6283 22665c62, 9aaf0949) |
+| `tests/multipdf/test_splitter_pdfbox6283_followups.py` | 3.0 branch (3.0.9-SNAPSHOT) | hand-written; pins PDFBOX-6283 follow-ups of `pdfbox/src/main/java/org/apache/pdfbox/multipdf/Splitter.java` |
+| `tests/examples/signature/upstream/test_create_signature.py` | 3.0 branch (3.0.9-SNAPSHOT) | `examples/src/test/java/org/apache/pdfbox/examples/pdmodel/TestCreateSignature.java` (testSignEncrypted, PDFBOX-6289 c2451488) |
+| `tests/examples/signature/test_sig_utils_pdfbox6291.py` | 3.0 branch (3.0.9-SNAPSHOT) | hand-written; pins PDFBOX-6291 `examples/src/main/java/org/apache/pdfbox/examples/signature/SigUtils.java` + PDFBOX-6289 example fixes |

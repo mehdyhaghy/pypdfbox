@@ -66,7 +66,7 @@ class _EncodeFailure(Exception):
 
 class _EncodeTable(dict):
     """``codepoint -> Latin-1 str`` translate table for
-    :meth:`PDType1Font.encode`, backed by the font's ``_codepoint_encoding``
+    :meth:`PDType1Font.encode`, backed by the font's ``_codepoint_to_encoding_map``
     bytes cache. Misses are resolved (and cached in both maps) on demand."""
 
     __slots__ = ("font", "source")
@@ -169,7 +169,7 @@ class PDType1Font(PDSimpleFont):
         # / :meth:`get_font_matrix`.
         self._bbox_cache: PDRectangle | None = None
         self._font_matrix_cache: list[float] | None = None
-        # ``str.translate`` view of ``_codepoint_encoding`` used by
+        # ``str.translate`` view of ``_codepoint_to_encoding_map`` used by
         # :meth:`encode`; built on first use.
         self._encode_table: _EncodeTable | None = None
         if standard14_name is not None:
@@ -436,7 +436,7 @@ class PDType1Font(PDSimpleFont):
 
         Mirrors upstream ``PDType1Font.encode``: a Type-1-specific
         override that adds (a) a per-codepoint cache (upstream's
-        ``PDFont.codepointEncoding``, PDFBOX-6287), and (b) ``ALT_NAMES``
+        ``PDFont.codepointToEncodingMap``, PDFBOX-6287), and (b) ``ALT_NAMES``
         ligature spelling fallback so a writer asking for ``ff`` still
         round-trips to a glyph the embedded program can render. Calls
         for which the cache misses delegate to
@@ -449,14 +449,14 @@ class PDType1Font(PDSimpleFont):
         if not text:
             return b""
         # Bulk path: ``str.translate`` walks the text in C through a
-        # per-instance table mirroring ``_codepoint_encoding`` (each cached
+        # per-instance table mirroring ``_codepoint_to_encoding_map`` (each cached
         # byte string stored as its Latin-1 ``str``), then one Latin-1
         # encode yields the bytes. Codepoints not cached yet fall into
         # ``_EncodeTable.__missing__``, which runs the original per-char
         # resolution and fills both caches, so output, cache contents and
         # cache order are unchanged.
         table = self._encode_table
-        cache = self._codepoint_encoding
+        cache = self._codepoint_to_encoding_map
         if (
             table is None
             or table.source is not cache
@@ -899,24 +899,6 @@ class PDType1Font(PDSimpleFont):
         return encoding.get_name(code) != ".notdef"
 
     # ---------- byte-stream reader ----------
-
-    def read_code(
-        self,
-        data: bytes | bytearray | memoryview,
-        offset: int = 0,
-    ) -> tuple[int, int]:
-        """Read one character code from ``data`` starting at ``offset``.
-
-        Mirrors upstream ``PDType1Font.readCode`` — Type 1 fonts always
-        use single-byte character codes regardless of encoding, so the
-        reader is just a one-byte pull. Returns ``(code, bytes_consumed)``
-        to match the uniform pypdfbox renderer signature shared by
-        composite (Type0) and simple fonts. At or past end-of-buffer
-        returns ``(0, 0)`` so callers terminate the decode loop.
-        """
-        if offset < 0 or offset >= len(data):
-            return (0, 0)
-        return (data[offset] & 0xFF, 1)
 
     # ---------- embedded program alias ----------
 

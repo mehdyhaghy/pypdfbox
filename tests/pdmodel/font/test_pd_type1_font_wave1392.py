@@ -146,21 +146,21 @@ def test_get_font_matrix_uses_program_matrix_when_well_formed(
 # ---------- pd_font defensive guards (read_code zero-progress) ----------
 
 
-def test_get_string_width_breaks_on_zero_consumed(
+def test_get_string_width_skips_read_code(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Line 712 in ``pd_font.get_string_width`` — when ``read_code``
-    returns ``consumed=0`` the loop breaks, preventing an infinite
-    spin."""
+    """PDFBOX-6287: the base ``get_string_width`` takes each encoded byte
+    as a one-byte code and never consults ``read_code``."""
     d = _helvetica_dict()
     font = PDType1Font(d)
-    # Patch encode to return a single byte so we enter the loop once.
-    monkeypatch.setattr(font, "encode", lambda _t: b"\x41")
-    # Patch read_code to claim 0 bytes consumed — must break out.
-    monkeypatch.setattr(font, "read_code", lambda _d, _o: (0x41, 0))
+    monkeypatch.setattr(font, "encode", lambda _t: b"\x41\x42")
+
+    def _fail(_d: bytes, _o: int) -> tuple[int, int]:
+        raise AssertionError("read_code must not be consulted")
+
+    monkeypatch.setattr(font, "read_code", _fail)
     width = font.get_string_width("A")
-    # No bytes consumed = no widths totted = 0.0.
-    assert width == 0.0
+    assert width == font.get_width(0x41) + font.get_width(0x42)
 
 
 # ---------- pd_font.get_font_descriptor defensive fallbacks ----------

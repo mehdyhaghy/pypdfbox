@@ -50,7 +50,9 @@ class _IdentityNameTree:
         self.names = names
 
 
-def test_wave654_k_clone_drops_page_reference_not_in_destination_tree() -> None:
+def test_wave654_k_clone_trusts_the_per_document_page_map() -> None:
+    # PDFBOX-6283: the page map belongs to the destination document, so a
+    # hit is kept without asking the page tree (upstream dropped indexOf)
     source_page = COSDictionary()
     cloned_page = COSDictionary()
     src = COSDictionary()
@@ -58,10 +60,11 @@ def test_wave654_k_clone_drops_page_reference_not_in_destination_tree() -> None:
     splitter = Splitter()
     splitter._page_dict_map = {id(source_page): cloned_page}
 
-    assert (
-        splitter._k_create_clone(src, COSDictionary(), None, _PageTree(index=-1))
-        is None
+    cloned = splitter._k_create_clone(
+        src, COSDictionary(), None, _PageTree(index=-1)
     )
+    assert isinstance(cloned, COSDictionary)
+    assert cloned.get_dictionary_object(_PG) is cloned_page
 
 
 def test_wave654_k_clone_drops_parent_when_all_kids_are_dropped() -> None:
@@ -124,25 +127,19 @@ def test_wave654_clone_id_tree_noops_for_missing_empty_and_unretained_names() ->
     splitter._clone_id_tree(_Root(), destination)
     assert destination.id_tree is None
 
-    # like upstream cloneIDTree, a source /IDTree always yields one in the
-    # destination, empty when no id is retained
+    # PDFBOX-6283: like upstream cloneIDTree, no /IDTree is written when no
+    # id is retained
     source = _Root()
     source.id_tree = EmptyTree()
     splitter._clone_id_tree(source, destination)
-    names = destination.id_tree.get_cos_object().get_dictionary_object(
-        COSName.get_pdf_name("Names")
-    )
-    assert names.size() == 0
+    assert destination.id_tree is None
 
     destination = _Root()
     source.id_tree = UnretainedTree()
     assert source.id_tree.get_kids() is None
     splitter._id_set = {"keep"}
     splitter._clone_id_tree(source, destination)
-    names = destination.id_tree.get_cos_object().get_dictionary_object(
-        COSName.get_pdf_name("Names")
-    )
-    assert names.size() == 0
+    assert destination.id_tree is None
 
 
 def test_wave654_k_clone_tracks_id_and_role_on_retained_child() -> None:

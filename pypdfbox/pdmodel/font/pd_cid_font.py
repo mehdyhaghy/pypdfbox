@@ -54,6 +54,17 @@ class PDCIDFont(PDFont):
         # ``clear_widths_cache``).
         self._cid_code_to_width: dict[int, float] = {}
 
+    def _clear_code_to_width(self) -> None:
+        """Drop the per-code width memo and the parent Type 0 font's
+        per-codepoint string-width cache (PDFBOX-6287), which is built on
+        top of it. pypdfbox-only: upstream's width tables are fixed at
+        construction."""
+        self._cid_code_to_width.clear()
+        parent = self._parent
+        cache = getattr(parent, "_codepoint_to_width_map", None)
+        if cache is not None:
+            cache.clear()
+
     # ---------- subtype (abstract) ----------
 
     def get_subtype(self) -> str | None:  # pragma: no cover - overridden
@@ -109,7 +120,7 @@ class PDCIDFont(PDFont):
         """Set ``/DW`` (default glyph width). Passing ``None`` removes the
         entry, restoring the spec-default of ``1000``.
         """
-        self._cid_code_to_width.clear()
+        self._clear_code_to_width()
         if width is None:
             self._dict.remove_item(_DW)
             return
@@ -145,7 +156,7 @@ class PDCIDFont(PDFont):
 
     def set_w(self, arr: COSArray | None) -> None:
         self._widths = None
-        self._cid_code_to_width.clear()
+        self._clear_code_to_width()
         if arr is None:
             self._dict.remove_item(_W)
             return
@@ -228,7 +239,7 @@ class PDCIDFont(PDFont):
         if w is not None:
             self._parse_w_array(w, widths)
         self._widths = widths
-        self._cid_code_to_width.clear()
+        self._clear_code_to_width()
         return widths
 
     def read_vertical_displacements(
@@ -254,7 +265,7 @@ class PDCIDFont(PDFont):
     def clear_widths_cache(self) -> None:
         """Drop cached parsed ``/W`` and ``/W2`` tables."""
         self._widths = None
-        self._cid_code_to_width.clear()
+        self._clear_code_to_width()
         self._widths2 = None
         self._w2_ranges = None
 

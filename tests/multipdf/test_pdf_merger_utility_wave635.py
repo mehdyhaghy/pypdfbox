@@ -65,6 +65,7 @@ def test_wave635_merge_documents_without_sources_stages_options_and_returns(
     stream_cache = object()
     compress_params = object()
     util.set_document_merge_mode(DocumentMergeMode.OPTIMIZE_RESOURCES_MODE)
+    util.set_destination_stream(io.BytesIO())
 
     with caplog.at_level(logging.INFO, logger="pypdfbox.multipdf.pdf_merger_utility"):
         util.merge_documents(

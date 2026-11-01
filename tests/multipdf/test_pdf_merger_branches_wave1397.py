@@ -98,6 +98,16 @@ class _SimpleCatalog:
     def set_acro_form(self, form: object) -> None:  # pragma: no cover - unused
         pass
 
+    def get_page_labels(self) -> object | None:
+        # The merger reads both sides through PDDocumentCatalog.get_page_labels
+        # (PDFBOX-6296).
+        from pypdfbox.pdmodel.pd_page_labels import PDPageLabels
+
+        v = self._cos.get_dictionary_object(_PAGE_LABELS)
+        if isinstance(v, COSDictionary):
+            return PDPageLabels(None, v)  # type: ignore[arg-type]
+        return None
+
     def set_page_labels(self, labels: object) -> None:
         # PDFBOX-6277: the merger seeds the destination /PageLabels via
         # PDDocumentCatalog.set_page_labels.
@@ -925,8 +935,8 @@ def test_merge_page_labels_skips_clone_returning_none() -> None:
 def test_merge_page_labels_bails_when_base_index_not_a_number(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """An non-numeric label index aborts: every freshly-added entry is
-    rolled back (line 1282-1289)."""
+    """A non-numeric label index makes PDPageLabels ignore the whole source
+    /Nums, so the source pages get the default numbering (PDFBOX-6296)."""
     util = PDFMergerUtility()
     src = _SimpleCatalog()
     src_labels = COSDictionary()
@@ -948,13 +958,14 @@ def test_merge_page_labels_bails_when_base_index_not_a_number(
         def get_number_of_pages(self) -> int:
             return 0
 
-    with caplog.at_level(
-        logging.ERROR, logger="pypdfbox.multipdf.pdf_merger_utility"
-    ):
+    with caplog.at_level(logging.ERROR, logger="pypdfbox.pdmodel.pd_page_labels"):
         util._merge_page_labels(
             _IdentityCloner(), _Doc(src), _Doc(dst)
         )
     assert "page labels ignored" in caplog.text
+    dst_labels = dst.get_page_labels()
+    assert dst_labels is not None
+    assert dst_labels.get_page_indices() == [0]
 
 
 # ---------- _merge_oc_properties: dest dict already exists path ----------
@@ -1146,11 +1157,12 @@ def test_append_document_with_clone_returning_none_for_scalar_catalog_entries(
     util = PDFMergerUtility()
     util.append_document(dst, src)
     dc = dst.get_document_catalog().get_cos_object()
-    # None of the entries should have been installed.
+    # None of the cloned entries should have been installed. /Lang is a
+    # string copied without cloning, merged since PDFBOX-6299 even without a
+    # structure tree.
     assert dc.get_dictionary_object(_PAGE_MODE) is None
     assert dc.get_dictionary_object(_PAGE_LAYOUT) is None
-    assert dc.get_dictionary_object(_LANG) is None
-    assert dc.get_dictionary_object(_VIEWER_PREFS) is None
+    assert dc.get_string(_LANG) == "en-US"
     src.close()
     dst.close()
 

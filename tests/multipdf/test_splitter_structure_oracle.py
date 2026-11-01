@@ -6,14 +6,13 @@ part; both sides are then walked breadth-first from the trailer and every
 reachable value is recorded under the first path it is reached by
 (references by the canonical path of their target, streams by a hash of
 their decoded data). The two maps must be identical, which pins page and
-annotation cloning, link destination fixing, the structure tree clone
-(including the half-built elements upstream leaves reachable through
-``/ParentTree`` and ``/IDTree``), named destinations and the
-``/StructTreeRoot`` maps.
+annotation cloning, link destination fixing, the structure tree clone,
+named destinations and the ``/StructTreeRoot`` maps.
 
-pypdfbox forward-ports the PDFBOX-6283 named-destination handling from the
-3.0 branch, so the Splitter is compared against that source (variant
-``309``, compiled into the probe against the 3.0.8 jar). Indirect strings
+pypdfbox forward-ports the PDFBOX-6283 Splitter changes from the 3.0 branch
+(named destinations and the later follow-ups), so the Splitter is compared
+against that source (variant ``309``, compiled into the probe against the
+3.0.8 jar). Indirect strings
 and numbers are compared by value: the PDFBox writer merges equal ones into
 one object, which is a writer difference, not a splitter one.
 """

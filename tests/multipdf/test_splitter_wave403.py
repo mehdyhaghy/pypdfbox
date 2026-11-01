@@ -46,8 +46,10 @@ def test_wave403_invalid_page_configuration_rejects_non_positive_values() -> Non
     with pytest.raises(ValueError, match="End page"):
         splitter.set_end_page(0)
     splitter.set_start_page(3)
+    # PDFBOX-6283: validated by split(), not by the setter
+    splitter.set_end_page(2)
     with pytest.raises(ValueError, match="startPage"):
-        splitter.set_end_page(2)
+        splitter.split(_make_doc(1))
 
 
 def test_wave403_split_honors_start_end_range_and_split_length() -> None:

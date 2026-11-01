@@ -37,7 +37,9 @@ def test_wave543_split_respects_start_end_range_and_split_alignment() -> None:
             for index in range(chunk.get_number_of_pages())
         ] == ["page-2", "page-3", "page-4", "page-5"]
         assert splitter.get_source_document() is source
-        assert splitter.get_destination_document() is chunks[-1]
+        # PDFBOX-6283: split() releases its per-run state, including the
+        # current destination document
+        assert splitter._current_destination_document is None
     finally:
         for chunk in chunks:
             chunk.close()

@@ -741,25 +741,6 @@ class PDTrueTypeFont(PDSimpleFont):
         """
         return self.get_true_type_font()
 
-    def read_code(
-        self,
-        data: bytes | bytearray | memoryview,
-        offset: int = 0,
-    ) -> tuple[int, int]:
-        """Read one character code from ``data`` starting at ``offset``.
-
-        Mirrors upstream ``PDTrueTypeFont.readCode(InputStream)`` —
-        TrueType simple fonts use single-byte character codes, so the
-        reader is just a one-byte pull. Returns ``(code, bytes_consumed)``
-        to match the uniform pypdfbox renderer signature shared by
-        composite (Type0) and simple (Type1 / Type1C / TrueType / Type3)
-        fonts. At or past end-of-buffer returns ``(0, 0)`` so callers
-        terminate the decode loop.
-        """
-        if offset < 0 or offset >= len(data):
-            return (0, 0)
-        return (data[offset] & 0xFF, 1)
-
     def get_gid_to_code(self) -> dict[int, int]:
         """Inverted ``glyph id → first character code`` mapping.
 
@@ -1323,9 +1304,9 @@ class PDTrueTypeFont(PDSimpleFont):
         project's Java→Python exception convention.
 
         Successful results are memoised in the shared
-        :attr:`PDFont._codepoint_encoding` cache (PDFBOX-6287).
+        :attr:`PDFont._codepoint_to_encoding_map` cache (PDFBOX-6287).
         """
-        encoded_codepoint = self._codepoint_encoding.get(unicode)
+        encoded_codepoint = self._codepoint_to_encoding_map.get(unicode)
         if encoded_codepoint is not None:
             return encoded_codepoint
         encoding = self.get_encoding_typed()
@@ -1354,7 +1335,7 @@ class PDTrueTypeFont(PDSimpleFont):
                     f"encoding"
                 )
             encoded_codepoint = bytes([code & 0xFF])
-            self._codepoint_encoding[unicode] = encoded_codepoint
+            self._codepoint_to_encoding_map[unicode] = encoded_codepoint
             return encoded_codepoint
         # No /Encoding — round-trip through the gid-to-code map.
         if ttf is None or name is None:
@@ -1372,7 +1353,7 @@ class PDTrueTypeFont(PDSimpleFont):
                 f"U+{unicode:04X} is not available in font {self.get_name()} encoding"
             )
         encoded_codepoint = bytes([code & 0xFF])
-        self._codepoint_encoding[unicode] = encoded_codepoint
+        self._codepoint_to_encoding_map[unicode] = encoded_codepoint
         return encoded_codepoint
 
 

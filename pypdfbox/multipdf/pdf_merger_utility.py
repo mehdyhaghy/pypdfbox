@@ -584,13 +584,14 @@ class PDFMergerUtility:
         clone, so a second source page asking for the same font / image
         bytes points at the already-present destination clone.
         """
-        if not self._sources:
-            return
+        # PDFBOX-6299: validate the destination before the empty-source check.
         if self._destination_file_name is None and self._destination_stream is None:
             raise ValueError(
                 "Either set_destination_file_name(...) or set_destination_stream(...) "
                 "must be configured before merge_documents()."
             )
+        if not self._sources:
+            return
 
         from pypdfbox.pdmodel.pd_document import PDDocument
         from pypdfbox.pdmodel.pd_page import PDPage
@@ -612,10 +613,13 @@ class PDFMergerUtility:
             # (the destination keeps every clone alive), so keys never alias.
             hash_memo: dict[int, bytes | None] = {}
 
+            # PDFBOX-6299: use the highest source version for the result.
+            max_version = float(destination.get_version())
             for source in self._sources:
                 source_doc, owns = self._open_source(source)
                 opened_sources.append((source_doc, owns))
                 try:
+                    max_version = max(max_version, float(source_doc.get_version()))
                     src_catalog = source_doc.get_document_catalog()
                     if self._is_dynamic_xfa(src_catalog.get_acro_form()):
                         raise OSError(
@@ -654,6 +658,9 @@ class PDFMergerUtility:
                             # the outer-finally retry below picks up the
                             # leak if the close itself raised.
                             opened_sources[-1] = (source_doc, False)
+
+            if max_version > float(destination.get_version()):
+                destination.set_version(max_version)
 
             if self._destination_document_information is not None:
                 destination.set_document_information(
@@ -770,13 +777,14 @@ class PDFMergerUtility:
         return digest
 
     def _legacy_merge_documents_impl(self) -> None:
-        if not self._sources:
-            return
+        # PDFBOX-6299: validate the destination before the empty-source check.
         if self._destination_file_name is None and self._destination_stream is None:
             raise ValueError(
                 "Either set_destination_file_name(...) or set_destination_stream(...) "
                 "must be configured before merge_documents()."
             )
+        if not self._sources:
+            return
 
         from pypdfbox.pdmodel.pd_document import PDDocument
 
@@ -927,12 +935,10 @@ class PDFMergerUtility:
         # null)`` guard is dead code and /PageMode is effectively never carried.
         # pypdfbox deliberately uses the raw-key guard here so a source
         # /PageMode IS carried into a destination that has none — a documented
-        # enhancement over upstream's accidental no-op (see CHANGES.md). The
-        # /Lang and /ViewerPreferences carries that pypdfbox previously did at
-        # this same spot were removed: upstream merges those ONLY inside the
-        # structure-tree block (via mergeLanguage / mergeViewerPreferences),
-        # alongside mergeMarkInfo — see _finish_struct_tree_merge's tail. There
-        # is no /PageLayout merge in upstream at all.
+        # enhancement over upstream's accidental no-op (see CHANGES.md).
+        # /Lang and /ViewerPreferences are merged at the end of this method,
+        # after the structure-tree block (PDFBOX-6299). There is no
+        # /PageLayout merge in upstream at all.
         if dest_catalog.get_cos_object().get_dictionary_object(_PAGE_MODE) is None:
             src_pm = src_catalog.get_cos_object().get_dictionary_object(_PAGE_MODE)
             if src_pm is not None:
@@ -1073,15 +1079,13 @@ class PDFMergerUtility:
                 dest_parent_tree_next_key,
                 obj_mapping,
             )
-            # Upstream appendDocument runs these three catalog-scalar merges as
-            # the final statements INSIDE the ``if (mergeStructTree)`` block
-            # (Java lines 848-850), so they fire only when the structure tree
-            # is actually merged: /MarkInfo (marked/suspect/userprops OR-fold),
-            # /Lang (first-source-wins), and /ViewerPreferences (dict fold +
-            # boolean OR-merge). Mirrors that gating exactly.
+            # Upstream merges /MarkInfo (marked/suspect/userprops OR-fold) as
+            # the final statement INSIDE the ``if (mergeStructTree)`` block.
             self.merge_mark_info(dest_catalog, src_catalog)
-            self.merge_language(dest_catalog, src_catalog)
-            self.merge_viewer_preferences(dest_catalog, src_catalog, cloner)
+        # PDFBOX-6299: /Lang and /ViewerPreferences are merged whether or not
+        # the structure tree is.
+        self.merge_language(dest_catalog, src_catalog)
+        self.merge_viewer_preferences(dest_catalog, src_catalog, cloner)
 
     # ---------- helpers ----------
 
@@ -1408,60 +1412,48 @@ class PDFMergerUtility:
         source: PDDocument,
         destination: PDDocument,
     ) -> None:
-        from pypdfbox.cos import COSInteger, COSNumber
+        """Mirror of upstream ``mergePageLabels`` (3.0 branch, PDFBOX-6296,
+        PDFBOX-6300).
+
+        Both sides go through :class:`PDPageLabels`, so number trees with
+        /Kids are read too. A side without /PageLabels gets a default decimal
+        range at page 0 (seeded by the constructor), so neither document's
+        numbering leaks into the other's pages.
+        """
+        from pypdfbox.pdmodel.pd_page_label_range import PDPageLabelRange
+        from pypdfbox.pdmodel.pd_page_labels import PDPageLabels
 
         src_catalog = source.get_document_catalog()
         dest_catalog = destination.get_document_catalog()
-        src_labels = src_catalog.get_cos_object().get_dictionary_object(_PAGE_LABELS)
-        if not isinstance(src_labels, COSDictionary):
+        src_page_labels = src_catalog.get_page_labels()
+        dst_page_labels = dest_catalog.get_page_labels()
+        if src_page_labels is None and dst_page_labels is None:
             return
-        # Page count BEFORE we add the new pages — that's the index offset
-        # for source labels.
+        # Set default entries so that the documents don't influence each
+        # other, and that there is always a range at key 0.
+        if src_page_labels is None:
+            # PDFBOX-6300: create a mandatory 0 entry
+            src_page_labels = PDPageLabels(source)
+        if dst_page_labels is None:
+            # PDFBOX-6277: create a mandatory 0 entry
+            dst_page_labels = PDPageLabels(destination)
+        # Page count BEFORE the new pages are added: the index offset for
+        # the source ranges.
         dest_page_count = destination.get_number_of_pages()
-        dest_labels = dest_catalog.get_cos_object().get_dictionary_object(_PAGE_LABELS)
-        if not isinstance(dest_labels, COSDictionary):
-            # PDFBOX-6277 (3.0 branch, unreleased 3.0.9): create the
-            # mandatory page-0 entry (forced to decimal style) so the
-            # destination's own pages keep a valid label range.
-            from pypdfbox.pdmodel.pd_page_label_range import PDPageLabelRange
-            from pypdfbox.pdmodel.pd_page_labels import PDPageLabels
-
-            page_labels = PDPageLabels(destination)
-            page_label_range = PDPageLabelRange()
-            page_label_range.set_style(PDPageLabelRange.STYLE_DECIMAL)
-            page_labels.set_label_item(0, page_label_range)
-            dest_catalog.set_page_labels(page_labels)
-            dest_labels = dest_catalog.get_cos_object().get_dictionary_object(
-                _PAGE_LABELS
+        for index in src_page_labels.get_page_indices():
+            page_label_range = src_page_labels.get_page_label_range(index)
+            if page_label_range is None:
+                _LOG.warning("page label range at %d ignored, null", index)
+                continue
+            clone = cloner.clone_for_new_document(
+                page_label_range.get_cos_object()
             )
-        dest_nums_obj = dest_labels.get_dictionary_object(_NUMS)
-        if isinstance(dest_nums_obj, COSArray):
-            dest_nums = dest_nums_obj
-        else:
-            dest_nums = COSArray()
-            dest_labels.set_item(_NUMS, dest_nums)
-        src_nums = src_labels.get_dictionary_object(_NUMS)
-        if not isinstance(src_nums, COSArray):
-            return
-        start_size = dest_nums.size()
-        i = 0
-        while i + 1 < src_nums.size():
-            base = src_nums.get_object(i)
-            if not isinstance(base, COSNumber):
-                _LOG.error(
-                    "page labels ignored, index %d should be a number, but is %s",
-                    i,
-                    base,
-                )
-                while dest_nums.size() > start_size:
-                    dest_nums.remove_at(start_size)
-                return
-            label_index_value = int(base.int_value())
-            dest_nums.add(COSInteger.get(label_index_value + dest_page_count))
-            cloned = cloner.clone_for_new_document(src_nums.get_object(i + 1))
-            if cloned is not None:
-                dest_nums.add(cloned)
-            i += 2
+            if not isinstance(clone, COSDictionary):
+                continue
+            dst_page_labels.set_label_item(
+                index + dest_page_count, PDPageLabelRange(clone)
+            )
+        dest_catalog.set_page_labels(dst_page_labels)
 
     def _merge_metadata(
         self,
@@ -1732,7 +1724,7 @@ class PDFMergerUtility:
                     dest_parent_tree_next_key = (
                         0 if not dest_map else max(dest_map.keys()) + 1
                     )
-                if dest_parent_tree_next_key >= 0 and src_struct_tree is not None:
+                if src_struct_tree is not None:
                     src_parent_tree = src_struct_tree.get_parent_tree()
                     if src_parent_tree is not None:
                         src_map = self.get_number_tree_as_map(src_parent_tree)

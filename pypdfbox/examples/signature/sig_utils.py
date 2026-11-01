@@ -7,7 +7,9 @@ xref gap detection. Library-first: certificate usage parsing comes from
 """
 
 import logging
-from typing import TYPE_CHECKING
+import urllib.error
+import urllib.request
+from typing import TYPE_CHECKING, Any
 
 from cryptography import x509
 from cryptography.x509.oid import ExtendedKeyUsageOID, ExtensionOID
@@ -15,12 +17,43 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, ExtensionOID
 from pypdfbox.cos.cos_array import COSArray
 from pypdfbox.cos.cos_dictionary import COSDictionary
 from pypdfbox.cos.cos_name import COSName
+from pypdfbox.examples.util.connected_input_stream import ConnectedInputStream
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import PDSignature
     from pypdfbox.pdmodel.pd_document import PDDocument
 
 LOG = logging.getLogger(__name__)
+
+# COSName.SIG isn't among the predefined names of the cos package
+_SIG = COSName.get_pdf_name("Sig")
+
+_HTTP_MOVED_TEMP = 302
+_HTTP_MOVED_PERM = 301
+_HTTP_SEE_OTHER = 303
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Disable urllib's automatic redirect following: ``open_url`` inspects
+    the redirect status itself and only follows an ``http://X`` ->
+    ``https://X`` upgrade, as upstream."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _open_uri(url: str, timeout: float) -> Any:
+    """Open ``url`` without following redirects (upstream private
+    ``openURI``). HTTP error statuses, including the redirects that the
+    disabled handler turns into errors, are returned as the
+    :class:`urllib.error.HTTPError` itself, which offers the same
+    ``getcode`` / ``headers`` / ``read`` / ``close`` surface. Tests replace
+    this function to stay offline."""
+    opener = urllib.request.build_opener(_NoRedirectHandler)
+    try:
+        return opener.open(url, timeout=timeout)
+    except urllib.error.HTTPError as err:
+        return err
 
 
 class SigUtils:
@@ -29,6 +62,41 @@ class SigUtils:
     # Adobe Authentic Documents Trust and Microsoft document signing OIDs
     _ADOBE_AUTHENTIC_DOC_TRUST_OID = "1.2.840.113583.1.1.5"
     _MS_DOCUMENT_SIGNING_OID = "1.3.6.1.4.1.311.10.3.12"
+
+    # Certificates / CRLs / LDAP needed for the upstream unit tests; add
+    # yours or create your own logic in check_access()
+    ALLOW_URL_SET: frozenset[str] = frozenset(
+        {
+            "http://www.pki.admin.ch/aia/RegularCA01.crt",
+            "http://www.pki.admin.ch/aia/RootCAII.crt",
+            "http://www.pki.admin.ch/aia/RootCAIV.crt",
+            "http://www.pki.admin.ch/crl/RegularCA01.crl",
+            "http://www.pki.admin.ch/crl/RootCAII.crl",
+            "http://www.pki.admin.ch/crl/RootCAIV.crl",
+            "http://www.pki.admin.ch/aia/RegulatedCA02.crt",
+            "http://www.pki.admin.ch/aia/ocsp",
+            "http://www.pki.admin.ch/crl/RegulatedCA02.crl",
+            "http://repository.certum.pl/ctnca2.cer",
+            "http://repository.certum.pl/ctnca.cer",
+            "http://subca.repository.certum.pl/ctsca2021.cer",
+            "http://crl.geotrust.com/crls/adobeca1.crl",
+            "http://crl.adobe.com/cds.crl",
+            "http://subca.crl.certum.pl/ctsca2021.crl",
+            "http://subca.ocsp-certum.com",
+            "http://crl.certum.pl/ctnca2.crl",
+            "http://www.freetsa.org/tsa.crt",
+            "http://www.freetsa.org:2560",
+            "http://www.freetsa.org/crl/root_ca.crl",
+            "http://www.gemboxsoftware.com/test/pki/cert/GemBoxCA.crt",
+            "http://www.gemboxsoftware.com/test/pki/cert/GemBoxRSA.crt",
+            "http://www.ca.gov.si/crt/si-trust-root.crt",
+            "ldap://x500.gov.si/cn=SI-TRUST%20Root,oi=VATSI-17659957,"
+            "o=Republika%20Slovenija,c=SI?certificateRevocationList",
+        }
+    )
+    # PDFBOX-6291: timeouts for open_url
+    CONNECT_TIMEOUT_MS = 10_000
+    READ_TIMEOUT_MS = 20_000
 
     def __init__(self) -> None:  # pragma: no cover - mirrors private ctor
         raise RuntimeError("SigUtils is a static helper class")
@@ -63,9 +131,14 @@ class SigUtils:
     def set_mdp_permission(
         doc: PDDocument,
         signature: PDSignature,
-        access_permissions: int,
+        permissions: int,
     ) -> None:
-        """Wire up a DocMDP transform parameters dict (upstream 143)."""
+        """Wire up a DocMDP transform parameters dict (upstream 143).
+
+        Raises ``OSError`` if an approval signature exists, and
+        ``ValueError`` if ``permissions`` isn't 1, 2 or 3 (PDFBOX-6291)."""
+        if permissions not in (1, 2, 3):
+            raise ValueError("The permissions value must be 1, 2 or 3")
         for sig in doc.get_signature_dictionaries():
             if sig.get_cos_object().get_item(COSName.TYPE) == COSName.DOC_TIME_STAMP:
                 continue
@@ -78,7 +151,7 @@ class SigUtils:
 
         transform_parameters = COSDictionary()
         transform_parameters.set_item(COSName.TYPE, COSName.TRANSFORM_PARAMS)
-        transform_parameters.set_int(COSName.P, access_permissions)
+        transform_parameters.set_int(COSName.P, permissions)
         transform_parameters.set_name(COSName.V, "1.2")
         transform_parameters.set_needs_to_be_updated(True)
         transform_parameters.set_direct(True)
@@ -102,7 +175,7 @@ class SigUtils:
         if perms_dict is None:
             perms_dict = COSDictionary()
             catalog_dict.set_item(COSName.PERMS, perms_dict)
-        perms_dict.set_item(COSName.DOCMDP, signature)
+        perms_dict.set_item(COSName.DOCMDP, signature.get_cos_object())
         catalog_dict.set_needs_to_be_updated(True)
         perms_dict.set_needs_to_be_updated(True)
 
@@ -163,8 +236,9 @@ class SigUtils:
             return None
         last = max(sigs, key=lambda sig: sig.get_byte_range()[1])
         type_ = last.get_cos_object().get_item(COSName.TYPE)
-        if type_ is None or type_ == COSName.SIG or type_ == COSName.DOC_TIME_STAMP:
+        if type_ is None or type_ == _SIG or type_ == COSName.DOC_TIME_STAMP:
             return last
+        LOG.warning("Signature with unknown type ignored: %s", type_)
         return None
 
     @staticmethod
@@ -205,10 +279,74 @@ class SigUtils:
         return None
 
     @staticmethod
-    def open_url(url: str) -> bytes:
-        """HTTP fetch helper (upstream 434). Returns empty by default to
-        keep tests offline."""
-        return b""
+    def check_access(uri: str) -> None:
+        """A simple but very restrictive access control logic (upstream
+        ``checkAccess``). Create your own but use a zero-trust mindset."""
+        if str(uri) not in SigUtils.ALLOW_URL_SET:
+            raise OSError(f"URL '{uri}' not in ALLOW_URL_SET")
+
+    @staticmethod
+    def open_url(url_string: str) -> ConnectedInputStream:
+        """Like ``URL.openStream()`` but follows a redirection from http to
+        https (upstream ``openURL``).
+
+        PDFBOX-6291: only the ``http`` and ``https`` schemes are accepted,
+        a redirect without ``Location`` is ignored, 307 and 308 count as
+        redirects, the connection has a timeout, and it is closed when the
+        method fails. Unlike Java's ``HttpURLConnection`` no other redirect
+        is followed automatically, and urllib has a single timeout, so the
+        read timeout is used for connecting too. HTTP error statuses raise
+        ``OSError``.
+        """
+        scheme = url_string.split(":", 1)[0] if ":" in url_string else None
+        if scheme not in ("http", "https"):
+            raise OSError(f"{scheme} scheme not supported")
+
+        SigUtils.check_access(url_string)
+
+        timeout = SigUtils.READ_TIMEOUT_MS / 1000
+        con = _open_uri(url_string, timeout)
+        try:
+            response_code = con.getcode()
+            LOG.info("%s %s", response_code, getattr(con, "reason", "") or "")
+            if SigUtils._is_redirect(response_code):
+                location = con.headers.get("Location")
+                if (
+                    location is not None
+                    and url_string.startswith("http://")
+                    and location.startswith("https://")
+                    and url_string[7:] == location[8:]
+                ):
+                    # redirection from http:// to https://
+                    # change this code if you want to be more flexible (but
+                    # think about security!)
+                    LOG.info("redirection to %s followed", location)
+                    con.close()
+                    con = _open_uri(location, timeout)
+                    response_code = con.getcode()
+                else:
+                    LOG.info("redirection to %s ignored", location)
+            if response_code is not None and response_code >= 400:
+                # HttpURLConnection.getInputStream() throws for these
+                raise OSError(
+                    f"Server returned HTTP response code: {response_code} "
+                    f"for URL: {url_string}"
+                )
+            return ConnectedInputStream(con, con)
+        except BaseException:
+            con.close()
+            raise
+
+    @staticmethod
+    def _is_redirect(response_code: int | None) -> bool:
+        """Upstream private ``isRedirect``."""
+        return response_code in (
+            _HTTP_MOVED_TEMP,
+            _HTTP_MOVED_PERM,
+            _HTTP_SEE_OTHER,
+            307,
+            308,
+        )
 
     @staticmethod
     def check_cross_reference_table(doc: PDDocument) -> None:

@@ -12,6 +12,7 @@ from pypdfbox.cos import (
     COSObject,
     COSString,
 )
+from pypdfbox.io.io_utils import close_quietly
 
 if TYPE_CHECKING:
     from pypdfbox.io import MemoryUsageSetting
@@ -86,7 +87,8 @@ class Splitter:
     """
     Split a ``PDDocument`` into one or more smaller documents. Mirrors
     ``org.apache.pdfbox.multipdf.Splitter`` (PDFBox 3.0.8, plus the
-    PDFBOX-6283 named-destination handling of the 3.0 branch).
+    PDFBOX-6283 changes of the 3.0 branch: named destinations and the
+    follow-up fixes).
 
     Public surface:
 
@@ -154,8 +156,8 @@ class Splitter:
         self._annot_dict_maps: list[dict[int, COSDictionary]] = []
         # structDictMap: {id(source structure dict): clone}, per chunk.
         self._struct_dict_map: dict[int, COSDictionary] = {}
-        # idSet / roleSet: initialised once per split() and shared by every
-        # chunk, as upstream.
+        # idSet / roleSet: reset for every destination document
+        # (PDFBOX-6283).
         self._id_set: set[str] = set()
         self._role_set: set[str] = set()
         # destToFixMap: (cloned page destination, imported host page dict)
@@ -169,21 +171,17 @@ class Splitter:
         self._chunk_page_ids: set[int] = set()
         self._chunk_page_tree: Any = None
         # Per-run caches of the read-only source structure tree: resolved
-        # element fields ({id(src): [src, /Pg, /K, /Type, mask, live,
-        # parent]}, see _build_k_skip_info) and the flattened /ParentTree and
-        # /IDTree maps. ``None`` outside split().
+        # element fields ({id(src): [src, /Pg, /K, /Type, mask, live]}, see
+        # _build_k_skip_info) and the flattened /ParentTree and /IDTree maps.
+        # ``None`` outside split().
         self._k_node_cache: dict[int, list[Any]] | None = None
         self._src_number_tree_map: dict[int, COSBase] | None = None
         self._src_id_tree_map: dict[str, Any] | None = None
         # Subtree skipping (see _build_k_skip_info): enabled per split() run
-        # when the source /K tree has no shared nodes; ``_k_skipped`` holds
-        # the subtrees skipped in the chunk being cloned ({id(src): (src,
-        # dst_parent)}), materialised on demand by _struct_lookup.
+        # when the source /K tree has no shared nodes.
         self._k_skip_enabled: bool = False
         self._k_skip_pending: bool = False
         self._k_chunk_index: int = 0
-        self._k_skipped: dict[int, tuple[COSDictionary, COSBase]] = {}
-        self._k_page_tree: Any = None
 
         self._current_page_number: int = 0
 
@@ -244,13 +242,12 @@ class Splitter:
 
     def set_end_page(self, end: int) -> Splitter:
         """Set the 1-based inclusive upper page bound. Mirrors upstream
-        ``setEndPage(int)`` — rejects ``end <= 0`` and ``end <
-        startPage`` (when start was explicitly set). Returns ``self``
-        for fluent chaining."""
+        ``setEndPage(int)`` — rejects ``end <= 0``. An end page smaller
+        than the start page is rejected by :meth:`split`, so the setters
+        can be called in any order (PDFBOX-6283). Returns ``self`` for
+        fluent chaining."""
         if end <= 0:
             raise ValueError("End page is smaller than one")
-        if end < self._start_page:
-            raise ValueError("End page is smaller than startPage")
         self._end_page = end
         return self
 
@@ -342,24 +339,36 @@ class Splitter:
         """Split ``document`` and return a list of fresh ``PDDocument``
         instances. The caller owns each returned document and must save
         them before closing ``document`` (the chunks share resources with
-        the source)."""
+        the source).
+
+        This class is not thread-safe. Use one instance per thread, and do
+        not access the source document from other threads while it is being
+        split.
+
+        Raises ``ValueError`` if the end page is smaller than the start page.
+        If an exception escapes, every document created so far is closed
+        before it propagates (PDFBOX-6283); the caller should close the
+        source as well.
+        """
+        if self._end_page < self._start_page:
+            raise ValueError("End page is smaller than startPage")
         # reset the current page number in case split() is called again
         self._current_page_number = 0
         self._current_destination_document = None
-        self._destination_documents = []
+        result: list[PDDocument] = []
+        self._destination_documents = result
         self._source_document = document
         self._page_dict_maps = []
         self._page_to_doc_num_map = {}
         self._annot_dict_maps = []
         self._dest_to_fix = []
         self._dest_to_link_map = {}
-        self._id_set = set()
-        self._role_set = set()
         self._k_node_cache = {}
         self._src_number_tree_map = None
         self._src_id_tree_map = None
         self._k_skip_enabled = False
         self._k_skip_pending = True
+        success = False
 
         try:
             self._process_pages()
@@ -367,6 +376,11 @@ class Splitter:
             for index, destination_document in enumerate(
                 self._destination_documents
             ):
+                # PDFBOX-6283: fresh id and role sets per destination
+                # document, so a chunk's /IDTree and /RoleMap only carry the
+                # entries of its own structure elements.
+                self._id_set = set()
+                self._role_set = set()
                 self._page_dict_map = self._page_dict_maps[index]
                 self._annot_dict_map = self._annot_dict_maps[index]
                 self._k_chunk_index = index
@@ -406,17 +420,32 @@ class Splitter:
                     "named destinations fix-up failed; chunks will ship "
                     "without /Root/Dests"
                 )
+            success = True
         finally:
+            # release the per-run state (upstream nulls these fields)
+            self._page_dict_maps = []
+            self._page_dict_map = {}
+            self._page_to_doc_num_map = {}
+            self._struct_dict_map = {}
+            self._annot_dict_maps = []
+            self._annot_dict_map = {}
+            self._dest_to_fix = []
+            self._dest_to_link_map = {}
+            self._current_destination_document = None
+            self._destination_documents = []
             self._k_node_cache = None
             self._src_number_tree_map = None
             self._src_id_tree_map = None
             self._k_skip_enabled = False
             self._k_skip_pending = False
-            self._k_skipped = {}
-            self._k_page_tree = None
             self._chunk_page_ids = set()
             self._chunk_page_tree = None
-        return self._destination_documents
+            if not success:
+                # make sure to close even on uncaught exceptions
+                for doc in result:
+                    close_quietly(doc)
+                result.clear()
+        return result
 
     # ---------- named destinations (PDFBOX-6283) ----------
 
@@ -432,9 +461,6 @@ class Splitter:
         chunk. Entries pointing to pages outside the split, and broken
         entries, are dropped.
         """
-        from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
-            PDDestination,
-        )
         from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination_name_tree_node import (  # noqa: E501
             PDDestinationNameTreeNode,
         )
@@ -469,16 +495,10 @@ class Splitter:
             if doc_index is None:
                 # wasn't part of the split
                 continue
-            # get appropriate mapping
-            self._page_dict_map = self._page_dict_maps[doc_index]
-            dst_page_dict = self._page_dict_map.get(id(page_in_tree_dest))
-
-            # clone destination
-            src_array = value.get_cos_object()
-            cloned_destination_array = COSArray(
-                [src_array.get(i) for i in range(src_array.size())]
+            dst_page_dict = self._page_dict_maps[doc_index].get(
+                id(page_in_tree_dest)
             )
-            dst_destination = PDDestination.create(cloned_destination_array)
+            dst_destination = self._clone_page_destination(value)
             dst_destination.set_page(dst_page_dict)
 
             # add to the tree map of the appropriate destination document
@@ -511,9 +531,6 @@ class Splitter:
         resolvable destination doesn't reference a specific page and is
         added to every chunk.
         """
-        from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
-            PDDestination,
-        )
         from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: E501
             PDPageDestination,
         )
@@ -548,16 +565,10 @@ class Splitter:
                 if doc_index is None:
                     # wasn't part of the split
                     continue
-                # get appropriate mapping
-                self._page_dict_map = self._page_dict_maps[doc_index]
-                dst_page_dict = self._page_dict_map.get(id(page_in_tree_dest))
-
-                # clone destination
-                src_array = dest.get_cos_object()
-                cloned_destination_array = COSArray(
-                    [src_array.get(i) for i in range(src_array.size())]
+                dst_page_dict = self._page_dict_maps[doc_index].get(
+                    id(page_in_tree_dest)
                 )
-                dst_destination = PDDestination.create(cloned_destination_array)
+                dst_destination = self._clone_page_destination(dest)
                 dst_destination.set_page(dst_page_dict)
 
                 # add to the dictionary of the appropriate destination document
@@ -582,6 +593,20 @@ class Splitter:
                 PDDocumentNameDestinationDictionary(dst_dict).get_cos_object(),
             )
 
+    @staticmethod
+    def _clone_page_destination(value: Any) -> Any:
+        """Shallow-copy the array of a page destination and wrap it again.
+        Mirrors upstream private ``clonePageDestination``."""
+        from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
+            PDDestination,
+        )
+
+        src_array = value.get_cos_object()
+        cloned_destination_array = COSArray(
+            [src_array.get(i) for i in range(src_array.size())]
+        )
+        return PDDestination.create(cloned_destination_array)
+
     # ---------- pagination loop ----------
 
     def _process_pages(self) -> None:
@@ -590,11 +615,9 @@ class Splitter:
             page_one_based = self._current_page_number + 1
             if self._start_page <= page_one_based <= self._end_page:
                 self.process_page(page)
-                self._current_page_number += 1
-            else:
-                if self._current_page_number > self._end_page:
-                    break
-                self._current_page_number += 1
+            elif self._current_page_number >= self._end_page:
+                break
+            self._current_page_number += 1
 
     def process_pages(self) -> None:
         """Public-named hook for the pagination loop.
@@ -772,9 +795,6 @@ class Splitter:
         from pypdfbox.pdmodel.interactive.annotation.pd_annotation_widget import (
             PDAnnotationWidget,
         )
-        from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
-            PDDestination,
-        )
         from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (  # noqa: E501
             PDNamedDestination,
         )
@@ -847,14 +867,10 @@ class Splitter:
                     # and remember what to do later.
                     destination_page = src_destination.get_page()
                     if destination_page is not None:
-                        # clone destination
-                        src_array = src_destination.get_cos_object()
-                        cloned_destination_array = COSArray(
-                            [src_array.get(i) for i in range(src_array.size())]
+                        dst_destination = self._clone_page_destination(
+                            src_destination
                         )
-                        dst_destination = PDDestination.create(
-                            cloned_destination_array
-                        )
+                        cloned_destination_array = dst_destination.get_cos_object()
                         # remember the destination to adjust / remove page later
                         self._dest_to_fix.append(
                             (dst_destination, imported_page_dict)
@@ -1072,17 +1088,12 @@ class Splitter:
         if src_struct_root is None:
             return
 
-        # ``_id_set`` and ``_role_set`` are NOT reset here: upstream
-        # initialises them once in ``split()`` and lets them accumulate
-        # across chunks.
         self._struct_dict_map = {}
-        self._k_skipped = {}
 
         dst_struct_root = PDStructureTreeRoot()
         dst_struct_root_cos = dst_struct_root.get_cos_object()
         dst_page_tree = destination_document.get_pages()
         dst_pages = self._ensure_chunk_page_ids(dst_page_tree)
-        self._k_page_tree = dst_page_tree
 
         # clone /K, also fills the struct dict map
         src_k = src_struct_root.get_cos_object().get_dictionary_object(_K)
@@ -1240,9 +1251,8 @@ class Splitter:
 
         info = self._k_node_info(src)
         # Subtree skip (see _build_k_skip_info): with no in-chunk page above
-        # and none anywhere below, the subtree's clone is provably None. Its
-        # only effect would be the half-built entries upstream leaves in the
-        # struct dict map; _struct_lookup recreates those on demand.
+        # and none anywhere below, the subtree's clone is provably None, and
+        # a dropped clone leaves no struct dict map entry behind.
         if (
             current_page_dict is None
             and self._k_skip_enabled
@@ -1250,7 +1260,6 @@ class Splitter:
             and not info[5]
             and not (info[4] >> self._k_chunk_index) & 1
         ):
-            self._k_skipped[id(src)] = (src, dst_parent)
             return None
 
         dst, dst_page_dict = self._k_clone_head(
@@ -1258,6 +1267,10 @@ class Splitter:
         )
         if dst is None:
             return None
+        # PDFBOX-6283: register the clone before its kids are cloned and
+        # unregister it when it is dropped, so a discarded clone is never
+        # reached through /ParentTree or /IDTree.
+        self._struct_dict_map[id(src)] = dst
         kid = info[2]
         cloned_kid = self._k_create_clone(
             kid,
@@ -1267,11 +1280,13 @@ class Splitter:
         )
         if cloned_kid is None and kid is not None:
             # kids array wasn't empty, but is empty now => ignore
+            self._struct_dict_map.pop(id(src), None)
             return None
 
         # removes orphan nodes: if no parent page and no page here and no
         # kids, assume this is an orphan
         if dst_page_dict is None and cloned_kid is None and current_page_dict is None:
+            self._struct_dict_map.pop(id(src), None)
             return None
 
         dst.set_item(_K, cloned_kid)
@@ -1293,24 +1308,22 @@ class Splitter:
     ) -> tuple[COSDictionary | None, COSDictionary | None]:
         """The part of upstream ``createDictionaryClone`` before the kids
         are cloned. Returns ``(clone, dst_page_dict)``; ``clone`` is
-        ``None`` when the element is dropped before its kids are visited
-        (it may still have been registered in the struct dict map)."""
+        ``None`` when the element is dropped before its kids are visited."""
         src, src_page_dict, kid, type_name = info[0], info[1], info[2], info[3]
         dst_page_dict: COSDictionary | None = None
 
         if src_page_dict is not None:
+            # the page map belongs to this destination document, so a hit is
+            # a page of this document
             dst_page_dict = self._page_dict_map.get(id(src_page_dict))
-            if dst_page_dict is not None:
-                if not self._in_page_tree(page_tree, dst_page_dict):
-                    return None, None
-            elif (
+            if dst_page_dict is None and (
                 type_name == "MCR"
                 or type_name == "OBJR"
                 or self._has_mcids(kid)
             ):
-                # PDFBOX-6009: "wrong" /Pg entry. Quit if MCIDs because
-                # these need a /Pg entry, or if MCR/OBJR dicts; else keep
-                # this as an intermediate element for now.
+                # PDFBOX-6009: "wrong" /Pg entry: quit if MCR/OBJR dict
+                # type, or if MCIDs because these need a /Pg entry; otherwise
+                # keep this as an intermediate element for now.
                 return None, None
 
         # special handling for MCR items ("marked-content reference
@@ -1324,11 +1337,8 @@ class Splitter:
         ):
             return None, None
 
-        # Create and fill clone. Upstream registers the clone before the
-        # checks below and never unregisters it, so a dropped element still
-        # resolves through the map (e.g. for /ParentTree and /IDTree).
+        # Create and fill clone
         dst = COSDictionary()
-        self._struct_dict_map[id(src)] = dst
         for key, value in src.entry_set():
             if key != _K and key != _PG and key != _P:
                 dst.set_item(key, value)
@@ -1375,17 +1385,13 @@ class Splitter:
         ``_k_node_cache`` entry with ``mask`` (bit ``i`` set when some /Pg
         in the subtree is a page of destination document ``i``), ``live``
         (the subtree can yield a clone even when no /Pg in it belongs to the
-        chunk and no ancestor supplied an in-chunk page) and the parent
-        element (``None`` at the top level).
+        chunk and no ancestor supplied an in-chunk page).
 
         With no in-chunk page above (``current_page_dict is None``), a
-        subtree with neither the chunk's bit nor ``live`` clones to ``None``.
-        Walking it would still register half-built clones in the struct dict
-        map (upstream never removes them, and they surface through
-        /ParentTree and /IDTree), so a skipped subtree is recorded and
-        :meth:`_struct_lookup` replays exactly that part of the walk for any
-        element that is looked up later. ``live`` mirrors the clone rules
-        for that context: scalars survive; ``MCR`` and ``OBJR`` never do; an
+        subtree with neither the chunk's bit nor ``live`` clones to ``None``
+        and, since a dropped clone is unregistered again (PDFBOX-6283), leaves
+        nothing in the struct dict map, so it is not walked. ``live`` mirrors
+        the clone rules for that context: scalars survive; ``MCR`` and ``OBJR`` never do; an
         element whose out-of-chunk /Pg carries MCIDs is dropped; otherwise
         an element survives iff its /K does. If any element or array is
         reachable twice (shared node or cycle), or the tree is too deep,
@@ -1397,9 +1403,7 @@ class Splitter:
         seen: set[int] = set()
         shared = False
 
-        def visit(
-            node: COSBase | None, parent: COSDictionary | None, depth: int
-        ) -> tuple[int, bool]:
+        def visit(node: COSBase | None, depth: int) -> tuple[int, bool]:
             nonlocal shared
             if isinstance(node, COSObject):
                 node = node.get_object()
@@ -1415,13 +1419,13 @@ class Splitter:
                 mask = 0
                 live = False
                 for i in range(node.size()):
-                    m, alive = visit(node.get(i), parent, depth + 1)
+                    m, alive = visit(node.get(i), depth + 1)
                     mask |= m
                     live = live or alive
                 return mask, live
             info = self._k_node_info(node)
             src_page_dict, kid, type_name = info[1], info[2], info[3]
-            mask, kid_live = visit(kid, node, depth + 1)
+            mask, kid_live = visit(kid, depth + 1)
             if src_page_dict is not None:
                 chunk = page_chunk.get(id(src_page_dict))
                 if chunk is not None:
@@ -1435,66 +1439,18 @@ class Splitter:
             else:
                 live = kid_live
             del info[4:]
-            info.extend((mask, live, parent))
+            info.extend((mask, live))
             return mask, live
 
         try:
-            visit(src_k, None, 0)
+            visit(src_k, 0)
         except RecursionError:
             shared = True
         self._k_skip_enabled = not shared
 
     def _struct_lookup(self, src: COSBase | None) -> COSDictionary | None:
-        """``structDictMap.get(src)`` for the chunk being cloned.
-
-        When the element sits in a subtree that :meth:`_k_clone_dictionary`
-        skipped, the skipped part of upstream's walk is replayed along the
-        path down to ``src`` first: every element on it gets the clone
-        upstream would have registered (the head of ``createDictionaryClone``
-        with no in-chunk page), and its kids become pending skipped subtrees.
-        """
-        hit = self._struct_dict_map.get(id(src))
-        if hit is not None or not self._k_skipped or self._k_node_cache is None:
-            return hit
-        # climb to the nearest pending skipped subtree
-        path: list[COSDictionary] = []
-        node = src
-        while id(node) not in self._k_skipped:
-            if id(node) in self._struct_dict_map:
-                return None
-            info = self._k_node_cache.get(id(node))
-            if info is None or info[0] is not node or len(info) < 7:
-                return None
-            path.append(node)
-            node = info[6]
-            if node is None:
-                return None
-        # replay the walk from the skipped subtree down to src
-        while True:
-            _, dst_parent = self._k_skipped.pop(id(node))
-            info = self._k_node_info(node)
-            dst, _ = self._k_clone_head(info, dst_parent, None, self._k_page_tree)
-            if dst is None:
-                break
-            self._k_register_skipped_kids(info[2], dst)
-            if not path:
-                break
-            node = path.pop()
-            if id(node) not in self._k_skipped:
-                break
+        """``structDictMap.get(src)`` for the chunk being cloned."""
         return self._struct_dict_map.get(id(src))
-
-    def _k_register_skipped_kids(self, kid: COSBase | None, dst: COSDictionary) -> None:
-        """Record the structure dictionaries among ``kid`` (a /K value) as
-        pending skipped subtrees whose clones get ``dst`` as /P."""
-        if isinstance(kid, COSObject):
-            kid = kid.get_object()
-        if isinstance(kid, COSDictionary):
-            self._k_skipped[id(kid)] = (kid, dst)
-        elif isinstance(kid, COSArray):
-            # nested arrays pass the same parent down, as in the walk
-            for i in range(kid.size()):
-                self._k_register_skipped_kids(kid.get(i), dst)
 
     @staticmethod
     def _has_mcids(kid: COSBase | None) -> bool:
@@ -1589,8 +1545,9 @@ class Splitter:
         self, src_root: Any, dst_root: Any, name_tree_cls: type | None = None
     ) -> None:
         """Mirror upstream ``cloneIDTree``: a fresh flat ``/IDTree`` with the
-        ids seen so far whose source element has a clone in this chunk
-        (always written when the source has an ``/IDTree``)."""
+        ids of this chunk's structure elements whose source element has a
+        clone in this chunk. Nothing is written when no id is left
+        (PDFBOX-6283)."""
         src_id_tree = src_root.get_id_tree()
         if src_id_tree is None:
             return
@@ -1615,6 +1572,8 @@ class Splitter:
             cloned_dict = self._struct_lookup(src_dict)
             if cloned_dict is not None:
                 dst_names[key] = cloned_dict
+        if not dst_names:
+            return
         dst_id_tree = name_tree_cls()
         _set_flat_names(dst_id_tree.get_cos_object(), dst_names)
         dst_root.set_id_tree(dst_id_tree)

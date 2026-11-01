@@ -122,14 +122,17 @@ def _pdf_bytes(page_count: int = 1) -> bytes:
         doc.close()
 
 
-def test_wave536_merge_documents_without_sources_does_not_require_destination() -> None:
-    PDFMergerUtility().merge_documents()
+def test_wave536_merge_documents_without_sources_requires_destination() -> None:
+    # PDFBOX-6299: early validation of the destination, even with no sources.
+    with pytest.raises(ValueError, match="set_destination_stream"):
+        PDFMergerUtility().merge_documents()
 
 
 def test_wave536_merge_documents_records_stream_cache_and_compress_parameters() -> None:
     util = PDFMergerUtility()
     cache_factory = object()
     compress = object()
+    util.set_destination_stream(io.BytesIO())
 
     util.merge_documents(
         stream_cache_create_function=cache_factory,
@@ -148,6 +151,7 @@ def test_wave536_optimize_mode_no_legacy_fallback_log_for_valid_input(
     fire for an empty-sources no-op call."""
     util = PDFMergerUtility()
     util.set_document_merge_mode(DocumentMergeMode.OPTIMIZE_RESOURCES_MODE)
+    util.set_destination_stream(io.BytesIO())
 
     with caplog.at_level(logging.INFO, logger="pypdfbox.multipdf.pdf_merger_utility"):
         util.merge_documents()

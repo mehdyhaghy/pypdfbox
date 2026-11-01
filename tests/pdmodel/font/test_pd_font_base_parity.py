@@ -491,11 +491,11 @@ def test_encode_empty_string_returns_empty_bytes_on_bare_base() -> None:
     assert _BarePDFont().encode("") == b""
 
 
-def test_read_code_raises_not_implemented_on_bare_base() -> None:
-    import pytest
-
-    with pytest.raises(NotImplementedError):
-        _BarePDFont().read_code(b"\x41")
+def test_read_code_reads_one_byte_on_bare_base() -> None:
+    # PDFBOX-6287: upstream's PDFont.readCode default is ``in.read()``.
+    assert _BarePDFont().read_code(b"\x41\x42") == (0x41, 1)
+    assert _BarePDFont().read_code(b"\x41\x42", 1) == (0x42, 1)
+    assert _BarePDFont().read_code(b"\x41", 1) == (0, 0)
 
 
 def test_get_width_from_font_raises_not_implemented_on_bare_base() -> None:

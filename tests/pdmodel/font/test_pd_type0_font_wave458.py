@@ -124,7 +124,9 @@ def test_width_alias_font_matrix_and_string_width_wave458(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     font = PDType0Font()
-    monkeypatch.setattr(font, "encode", lambda text: b"abcdef")
+    # PDFBOX-6287: get_string_width encodes codepoint by codepoint
+    encoded = {ord("a"): b"ab", ord("b"): b"c", ord("c"): b"def"}
+    monkeypatch.setattr(font, "encode", lambda cp: encoded[cp])
     reads = [(10, 2), (20, 1), (30, 3)]
     monkeypatch.setattr(font, "read_code", lambda _data, _offset: reads.pop(0))
     monkeypatch.setattr(font, "get_glyph_width", lambda code: float(code))

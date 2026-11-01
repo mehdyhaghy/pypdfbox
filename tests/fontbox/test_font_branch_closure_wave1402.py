@@ -736,6 +736,9 @@ class _FakeFont:
         self._width_from_font = width_from_font
         self._average_width = average_width
 
+    def is_encoded_via_substitute(self) -> bool:
+        return False
+
     def has_to_unicode(self) -> bool:
         return self._to_unicode_cmap is not None
 

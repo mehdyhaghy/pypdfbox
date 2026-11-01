@@ -77,8 +77,6 @@ def test_page_labels_unknown_style_falls_back_to_decimal() -> None:
 
 def test_page_labels_rejects_non_dictionary_value_for_valid_key() -> None:
     nums = COSArray()
-    nums.add(COSString("not-an-integer-key"))
-    nums.add(COSDictionary())
     nums.add(COSInteger.get(2))
     nums.add(COSString("not-a-dictionary-value"))
     nums.add(COSInteger.get(-1))

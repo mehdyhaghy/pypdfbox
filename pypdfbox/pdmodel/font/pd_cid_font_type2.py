@@ -134,6 +134,12 @@ class PDCIDFontType2(PDCIDFont):
         # Mirrors the ``findFontOrSubstitute()`` leg of upstream's
         # constructor, which stores the substitute in the ``ttf`` field.
         self._substitute_ttf: TrueTypeFont | None | bool = None
+        # PDFBOX-6293: substitute is CID-keyed with a different ROS: this
+        # font's CIDs are meaningless in it, resolve glyphs via Unicode
+        # instead (only when ordering is identity). Upstream's final
+        # ``isForeignCIDSubstitute`` field, computed lazily here because the
+        # substitute is resolved lazily. ``None`` means "not yet computed".
+        self._foreign_cid_substitute: bool | None = None
 
     def get_subtype(self) -> str | None:
         return self.SUB_TYPE
@@ -207,7 +213,9 @@ class PDCIDFontType2(PDCIDFont):
           the parent (``/ToUnicode`` or the predefined UCS2 CMap) and looked
           up in the substitute's ``cmap``; with no Unicode mapping, or a
           CFF-based OpenType substitute (PDFBOX-6251), the CID is used as
-          the GID (PDFBOX-2599).
+          the GID (PDFBOX-2599). A CID-keyed ``Identity``-ordered
+          substitute from another character collection keeps the Unicode
+          lookup (PDFBOX-6293): this font's CIDs are meaningless in it.
 
         For a bare descendant (no parent font) the code is the CID.
         """
@@ -254,7 +262,10 @@ class PDCIDFontType2(PDCIDFont):
             # Acrobat is willing to use the CID as a GID, even when the font
             # isn't embedded, see PDFBOX-2599
             return self.code_to_cid(code)
-        if self._is_substitute_open_type_post_script(ttf):
+        if (
+            self._is_substitute_open_type_post_script(ttf)
+            and not self._is_foreign_cid_substitute()
+        ):
             # "Identity" is the default for CFF-based OpenTypeFonts (as in
             # the embedded case). PDFBOX-6251.
             return self.code_to_cid(code)
@@ -1134,6 +1145,48 @@ class PDCIDFontType2(PDCIDFont):
             return bool(ttf.is_supported_otf()) and bool(ttf.is_post_script())
         except Exception:
             return False
+
+    def _is_foreign_cid_substitute(self) -> bool:
+        """Upstream's ``isForeignCIDSubstitute`` field (PDFBOX-6293):
+        ``!isEmbedded && isForeignCIDFont(otf)``. Cached."""
+        if self._foreign_cid_substitute is None:
+            foreign = False
+            if not self.is_embedded():
+                substitute = self._get_substitute_font()
+                if substitute is not None and self._is_substitute_open_type_post_script(
+                    substitute
+                ):
+                    foreign = self._is_foreign_cid_font(substitute)
+            self._foreign_cid_substitute = foreign
+        return self._foreign_cid_substitute
+
+    def _is_foreign_cid_font(self, substitute: TrueTypeFont | None) -> bool:
+        """Mirrors upstream private ``isForeignCIDFont(OpenTypeFont)``
+        (PDFBOX-6293): the substitute is a CID-keyed OpenType/CFF font with
+        an ``Identity`` ordering whose Registry/Ordering differ from this
+        font's ``/CIDSystemInfo``."""
+        from pypdfbox.fontbox.cff.cff_cid_font import CFFCIDFont
+
+        if substitute is None:
+            return False
+        try:
+            if not substitute.is_post_script():
+                return False
+            cff = substitute.get_cff()
+        except Exception:
+            return False
+        if cff is not None and not isinstance(cff, CFFCIDFont):
+            # tolerate an upstream-shaped wrapper exposing ``get_font``
+            get_font = getattr(cff, "get_font", None)
+            cff = get_font() if callable(get_font) else None
+        if not isinstance(cff, CFFCIDFont):
+            return False
+        ros = self.get_cid_system_info()
+        return cff.get_ordering() == "Identity" and (
+            ros is None
+            or ros.get_registry() != cff.get_registry()
+            or ros.get_ordering() != cff.get_ordering()
+        )
 
     def find_font_or_substitute(self) -> CIDFontMapping | None:
         """Locate the embedded :class:`TrueTypeFont` or — failing that —
