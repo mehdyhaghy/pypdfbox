@@ -257,7 +257,6 @@ class COSParser(BaseParser):
         # ``isInitialParseDone`` / ``isTrailerWasRebuild`` find them.
         self._initial_parse_done: bool = False
         self._trailer_was_rebuild: bool = False
-        self._recursion_depth: int = 0
         # Optional lenient fallback for a referenced key the consolidated xref
         # does not carry as a usable in-use entry (a free slot, or a key
         # beyond the table) whose ``n g obj`` body is nonetheless present in
@@ -310,7 +309,13 @@ class COSParser(BaseParser):
         indirect object whose body starts ``n g R`` is parsed as the first
         number. Array and dictionary value parsers keep the default and
         recognize the full indirect-reference token sequence.
+
+        Like upstream ``parseDirObject``, the call counts against
+        ``MAX_RECURSION_DEPTH`` (see ``BaseParser``); the count stays raised
+        only while a nested array or dictionary is read.
         """
+        if self._recursion_depth >= self.MAX_RECURSION_DEPTH:
+            raise self._max_recursion_error()
         if self._fast_path_applies():
             result = self._fast_parse_direct_object(allow_indirect_reference)
             if result is not None:
@@ -327,14 +332,22 @@ class COSParser(BaseParser):
                 # COSParser.parseDirObject -> parseCOSDictionary(true), Java
                 # line 1072). The top-level indirect-object body is reset to
                 # not-direct by the loader (see PDFParser._load_*).
-                return self.parse_cos_dictionary(is_direct=True)
+                self._recursion_depth += 1
+                try:
+                    return self.parse_cos_dictionary(is_direct=True)
+                finally:
+                    self._recursion_depth -= 1
             return self._read_cos_hex_string()
         if b == 0x28:  # '('
             return self._read_cos_literal_string()
         if b == 0x2F:  # '/'
             return COSName.get_pdf_name(self.read_name_bytes())
         if b == 0x5B:  # '['
-            return self.parse_cos_array()
+            self._recursion_depth += 1
+            try:
+                return self.parse_cos_array()
+            finally:
+                self._recursion_depth -= 1
         if b in (0x2B, 0x2D, 0x2E) or self.is_digit(b):
             if not allow_indirect_reference:
                 start = self.position
@@ -613,9 +626,12 @@ class COSParser(BaseParser):
         self, data: bytes, i: int, n: int, eof: bool, base: int
     ) -> tuple[COSArray, int]:
         """Mirror of :meth:`parse_cos_array`; ``data[i]`` is ``[``."""
-        if self._recursion_depth >= self.MAX_RECURSION_DEPTH:
+        # The reference path counts the enclosing ``parse_direct_object`` and
+        # this array; leave the last levels below the limit to it.
+        depth = self._recursion_depth + 2
+        if depth >= self.MAX_RECURSION_DEPTH:
             raise _FastAbort
-        self._recursion_depth += 1
+        self._recursion_depth = depth
         items: list[COSBase] = []
         append = items.append
         value = self._fp_value
@@ -659,7 +675,7 @@ class COSParser(BaseParser):
                     raise _FastAbort
                 raise _FastNeedMore
             if data[i] == 0x5D:  # ']'
-                self._recursion_depth -= 1
+                self._recursion_depth = depth - 2
                 return COSArray(items), i + 1
             obj, i = value(data, i, n, eof, base, True)
             append(obj)
@@ -669,9 +685,10 @@ class COSParser(BaseParser):
     ) -> tuple[COSDictionary, int]:
         """Mirror of :meth:`parse_cos_dictionary`; ``data[i:i + 2]`` is
         ``<<``."""
-        if self._recursion_depth >= self.MAX_RECURSION_DEPTH:
+        depth = self._recursion_depth + 2  # as in ``_fp_array``
+        if depth >= self.MAX_RECURSION_DEPTH:
             raise _FastAbort
-        self._recursion_depth += 1
+        self._recursion_depth = depth
         d = COSDictionary()
         d.set_direct(is_direct)
         set_item = d.set_item
@@ -709,7 +726,7 @@ class COSParser(BaseParser):
                     raise _FastNeedMore
                 if data[i + 1] != 0x3E:
                     raise _FastAbort
-                self._recursion_depth -= 1
+                self._recursion_depth = depth - 2
                 return d, i + 2
             if c != 0x2F:  # '/'
                 raise _FastAbort
@@ -802,11 +819,11 @@ class COSParser(BaseParser):
             self._leave_recursion()
 
     def _enter_recursion(self, object_type: str, position: int) -> None:
+        # Upstream ``parseCOSArray`` / ``parseCOSDictionary``: increment, then
+        # fail past ``MAX_RECURSION_DEPTH``. ``object_type`` / ``position``
+        # are kept for subclass compatibility; the message is upstream's.
         if self._recursion_depth >= self.MAX_RECURSION_DEPTH:
-            raise PDFParseError(
-                f"maximum COS {object_type} nesting depth exceeded",
-                position=position,
-            )
+            raise self._max_recursion_error()
         self._recursion_depth += 1
 
     def _leave_recursion(self) -> None:

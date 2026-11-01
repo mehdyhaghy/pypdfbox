@@ -185,48 +185,23 @@ def test_parser_to_string_after_parse() -> None:
     assert parser.to_string() == f"CFFParser[{name}]"
 
 
-# -- CID-keyed dispatch (gated) ----------------------------------------
+# -- CID-keyed dispatch ----------------------------------------
 
 
-_CID_CANDIDATES = [
-    "/System/Library/Fonts/Hiragino Sans GB.ttc",
-    "/System/Library/Fonts/PingFang.ttc",
-]
+# Bundled synthetic CID-keyed CFF (3 font-dicts); see make_cid_fd_fixtures.py.
+_CID_CFF_FIXTURE = (
+    Path(__file__).resolve().parents[2]
+    / "fixtures"
+    / "fontbox"
+    / "cff"
+    / "cid_multifd_3fd.cff"
+)
 
 
-def _load_cid_cff_bytes() -> bytes | None:
-    try:
-        from fontTools.ttLib import TTFont
-    except ImportError:
-        return None
-    for candidate in _CID_CANDIDATES:
-        path = Path(candidate)
-        if not path.exists():
-            continue
-        try:
-            for index in range(8):
-                ttf = TTFont(str(path), fontNumber=index)
-                if "CFF " not in ttf:
-                    continue
-                top = ttf["CFF "].cff[ttf["CFF "].cff.fontNames[0]]
-                if not hasattr(top, "ROS"):
-                    continue
-                buf = io.BytesIO()
-                ttf["CFF "].cff.compile(buf, ttf, isCFF2=False)
-                return buf.getvalue()
-        except Exception:
-            continue
-    return None
-
-
-_CID_CFF = _load_cid_cff_bytes()
-
-
-@pytest.mark.skipif(_CID_CFF is None, reason="no CID-keyed CFF fixture available")
 def test_parse_cid_keyed_returns_cidfont() -> None:
-    assert _CID_CFF is not None
+    data = _CID_CFF_FIXTURE.read_bytes()
     parser = CFFParser()
-    fonts = parser.parse(_CID_CFF)
+    fonts = parser.parse(data)
     assert len(fonts) == 1
     assert isinstance(fonts[0], CFFCIDFont)
     assert fonts[0].is_cid_font()

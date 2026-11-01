@@ -566,19 +566,23 @@ class COSDocument(COSBase):
 
     def __del__(self) -> None:  # pragma: no cover - finalizer
         # Mirror PDFBox's "warnMissingClose": if the user forgot to close
-        # the document and warnings are enabled, log it and best-effort
-        # release the scratch / source so resources are not leaked. We
-        # swallow any exceptions because finalizers run during interpreter
-        # shutdown when modules may already be torn down.
+        # the document and warnings are enabled, log it. The finalizer does
+        # NOT close anything: like upstream (which has no finalizer), objects
+        # that outlive an unreachable document (an imported page's re-encoded
+        # contents, a page whose lazy objects still read the source) keep
+        # working. Buffers nobody references are freed by Python anyway, and
+        # scratch temp files are deleted at interpreter exit. We swallow any
+        # exceptions because finalizers run during interpreter shutdown when
+        # modules may already be torn down.
         try:
-            if not getattr(self, "_closed", True):
-                if getattr(self, "_warn_missing_close", False):
-                    import logging
+            if not getattr(self, "_closed", True) and getattr(
+                self, "_warn_missing_close", False
+            ):
+                import logging
 
-                    logging.getLogger(__name__).warning(
-                        "COSDocument was not closed — call close() explicitly",
-                    )
-                self.close()
+                logging.getLogger(__name__).warning(
+                    "COSDocument was not closed — call close() explicitly",
+                )
         except Exception:
             pass
 

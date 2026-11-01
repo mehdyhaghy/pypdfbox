@@ -91,12 +91,14 @@ class BaseParser:
     OBJECT_NUMBER_THRESHOLD: ClassVar[int] = 10_000_000_000
     GENERATION_NUMBER_THRESHOLD: ClassVar[int] = 65535
 
-    # Maximum recursion depth allowed when nesting parsed objects (arrays /
-    # dictionaries) per upstream ``BaseParser.MAX_RECURSION_DEPTH``. The
-    # pypdfbox tokenizer does not enforce this guard yet (see
-    # ``PROVENANCE.md`` — recursive-depth tracking lives at the structural
-    # layer in ``COSParser.parse_direct_object``); the constant is exposed
-    # here for parity-test access and future enforcement work.
+    # Maximum recursion depth allowed when nesting parsed objects, per
+    # upstream ``BaseParser.MAX_RECURSION_DEPTH``. As upstream, one counter
+    # (``_recursion_depth``) counts every active ``parse_dir_object`` /
+    # ``parse_cos_array`` / ``parse_cos_dictionary`` call (and their
+    # ``COSParser`` counterparts), so a container nested inside another one
+    # costs two units: about 250 levels fit. Going past the limit raises
+    # ``PDFParseError("Reached maximum recursion depth 500")``, the
+    # equivalent of upstream's ``IOException``.
     MAX_RECURSION_DEPTH: ClassVar[int] = 500
 
     # Maximum number of digits accepted by ``read_string_number`` before
@@ -140,6 +142,8 @@ class BaseParser:
         self._last_number_text: str = ""
         self._last_number_start: int = -1
         self._last_number_end: int = -1
+        # Upstream ``BaseParser.recursionDepth``: see ``MAX_RECURSION_DEPTH``.
+        self._recursion_depth: int = 0
 
     # ---------- document handle (upstream protected COSDocument) ----------
 
@@ -1095,6 +1099,14 @@ class BaseParser:
     #     recursion-guard and stream-body machinery — replace these at the
     #     subclass boundary without breaking any caller.
 
+    def _max_recursion_error(self) -> PDFParseError:
+        """Upstream ``BaseParser.MAX_RECUSRION_MSG`` as the parse error that
+        stands in for its ``IOException``."""
+        return PDFParseError(
+            f"Reached maximum recursion depth {self.MAX_RECURSION_DEPTH}",
+            position=self.position,
+        )
+
     def parse_dir_object(self) -> COSBase | None:
         """Parse one direct object per upstream
         ``BaseParser.parseDirObject()`` (line 969). Returns ``None`` at EOF
@@ -1106,34 +1118,36 @@ class BaseParser:
         from pypdfbox.cos.cos_null import COSNull
         from pypdfbox.cos.cos_object import COSObject
 
+        # Upstream counts this call against ``MAX_RECURSION_DEPTH`` (the
+        # increment-then-check of ``recursionDepth``). Only the container
+        # branches below recurse, so only they keep the count raised.
+        if self._recursion_depth >= self.MAX_RECURSION_DEPTH:
+            raise self._max_recursion_error()
         self.skip_whitespace()
         c = self._src.peek()
         if c == RandomAccessRead.EOF:
             return None
-        # The container branches below recurse (array/dict elements are
-        # themselves parsed via ``parse_dir_object``). Deeply nested direct
-        # ``[...]`` / ``<<...>>`` structures in a malformed PDF can exhaust
-        # Python's recursion limit; convert that into the parser's own error
-        # type so callers catching ``PDFParseError`` aren't surprised by a
-        # raw ``RecursionError``. Legitimate PDFs nest only a few levels
-        # (direct nesting, not indirect references), so this never fires on
-        # real documents — it is a hostile-input guard. (Upstream PDFBox is
-        # likewise recursive here; it tolerates more only because the JVM
-        # stack is deeper.)
-        try:
-            if c == 0x3C:  # '<'
-                self._src.read()
-                second = self._src.peek()
-                self._src.rewind(1)
-                if second == 0x3C:
-                    return self.parse_cos_dictionary(is_direct=True)
+        if c == 0x3C:  # '<'
+            self._src.read()
+            second = self._src.peek()
+            self._src.rewind(1)
+            if second != 0x3C:
                 return self.parse_cos_string()
-            if c == 0x5B:  # '['
+        if c == 0x3C or c == 0x5B:  # '<<' / '['
+            self._recursion_depth += 1
+            try:
+                if c == 0x3C:
+                    return self.parse_cos_dictionary(is_direct=True)
                 return self.parse_cos_array()
-        except RecursionError as exc:
-            raise PDFParseError(
-                "PDF object nesting too deep to parse", position=self.position
-            ) from exc
+            except RecursionError as exc:
+                # The depth limit keeps the parser within about 500 Python
+                # frames, so this only fires when the caller was already
+                # close to Python's recursion limit.
+                raise PDFParseError(
+                    "PDF object nesting too deep to parse", position=self.position
+                ) from exc
+            finally:
+                self._recursion_depth -= 1
         if c == 0x28:  # '('
             return self.parse_cos_string()
         if c == 0x2F:  # '/'
@@ -1194,103 +1208,136 @@ class BaseParser:
         from pypdfbox.cos.cos_integer import COSInteger
         from pypdfbox.cos.cos_object import COSObject
 
-        start_position = self.position
-        self.read_expected_char("[")
-        po = COSArray()
-        self.skip_whitespace()
-        while True:
-            i = self._src.peek()
-            if i <= 0 or i == 0x5D:  # ']' or EOF
-                break
-            pbo = self.parse_dir_object()
-            if isinstance(pbo, COSObject):
-                # Replace the placeholder with a resolved indirect reference
-                # using the two preceding integers as ``num gen R`` (PDFBOX-385).
-                pbo = None
-                if len(po) > 1 and isinstance(po.get(len(po) - 1), COSInteger):
-                    gen_number = po.remove_at(len(po) - 1)
-                    if len(po) > 0 and isinstance(po.get(len(po) - 1), COSInteger):
-                        number = po.remove_at(len(po) - 1)
-                        num_value = number.value
-                        gen_value = gen_number.value
-                        if num_value >= 0 and gen_value >= 0:
-                            key = self.get_object_key(num_value, gen_value)
-                            pbo = self.get_object_from_pool(key)
-                        else:
-                            _LOG.warning(
-                                "Invalid value(s) for an object key %d %d",
-                                num_value,
-                                gen_value,
-                            )
-            if pbo is None:
-                _LOG.warning(
-                    "Corrupt array element at offset %d, start offset: %d",
-                    self.position,
-                    start_position,
-                )
-                is_this_the_end = self.read_string()
-                # pragma: no cover - nested-array corruption recovery
-                if not is_this_the_end and self._src.peek() == 0x5B:  # '['  # pragma: no cover
-                    return po
-                self._src.rewind(len(is_this_the_end.encode("latin-1")))
-                if is_this_the_end in (self.ENDOBJ_STRING, self.ENDSTREAM_STRING):
-                    return po
-            else:
-                po.add(pbo)
+        self._recursion_depth += 1
+        try:
+            if self._recursion_depth > self.MAX_RECURSION_DEPTH:
+                raise self._max_recursion_error()
+            start_position = self.position
+            self.read_expected_char("[")
+            po = COSArray()
             self.skip_whitespace()
-        # consume ']'
-        self._src.read()
-        self.skip_whitespace()
-        return po
+            while True:
+                i = self._src.peek()
+                if i <= 0 or i == 0x5D:  # ']' or EOF
+                    break
+                pbo = self.parse_dir_object()
+                if isinstance(pbo, COSObject):
+                    # Replace the placeholder with a resolved indirect reference
+                    # using the two preceding integers as ``num gen R`` (PDFBOX-385).
+                    pbo = None
+                    if len(po) > 1 and isinstance(po.get(len(po) - 1), COSInteger):
+                        gen_number = po.remove_at(len(po) - 1)
+                        if len(po) > 0 and isinstance(po.get(len(po) - 1), COSInteger):
+                            number = po.remove_at(len(po) - 1)
+                            num_value = number.value
+                            gen_value = gen_number.value
+                            if num_value >= 0 and gen_value >= 0:
+                                key = self.get_object_key(num_value, gen_value)
+                                pbo = self.get_object_from_pool(key)
+                            else:
+                                _LOG.warning(
+                                    "Invalid value(s) for an object key %d %d",
+                                    num_value,
+                                    gen_value,
+                                )
+                if pbo is None:
+                    _LOG.warning(
+                        "Corrupt array element at offset %d, start offset: %d",
+                        self.position,
+                        start_position,
+                    )
+                    is_this_the_end = self.read_string()
+                    # pragma: no cover - nested-array corruption recovery
+                    if not is_this_the_end and self._src.peek() == 0x5B:  # '['  # pragma: no cover
+                        return po
+                    self._src.rewind(len(is_this_the_end.encode("latin-1")))
+                    if is_this_the_end in (self.ENDOBJ_STRING, self.ENDSTREAM_STRING):
+                        return po
+                else:
+                    po.add(pbo)
+                self.skip_whitespace()
+            # consume ']'
+            self._src.read()
+            self.skip_whitespace()
+            return po
+        finally:
+            self._recursion_depth -= 1
 
     def parse_cos_dictionary(self, is_direct: bool = False) -> COSDictionary:
         """Parse a PDF ``<< ... >>`` dictionary per upstream
         ``BaseParser.parseCOSDictionary(boolean)`` (line 276). Permissive on
         malformed input: a stray non-``/`` byte triggers
-        :meth:`read_until_end_of_cos_dictionary` for recovery."""
+        :meth:`read_until_end_of_cos_dictionary` for recovery.
+
+        Each entry is read exactly as :meth:`parse_cos_dictionary_name_value_pair`
+        reads it, but with that method and :meth:`parse_cos_dictionary_value`
+        unrolled into this loop: a dictionary nested in a dictionary then
+        costs two Python frames instead of four, which keeps the deepest
+        nesting the depth limit allows within Python's recursion limit."""
         from pypdfbox.cos.cos_dictionary import COSDictionary
 
-        self.read_expected_char("<")
-        self.read_expected_char("<")
-        self.skip_whitespace()
-        obj = COSDictionary()
-        obj.set_direct(is_direct)
-        while True:
+        self._recursion_depth += 1
+        try:
+            if self._recursion_depth > self.MAX_RECURSION_DEPTH:
+                raise self._max_recursion_error()
+            self.read_expected_char("<")
+            self.read_expected_char("<")
             self.skip_whitespace()
-            c = self._src.peek()
-            if c == 0x3E:  # '>'
-                break
-            if c == 0x2F:  # '/'
-                if not self.parse_cos_dictionary_name_value_pair(obj):
-                    return obj
-            else:
+            obj = COSDictionary()
+            obj.set_direct(is_direct)
+            while True:
+                self.skip_whitespace()
+                c = self._src.peek()
+                if c == 0x3E:  # '>'
+                    break
+                if c == 0x2F:  # '/'
+                    # parse_cos_dictionary_name_value_pair, unrolled.
+                    key = self._parse_cos_dictionary_key()
+                    num_offset = self.position
+                    value = self._finish_cos_dictionary_value(
+                        self.parse_dir_object(), num_offset
+                    )
+                    if not self._add_cos_dictionary_entry(obj, key, value):
+                        return obj
+                else:
+                    _LOG.warning(
+                        "Invalid dictionary, found: %r but expected: '/' at offset %d",
+                        chr(c) if c >= 0 else "",
+                        self.position,
+                    )
+                    if self.read_until_end_of_cos_dictionary():
+                        return obj
+            try:
+                self.read_expected_char(">")
+                self.read_expected_char(">")
+            except PDFParseError:
                 _LOG.warning(
-                    "Invalid dictionary, found: %r but expected: '/' at offset %d",
-                    chr(c) if c >= 0 else "",
+                    "Invalid dictionary, can't find end of dictionary at offset %d",
                     self.position,
                 )
-                if self.read_until_end_of_cos_dictionary():
-                    return obj
-        try:
-            self.read_expected_char(">")
-            self.read_expected_char(">")
-        except PDFParseError:
-            _LOG.warning(
-                "Invalid dictionary, can't find end of dictionary at offset %d",
-                self.position,
-            )
-        return obj
+            return obj
+        finally:
+            self._recursion_depth -= 1
 
     def parse_cos_dictionary_name_value_pair(self, obj: COSDictionary) -> bool:
         """Parse one ``/Name value`` entry into ``obj``. Returns ``False``
         if the dictionary is corrupt (caller bails). Mirrors upstream
         ``BaseParser.parseCOSDictionaryNameValuePair`` (line 384)."""
-        from pypdfbox.cos.cos_integer import COSInteger
+        key = self._parse_cos_dictionary_key()
+        value = self.parse_cos_dictionary_value()
+        return self._add_cos_dictionary_entry(obj, key, value)
 
+    def _parse_cos_dictionary_key(self) -> COSName:
         key = self.parse_cos_name()
         if key is None or not key.get_name():
             _LOG.warning("Empty COSName at offset %d", self.position)
-        value = self.parse_cos_dictionary_value()
+        return key
+
+    def _add_cos_dictionary_entry(
+        self, obj: COSDictionary, key: COSName, value: COSBase | None
+    ) -> bool:
+        from pypdfbox.cos.cos_integer import COSInteger
+
         self.skip_whitespace()
         if value is None:
             _LOG.warning("Bad dictionary declaration at offset %d", self.position)
@@ -1308,12 +1355,18 @@ class BaseParser:
         """Parse a dictionary value, including the special ``num gen R``
         indirect-reference recovery. Mirrors upstream
         ``BaseParser.parseCOSDictionaryValue`` (line 216)."""
+        num_offset = self.position
+        return self._finish_cos_dictionary_value(self.parse_dir_object(), num_offset)
+
+    def _finish_cos_dictionary_value(
+        self, value: COSBase | None, num_offset: int
+    ) -> COSBase | None:
+        """The part of :meth:`parse_cos_dictionary_value` after its first
+        ``parse_dir_object`` call: the ``num gen R`` recovery."""
         from pypdfbox.cos.cos_integer import COSInteger
         from pypdfbox.cos.cos_null import COSNull
         from pypdfbox.cos.cos_number import COSNumber
 
-        num_offset = self.position
-        value = self.parse_dir_object()
         self.skip_whitespace()
         if not isinstance(value, COSNumber) or not self.is_digit_at():
             return value
