@@ -38,6 +38,11 @@ class PDFCloneUtility:
         self._destination = dest
         self._cloned_version: dict[int, COSBase] = {}
         self._cloned_values: set[int] = set()
+        # The memo is keyed by ``id()``; keep every source alive for the
+        # cloner's lifetime (as upstream's IdentityHashMap keys do), or a
+        # freed source's id could be reused by a new object that would then
+        # be handed the old clone.
+        self._cloned_sources: list[COSBase] = []
 
     def get_destination(self) -> PDDocument:
         """Return the destination ``PDDocument`` this cloner targets.
@@ -69,6 +74,7 @@ class PDFCloneUtility:
         if retval is None:
             return None
         self._cloned_version[id(base)] = retval
+        self._cloned_sources.append(base)
         self._cloned_values.add(id(retval))
         return retval
 
@@ -106,6 +112,7 @@ class PDFCloneUtility:
         # and preserves the cycle shape — strictly more robust. ``has_self_
         # reference`` still handles the direct ``[ref->this-array]`` case.
         self._cloned_version[id(array)] = new_array
+        self._cloned_sources.append(array)
         for i in range(array.size()):
             value = array.get(i)
             if self.has_self_reference(array, value):
@@ -137,6 +144,7 @@ class PDFCloneUtility:
             ):
                 io_copy(src, dst)
         self._cloned_version[id(stream)] = new_stream
+        self._cloned_sources.append(stream)
         for key, value in list(stream.entry_set()):
             if self.has_self_reference(stream, value):
                 new_stream.set_item(key, new_stream)
@@ -156,6 +164,7 @@ class PDFCloneUtility:
         # Register the clone before iterating so cyclic references
         # encountered during recursion resolve to ``new_dictionary``.
         self._cloned_version[id(dictionary)] = new_dictionary
+        self._cloned_sources.append(dictionary)
         for key, value in list(dictionary.entry_set()):
             if self.has_self_reference(dictionary, value):
                 new_dictionary.set_item(key, new_dictionary)

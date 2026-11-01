@@ -587,3 +587,22 @@ def test_clone_merge_recurses_into_shared_subdict():
         inner = td.get_item("Inner")
         assert inner.get_name("A") == "1"
         assert inner.get_name("B") == "2"
+
+
+def test_cloner_keeps_sources_alive_so_ids_are_not_reused():
+    # The clone memo is keyed by id(); a freed source's id could be reused by
+    # a new object, which would then be handed the old clone.
+    import gc
+    import weakref
+
+    with PDDocument() as dst:
+        c = PDFCloneUtility(dst)
+        source = COSDictionary()
+        ref = weakref.ref(source)
+        first = c.clone_for_new_document(source)
+        del source
+        gc.collect()
+        assert ref() is not None
+        array_clone = c.clone_for_new_document(COSArray())
+        assert isinstance(array_clone, COSArray)
+        assert array_clone is not first

@@ -183,6 +183,10 @@ Divergences that remain live (will affect observable behaviour vs Java PDFBox):
   upstream: PDFBox 3.0 branch `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFMergerUtility.java` (`mergeDocuments`, `optimizedMergeDocuments`, `appendDocument`)
   reason: forward-port of upstream bug fixes ahead of the 3.0.9 release.
 
+- **`PDFCloneUtility` keeps its cloned sources alive (fix).** The clone memo is keyed by `id()`; once a source was freed, a new object could reuse its id and be handed the old clone (for example an empty `COSArray` cloned as a `COSDictionary`). The cloner now holds every source for its lifetime, as upstream's `IdentityHashMap` keys do.
+  upstream: PDFBox 3.0.8 `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFCloneUtility.java`
+  reason: bug fix toward parity.
+
 - **`PDType0Font.encode` writes the substitute's glyph id for a non-embedded Identity-H/V CIDFontType2 (fix).** It used to write the codepoint itself as the CID, which `code_to_gid` read back as a glyph id, so text written with such a font showed the wrong glyphs. It now delegates to `PDCIDFontType2.encode` as upstream `PDType0Font.encode(int)` does (`cmap.getGlyphId(unicode)` of the substitute). When the substitute has no glyph, pypdfbox writes `.notdef` (CID 0) instead of raising, like its other lenient encode paths. Non-embedded fonts under other predefined, non-`Uni` CMaps keep the CMap reverse lookup.
   upstream: PDFBox 3.0.8 `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType0Font.java#encode`, `PDCIDFontType2.java#encode`
   reason: bug fix toward parity.
