@@ -768,24 +768,49 @@ def _blit_by_pixel(
     y_dst_offset: int,
     combination_operator: CombinationOperator,
 ) -> None:
-    y = 0
-    while y < src.get_height() and y_dst_offset + y < dst.get_height():
-        if y_dst_offset + y < 0:
-            y += 1
-            continue
-        x = 0
-        while x < src.get_width() and x_dst_offset + x < dst.get_width():
-            if x_dst_offset + x < 0:
-                x += 1
-                continue
-            result_bit = Bitmaps.combine_bytes(
-                dst.get_pixel(x_dst_offset + x, y_dst_offset + y),
-                src.get_pixel(x, y),
-                combination_operator,
-            )
-            dst.set_pixel(x_dst_offset + x, y_dst_offset + y, result_bit)
-            x += 1
-        y += 1
+    """Pixel-exact blit (upstream ``blitByPixel``), one row at a time.
+
+    Each row's overlapping span is combined as a single integer with the
+    same per-bit operator as the per-pixel loop: the clipped pixel range,
+    the combination truth tables and the untouched bits outside the span
+    are all identical.
+    """
+    src_width = src.get_width()
+    dst_width = dst.get_width()
+    x0 = max(0, -x_dst_offset)
+    x1 = min(src_width, dst_width - x_dst_offset)
+    y0 = max(0, -y_dst_offset)
+    y1 = min(src.get_height(), dst.get_height() - y_dst_offset)
+    if x0 >= x1 or y0 >= y1:
+        return
+    count = x1 - x0
+    mask = (1 << count) - 1
+    src_bytes = src.bitmap_bytes
+    dst_bytes = dst.bitmap_bytes
+    src_stride = src.get_row_stride()
+    dst_stride = dst.get_row_stride()
+    src_shift = src_stride * 8 - x1
+    dst_shift = dst_stride * 8 - (x1 + x_dst_offset)
+    hole = ~(mask << dst_shift)
+    from_bytes = int.from_bytes
+    op = combination_operator
+    for y in range(y0, y1):
+        s_off = y * src_stride
+        bits = (from_bytes(src_bytes[s_off : s_off + src_stride]) >> src_shift) & mask
+        d_off = (y + y_dst_offset) * dst_stride
+        row = from_bytes(dst_bytes[d_off : d_off + dst_stride])
+        if op == CombinationOperator.OR:
+            bits |= (row >> dst_shift) & mask
+        elif op == CombinationOperator.AND:
+            bits &= (row >> dst_shift) & mask
+        elif op == CombinationOperator.XOR:
+            bits ^= (row >> dst_shift) & mask
+        elif op == CombinationOperator.XNOR:
+            bits = ~(bits ^ ((row >> dst_shift) & mask)) & mask
+        # REPLACE and default: the source bits replace the destination.
+        dst_bytes[d_off : d_off + dst_stride] = ((row & hole) | (bits << dst_shift)).to_bytes(
+            dst_stride
+        )
 
 
 def _copy_line(

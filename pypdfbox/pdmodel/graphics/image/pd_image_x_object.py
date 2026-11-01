@@ -1667,14 +1667,71 @@ def _apply_decode_to_8bit_samples(
     if max_sample <= 0.0:
         return None
 
+    if bpc <= 8 and isinstance(data, (bytes, bytearray, memoryview)):
+        fast = _apply_decode_lut(data, expected, components, decode, max_sample)
+        if fast is not None:
+            return fast
+    return _apply_decode_to_8bit_samples_loop(
+        data, expected, components, decode, max_sample
+    )
+
+
+def _decode_sample_to_byte(
+    sample: int, dmin: float, dmax: float, max_sample: float
+) -> int:
+    value = dmin + (sample / max_sample) * (dmax - dmin)
+    return int(round(_clamp01(value) * 255.0))
+
+
+def _apply_decode_to_8bit_samples_loop(
+    data: Sequence[int],
+    expected: int,
+    components: int,
+    decode: Sequence[float],
+    max_sample: float,
+) -> bytes:
     out = bytearray(expected)
     for i in range(expected):
         component = i % components
+        out[i] = _decode_sample_to_byte(
+            data[i], decode[component * 2], decode[component * 2 + 1], max_sample
+        )
+    return bytes(out)
+
+
+def _apply_decode_lut(
+    data: bytes | bytearray | memoryview,
+    expected: int,
+    components: int,
+    decode: Sequence[float],
+    max_sample: float,
+) -> bytes | None:
+    """Byte-sample decode through a per-component 256-entry table.
+
+    Each table entry is computed by the scalar formula, so the result is
+    identical to the per-sample loop. Returns ``None`` (use the loop) when an
+    entry the data actually uses cannot be computed, so the loop raises the
+    same error it always did (a NaN ``/Decode``, for example).
+    """
+    import numpy as np
+
+    samples = np.frombuffer(data, dtype=np.uint8, count=expected)
+    out = np.empty(expected, dtype=np.uint8)
+    for component in range(components):
         dmin = decode[component * 2]
         dmax = decode[component * 2 + 1]
-        value = dmin + (data[i] / max_sample) * (dmax - dmin)
-        out[i] = int(round(_clamp01(value) * 255.0))
-    return bytes(out)
+        lut = np.zeros(256, dtype=np.uint8)
+        failed: list[int] = []
+        for sample in range(256):
+            try:
+                lut[sample] = _decode_sample_to_byte(sample, dmin, dmax, max_sample)
+            except (ValueError, OverflowError):
+                failed.append(sample)
+        channel = samples[component::components]
+        if failed and np.isin(channel, failed).any():
+            return None
+        out[component::components] = lut[channel]
+    return out.tobytes()
 
 
 def _apply_decode_to_indexed_samples(
@@ -1735,18 +1792,22 @@ def _unpack_sub_byte_samples(
     expected = row_bytes * int(height)
     if len(data) < expected:
         return None
+    if expected == 0 or row_samples == 0:
+        return bytes(row_samples * int(height))
 
+    import numpy as np
+
+    # Each byte holds 8 // bpc samples, most significant first; rows are
+    # padded to a whole byte and the padding samples are dropped.
+    rows = np.frombuffer(data, dtype=np.uint8, count=expected).reshape(
+        int(height), row_bytes
+    )
     mask = (1 << int(bpc)) - 1
-    out = bytearray(row_samples * int(height))
-    for y in range(int(height)):
-        row_offset = y * row_bytes
-        out_offset = y * row_samples
-        for sample_index in range(row_samples):
-            bit_index = sample_index * int(bpc)
-            byte = data[row_offset + (bit_index // 8)]
-            shift = 8 - int(bpc) - (bit_index % 8)
-            out[out_offset + sample_index] = (byte >> shift) & mask
-    return bytes(out)
+    shifts = np.arange(8 - int(bpc), -1, -int(bpc), dtype=np.uint8)
+    unpacked = (rows[:, :, None] >> shifts) & mask
+    return unpacked.reshape(int(height), row_bytes * len(shifts))[
+        :, :row_samples
+    ].tobytes()
 
 
 def _unpack_16bit_samples(
