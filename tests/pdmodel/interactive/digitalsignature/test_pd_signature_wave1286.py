@@ -36,6 +36,7 @@ from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import (
     _verify_signed_attrs_signature,
     _walk_signer_info,
 )
+from tests._rsa_key_pool import pooled_rsa_key
 
 # ---------- inline self-signed cert helpers ----------
 
@@ -48,7 +49,7 @@ def _make_signed_cert(
     is_ca: bool = False,
 ) -> tuple[x509.Certificate, rsa.RSAPrivateKey]:
     """Sign a fresh RSA cert with ``issuer_key``."""
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, common_name)])
     now = datetime.datetime.now(tz=datetime.UTC)
     builder = (
@@ -77,7 +78,7 @@ def _make_root(name: str = "") -> tuple[x509.Certificate, rsa.RSAPrivateKey]:
     global _root_counter
     _root_counter += 1
     cn = name or f"test-root-{_root_counter}"
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, cn)])
     now = datetime.datetime.now(tz=datetime.UTC)
     cert = (

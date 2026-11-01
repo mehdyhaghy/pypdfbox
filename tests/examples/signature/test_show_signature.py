@@ -7,11 +7,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import pkcs7
 from cryptography.x509.oid import NameOID
 
 from pypdfbox.examples.signature.show_signature import ShowSignature
+from tests._rsa_key_pool import pooled_rsa_key
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -24,7 +24,7 @@ def _build_pkcs7_certs_blob() -> bytes:
     certificate list back to ``_summarize``."""
     import datetime as _dt
 
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "show-sig")])
     cert = (
         x509.CertificateBuilder()

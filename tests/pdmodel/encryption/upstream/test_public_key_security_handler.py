@@ -34,16 +34,16 @@ from pypdfbox.pdmodel.encryption.public_key_recipient import PublicKeyRecipient
 from pypdfbox.pdmodel.encryption.public_key_security_handler import (
     PublicKeySecurityHandler,
 )
+from tests._rsa_key_pool import pooled_rsa_key
 
 
 def _build_self_signed_rsa() -> tuple[object, object]:
     """Mint a fresh self-signed 2048-bit RSA cert + private key."""
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes
-    from cryptography.hazmat.primitives.asymmetric import rsa
     from cryptography.x509.oid import NameOID
 
-    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_key = pooled_rsa_key()
     name = x509.Name(
         [x509.NameAttribute(NameOID.COMMON_NAME, "pypdfbox-upstream-test")]
     )
@@ -174,7 +174,14 @@ def test_wrong_private_key_raises_value_error() -> None:
 
     material = PublicKeyDecryptionMaterial(certificate=cert, private_key=wrong_key)
     decrypt_handler = PublicKeySecurityHandler()
-    with pytest.raises(ValueError, match="matched none"):
+    # RSA PKCS#1 v1.5 with the wrong key does not always fail: OpenSSL's
+    # implicit rejection returns random bytes instead, so roughly 1 in 300
+    # decrypts unwraps a garbage envelope whose length is not 24 (upstream
+    # raises "does not contain 24 bytes" for that case too). Either way the
+    # wrong key must be rejected.
+    with pytest.raises(
+        ValueError, match="matched none|does not contain 24 bytes"
+    ):
         decrypt_handler.prepare_for_decryption(
             doc.encryption, b"\x00" * 16, material
         )

@@ -36,6 +36,7 @@ from pypdfbox.pdmodel.interactive.digitalsignature import (
     compute_byte_range,
     strip_signature_padding,
 )
+from tests._rsa_key_pool import pooled_rsa_key
 
 # ---------- in-process cert + signed-document fixtures ----------
 
@@ -48,7 +49,7 @@ def _make_self_signed_cert(
     Mirrors the pattern used by the wave 1286 tests; kept local here so
     this file doesn't import private helpers from sibling test modules.
     """
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name(
         [x509.NameAttribute(NameOID.COMMON_NAME, common_name)]
     )

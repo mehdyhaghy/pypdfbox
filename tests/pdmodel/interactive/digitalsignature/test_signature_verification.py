@@ -5,6 +5,7 @@ from pypdfbox.pdmodel.interactive.digitalsignature import (
     PDSignature,
     SignatureValidationResult,
 )
+from tests._rsa_key_pool import pooled_rsa_key
 
 
 def test_verify_invalid_pkcs7_blob_fails_gracefully() -> None:
@@ -250,10 +251,9 @@ def _make_self_signed_signer():
 
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes
-    from cryptography.hazmat.primitives.asymmetric import rsa
     from cryptography.x509.oid import NameOID
 
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "verify-test")])
     now = _dt.datetime.now(_dt.UTC)
     cert = (

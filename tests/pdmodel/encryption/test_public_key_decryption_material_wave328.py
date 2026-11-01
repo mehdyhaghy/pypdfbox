@@ -1,11 +1,11 @@
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 
 from pypdfbox.pdmodel.encryption import PublicKeyDecryptionMaterial
+from tests._rsa_key_pool import pooled_rsa_key
 
 
 def test_wave328_private_key_bytearray_is_snapshotted_for_lazy_decode() -> None:
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     pem = bytearray(
         key.private_bytes(
             encoding=serialization.Encoding.PEM,

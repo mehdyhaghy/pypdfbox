@@ -36,25 +36,43 @@ def scanner():
     return _load_module()
 
 
-def test_runs_clean_on_current_env(scanner, capsys):
-    """The installed environment must scan clean (exit 0)."""
+@pytest.fixture(scope="module")
+def current_env_scan(scanner):
+    """Scan the installed environment once per module.
+
+    The full native-artifact scan reads every compiled artifact in
+    site-packages (several seconds), so both current-env tests share a
+    single real scan result.
+    """
     site_packages = scanner.find_site_packages()
     if site_packages is None:
         pytest.skip("no virtualenv site-packages on this layout")
+    return site_packages, scanner.scan(site_packages)
 
+
+def test_runs_clean_on_current_env(scanner, current_env_scan, capsys, monkeypatch):
+    """The installed environment must scan clean (exit 0)."""
+    site_packages, result = current_env_scan
+    scanned: list[Path] = []
+
+    def _cached_scan(path):
+        scanned.append(path)
+        return result
+
+    # ``main()`` still resolves site-packages and runs its full reporting /
+    # exit-code logic; only the expensive byte scan is served from the
+    # module's single real scan of the same directory.
+    monkeypatch.setattr(scanner, "scan", _cached_scan)
     rc = scanner.main([])
     out = capsys.readouterr().out
+    assert scanned == [site_packages]
     assert rc == 0, f"scanner flagged the current env:\n{out}"
     assert "artifacts scanned, clean" in out
 
 
-def test_scan_returns_no_violations_on_current_env(scanner):
+def test_scan_returns_no_violations_on_current_env(current_env_scan):
     """Lower-level: ``scan()`` finds zero non-allow-listed copyleft hits."""
-    site_packages = scanner.find_site_packages()
-    if site_packages is None:
-        pytest.skip("no virtualenv site-packages on this layout")
-
-    findings, count = scanner.scan(site_packages)
+    _site_packages, (findings, count) = current_env_scan
     assert count > 0
     violations = [f for f in findings if not f.allowed]
     assert violations == [], f"unexpected native copyleft: {violations}"

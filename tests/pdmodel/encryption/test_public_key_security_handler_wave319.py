@@ -14,10 +14,11 @@ from pypdfbox.pdmodel.encryption.public_key_recipient import PublicKeyRecipient
 from pypdfbox.pdmodel.encryption.public_key_security_handler import (
     PublicKeySecurityHandler,
 )
+from tests._rsa_key_pool import pooled_rsa_key
 
 
 def _build_wave319_self_signed_rsa() -> tuple[x509.Certificate, rsa.RSAPrivateKey]:
-    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_key = pooled_rsa_key()
     name = x509.Name(
         [x509.NameAttribute(NameOID.COMMON_NAME, "pypdfbox-wave319")]
     )

@@ -31,6 +31,8 @@ def _to_int(
     ``_offset`` (keyword-only) lets callers slice without copying when
     walking a buffer — used by the bytes-form ``read_code``.
     """
+    if data_len is None and _offset == 0 and type(data) in (bytes, bytearray):
+        return int.from_bytes(data, "big")
     if data_len is None:
         data_len = len(data) - _offset
     code = 0

@@ -93,25 +93,30 @@ def test_wave856_type1_predefined_encoding_test_exercises_expert_branch() -> Non
     type1_mod.test_parsed_type1_code_to_name_predefined(_ExpertFont())
 
 
-def test_wave856_type1_from_bytes_rejects_cid_skips_when_fonttools_missing(
+def test_wave856_type1_from_bytes_rejects_cid_needs_no_system_font(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # The CID rejection test reads a bundled CID-keyed CFF fixture; it must
+    # not fall back to recompiling a system font through fontTools.
+    from fontTools import ttLib
+
+    monkeypatch.setattr(ttLib, "TTFont", _BrokenTTFont)
+
+    type1_mod.TestCFFType1FontFromCIDFontRaises().test_from_bytes_rejects_cid_keyed()
+
+
+def test_wave856_type1_from_bytes_rejects_cid_fails_without_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # If CFFType1Font.from_bytes stopped rejecting CID-keyed input, the
+    # rejection test must fail rather than pass vacuously.
     monkeypatch.setattr(
-        builtins,
-        "__import__",
-        _fake_import_error(builtins.__import__),
+        type1_mod.CFFType1Font,
+        "from_bytes",
+        classmethod(lambda cls, data: cls()),
     )
 
-    with pytest.raises(pytest.skip.Exception):
-        type1_mod.TestCFFType1FontFromCIDFontRaises().test_from_bytes_rejects_cid_keyed()
-
-
-def test_wave856_type1_from_bytes_rejects_cid_skips_missing_paths(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(type1_mod, "Path", _MissingPath)
-
-    with pytest.raises(pytest.skip.Exception):
+    with pytest.raises(pytest.fail.Exception):
         type1_mod.TestCFFType1FontFromCIDFontRaises().test_from_bytes_rejects_cid_keyed()
 
 

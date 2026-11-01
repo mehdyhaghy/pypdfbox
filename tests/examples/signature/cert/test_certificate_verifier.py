@@ -12,6 +12,7 @@ from pypdfbox.examples.signature.cert.certificate_verifier import (
     CertificateVerificationException,
     CertificateVerifier,
 )
+from tests._rsa_key_pool import pooled_rsa_key
 
 
 def _build_intermediate_cert(
@@ -26,7 +27,7 @@ def _build_intermediate_cert(
     via the issuer's public key. Carries Basic Constraints CA:TRUE so chain
     walks treat it as a CA.
     """
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name(
         [x509.NameAttribute(NameOID.COMMON_NAME, common_name)],
     )
@@ -53,7 +54,7 @@ def _build_leaf_signed_by(
     *,
     common_name: str = "pypdfbox-leaf",
 ) -> tuple[x509.Certificate, rsa.RSAPrivateKey]:
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name(
         [x509.NameAttribute(NameOID.COMMON_NAME, common_name)],
     )
@@ -514,7 +515,7 @@ def test_first_aia_returns_none_when_only_other_method_present():
     extension itself is present — exercising the loop-completion branch."""
     from cryptography.x509.oid import AuthorityInformationAccessOID
 
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name(
         [x509.NameAttribute(NameOID.COMMON_NAME, "pypdfbox-ca-only")],
     )

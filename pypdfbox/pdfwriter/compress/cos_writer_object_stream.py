@@ -295,4 +295,355 @@ class COSWriterObjectStream:
     _write_cos_null = write_cos_null
 
 
-__all__ = ["COSWriterObjectStream"]
+class _ListSink:
+    """``write(bytes)`` sink that appends to a list (for ``write_pdf``)."""
+
+    __slots__ = ("write",)
+
+    def __init__(self, parts: list[bytes]) -> None:
+        self.write = parts.append
+
+
+# The value-hashed scalar kinds. Their ``__eq__`` only matches within the
+# kind's own class hierarchy, so a value-pool lookup can be skipped when the
+# pool holds no member of that kind.
+_VALUE_KINDS: frozenset[int] = frozenset(
+    (_K_STRING, _K_FLOAT, _K_INTEGER, _K_BOOLEAN, _K_NAME)
+)
+_END = object()
+# Container nesting depth past which the recursive fast path hands the
+# subtree to the explicit-stack walker (keeps clear of the recursion limit).
+_FAST_PATH_MAX_DEPTH = 64
+
+
+def serialize_packed_objects(
+    objects: list[COSBase],
+    object_keys: dict[int, COSObjectKey],
+    value_pool: dict[COSBase, COSObjectKey],
+    ref_cache: dict[int, tuple[COSObjectKey, bytes]] | None = None,
+) -> list[bytes]:
+    """Serialize each of ``objects`` exactly as
+    ``COSWriterObjectStream.write_object(out, obj, top_level=True)`` does
+    when its pool answers ``contains`` / ``get_key`` from ``object_keys``
+    (identity, ``id()``-keyed) and then ``value_pool`` (value equality, for
+    the scalar types), as ``COSWriter``'s ``_ObjStmPoolShim`` does. Returns
+    one ``bytes`` body per object.
+
+    This is the hot path of object-stream packing. Shallow structures take a
+    recursive path specialised for the common exact types; containers nested
+    deeper than ``_FAST_PATH_MAX_DEPTH`` are walked with an explicit stack,
+    so arbitrarily deep nesting never hits the recursion limit.
+
+    ``ref_cache`` (``id(key) -> (key, b"N G R ")``) may be shared across
+    calls of one save to reuse formatted references; each entry pins its
+    key, so a recycled ``id`` is detected by the identity check.
+    """
+    from pypdfbox.pdfwriter.cos_writer import COSWriter as _Writer
+
+    write_string = _Writer.write_string
+    kinds_in_pool = frozenset(_kind_of(type(k)) for k in value_pool)
+    kinds_in_pool &= _VALUE_KINDS
+    keys_get = object_keys.get
+    pool_get = value_pool.get
+    kind_get = _KIND_CACHE.get
+    is_obj_get = _IS_COS_OBJECT.get
+    name_type = COSName
+    int_type = COSInteger
+    dict_type = COSDictionary
+    array_type = COSArray
+    object_type = COSObject
+    space = _SPACE
+    if ref_cache is None:
+        ref_cache = {}
+    ref_get = ref_cache.get
+    no_pool = not kinds_in_pool
+    string_type = COSString
+    float_type = COSFloat
+
+    parts: list[bytes] = []
+    append = parts.append
+    sink = _ListSink(parts)
+
+    def ref_bytes(key: COSObjectKey) -> bytes:
+        hit = ref_get(id(key))
+        if hit is not None and hit[0] is key:
+            return hit[1]
+        data = b"%d %d R " % (key.get_number(), key.get_generation())
+        ref_cache[id(key)] = (key, data)
+        return data
+
+    def pool_key(base: COSBase, kind: int, item: object) -> COSObjectKey | None:
+        """``contains`` + ``get_key`` for a nested (non-top-level) base."""
+        key = keys_get(id(base), _END)
+        if key is _END:
+            if kind in kinds_in_pool:
+                return pool_get(base)
+            return None
+        if key is None:
+            # ``contains`` held but the identity entry is None: fall back to
+            # the value pool, else fail like ``write_object``.
+            if kind in _VALUE_KINDS:
+                key = pool_get(base)
+            if key is None:
+                raise OSError(
+                    f"Error: Adding unknown object reference to object stream:{item}"
+                )
+        return key  # type: ignore[return-value]
+
+    def emit_scalar(base: COSBase, kind: int, item: object) -> None:
+        """Write a resolved non-container value (``write_cos_*``)."""
+        if kind == _K_NAME:
+            if type(base) is name_type:
+                token = base._token  # type: ignore[attr-defined]
+                if token is None:
+                    base.write_pdf(sink)  # type: ignore[attr-defined]
+                else:
+                    append(token)
+            else:
+                _write_pdf(base, sink)  # type: ignore[arg-type]
+            append(space)
+        elif kind == _K_INTEGER:
+            if type(base) is int_type:
+                append(b"%d " % base.value)  # type: ignore[attr-defined]
+            else:
+                _write_pdf(base, sink)  # type: ignore[arg-type]
+                append(space)
+        elif kind == _K_STRING:
+            write_string(base, sink)  # type: ignore[arg-type]
+            append(space)
+        elif kind in (_K_FLOAT, _K_BOOLEAN):
+            _write_pdf(base, sink)  # type: ignore[arg-type]
+            append(space)
+        elif kind == _K_NULL:
+            append(b"null ")
+        else:
+            raise OSError(f"Error: Unknown type in object stream:{item}")
+
+    def emit_key(dkey: object) -> None:
+        """Dictionary keys are written as top-level (PDFBOX-5927)."""
+        if type(dkey) is name_type:
+            token = dkey._token  # type: ignore[attr-defined]
+            if token is None:
+                dkey.write_pdf(sink)  # type: ignore[attr-defined]
+            else:
+                append(token)
+            append(space)
+        else:
+            walk(dkey, True)
+
+    def resolve(item: object, top: bool) -> COSBase | None:
+        """Shared prologue of ``write_object``: resolve a ``COSObject`` and
+        answer nested pool references. Returns the base still to be written,
+        or ``None`` when the item was fully emitted here."""
+        tp = type(item)
+        is_obj = is_obj_get(tp)
+        if is_obj is None:
+            is_obj = _IS_COS_OBJECT[tp] = issubclass(tp, COSObject)
+        base = item
+        if is_obj:
+            if not top:
+                actual_key = item.get_key()  # type: ignore[attr-defined]
+                if actual_key is not None:
+                    append(ref_bytes(actual_key))
+                    return None
+            inner = item.get_object()  # type: ignore[attr-defined]
+            if inner is None:
+                _LOG.debug(
+                    "Can't dereference indirect object, writing COSNull instead %s",
+                    item,
+                )
+                append(b"null ")
+                return None
+            base = inner
+        if not top:
+            btp = type(base)
+            kind = kind_get(btp)
+            if kind is None:
+                kind = _kind_of(btp)
+            key = pool_key(base, kind, item)  # type: ignore[arg-type]
+            if key is not None:
+                append(ref_bytes(key))
+                return None
+        return base  # type: ignore[return-value]
+
+    def walk(root: object, top: bool) -> None:
+        """Explicit-stack ``write_object`` (no recursion on containers)."""
+        stack: list[tuple[bool, object, bytes]] = []
+        item: object = root
+        while True:
+            if item is not None:
+                base = resolve(item, top)
+                if base is not None:
+                    btp = type(base)
+                    kind = kind_get(btp)
+                    if kind is None:
+                        kind = _kind_of(btp)
+                    if kind == _K_DICTIONARY:
+                        append(b"<<")
+                        stack.append((True, iter(base.entry_set()), b">> "))  # type: ignore[attr-defined]
+                    elif kind == _K_ARRAY:
+                        append(b"[")
+                        stack.append((False, iter(base), b"] "))  # type: ignore[call-overload]
+                    else:
+                        emit_scalar(base, kind, item)
+            item = None
+            while stack:
+                is_dict, it, closer = stack[-1]
+                if is_dict:
+                    for dkey, dvalue in it:  # type: ignore[attr-defined]
+                        if dvalue is None:
+                            continue
+                        emit_key(dkey)
+                        item = dvalue
+                        break
+                    else:
+                        stack.pop()
+                        append(closer)
+                        continue
+                    break
+                nxt = next(it, _END)  # type: ignore[call-overload]
+                if nxt is _END:
+                    stack.pop()
+                    append(closer)
+                    continue
+                if nxt is None:
+                    append(b"null ")
+                    continue
+                item = nxt
+                break
+            if item is None:
+                return
+            top = False
+
+    def emit_nested(value: object, depth: int) -> None:
+        """Recursive fast path for a nested (non-top-level) value."""
+        tv = type(value)
+        if tv is object_type:
+            actual_key = value.get_key()  # type: ignore[attr-defined]
+            if actual_key is not None:
+                hit = ref_get(id(actual_key))
+                if hit is not None and hit[0] is actual_key:
+                    append(hit[1])
+                else:
+                    append(ref_bytes(actual_key))
+                return
+            inner = value.get_object()  # type: ignore[attr-defined]
+            if inner is None:
+                walk(value, False)
+                return
+            ti = type(inner)
+            if ti is not dict_type and ti is not array_type:
+                # Uncommon payload: the general path resolves it the same way.
+                walk(value, False)
+                return
+            # Continue with the resolved container (``base = inner``).
+            value = inner
+            tv = ti
+        if tv is name_type:
+            if kinds_in_pool:
+                key = pool_key(value, _K_NAME, value)  # type: ignore[arg-type]
+            else:
+                key = keys_get(id(value), _END)
+                if key is _END:
+                    key = None
+                elif key is None:
+                    key = pool_key(value, _K_NAME, value)  # type: ignore[arg-type]
+            if key is None:
+                token = value._token  # type: ignore[attr-defined]
+                if token is None:
+                    value.write_pdf(sink)  # type: ignore[attr-defined]
+                else:
+                    append(token)
+                append(space)
+                return
+        elif tv is int_type:
+            if kinds_in_pool:
+                key = pool_key(value, _K_INTEGER, value)  # type: ignore[arg-type]
+            else:
+                key = keys_get(id(value), _END)
+                if key is _END:
+                    key = None
+                elif key is None:
+                    key = pool_key(value, _K_INTEGER, value)  # type: ignore[arg-type]
+            if key is None:
+                append(b"%d " % value._value)  # type: ignore[attr-defined]
+                return
+        elif tv is dict_type or tv is array_type:
+            key = keys_get(id(value), _END)
+            if key is _END:
+                key = None
+            elif key is None:
+                key = pool_key(value, _K_ARRAY, value)  # type: ignore[arg-type]
+            if key is None:
+                if depth >= _FAST_PATH_MAX_DEPTH:
+                    walk(value, False)
+                elif tv is dict_type:
+                    emit_dict(value, depth + 1)  # type: ignore[arg-type]
+                else:
+                    emit_array(value, depth + 1)  # type: ignore[arg-type]
+                return
+        elif tv is string_type or tv is float_type:
+            kind = _K_STRING if tv is string_type else _K_FLOAT
+            key = pool_key(value, kind, value)  # type: ignore[arg-type]
+            if key is None:
+                emit_scalar(value, kind, value)  # type: ignore[arg-type]
+                return
+        else:
+            walk(value, False)
+            return
+        hit = ref_get(id(key))
+        if hit is not None and hit[0] is key:
+            append(hit[1])
+        else:
+            append(ref_bytes(key))
+
+    def emit_dict(cos_dict: COSDictionary, depth: int) -> None:
+        append(b"<<")
+        for dkey, dvalue in cos_dict.entry_set():
+            if dvalue is None:
+                continue
+            if type(dkey) is name_type and dkey._token is not None:
+                append(dkey._token)
+                append(space)
+            else:
+                emit_key(dkey)
+            if no_pool:
+                # Inline the two commonest direct scalars (no value pool, so
+                # only the identity table can turn them into references).
+                tv = type(dvalue)
+                if tv is name_type:
+                    token = dvalue._token  # type: ignore[attr-defined]
+                    if token is not None and keys_get(id(dvalue), _END) is _END:
+                        append(token)
+                        append(space)
+                        continue
+                elif tv is int_type and keys_get(id(dvalue), _END) is _END:
+                    append(b"%d " % dvalue._value)  # type: ignore[attr-defined]
+                    continue
+            emit_nested(dvalue, depth)
+        append(b">> ")
+
+    def emit_array(cos_array: COSArray, depth: int) -> None:
+        append(b"[")
+        for value in cos_array:
+            if value is None:
+                append(b"null ")
+            else:
+                emit_nested(value, depth)
+        append(b"] ")
+
+    results: list[bytes] = []
+    for root in objects:
+        tr = type(root)
+        if tr is dict_type:
+            emit_dict(root, 1)  # type: ignore[arg-type]
+        elif tr is array_type:
+            emit_array(root, 1)  # type: ignore[arg-type]
+        elif root is not None:
+            walk(root, True)
+        results.append(b"".join(parts))
+        parts.clear()
+    return results
+
+
+__all__ = ["COSWriterObjectStream", "serialize_packed_objects"]

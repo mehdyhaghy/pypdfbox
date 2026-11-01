@@ -6,11 +6,11 @@ from io import BytesIO
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import pkcs7, pkcs12
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 from pypdfbox.examples.signature.create_signature_base import CreateSignatureBase
+from tests._rsa_key_pool import pooled_rsa_key
 
 
 def _build_pkcs12(
@@ -23,7 +23,7 @@ def _build_pkcs12(
     now = _dt.datetime.now(_dt.UTC)
     not_before = not_before or (now - _dt.timedelta(days=1))
     not_after = not_after or (now + _dt.timedelta(days=365))
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "pypdfbox-test")])
     cert = (
         x509.CertificateBuilder()
@@ -55,7 +55,7 @@ def _build_pkcs12(
     )
     cas: list[x509.Certificate] = []
     for i in range(extra_chain):
-        extra_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        extra_key = pooled_rsa_key()
         extra_subject = x509.Name(
             [x509.NameAttribute(NameOID.COMMON_NAME, f"pypdfbox-extra-{i}")]
         )
@@ -147,7 +147,7 @@ def test_constructor_rejects_future_dated_certificate():
 def test_set_private_key_replaces_key(pkcs12_bytes, tsa_password):
     """Cover ``set_private_key`` (line 65)."""
     signer = CreateSignatureBase(pkcs12_bytes, tsa_password)
-    new_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    new_key = pooled_rsa_key()
     signer.set_private_key(new_key)
     assert signer._private_key is new_key
 

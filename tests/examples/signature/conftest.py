@@ -17,6 +17,8 @@ from cryptography.x509.oid import (
     NameOID,
 )
 
+from tests._rsa_key_pool import pooled_rsa_key
+
 
 @pytest.fixture(autouse=True)
 def _no_ocsp_network(monkeypatch):
@@ -50,7 +52,7 @@ def _build_self_signed(
     add_crl: bool = False,
     extended_key_usage: list = None,
 ) -> tuple[x509.Certificate, rsa.RSAPrivateKey]:
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = x509.Name(
         [x509.NameAttribute(NameOID.COMMON_NAME, common_name)],
     )

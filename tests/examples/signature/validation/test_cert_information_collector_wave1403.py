@@ -10,18 +10,18 @@ import datetime as _dt
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
 from pypdfbox.examples.signature.validation.cert_information_collector import (
     CertInformationCollector,
 )
+from tests._rsa_key_pool import pooled_rsa_key
 
 
 def _make_ca_and_leaf() -> tuple[x509.Certificate, x509.Certificate]:
     """An issuer CA and a leaf signed by it (so the leaf is *not*
     self-signed)."""
-    ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    ca_key = pooled_rsa_key()
     ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Test CA")])
     now = _dt.datetime.now(_dt.UTC)
     ca_cert = (
@@ -35,7 +35,7 @@ def _make_ca_and_leaf() -> tuple[x509.Certificate, x509.Certificate]:
         .sign(ca_key, hashes.SHA256())
     )
 
-    leaf_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    leaf_key = pooled_rsa_key()
     leaf_name = x509.Name(
         [x509.NameAttribute(NameOID.COMMON_NAME, "Test Leaf")],
     )

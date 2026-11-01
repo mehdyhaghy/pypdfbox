@@ -13,7 +13,7 @@ import io
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import ec, ed448, ed25519, rsa
+from cryptography.hazmat.primitives.asymmetric import ec, ed448, ed25519
 from cryptography.x509 import ocsp
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
@@ -26,6 +26,7 @@ from pypdfbox.examples.signature.cert.ocsp_helper import OcspException, OcspHelp
 from pypdfbox.examples.signature.cert.revoked_certificate_exception import (
     RevokedCertificateException,
 )
+from tests._rsa_key_pool import pooled_rsa_key
 
 URL = "http://ocsp.test.invalid/check"
 
@@ -68,7 +69,7 @@ def _issue(subject_cn, key, issuer_name, issuer_key, *, ca=False, ocsp_signing=F
 
 @pytest.fixture(scope="module")
 def pki():
-    ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    ca_key = pooled_rsa_key()
     ca_cert = _issue("Test Root CA", ca_key, _name("Test Root CA"), ca_key, ca=True)
     leaf_key = ec.generate_private_key(ec.SECP256R1())
     leaf = _issue("leaf", leaf_key, ca_cert.subject, ca_key)
@@ -154,7 +155,7 @@ def test_responder_found_in_additional_certs_when_not_in_response(pki):
 @pytest.mark.parametrize(
     "make_key",
     [
-        lambda: rsa.generate_private_key(public_exponent=65537, key_size=2048),
+        lambda: pooled_rsa_key(),
         lambda: ec.generate_private_key(ec.SECP384R1()),
         ed25519.Ed25519PrivateKey.generate,
         ed448.Ed448PrivateKey.generate,
@@ -235,7 +236,7 @@ def test_wrong_certificate_id_rejected(pki):
 
 
 def test_wrong_issuer_hash_rejected(pki):
-    other_ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    other_ca_key = pooled_rsa_key()
     other_ca = _issue("Other CA", other_ca_key, _name("Other CA"), other_ca_key, ca=True)
     helper = OcspHelper(pki["leaf"], None, other_ca, [other_ca], URL)
     single = next(iter(_response(pki).responses))

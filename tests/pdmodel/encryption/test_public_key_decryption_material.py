@@ -13,11 +13,12 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
 from pypdfbox.pdmodel.encryption import PublicKeyDecryptionMaterial
+from tests._rsa_key_pool import pooled_rsa_key
 
 
 def _build_self_signed() -> tuple[rsa.RSAPrivateKey, x509.Certificate]:
     """Mint a tiny self-signed RSA cert for the round-trip tests."""
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = issuer = x509.Name(
         [x509.NameAttribute(NameOID.COMMON_NAME, "pypdfbox-test")]
     )

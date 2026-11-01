@@ -29,6 +29,8 @@ import io
 
 import pytest
 
+from tests._rsa_key_pool import pooled_rsa_key
+
 # Skip on checkouts that don't have the security cluster present yet.
 pytest.importorskip("pypdfbox.pdmodel.encryption.standard_security_handler")
 pytest.importorskip("pypdfbox.pdmodel.encryption.standard_protection_policy")
@@ -583,10 +585,9 @@ def _build_self_signed_rsa() -> tuple[object, object]:
     """Return ``(cert, private_key)`` — same shape as the wave-1289 helper."""
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes
-    from cryptography.hazmat.primitives.asymmetric import rsa
     from cryptography.x509.oid import NameOID
 
-    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_key = pooled_rsa_key()
     name = x509.Name(
         [x509.NameAttribute(NameOID.COMMON_NAME, "wave1367-recipient")]
     )

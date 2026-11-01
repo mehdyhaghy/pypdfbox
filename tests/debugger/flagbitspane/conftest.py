@@ -5,25 +5,27 @@ headless systems. The ``tk_root`` fixture attempts to create one and skips
 the test on ``tk.TclError`` (e.g. ``no display name and no $DISPLAY``).
 """
 
-import contextlib
-import os
-import tkinter as tk
 from collections.abc import Iterator
 
 import pytest
 
+from tests.debugger._shared_tk_root import SharedTkRoot
+
+
+@pytest.fixture(scope="package")
+def _shared_tk_root() -> Iterator[SharedTkRoot]:
+    """One withdrawn Tk root for the whole package (see ``_shared_tk_root``)."""
+    shared = SharedTkRoot()
+    try:
+        yield shared
+    finally:
+        shared.close()
+
 
 @pytest.fixture()
-def tk_root() -> Iterator[tk.Tk]:
-    if os.environ.get("PYPDFBOX_SKIP_TK", "") == "1":
-        pytest.skip("PYPDFBOX_SKIP_TK=1 -- Tk tests opted out")
-    try:
-        root = tk.Tk()
-    except tk.TclError as exc:
-        pytest.skip(f"no Tk display available: {exc}")
-    root.withdraw()
+def tk_root(_shared_tk_root: SharedTkRoot):
+    root = _shared_tk_root.acquire()
     try:
         yield root
     finally:
-        with contextlib.suppress(tk.TclError):
-            root.destroy()
+        _shared_tk_root.reset()

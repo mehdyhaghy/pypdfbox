@@ -41,6 +41,7 @@ from pypdfbox.pdmodel.interactive.digitalsignature import (
     PDValidationInformation,
     Pkcs7Signature,
 )
+from tests._rsa_key_pool import pooled_rsa_key
 
 # ---------- shared helpers ----------
 
@@ -48,7 +49,7 @@ from pypdfbox.pdmodel.interactive.digitalsignature import (
 def _make_self_signed_cert(
     cn: str = "pypdfbox wave 1382",
 ) -> tuple[x509.Certificate, rsa.RSAPrivateKey]:
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     subject = issuer = x509.Name(
         [
             x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),

@@ -9,11 +9,10 @@ The GB context register is a Java ``int`` whose low 16 bits drive the
 arithmetic context selection. Python ints are unbounded, so the running
 ``context`` register is masked to 16 bits with ``& 0xFFFF`` exactly where the
 context is rebuilt each pixel — the CX array is sized 65536, so only the low 16
-bits are ever indexed. The ``line1`` / ``line2`` shift registers are left
-unmasked: every read of them extracts a single low bit via ``(line >> n) &
-0x..``, so their (unbounded) high bits never reach the result, matching the
-upstream where the bits shifted past the high end of the Java ``int`` are
-likewise discarded by the same masked extraction. ``read_byte()`` yields a
+bits are ever indexed. The ``line1`` / ``line2`` shift registers are truncated
+to 32 bits like the Java ``int`` registers; every read of them extracts a
+single bit no higher than bit 18 via ``(line >> n) & 0x..``, so the discarded
+high bits never reach the result. ``read_byte()`` yields a
 signed value (-128..127) just like Java's ``short``-promoted ``readByte()``, so
 the AT coordinates stay signed.
 """
@@ -21,7 +20,11 @@ the AT coordinates stay signed.
 from typing import TYPE_CHECKING
 
 from pypdfbox.jbig2.bitmap import Bitmap
-from pypdfbox.jbig2.decoder.arithmetic.arithmetic_decoder import ArithmeticDecoder
+from pypdfbox.jbig2.decoder.arithmetic.arithmetic_decoder import (
+    QE_DECODE,
+    RENORM_SHIFTS,
+    ArithmeticDecoder,
+)
 from pypdfbox.jbig2.decoder.arithmetic.cx import CX
 from pypdfbox.jbig2.decoder.mmr.mmr_decompressor import MMRDecompressor
 from pypdfbox.jbig2.io.sub_input_stream import SubInputStream
@@ -32,6 +35,7 @@ if TYPE_CHECKING:
     from pypdfbox.jbig2.segment_header import SegmentHeader
 
 _MASK16 = 0xFFFF
+_MASK32 = 0xFFFFFFFF
 
 
 def _java_ushr(value: int, shift: int) -> int:
@@ -172,26 +176,33 @@ class GenericRegion(Region):
                     self.region_info.get_bitmap_height(),
                 )
 
-                padded_width = (self.region_bitmap.get_width() + 7) & -8
+                params = self._template_params()
+                if params is not None:
+                    # 6.2.5.7 - 3, all lines in one pass (see _decode_lines_arith)
+                    self._decode_lines_arith(
+                        0, self.region_bitmap.get_height(), self.is_tpgdon, params
+                    )
+                else:
+                    padded_width = (self.region_bitmap.get_width() + 7) & -8
 
-                # 6.2.5.7 - 3
-                for line in range(self.region_bitmap.get_height()):
-                    # 6.2.5.7 - 3 b)
-                    if self.is_tpgdon:
-                        ltp ^= self._decode_sltp()
+                    # 6.2.5.7 - 3
+                    for line in range(self.region_bitmap.get_height()):
+                        # 6.2.5.7 - 3 b)
+                        if self.is_tpgdon:
+                            ltp ^= self._decode_sltp()
 
-                    # 6.2.5.7 - 3 c)
-                    if ltp == 1:
-                        if line > 0:
-                            self._copy_line_above(line)
-                    else:
-                        # 6.2.5.7 - 3 d)
-                        self._decode_line(
-                            line,
-                            self.region_bitmap.get_width(),
-                            self.region_bitmap.get_row_stride(),
-                            padded_width,
-                        )
+                        # 6.2.5.7 - 3 c)
+                        if ltp == 1:
+                            if line > 0:
+                                self._copy_line_above(line)
+                        else:
+                            # 6.2.5.7 - 3 d)
+                            self._decode_line(
+                                line,
+                                self.region_bitmap.get_width(),
+                                self.region_bitmap.get_row_stride(),
+                                padded_width,
+                            )
 
         # 4
         return self.region_bitmap
@@ -240,15 +251,13 @@ class GenericRegion(Region):
 
         Line 0 cannot get copied values (source would not exist).
         """
-        target_byte_index = line_number * self.region_bitmap.get_row_stride()
-        source_byte_index = target_byte_index - self.region_bitmap.get_row_stride()
-
-        for _ in range(self.region_bitmap.get_row_stride()):
-            self.region_bitmap.set_byte(
-                target_byte_index, self.region_bitmap.get_byte(source_byte_index)
-            )
-            target_byte_index += 1
-            source_byte_index += 1
+        row_stride = self.region_bitmap.get_row_stride()
+        target_byte_index = line_number * row_stride
+        source_byte_index = target_byte_index - row_stride
+        data = self.region_bitmap.bitmap_bytes
+        data[target_byte_index : target_byte_index + row_stride] = data[
+            source_byte_index : source_byte_index + row_stride
+        ]
 
     def _decode_template0a(
         self,
@@ -259,66 +268,9 @@ class GenericRegion(Region):
         byte_index: int,
         idx: int,
     ) -> None:
-        line1 = 0
-        line2 = 0
-
-        if line_number >= 1:
-            line1 = self.region_bitmap.get_byte_as_integer(idx)
-
-        if line_number >= 2:
-            line2 = self.region_bitmap.get_byte_as_integer(idx - row_stride) << 6
-
-        context = (line1 & 0xF0) | (line2 & 0x3800)
-
-        x = 0
-        while x < padded_width:
-            # 6.2.5.7 3d
-            result = 0
-            next_byte = x + 8
-            minor_width = min(width - x, 8)
-
-            if line_number > 0:
-                line1 = (line1 << 8) | (
-                    self.region_bitmap.get_byte_as_integer(idx + 1)
-                    if next_byte < width
-                    else 0
-                )
-
-            if line_number > 1:
-                line2 = (line2 << 8) | (
-                    self.region_bitmap.get_byte_as_integer(idx - row_stride + 1) << 6
-                    if next_byte < width
-                    else 0
-                )
-
-            for minor_x in range(minor_width):
-                to_shift = 7 - minor_x
-                if self.override:
-                    overridden_context = self._override_at_template0a(
-                        context, x + minor_x, line_number, result, minor_x, to_shift
-                    )
-                    self.cx.set_index(overridden_context)
-                else:
-                    self.cx.set_index(context)
-
-                if self.use_skip and self.h_skip.get_pixel(x + minor_x, line_number) == 1:
-                    bit = 0
-                else:
-                    bit = self.arith_decoder.decode(self.cx)
-
-                result |= bit << to_shift
-
-                context = (
-                    ((context & 0x7BF7) << 1)
-                    | bit
-                    | ((line1 >> to_shift) & 0x10)
-                    | ((line2 >> to_shift) & 0x800)
-                ) & _MASK16
-
-            self.region_bitmap.set_byte(byte_index, result)
-            byte_index += 1
-            idx += 1
-            x = next_byte
+        self._decode_lines_arith(
+            line_number, line_number + 1, False, self._template_params(0, False)
+        )
 
     def _decode_template0b(
         self,
@@ -329,66 +281,9 @@ class GenericRegion(Region):
         byte_index: int,
         idx: int,
     ) -> None:
-        line1 = 0
-        line2 = 0
-
-        if line_number >= 1:
-            line1 = self.region_bitmap.get_byte_as_integer(idx)
-
-        if line_number >= 2:
-            line2 = self.region_bitmap.get_byte_as_integer(idx - row_stride) << 6
-
-        context = (line1 & 0xF0) | (line2 & 0x3800)
-
-        x = 0
-        while x < padded_width:
-            # 6.2.5.7 3d
-            result = 0
-            next_byte = x + 8
-            minor_width = min(width - x, 8)
-
-            if line_number > 0:
-                line1 = (line1 << 8) | (
-                    self.region_bitmap.get_byte_as_integer(idx + 1)
-                    if next_byte < width
-                    else 0
-                )
-
-            if line_number > 1:
-                line2 = (line2 << 8) | (
-                    self.region_bitmap.get_byte_as_integer(idx - row_stride + 1) << 6
-                    if next_byte < width
-                    else 0
-                )
-
-            for minor_x in range(minor_width):
-                to_shift = 7 - minor_x
-                if self.override:
-                    overridden_context = self._override_at_template0b(
-                        context, x + minor_x, line_number, result, minor_x, to_shift
-                    )
-                    self.cx.set_index(overridden_context)
-                else:
-                    self.cx.set_index(context)
-
-                if self.use_skip and self.h_skip.get_pixel(x + minor_x, line_number) == 1:
-                    bit = 0
-                else:
-                    bit = self.arith_decoder.decode(self.cx)
-
-                result |= bit << to_shift
-
-                context = (
-                    ((context & 0x7BF7) << 1)
-                    | bit
-                    | ((line1 >> to_shift) & 0x10)
-                    | ((line2 >> to_shift) & 0x800)
-                ) & _MASK16
-
-            self.region_bitmap.set_byte(byte_index, result)
-            byte_index += 1
-            idx += 1
-            x = next_byte
+        self._decode_lines_arith(
+            line_number, line_number + 1, False, self._template_params(0, True)
+        )
 
     def _decode_template1(
         self,
@@ -399,66 +294,9 @@ class GenericRegion(Region):
         byte_index: int,
         idx: int,
     ) -> None:
-        line1 = 0
-        line2 = 0
-
-        if line_number >= 1:
-            line1 = self.region_bitmap.get_byte_as_integer(idx)
-
-        if line_number >= 2:
-            line2 = self.region_bitmap.get_byte_as_integer(idx - row_stride) << 5
-
-        context = ((line1 >> 1) & 0x1F8) | ((line2 >> 1) & 0x1E00)
-
-        x = 0
-        while x < padded_width:
-            # 6.2.5.7 3d
-            result = 0
-            next_byte = x + 8
-            minor_width = min(width - x, 8)
-
-            if line_number >= 1:
-                line1 = (line1 << 8) | (
-                    self.region_bitmap.get_byte_as_integer(idx + 1)
-                    if next_byte < width
-                    else 0
-                )
-
-            if line_number >= 2:
-                line2 = (line2 << 8) | (
-                    self.region_bitmap.get_byte_as_integer(idx - row_stride + 1) << 5
-                    if next_byte < width
-                    else 0
-                )
-
-            for minor_x in range(minor_width):
-                if self.override:
-                    overridden_context = self._override_at_template1(
-                        context, x + minor_x, line_number, result, minor_x
-                    )
-                    self.cx.set_index(overridden_context)
-                else:
-                    self.cx.set_index(context)
-
-                if self.use_skip and self.h_skip.get_pixel(x + minor_x, line_number) == 1:
-                    bit = 0
-                else:
-                    bit = self.arith_decoder.decode(self.cx)
-
-                result |= bit << (7 - minor_x)
-
-                to_shift = 8 - minor_x
-                context = (
-                    ((context & 0xEFB) << 1)
-                    | bit
-                    | ((line1 >> to_shift) & 0x8)
-                    | ((line2 >> to_shift) & 0x200)
-                ) & _MASK16
-
-            self.region_bitmap.set_byte(byte_index, result)
-            byte_index += 1
-            idx += 1
-            x = next_byte
+        self._decode_lines_arith(
+            line_number, line_number + 1, False, self._template_params(1)
+        )
 
     def _decode_template2(
         self,
@@ -469,66 +307,9 @@ class GenericRegion(Region):
         byte_index: int,
         idx: int,
     ) -> None:
-        line1 = 0
-        line2 = 0
-
-        if line_number >= 1:
-            line1 = self.region_bitmap.get_byte_as_integer(idx)
-
-        if line_number >= 2:
-            line2 = self.region_bitmap.get_byte_as_integer(idx - row_stride) << 4
-
-        context = ((line1 >> 3) & 0x7C) | ((line2 >> 3) & 0x380)
-
-        x = 0
-        while x < padded_width:
-            # 6.2.5.7 3d
-            result = 0
-            next_byte = x + 8
-            minor_width = min(width - x, 8)
-
-            if line_number >= 1:
-                line1 = (line1 << 8) | (
-                    self.region_bitmap.get_byte_as_integer(idx + 1)
-                    if next_byte < width
-                    else 0
-                )
-
-            if line_number >= 2:
-                line2 = (line2 << 8) | (
-                    self.region_bitmap.get_byte_as_integer(idx - row_stride + 1) << 4
-                    if next_byte < width
-                    else 0
-                )
-
-            for minor_x in range(minor_width):
-                if self.override:
-                    overridden_context = self._override_at_template2(
-                        context, x + minor_x, line_number, result, minor_x
-                    )
-                    self.cx.set_index(overridden_context)
-                else:
-                    self.cx.set_index(context)
-
-                if self.use_skip and self.h_skip.get_pixel(x + minor_x, line_number) == 1:
-                    bit = 0
-                else:
-                    bit = self.arith_decoder.decode(self.cx)
-
-                result |= bit << (7 - minor_x)
-
-                to_shift = 10 - minor_x
-                context = (
-                    ((context & 0x1BD) << 1)
-                    | bit
-                    | ((line1 >> to_shift) & 0x4)
-                    | ((line2 >> to_shift) & 0x80)
-                ) & _MASK16
-
-            self.region_bitmap.set_byte(byte_index, result)
-            byte_index += 1
-            idx += 1
-            x = next_byte
+        self._decode_lines_arith(
+            line_number, line_number + 1, False, self._template_params(2)
+        )
 
     def _decode_template3(
         self,
@@ -539,52 +320,309 @@ class GenericRegion(Region):
         byte_index: int,
         idx: int,
     ) -> None:
-        line1 = 0
+        self._decode_lines_arith(
+            line_number, line_number + 1, False, self._template_params(3)
+        )
 
-        if line_number >= 1:
-            line1 = self.region_bitmap.get_byte_as_integer(idx)
+    def _template_params(
+        self, gb_template: int | None = None, use_ext_templates: bool | None = None
+    ) -> tuple | None:
+        """Return the per-template constants of the 6.2.5.7 3d line loop.
 
-        context = (line1 >> 1) & 0x70
+        ``(line2_shift, init_shift, init_mask1, init_mask2, context_mask,
+        context_base_shift, line1_bit, line2_bit, override_at)``: the initial
+        context of a line is ``((line1 >> init_shift) & init_mask1) | ((line2
+        >> init_shift) & init_mask2)``, and after each pixel it becomes
+        ``(((context & context_mask) << 1) | bit | ((line1 >> s) & line1_bit)
+        | ((line2 >> s) & line2_bit))`` with ``s = context_base_shift -
+        minor_x``. These reproduce the upstream ``decodeTemplate0a`` ..
+        ``decodeTemplate3`` expressions exactly. ``override_at`` is the AT
+        override hook (``None`` when the AT pixels are nominal). A
+        ``line2_shift`` of ``-1`` means the template has no second line.
+        Returns ``None`` for a template value outside 0-3.
+        """
+        if gb_template is None:
+            gb_template = self.gb_template
+        if use_ext_templates is None:
+            use_ext_templates = self.use_ext_templates
+        override = self.override
+        if gb_template == 0:
+            if not use_ext_templates:
+                override_at = self._override_at_template0a if override else None
+            else:
+                override_at = self._override_at_template0b if override else None
+            return (6, 0, 0xF0, 0x3800, 0x7BF7, 7, 0x10, 0x800, override_at)
 
-        x = 0
-        while x < padded_width:
-            # 6.2.5.7 3d
-            result = 0
-            next_byte = x + 8
-            minor_width = min(width - x, 8)
+        override_at = None
+        if gb_template == 1:
+            if override:
+                override_t1 = self._override_at_template1
 
-            if line_number >= 1:
-                line1 = (line1 << 8) | (
-                    self.region_bitmap.get_byte_as_integer(idx + 1)
-                    if next_byte < width
-                    else 0
-                )
+                def override_at(context, x, y, result, minor_x, _to_shift):
+                    return override_t1(context, x, y, result, minor_x)
 
-            for minor_x in range(minor_width):
-                if self.override:
-                    overridden_context = self._override_at_template3(
-                        context, x + minor_x, line_number, result, minor_x
+            return (5, 1, 0x1F8, 0x1E00, 0xEFB, 8, 0x8, 0x200, override_at)
+        if gb_template == 2:
+            if override:
+                override_t2 = self._override_at_template2
+
+                def override_at(context, x, y, result, minor_x, _to_shift):
+                    return override_t2(context, x, y, result, minor_x)
+
+            return (4, 3, 0x7C, 0x380, 0x1BD, 10, 0x4, 0x80, override_at)
+        if gb_template == 3:
+            if override:
+                override_t3 = self._override_at_template3
+
+                def override_at(context, x, y, result, minor_x, _to_shift):
+                    return override_t3(context, x, y, result, minor_x)
+
+            return (-1, 1, 0x70, 0, 0x1F7, 8, 0x010, 0, override_at)
+        return None
+
+    def _decode_lines_arith(
+        self, first_line: int, end_line: int, is_tpgdon: bool, params: tuple
+    ) -> None:
+        """Decode lines ``first_line`` .. ``end_line - 1`` (6.2.5.7 3b-3d).
+
+        With ``is_tpgdon`` each line first decodes its SLTP bit and toggles
+        LTP (starting from 0 at ``first_line``); a typical line is copied from
+        the line above. Otherwise the line is decoded pixel by pixel with the
+        template constants from :meth:`_template_params`.
+
+        The MQ ``DECODE`` procedure of :meth:`ArithmeticDecoder.decode` is
+        inlined with the decoder registers held in locals, and the bitmap
+        bytes are read and written directly; the arithmetic, the context
+        formation and the order of decoder calls are unchanged. The
+        ``line1`` / ``line2`` registers are truncated to 32 bits like the
+        upstream Java ``int`` registers; only their low 19 bits are read.
+        """
+        (
+            line2_shift,
+            init_shift,
+            init_mask1,
+            init_mask2,
+            context_mask,
+            context_base_shift,
+            line1_bit,
+            line2_bit,
+            override_at,
+        ) = params
+
+        bitmap = self.region_bitmap
+        data = bitmap.bitmap_bytes
+        width = bitmap.width
+        row_stride = bitmap.row_stride
+        padded_width = (width + 7) & -8
+        dec = self.arith_decoder
+        cx = self.cx
+        qe_table = QE_DECODE
+        renorm_shifts = RENORM_SHIFTS
+
+        use_skip = self.use_skip
+        skip_bytes = None
+        skip_stride = 0
+        if use_skip:
+            skip_bytes = self.h_skip.bitmap_bytes
+            skip_stride = self.h_skip.row_stride
+        # The inlined DECODE needs the concrete decoder / context classes and
+        # covers the nominal-AT, no-skip case; everything else decodes pixel by
+        # pixel through ``decoder.decode``.
+        fast = (
+            override_at is None
+            and not use_skip
+            and type(dec) is ArithmeticDecoder
+            and type(cx) is CX
+        )
+        cx_arr = cx._cx if fast else None
+        mps_arr = cx._mps if fast else None
+        a = c = ct = 0
+        index = 0
+
+        sltp_context = (0x9B25, 0x795, 0xE5, 0x195)[self.gb_template] if is_tpgdon else 0
+        # (to_shift, s) per pixel position within a byte, and s alone.
+        shifts = tuple((7 - m, context_base_shift - m) for m in range(8))
+        context_shifts = tuple(context_base_shift - m for m in range(8))
+
+        ltp = 0
+        for line_number in range(first_line, end_line):
+            # 6.2.5.7 - 3 b)
+            if is_tpgdon:
+                cx.set_index(sltp_context)
+                ltp ^= dec.decode(cx)
+
+            byte_index = line_number * row_stride
+
+            # 6.2.5.7 - 3 c)
+            if ltp == 1:
+                if line_number > 0:
+                    data[byte_index : byte_index + row_stride] = data[
+                        byte_index - row_stride : byte_index
+                    ]
+                continue
+
+            # 6.2.5.7 - 3 d)
+            idx = byte_index - row_stride
+            has_line1 = line_number > 0
+            has_line2 = line_number > 1 and line2_shift >= 0
+            line1 = data[idx] if has_line1 else 0
+            line2 = data[idx - row_stride] << line2_shift if has_line2 else 0
+            context = ((line1 >> init_shift) & init_mask1) | (
+                (line2 >> init_shift) & init_mask2
+            )
+            up_idx = idx + 1
+            up2_idx = idx - row_stride + 1
+            skip_row = line_number * skip_stride
+            if fast:
+                a = dec.a
+                c = dec.c
+                ct = dec.ct
+                index = cx.index
+
+            x = 0
+            while x < padded_width:
+                result = 0
+                next_byte = x + 8
+                read_next = next_byte < width
+
+                if has_line1:
+                    line1 = ((line1 << 8) & _MASK32) | (data[up_idx] if read_next else 0)
+
+                if has_line2:
+                    line2 = ((line2 << 8) & _MASK32) | (
+                        data[up2_idx] << line2_shift if read_next else 0
                     )
-                    self.cx.set_index(overridden_context)
+
+                minor_width = 8 if read_next else min(width - x, 8)
+
+                if fast:
+                    # ``result`` collects the bits MSB-first by shifting left
+                    # and is aligned to the byte's high end after the loop.
+                    for shift in (
+                        context_shifts if minor_width == 8 else context_shifts[:minor_width]
+                    ):
+                        # Inlined ArithmeticDecoder.decode (E.3.2).
+                        row = qe_table[cx_arr[context] & 0x7F]
+                        qe_value = row[0]
+                        a -= qe_value
+                        qe_high = row[4]
+                        if c < qe_high:
+                            # LPS_EXCHANGE
+                            mps = mps_arr[context]
+                            if a < qe_value:
+                                cx_arr[context] = row[1]
+                                bit = mps
+                            else:
+                                if row[3] == 1:
+                                    mps_arr[context] = mps ^ 1
+                                cx_arr[context] = row[2]
+                                bit = 1 - mps
+                            a = qe_value
+                            # RENORMD
+                            n = renorm_shifts[a]
+                            if ct >= n:
+                                a <<= n
+                                c = (c << n) & _MASK32
+                                ct -= n
+                            else:
+                                while True:
+                                    if ct == 0:
+                                        dec.c = c
+                                        dec._byte_in()
+                                        c = dec.c
+                                        ct = dec.ct
+                                    a <<= 1
+                                    c = (c << 1) & _MASK32
+                                    ct -= 1
+                                    if a & 0x8000:
+                                        break
+                        else:
+                            c -= qe_high
+                            if a & 0x8000:
+                                bit = mps_arr[context]
+                            else:
+                                # MPS_EXCHANGE
+                                mps = mps_arr[context]
+                                if a < qe_value:
+                                    if row[3] == 1:
+                                        mps_arr[context] = mps ^ 1
+                                    cx_arr[context] = row[2]
+                                    bit = 1 - mps
+                                else:
+                                    cx_arr[context] = row[1]
+                                    bit = mps
+                                # RENORMD
+                                n = renorm_shifts[a]
+                                if ct >= n:
+                                    a <<= n
+                                    c = (c << n) & _MASK32
+                                    ct -= n
+                                else:
+                                    while True:
+                                        if ct == 0:
+                                            dec.c = c
+                                            dec._byte_in()
+                                            c = dec.c
+                                            ct = dec.ct
+                                        a <<= 1
+                                        c = (c << 1) & _MASK32
+                                        ct -= 1
+                                        if a & 0x8000:
+                                            break
+
+                        result = (result << 1) | bit
+                        index = context
+                        # The masks keep every term below bit 16, so the
+                        # upstream ``& 0xFFFF`` is a no-op here.
+                        context = (
+                            ((context & context_mask) << 1)
+                            | bit
+                            | ((line1 >> shift) & line1_bit)
+                            | ((line2 >> shift) & line2_bit)
+                        )
+                    if minor_width != 8:
+                        result <<= 8 - minor_width
                 else:
-                    self.cx.set_index(context)
+                    for minor_x, (to_shift, shift) in enumerate(shifts[:minor_width]):
+                        if override_at is not None:
+                            index = override_at(
+                                context,
+                                x + minor_x,
+                                line_number,
+                                result,
+                                minor_x,
+                                to_shift,
+                            )
+                        else:
+                            index = context
+                        cx.set_index(index)
 
-                if self.use_skip and self.h_skip.get_pixel(x + minor_x, line_number) == 1:
-                    bit = 0
-                else:
-                    bit = self.arith_decoder.decode(self.cx)
+                        if use_skip and (
+                            skip_bytes[skip_row + ((x + minor_x) >> 3)] >> to_shift
+                        ) & 1:
+                            bit = 0
+                        else:
+                            bit = dec.decode(cx)
 
-                result |= bit << (7 - minor_x)
-                context = (
-                    ((context & 0x1F7) << 1)
-                    | bit
-                    | ((line1 >> (8 - minor_x)) & 0x010)
-                ) & _MASK16
+                        result |= bit << to_shift
+                        context = (
+                            ((context & context_mask) << 1)
+                            | bit
+                            | ((line1 >> shift) & line1_bit)
+                            | ((line2 >> shift) & line2_bit)
+                        ) & _MASK16
 
-            self.region_bitmap.set_byte(byte_index, result)
-            byte_index += 1
-            idx += 1
-            x = next_byte
+                data[byte_index] = result
+                byte_index += 1
+                up_idx += 1
+                up2_idx += 1
+                x = next_byte
+
+            if fast:
+                dec.a = a
+                dec.c = c
+                dec.ct = ct
+                cx.index = index
 
     def _update_override_flags(self) -> None:
         if self.gb_at_x is None or self.gb_at_y is None:

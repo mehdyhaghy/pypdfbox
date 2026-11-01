@@ -18,6 +18,7 @@ from pypdfbox.pdmodel.encryption.standard_protection_policy import (
     StandardProtectionPolicy,
 )
 from pypdfbox.tools import cli, decrypt
+from tests._rsa_key_pool import pooled_rsa_key
 
 
 def _build_encrypted_pdf(
@@ -48,7 +49,7 @@ def _build_encrypted_pdf(
 
 
 def _self_signed_cert() -> tuple[rsa.RSAPrivateKey, x509.Certificate]:
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key = pooled_rsa_key()
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "wave362")])
     now = dt.datetime.now(dt.UTC)
     cert = (
