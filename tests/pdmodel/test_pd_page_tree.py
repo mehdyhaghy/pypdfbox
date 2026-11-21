@@ -115,12 +115,24 @@ def test_remove_decrements_count() -> None:
     assert _label(tree[0]) == "b"
 
 
-def test_remove_unknown_returns_false() -> None:
+def test_remove_unknown_orphan_raises() -> None:
     tree = PDPageTree()
     tree.add(_make_page("a"))
     other = _make_page("b")
-    # ``other`` was never added, so its parent doesn't reference it.
+    # ``other`` was never added and has no /Parent. Upstream (PDFBOX-6318)
+    # throws; raises ValueError on the 4.0 line.
+    with pytest.raises(ValueError, match="orphan"):
+        tree.remove(other)
+    assert tree.get_count() == 1
+
+
+def test_remove_page_not_in_declared_parent_returns_false() -> None:
+    tree = PDPageTree()
+    tree.add(_make_page("a"))
+    other = _make_page("b")
+    other.get_cos_object().set_item(COSName.PARENT, tree.get_root())
     assert tree.remove(other) is False
+    assert tree.get_count() == 1
 
 
 def test_insert_before() -> None:

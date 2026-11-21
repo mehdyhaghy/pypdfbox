@@ -7,6 +7,10 @@ known-good text comparison). We port the **public-API smoke tests**:
 - ``testStripByOutlineItems`` — bookmark + page-range stripping
 - ``testStartEndPage`` — set_start_page / set_end_page
 - ``testIgnoreContentStreamSpaceGlyphs`` — PDFBOX-3774
+- ``testArticlesOnSameLine`` — PDFBOX-6310 (3.0.9)
+- ``testActualTextWithNestedMarkedContent`` / ``testNestedActualText`` —
+  PDFBOX-6311 (3.0.9)
+- ``testUnclosedActualText`` — PDFBOX-6338 (3.0.9)
 
 We skip:
 
@@ -24,6 +28,8 @@ from pathlib import Path
 import pytest
 
 from pypdfbox import PDDocument, PDPage
+from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.pdmodel.documentinterchange.markedcontent import PDPropertyList
 from pypdfbox.pdmodel.font import PDFontFactory, Standard14Fonts
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDPageDestination,
@@ -31,7 +37,9 @@ from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
 from pypdfbox.pdmodel.interactive.documentnavigation.outline import (
     PDOutlineItem,
 )
+from pypdfbox.pdmodel.interactive.pagenavigation import PDThreadBead
 from pypdfbox.pdmodel.pd_page_content_stream import PDPageContentStream
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from pypdfbox.text import PDFTextStripper
 
 _FIXTURES_PDMODEL = Path(__file__).resolve().parents[2] / "fixtures" / "pdmodel"
@@ -235,5 +243,162 @@ def test_ignore_content_stream_space_glyphs() -> None:
         local_stripper.set_ignore_content_stream_space_glyphs(True)
         text = local_stripper.get_text(doc)
         assert text == "( overlap )\n"
+    finally:
+        doc.close()
+
+
+# ---------- PDFBOX-6310 / 6311 / 6338 (PDFBox 3.0.9) ----------
+
+
+def _helvetica():
+    return PDFontFactory.create_default_font(Standard14Fonts.FontName.HELVETICA.value)
+
+
+_SPAN = COSName.get_pdf_name("Span")
+
+
+def _create_actual_text(actual_text: str) -> PDPropertyList:
+    d = COSDictionary()
+    d.set_string(COSName.get_pdf_name("ActualText"), actual_text)
+    return PDPropertyList.create(d)
+
+
+def _local_stripper() -> PDFTextStripper:
+    s = PDFTextStripper()
+    s.set_line_separator("\n")
+    s.set_page_end("\n")
+    return s
+
+
+def _create_page_with_text(doc: PDDocument, text: str) -> PDPage:
+    page = PDPage()
+    cs = PDPageContentStream(doc, page)
+    try:
+        cs.begin_text()
+        cs.set_font(_helvetica(), 12)
+        cs.new_line_at_offset(50, 700)
+        cs.show_text(text)
+        cs.end_text()
+    finally:
+        cs.close()
+    return page
+
+
+def test_articles_on_same_line() -> None:
+    """PDFBOX-6310: two articles (beads) on the same line, the second
+    starting with a word separator, must not crash ``createWord``."""
+    doc = PDDocument()
+    try:
+        page = PDPage()
+        y = page.get_media_box().get_height() - 100
+        cs = PDPageContentStream(doc, page)
+        try:
+            font = _helvetica()
+            cs.begin_text()
+            cs.set_font(font, 12)
+            cs.new_line_at_offset(50, y)
+            cs.show_text("LEFT")
+            cs.end_text()
+            cs.begin_text()
+            cs.set_font(font, 12)
+            cs.new_line_at_offset(350, y)
+            cs.show_text("RIGHT")
+            cs.end_text()
+        finally:
+            cs.close()
+        left_bead = PDThreadBead()
+        left_bead.set_rectangle(PDRectangle.from_xywh(40, y - 50, 200, 100))
+        right_bead = PDThreadBead()
+        right_bead.set_rectangle(PDRectangle.from_xywh(340, y - 50, 200, 100))
+        page.set_thread_beads([left_bead, right_bead])
+        doc.add_page(page)
+
+        assert _local_stripper().get_text(doc) == "LEFT RIGHT\n"
+    finally:
+        doc.close()
+
+
+def test_actual_text_with_nested_marked_content() -> None:
+    """PDFBOX-6311: marked content nested in an /ActualText sequence
+    doesn't end the replacement."""
+    doc = PDDocument()
+    try:
+        page = PDPage()
+        cs = PDPageContentStream(doc, page)
+        try:
+            cs.begin_text()
+            cs.set_font(_helvetica(), 12)
+            cs.new_line_at_offset(50, 700)
+            cs.begin_marked_content_with_dict(_SPAN, _create_actual_text("XYZ"))
+            cs.begin_marked_content(COSName.get_pdf_name("Foo"))
+            cs.show_text("abc")
+            cs.end_marked_content()
+            cs.show_text("def")
+            cs.end_marked_content()
+            cs.end_text()
+        finally:
+            cs.close()
+        doc.add_page(page)
+
+        assert _local_stripper().get_text(doc) == "XYZ\n"
+    finally:
+        doc.close()
+
+
+def test_nested_actual_text() -> None:
+    """PDFBOX-6311: an /ActualText sequence nested in another one is
+    ignored, because the outer one replaces all of its content."""
+    doc = PDDocument()
+    try:
+        page = PDPage()
+        cs = PDPageContentStream(doc, page)
+        try:
+            cs.begin_text()
+            cs.set_font(_helvetica(), 12)
+            cs.new_line_at_offset(50, 700)
+            cs.begin_marked_content_with_dict(_SPAN, _create_actual_text("X"))
+            cs.show_text("a")
+            cs.begin_marked_content_with_dict(_SPAN, _create_actual_text("Y"))
+            cs.show_text("b")
+            cs.end_marked_content()
+            cs.show_text("tail")
+            cs.end_marked_content()
+            cs.end_text()
+        finally:
+            cs.close()
+        doc.add_page(page)
+
+        assert _local_stripper().get_text(doc) == "X\n"
+    finally:
+        doc.close()
+
+
+def test_unclosed_actual_text() -> None:
+    """PDFBOX-6338: an /ActualText sequence that isn't closed on a page
+    doesn't replace the text of the following pages or of the next
+    document processed by the same stripper."""
+    local_stripper = _local_stripper()
+    doc = PDDocument()
+    try:
+        page1 = PDPage()
+        cs = PDPageContentStream(doc, page1)
+        try:
+            cs.begin_text()
+            cs.set_font(_helvetica(), 12)
+            cs.new_line_at_offset(50, 700)
+            cs.begin_marked_content_with_dict(_SPAN, _create_actual_text("X"))
+            cs.show_text("one")
+            cs.end_text()
+        finally:
+            cs.close()
+        doc.add_page(page1)
+        doc.add_page(_create_page_with_text(doc, "two"))
+        assert local_stripper.get_text(doc) == "X\ntwo\n"
+    finally:
+        doc.close()
+    doc = PDDocument()
+    try:
+        doc.add_page(_create_page_with_text(doc, "three"))
+        assert local_stripper.get_text(doc) == "three\n"
     finally:
         doc.close()

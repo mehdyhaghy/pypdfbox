@@ -9,19 +9,19 @@ Targets:
 
 import io
 
+import pytest
+
 from pypdfbox.filter import PredictorOutputStream
 
 
 def test_constructor_uses_java_truncation_for_negative_columns() -> None:
-    """Java integer division truncates ``(-8 + 7) / 8`` to zero."""
+    """Java integer division truncates ``(-8 + 7) / 8`` to zero, which the
+    non-positive row-length guard then rejects (PDFBOX-6304)."""
     sink = io.BytesIO()
-    stream = PredictorOutputStream(
-        sink, predictor=2, colors=1, bits_per_component=8, columns=-1
-    )
-    try:
-        assert stream._row_length == 0
-    finally:
-        stream.close()
+    with pytest.raises(OSError, match="Calculated row length is not positive: 0"):
+        PredictorOutputStream(
+            sink, predictor=2, colors=1, bits_per_component=8, columns=-1
+        )
 
 
 def test_writable_returns_true() -> None:

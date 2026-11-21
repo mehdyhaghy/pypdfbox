@@ -10,8 +10,8 @@ def test_to_string_with_no_tag_or_properties() -> None:
     mc = PDMarkedContent(None, None)
     # Mirrors upstream ``PDMarkedContent.toString()``
     # (PDMarkedContent.java line 194): ``tag=<tag>, properties=<props>,
-    # contents=<list>``.
-    assert mc.to_string() == "tag=None, properties=None, contents=[]"
+    # contents=<list>, structParent=<int>`` (structParent since PDFBOX-6303).
+    assert mc.to_string() == "tag=None, properties=None, contents=[], structParent=-1"
 
 
 def test_to_string_with_tag_and_properties() -> None:
@@ -20,7 +20,7 @@ def test_to_string_with_tag_and_properties() -> None:
     mc = PDMarkedContent(COSName.get_pdf_name("Span"), properties)
     rendered = mc.to_string()
     assert rendered.startswith("tag=Span, properties=")
-    assert rendered.endswith(", contents=[]")
+    assert rendered.endswith(", contents=[], structParent=-1")
 
 
 def test_to_string_matches_str() -> None:

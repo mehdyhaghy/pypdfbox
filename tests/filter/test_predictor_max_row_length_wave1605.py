@@ -122,6 +122,6 @@ def test_invalid_sysprop_values_keep_the_default(
 
 
 def test_negative_row_length_check_still_fires_first() -> None:
-    """A negative ``/Columns`` keeps the pre-existing upstream message."""
-    with pytest.raises(OSError, match="Calculated row length is negative"):
+    """A negative ``/Columns`` hits the non-positive row-length guard (PDFBOX-6304)."""
+    with pytest.raises(OSError, match="Calculated row length is not positive"):
         PredictorOutputStream(io.BytesIO(), 12, 1, 8, -8)

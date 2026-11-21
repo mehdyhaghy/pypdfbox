@@ -191,14 +191,14 @@ def test_not_bool_negates() -> None:
     assert ctx.get_stack() == [True]
 
 
-def test_not_int_arithmetic_negation() -> None:
-    """Upstream PDFBox negates (``-int1``) rather than bit-inverting; parity wins."""
+def test_not_int_bitwise_complement() -> None:
+    """Upstream PDFBox 3.0.9 bit-inverts (``~int1``, PDFBOX-6331)."""
     ctx = _ctx(52)
     Not().execute(ctx)
-    assert ctx.get_stack() == [-52]
+    assert ctx.get_stack() == [~52]
     ctx = _ctx(-37)
     Not().execute(ctx)
-    assert ctx.get_stack() == [37]
+    assert ctx.get_stack() == [~-37]
 
 
 def test_not_other_type_raises_type_error() -> None:

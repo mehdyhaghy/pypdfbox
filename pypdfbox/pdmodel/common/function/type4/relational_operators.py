@@ -21,6 +21,7 @@ together.
 # ``instruction_sequence``/``operators``/``parser`` which other Wave 1277
 # agents own. Importing the leaf modules here keeps this file usable even
 # when those parallel-landing modules haven't merged yet.
+from ..pd_function_type4 import _double_compare_eq, _to_float32
 from .execution_context import ExecutionContext
 from .operator import Operator
 
@@ -46,8 +47,9 @@ class Eq(Operator):
 
     Mirrors ``RelationalOperators.Eq`` (upstream Java lines 33-62).
     Pops two operands, pushes ``True`` if they compare equal. When both
-    operands are numeric the comparison is performed in float space (matches
-    upstream ``Float.compare(num1.floatValue(), num2.floatValue()) == 0``).
+    operands are numeric the comparison is performed in double space (matches
+    upstream ``Double.compare(num1.doubleValue(), num2.doubleValue()) == 0``,
+    PDFBOX-6331).
     Otherwise falls back to Python ``==`` (mirror of Java ``op1.equals(op2)``).
     """
 
@@ -60,8 +62,8 @@ class Eq(Operator):
     def is_equal(self, op1: object, op2: object) -> bool:
         """Mirrors upstream ``protected boolean isEqual(Object, Object)``."""
         if _is_number(op1) and _is_number(op2):
-            # Force float compare to mirror Java ``Float.compare(...)``.
-            return float(op1) == float(op2)  # type: ignore[arg-type]
+            # Mirror Java ``Double.compare(...) == 0`` (NaN == NaN, 0.0 != -0.0).
+            return _double_compare_eq(op1, op2)  # type: ignore[arg-type]
         return op1 == op2
 
 
@@ -136,11 +138,14 @@ class Le(AbstractNumberComparisonOperator):
 class Lt(AbstractNumberComparisonOperator):
     """Implements the ``lt`` operator.
 
-    Mirrors ``RelationalOperators.Lt`` (upstream Java lines 119-129).
+    Mirrors ``RelationalOperators.Lt`` (upstream Java lines 119-129). Unlike
+    ``ge`` / ``gt`` / ``le`` (``doubleValue()`` since PDFBOX-6331), upstream
+    ``Lt`` still compares ``floatValue()``, so both operands are narrowed to
+    float32 first.
     """
 
     def compare(self, num1: float, num2: float) -> bool:
-        return num1 < num2
+        return _to_float32(num1) < _to_float32(num2)
 
 
 __all__ = [

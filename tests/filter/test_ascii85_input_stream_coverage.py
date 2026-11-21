@@ -3,9 +3,8 @@
 Targets the previously-untested branches:
 
 * ``_ensure_decoded`` — short-circuit when already decoded.
-* ``_ensure_decoded`` — trailing-whitespace strip when the input is missing
-  the ``~>`` marker (the ``while encoded[-1:] in ...`` loop).
-* ``_ensure_decoded`` — ValueError -> OSError translation for bad data.
+* ``_ensure_decoded`` — input missing the ``~>`` marker (PDFBOX-6317).
+* ``_ensure_decoded`` — OSError for bad data.
 * ``read`` — EOF short-circuit after a full drain.
 * ``read`` — size omitted / None.
 * ``read`` — chunked reads (partial drain then completion).
@@ -24,8 +23,12 @@ from pypdfbox.filter.ascii85_input_stream import ASCII85InputStream
 
 
 def _encode(data: bytes) -> bytes:
-    """Encode ``data`` to ASCII85 in the adobe variant (with markers)."""
-    return base64.a85encode(data, adobe=True)
+    """Encode ``data`` to ASCII85 with the PDF ``~>`` EOD marker.
+
+    PDF streams carry no Adobe ``<~`` intro: upstream treats ``<`` as a
+    digit, so the intro is stripped here.
+    """
+    return base64.a85encode(data, adobe=True)[2:]
 
 
 def test_read_all_with_negative_size() -> None:
@@ -74,14 +77,10 @@ def test_ensure_decoded_only_runs_once() -> None:
 
 
 def test_missing_terminator_strips_trailing_whitespace() -> None:
-    """Adobe variant requires ``~>``; input lacking it must be patched.
-
-    Hits the ``while encoded[-1:] in (...)`` strip loop.
-    """
+    """Input lacking ``~>`` ends its last group at EOF (PDFBOX-6317)."""
     payload = b"hello"
     encoded = _encode(payload)
-    # base64.a85encode adobe=True yields ``<~...~>`` — drop the trailing marker
-    # and append whitespace.
+    # Drop the trailing marker and append whitespace.
     assert encoded.endswith(b"~>")
     body_no_terminator = encoded[:-2] + b"\n \t\r"
     stream = ASCII85InputStream(io.BytesIO(body_no_terminator))
@@ -89,7 +88,7 @@ def test_missing_terminator_strips_trailing_whitespace() -> None:
 
 
 def test_invalid_data_raises_oserror() -> None:
-    """Bad ASCII85 bytes must translate ValueError -> OSError."""
+    """Bad ASCII85 bytes raise OSError."""
     stream = ASCII85InputStream(io.BytesIO(b"\x01\x02not-ascii85~>"))
     with pytest.raises(OSError, match="Invalid data in Ascii85 stream"):
         stream.read(-1)

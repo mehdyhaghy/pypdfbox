@@ -249,9 +249,9 @@ def test_and_mixed_int_bool_raises() -> None:
         _run("{ 5 true and }")
 
 
-def test_not_int_is_arithmetic_negation() -> None:
-    # Upstream Not on an Integer is -int (not bitwise complement).
-    assert _run("{ 5 not }") == pytest.approx([-5.0])
+def test_not_int_is_bitwise_complement() -> None:
+    # Upstream Not on an Integer is ~int (PDFBOX-6331; 3.0.8 negated).
+    assert _run("{ 5 not }") == pytest.approx([-6.0])
     assert _run("{ true not { 1 } { 0 } ifelse }") == pytest.approx([0.0])
 
 
@@ -359,14 +359,13 @@ def test_roll_full_rotation_is_identity() -> None:
 
 
 def test_roll_j_greater_than_n_with_deep_stack() -> None:
-    # WAVE 1572 FIX: upstream does NOT reject |j| > n. With a depth-6 stack and
-    # n=3 j=5, it pops 5 entries and re-pushes them in order -> stack unchanged.
-    # (Previously pypdfbox raised on every |j| > n.)
+    # PDFBOX-6331: rolling by j is rolling by j mod n (Java remainder), so
+    # n=3 j=5 rolls the top three by 2 and j=-5 rolls them by -2.
     assert _run("{ 10 20 30 40 50 60 3 5 roll }") == pytest.approx(
-        [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
+        [10.0, 20.0, 30.0, 50.0, 60.0, 40.0]
     )
     assert _run("{ 10 20 30 40 50 60 3 -5 roll }") == pytest.approx(
-        [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
+        [10.0, 20.0, 30.0, 60.0, 40.0, 50.0]
     )
 
 
@@ -381,9 +380,8 @@ def test_roll_underflow_raises_when_stack_too_shallow() -> None:
     # n=9 over a 2-deep stack underflows the pop loop.
     with pytest.raises(OSError):
         _run("{ 1 2 9 1 roll }")
-    # j=7 over a 3-deep window underflows (pops 7 from 3).
-    with pytest.raises(OSError):
-        _run("{ 1 2 3 3 7 roll }")
+    # j=7 over a 3-deep window reduces to j=1 (PDFBOX-6331): no underflow.
+    assert _run("{ 1 2 3 3 7 roll }") == pytest.approx([3.0, 1.0, 2.0])
 
 
 def test_roll_real_count_truncated() -> None:

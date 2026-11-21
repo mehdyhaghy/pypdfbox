@@ -1,3 +1,5 @@
+import pytest
+
 from pypdfbox.cos import COSInteger, COSName
 from pypdfbox.pdmodel import PDPage, PDPageTree
 
@@ -90,14 +92,16 @@ def test_remove_returns_true_and_decrements_count() -> None:
     assert tree.index_of(b) == -1
 
 
-def test_remove_unrelated_page_returns_false() -> None:
+def test_remove_unrelated_orphan_page_raises() -> None:
+    # PDFBOX-6318: upstream throws; raises ValueError on the 4.0 line.
     tree = PDPageTree()
     tree.add(_make_page("a"))
     tree.add(_make_page("b"))
     assert _count(tree) == 2
 
     stranger = _make_page("not-in-tree")
-    assert tree.remove(stranger) is False
+    with pytest.raises(ValueError, match="orphan"):
+        tree.remove(stranger)
     # Count must be unchanged.
     assert _count(tree) == 2
     assert len(tree) == 2

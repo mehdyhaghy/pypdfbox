@@ -643,11 +643,10 @@ def test_concatenate_matrix_handles_identity_dest() -> None:
     dest = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
     concat = [2.0, 0.0, 0.0, 3.0, 5.0, 7.0]
     CFFParser.concatenate_matrix(dest, concat)
-    # Identity * concat = concat-like, with the upstream-bug-preserving
-    # ``d1`` substitution in slot [1] (which is 0 here since d1=1, b2=0).
+    # Identity * concat = concat-like.
     # a1=1 b1=0 c1=0 d1=1 x1=0 y1=0
     assert dest[0] == 2.0  # a1*a2 + b1*c2 = 1*2 + 0*0
-    assert dest[1] == 0.0  # a1*b2 + b1*d1 = 1*0 + 0*1
+    assert dest[1] == 0.0  # a1*b2 + b1*d2 = 1*0 + 0*3
     assert dest[2] == 0.0  # c1*a2 + d1*c2 = 0*2 + 1*0
     assert dest[3] == 3.0  # c1*b2 + d1*d2 = 0*0 + 1*3
     assert dest[4] == 5.0  # x1*a2 + y1*c2 + x2

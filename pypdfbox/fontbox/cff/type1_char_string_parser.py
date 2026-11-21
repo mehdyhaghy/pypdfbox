@@ -30,10 +30,17 @@ _TWO_BYTE = 12
 _CALLOTHERSUBR = 16
 _POP = 17
 
+# PDFBOX-6308: the format allows 10 nested subroutine calls, but fonts in use
+# exceed that. This is only a safeguard against endless recursion
+# (Type1CharStringParser.java MAX_SUBR_NESTING).
+MAX_SUBR_NESTING = 106
+
 
 class Type1CharStringParser:
     """Mirrors upstream ``Type1CharStringParser``
     (Type1CharStringParser.java:37)."""
+
+    MAX_SUBR_NESTING = MAX_SUBR_NESTING
 
     def __init__(self, font_name: str) -> None:
         # Upstream constructor: ``Type1CharStringParser(String fontName)``
@@ -50,7 +57,7 @@ class Type1CharStringParser:
         """Mirrors upstream ``parse(byte[], List<byte[]>, String)``
         (Type1CharStringParser.java:71)."""
         self._current_glyph = glyph_name
-        return self._parse(bytes(bytes_), list(subrs), [])
+        return self._parse(bytes(bytes_), list(subrs), [], 0)
 
     # ---------- internal walk ------------------------------------------------
     def _parse(
@@ -58,16 +65,18 @@ class Type1CharStringParser:
         data: bytes,
         subrs: list[bytes | bytearray],
         sequence: list[Any],
+        subr_nesting: int = 0,
     ) -> list[Any]:
         """Mirrors upstream private ``parse`` recursion
-        (Type1CharStringParser.java:77)."""
+        (Type1CharStringParser.java:77). ``subr_nesting`` is the current
+        subroutine call depth (PDFBOX-6308)."""
         i = 0
         n = len(data)
         while i < n:
             b0 = data[i]
             i += 1
             if b0 == _CALLSUBR:
-                self.process_call_subr(subrs, sequence)
+                self.process_call_subr(subrs, sequence, subr_nesting)
             elif b0 == _TWO_BYTE and i < n and data[i] == _CALLOTHERSUBR:
                 # ``processCallOtherSubr`` expects to peek at the next byte
                 # then consume the two-byte sequence; we hand it the read
@@ -89,8 +98,13 @@ class Type1CharStringParser:
         self,
         subrs: list[bytes | bytearray],
         sequence: list[Any],
+        subr_nesting: int = 0,
     ) -> None:
-        """Mirrors upstream ``processCallSubr`` (Type1CharStringParser.java:108)."""
+        """Mirrors upstream ``processCallSubr`` (Type1CharStringParser.java:108).
+
+        PDFBOX-6308: a call that would nest deeper than
+        :data:`MAX_SUBR_NESTING` raises ``OSError`` (upstream
+        ``IOException``) instead of recursing without bound."""
         if not sequence:
             return
         obj = sequence.pop()
@@ -103,8 +117,15 @@ class Type1CharStringParser:
             return
         operand = obj
         if 0 <= operand < len(subrs):
+            if subr_nesting >= MAX_SUBR_NESTING:
+                msg = (
+                    f"Subroutines are nested more than {MAX_SUBR_NESTING} "
+                    f"levels deep in glyph '{self._current_glyph}' of font "
+                    f"{self._font_name}"
+                )
+                raise OSError(msg)
             subr_bytes = subrs[operand]
-            self._parse(bytes(subr_bytes), subrs, sequence)
+            self._parse(bytes(subr_bytes), subrs, sequence, subr_nesting + 1)
             if sequence:
                 last = sequence[-1]
                 if (
@@ -277,4 +298,4 @@ class Type1CharStringParser:
         raise ValueError(msg)
 
 
-__all__ = ["Type1CharStringParser"]
+__all__ = ["MAX_SUBR_NESTING", "Type1CharStringParser"]

@@ -973,16 +973,13 @@ class CFFParser:
         """PDFBox: ``CFFParser.concatenateMatrix``
         (``CFFParser.java`` lines 714-740). Multiplies two 3x3
         transform matrices (stored as 6-element row vectors) in place
-        on ``matrix_dest``."""
+        on ``matrix_dest``: first ``matrix_dest``, then ``matrix_concat``.
+        PDFBOX-6324: slot [1] is ``a1*b2 + b1*d2``."""
         a1, b1, c1, d1, x1, y1 = (float(v) for v in matrix_dest[:6])
         a2, b2, c2, d2, x2, y2 = (float(v) for v in matrix_concat[:6])
 
         matrix_dest[0] = a1 * a2 + b1 * c2
-        # Mirror upstream bug-compatibility: line 735 uses ``d1`` not
-        # ``d2`` in the (1) slot. We preserve it so parity callers see
-        # the exact same number — see PDFBOX issue tracking around
-        # ``concatenateMatrix``.
-        matrix_dest[1] = a1 * b2 + b1 * d1
+        matrix_dest[1] = a1 * b2 + b1 * d2
         matrix_dest[2] = c1 * a2 + d1 * c2
         matrix_dest[3] = c1 * b2 + d1 * d2
         matrix_dest[4] = x1 * a2 + y1 * c2 + x2

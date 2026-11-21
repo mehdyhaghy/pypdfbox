@@ -11,6 +11,7 @@ _LOG = logging.getLogger(__name__)
 
 _LEAD_OFFSET: int = 0xD800 - (0x10000 >> 10)
 _SURROGATE_OFFSET: int = 0x10000 - (0xD800 << 10) - 0xDC00
+_MAX_UCS4_VALUE: int = 0x0010FFFF
 
 
 class CmapSubtable(CmapLookup):
@@ -191,20 +192,29 @@ class CmapSubtable(CmapLookup):
         # not need to interpret it: groups carry full 32-bit start/end codes.
         data.read_bytes(8192)
         nb_groups = data.read_unsigned_int()
+        # nbGroups shouldn't be greater than 65536 (CmapSubtable.java).
+        if nb_groups > 65536:
+            raise OSError("CMap ( Subtype8 ) is invalid")
         self._character_code_to_glyph_id = {}
         max_glyph_id = 0
+        last_end_code = 0
         for _ in range(nb_groups):
             first_code = data.read_unsigned_int()
             end_code = data.read_unsigned_int()
             start_glyph = data.read_unsigned_int()
-            if first_code > 0x0010FFFF or 0xD800 <= first_code <= 0xDFFF:
+            if first_code > _MAX_UCS4_VALUE or 0xD800 <= first_code <= 0xDFFF:
                 raise OSError(f"Invalid character code 0x{first_code:X}")
             if (
                 (end_code > 0 and end_code < first_code)
-                or end_code > 0x0010FFFF
+                or end_code > _MAX_UCS4_VALUE
                 or 0xD800 <= end_code <= 0xDFFF
             ):
                 raise OSError(f"Invalid character code 0x{end_code:X}")
+            # PDFBOX-6297: skip groups that are not sorted by end code.
+            if end_code <= last_end_code:
+                _LOG.warning("Format 8 cmap unsorted mapping group was skipped")
+                continue
+            last_end_code = end_code
             for j in range(end_code - first_code + 1):
                 glyph_index = start_glyph + j
                 if glyph_index >= num_glyphs:
@@ -249,25 +259,34 @@ class CmapSubtable(CmapLookup):
     def process_subtype12(self, data: TTFDataStream, num_glyphs: int) -> None:
         max_glyph_id = 0
         nb_groups = data.read_unsigned_int()
+        # PDFBOX-6297: nbGroups shouldn't be greater than 0x10FFFF.
+        if nb_groups > _MAX_UCS4_VALUE:
+            raise OSError("Format 12 cmap is invalid")
         self._glyph_id_to_character_code = self.new_glyph_id_to_character_code(num_glyphs)
         self._character_code_to_glyph_id = {}
         if num_glyphs == 0:
             _LOG.warning("subtable has no glyphs")
             return
+        last_end_code = 0
         for _ in range(nb_groups):
             first_code = data.read_unsigned_int()
             end_code = data.read_unsigned_int()
             start_glyph = data.read_unsigned_int()
 
-            if first_code > 0x0010FFFF or 0xD800 <= first_code <= 0xDFFF:
+            if first_code > _MAX_UCS4_VALUE or 0xD800 <= first_code <= 0xDFFF:
                 raise OSError(f"Invalid character code 0x{first_code:X}")
             if (
                 (end_code > 0 and end_code < first_code)
-                or end_code > 0x0010FFFF
+                or end_code > _MAX_UCS4_VALUE
                 or 0xD800 <= end_code <= 0xDFFF
             ):
                 raise OSError(f"Invalid character code 0x{end_code:X}")
 
+            # PDFBOX-6297: skip groups that are not sorted by end code.
+            if end_code <= last_end_code:
+                _LOG.warning("Format 12 cmap unsorted mapping group was skipped")
+                continue
+            last_end_code = end_code
             for j in range(end_code - first_code + 1):
                 glyph_index = start_glyph + j
                 if glyph_index >= num_glyphs:
@@ -287,6 +306,9 @@ class CmapSubtable(CmapLookup):
 
     def process_subtype13(self, data: TTFDataStream, num_glyphs: int) -> None:
         nb_groups = data.read_unsigned_int()
+        # PDFBOX-6297: nbGroups shouldn't be greater than 0x10FFFF.
+        if nb_groups > _MAX_UCS4_VALUE:
+            raise OSError("Format 13 cmap is invalid")
         # Upstream processSubtype13 (PDFBox 3.0.7) writes the reverse map
         # DIRECTLY into glyph_id_to_character_code inside the per-code loop and
         # never calls build_glyph_id_to_character_code_lookup. For a many-to-one
@@ -298,24 +320,30 @@ class CmapSubtable(CmapLookup):
         if num_glyphs == 0:
             _LOG.warning("subtable has no glyphs")
             return
+        last_end_code = 0
         for _ in range(nb_groups):
             first_code = data.read_unsigned_int()
             end_code = data.read_unsigned_int()
             glyph_id = data.read_unsigned_int()
-            # Upstream checks the glyph bound (strict ``>`` against numGlyphs)
-            # FIRST and BREAKS out of the whole loop, before validating the
-            # character codes.
-            if glyph_id > num_glyphs:
+            # Upstream checks the glyph bound FIRST and BREAKS out of the
+            # whole loop, before validating the character codes. PDFBOX-6297
+            # tightened it from ``>`` to ``>=`` numGlyphs.
+            if glyph_id >= num_glyphs:
                 _LOG.warning("Format 13 cmap contains an invalid glyph index")
                 break
-            if first_code > 0x0010FFFF or 0xD800 <= first_code <= 0xDFFF:
+            if first_code > _MAX_UCS4_VALUE or 0xD800 <= first_code <= 0xDFFF:
                 raise OSError(f"Invalid character code 0x{first_code:X}")
             if (
                 (end_code > 0 and end_code < first_code)
-                or end_code > 0x0010FFFF
+                or end_code > _MAX_UCS4_VALUE
                 or 0xD800 <= end_code <= 0xDFFF
             ):
                 raise OSError(f"Invalid character code 0x{end_code:X}")
+            # PDFBOX-6297: skip groups that are not sorted by end code.
+            if end_code <= last_end_code:
+                _LOG.warning("Format 13 cmap unsorted mapping group was skipped")
+                continue
+            last_end_code = end_code
             # ALL codes in [first_code, end_code] map to the same glyph_id; the
             # reverse slot is overwritten each iteration (last code wins).
             for code in range(first_code, end_code + 1):

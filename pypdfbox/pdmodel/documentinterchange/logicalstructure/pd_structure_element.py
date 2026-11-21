@@ -706,10 +706,9 @@ class PDStructureElement(PDStructureNode):
                     ao = PDAttributeObject.create(item)
                     ao.set_structure_element(self)
                     revs.add_object(ao, 0)
-                elif isinstance(item, COSInteger):
+                elif isinstance(item, COSInteger) and ao is not None:
                     # PDF 32000-1 §14.7.5.3 attribute revision numbers.
-                    if ao is not None:
-                        revs.set_revision_number(ao, item.int_value())
+                    revs.set_revision_number(ao, item.int_value())
             return revs
         if isinstance(a, COSDictionary):
             ao = PDAttributeObject.create(a)

@@ -66,18 +66,16 @@ def test_decode_predictor_row_rejects_short_previous_row() -> None:
         )
 
 
-def test_flate_decode_zero_color_predictor_params_yields_empty() -> None:
-    # /Colors 0 makes calculateRowLength == 0; PDFBox's PredictorOutputStream
-    # consumes the inflated bytes as zero-length rows and emits nothing rather
-    # than raising. Verified against Apache PDFBox 3.0.7 (wave 1543) — the
-    # former one-shot ``unpredict`` raised "invalid /Colors 0", a divergence
-    # now fixed by routing the decode through PredictorOutputStream.
+def test_flate_decode_zero_color_predictor_params_raises() -> None:
+    # /Colors 0 makes calculateRowLength == 0; PDFBox 3.0.9's
+    # PredictorOutputStream rejects a non-positive row length (PDFBOX-6304)
+    # instead of consuming the bytes as zero-length rows.
     params = _flate_params(Predictor=12, Columns=4, Colors=0, BitsPerComponent=8)
     encoded = zlib.compress(b"\x00\x01\x02\x03\x04")
 
     out = io.BytesIO()
-    FlateDecode().decode(io.BytesIO(encoded), out, params)
-    assert out.getvalue() == b""
+    with pytest.raises(OSError, match="Calculated row length is not positive"):
+        FlateDecode().decode(io.BytesIO(encoded), out, params)
 
 
 def test_lzw_encode_rejects_zero_column_predictor_params() -> None:

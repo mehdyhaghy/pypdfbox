@@ -88,7 +88,14 @@ class PDFunctionType4(PDFunction):
         sequence = self.get_instructions()
 
         stack: Stack = list(clipped)
-        _execute(sequence, stack)
+        # PDFBOX-6320: upstream wraps the unchecked EmptyStackException /
+        # ClassCastException of a malformed program in an IOException. The
+        # engine already raises OSError for those; this net turns any residual
+        # low-level Python error into OSError the same way.
+        try:
+            _execute(sequence, stack)
+        except (IndexError, TypeError, ValueError, OverflowError, ZeroDivisionError) as ex:
+            raise OSError(f"type 4 function execution failed: {ex}") from ex
 
         # Upstream parity: when /Range declares N output dimensions, the
         # program must leave at least N values on the stack. Under-supply
@@ -380,7 +387,23 @@ def _pop_int_value(stack: Stack) -> int:
     ``((Number) stack.pop()).intValue()`` for ``copy`` / ``index`` / ``roll``
     counts, which leniently accepts a Float and truncates toward zero. A
     Boolean still raises (cast to Number fails)."""
-    return math.trunc(_pop_number(stack))
+    return _java_int_value(_pop_number(stack))
+
+
+def _java_int_value(value: int | float) -> int:
+    """Java ``Number.intValue()``: an Integer is returned as-is; a Float is
+    narrowed like a Java ``(int)`` cast (NaN -> 0, out-of-range saturates to
+    the 32-bit bounds, otherwise truncated toward zero). Unlike
+    :func:`math.trunc` this never raises on NaN or infinity."""
+    if isinstance(value, int):
+        return value
+    if math.isnan(value):
+        return 0
+    if value >= _INT_MAX:
+        return _INT_MAX
+    if value <= _INT_MIN:
+        return _INT_MIN
+    return math.trunc(value)
 
 
 def _to_output_float(value: object) -> float:
@@ -749,26 +772,26 @@ def _op_roll(s: Stack) -> None:
     # (Float counts accepted, truncated).
     j = _pop_int_value(s)
     n = _pop_int_value(s)
-    # Mirror upstream PDFBox StackOperators$Roll EXACTLY (parity over the cleaner
-    # PostScript-Reference semantics): it does NOT reduce ``j`` modulo ``n`` and
-    # it does NOT pre-validate ``|j| <= n``. ``j == 0`` is a no-op; ``n < 0`` is
-    # a range error. For any other ``j`` upstream pops a hand-counted number of
-    # entries with two ``LinkedList`` helpers and re-pushes them rotated, where
-    # the pop counts depend on ``j``'s sign:
+    # Mirror upstream PDFBox StackOperators$Roll: ``j == 0`` is a no-op;
+    # ``n < 0`` is a range error; ``n == 0`` is a no-op; otherwise ``j`` is
+    # reduced modulo ``n`` with Java's truncating remainder (PDFBOX-6331,
+    # PDFBox 3.0.9: rolling by j is the same as rolling by j mod n, so
+    # ``|j| > n`` now rotates correctly instead of over-popping). Upstream then
+    # pops a hand-counted number of entries with two ``LinkedList`` helpers and
+    # re-pushes them rotated:
     #   positive: pop ``j`` into ``rolled`` then ``n - j`` into ``moved``
     #   negative: pop ``n + j`` into ``moved`` then ``-j`` into ``rolled``
-    # When a loop's count goes negative it simply runs zero times; the only way
-    # ``roll`` faults is a genuine ``stack.pop()`` underflow on an empty stack
-    # (Java ``EmptyStackException`` -> ``OSError`` here). Crucially that means
-    # ``|j| > n`` is NOT itself an error: ``{ a b c d e f 3 5 roll }`` over a
-    # depth-6 stack pops 5 entries (j=5) and re-pushes them in order, leaving the
-    # stack unchanged rather than raising (verified against the 3.0.7 jar). A
-    # previous shortcut here raised on every ``|j| > n``, diverging from upstream
-    # whenever the real stack was deep enough to satisfy the pops.
+    # The only way ``roll`` then faults is a genuine ``stack.pop()`` underflow
+    # (Java ``EmptyStackException`` -> ``OSError`` here).
     if j == 0:
         return
     if n < 0:
         raise OSError(f"roll rangecheck: n={n}")
+    if n == 0:
+        return
+    j = abs(j) % n if j > 0 else -(abs(j) % n)
+    if j == 0:
+        return
 
     def pop_one() -> object:
         if not s:
@@ -805,15 +828,29 @@ def _cmp_pop(s: Stack) -> tuple[object, object]:
     return a, b
 
 
-def _float32_compare_eq(a: int | float, b: int | float) -> bool:
-    # Upstream ``Eq`` compares via ``Float.compare(a.floatValue(),
-    # b.floatValue())`` — both operands are narrowed to 32-bit float first. For
-    # the magnitudes Type 4 programs use this is indistinguishable from a direct
-    # compare, but narrow explicitly so a value that differs only beyond float32
-    # precision compares equal exactly as Java does.
-    fa = struct.unpack("f", struct.pack("f", float(a)))[0]
-    fb = struct.unpack("f", struct.pack("f", float(b)))[0]
-    return fa == fb
+def _to_float32(value: int | float) -> float:
+    """Narrow to a 32-bit float like Java ``Number.floatValue()``."""
+    try:
+        return struct.unpack("f", struct.pack("f", float(value)))[0]
+    except OverflowError:
+        return math.inf if value > 0 else -math.inf
+
+
+def _double_compare_eq(a: int | float, b: int | float) -> bool:
+    # Upstream ``Eq`` compares via ``Double.compare(a.doubleValue(),
+    # b.doubleValue()) == 0`` (PDFBOX-6331, PDFBox 3.0.9; 3.0.8 narrowed both
+    # to float32 first, so large integers that differ only beyond float32
+    # precision compared equal). ``Double.compare`` treats NaN as equal to
+    # itself and distinguishes 0.0 from -0.0.
+    fa = float(a)
+    fb = float(b)
+    if math.isnan(fa) or math.isnan(fb):
+        return math.isnan(fa) and math.isnan(fb)
+    if fa == 0.0 and fb == 0.0:
+        return math.copysign(1.0, fa) == math.copysign(1.0, fb)
+    # Compare the original values when both are ints: Java widens an Integer to
+    # double exactly, so this equals the double compare.
+    return a == b if _both_int(a, b) else fa == fb
 
 
 def _boxed_equals(a: object, b: object) -> bool:
@@ -834,10 +871,10 @@ def _boxed_equals(a: object, b: object) -> bool:
 
 def _op_eq(s: Stack) -> None:
     a, b = _cmp_pop(s)
-    # Upstream: both Number => float32 compare; otherwise Object.equals. A
+    # Upstream: both Number => double compare; otherwise Object.equals. A
     # number-vs-boolean pair takes the equals branch (always unequal).
     if _is_number(a) and _is_number(b):
-        s.append(_float32_compare_eq(a, b))
+        s.append(_double_compare_eq(a, b))
     else:
         s.append(_boxed_equals(a, b))
 
@@ -845,15 +882,17 @@ def _op_eq(s: Stack) -> None:
 def _op_ne(s: Stack) -> None:
     a, b = _cmp_pop(s)
     if _is_number(a) and _is_number(b):
-        s.append(not _float32_compare_eq(a, b))
+        s.append(not _double_compare_eq(a, b))
     else:
         s.append(not _boxed_equals(a, b))
 
 
 def _op_lt(s: Stack) -> None:
-    # Comparison ops cast both operands to (Number) (popReal); a Boolean raises.
-    b = _pop_real(s)
-    a = _pop_real(s)
+    # Comparison ops cast both operands to (Number); a Boolean raises. Upstream
+    # PDFBOX-6331 moved ge/gt/le/eq to ``doubleValue()`` but left ``Lt`` on
+    # ``floatValue()``, so ``lt`` alone still compares in float32.
+    b = _to_float32(_pop_number(s))
+    a = _to_float32(_pop_number(s))
     s.append(a < b)
 
 
@@ -907,11 +946,11 @@ def _op_not(s: Stack) -> None:
     if isinstance(a, bool):
         s.append(not a)
     elif _is_int(a):
-        # Upstream ``Not`` on an Integer is arithmetic negation (``-int1``),
-        # NOT a bitwise complement, and the result keeps the Integer tag. A
-        # Float raises ClassCastException (the strict int discipline). See
-        # behavior over style.
-        s.append(-a)
+        # Upstream ``Not`` on an Integer is the bitwise complement (``~int1``,
+        # PDFBOX-6331, PDFBox 3.0.9; 3.0.8 negated arithmetically) and the
+        # result keeps the Integer tag. A Float raises ClassCastException (the
+        # strict int discipline).
+        s.append(~a)
     else:
         raise OSError("type mismatch: not operand must be bool or int")
 

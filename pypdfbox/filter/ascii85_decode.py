@@ -33,9 +33,9 @@ from .filter_factory import FilterFactory
 # upstream rules (PDFBox 3.0.7) that the stdlib strict decoder could NOT
 # match — and that an earlier value-based port got wrong — are:
 #
-#   * Whitespace ignored on decode is ONLY LF (0x0a), CR (0x0d) and SPACE
-#     (0x20). PDFBox does NOT skip NUL / TAB / FF / VT; those bytes are
-#     digits and fall under the range check below.
+#   * Whitespace ignored on decode is the PDF white-space set: NUL, TAB, LF,
+#     FF, CR and SPACE (PDFBOX-6330, PDFBox 3.0.9; 3.0.8 skipped only LF, CR
+#     and SPACE). VT is NOT whitespace; it falls under the range check below.
 #   * A digit byte ``c`` contributes ``c - '!'`` to the base-85 accumulator.
 #     PDFBox raises ("Invalid data in Ascii85 stream") iff ``c - '!'`` is
 #     ``< 0 or > 93`` — i.e. it accepts the whole range b'!'(0x21)..b'}'
@@ -48,9 +48,9 @@ from .filter_factory import FilterFactory
 #     ``n - 1`` bytes; a lone single digit (n == 1) yields nothing and is
 #     dropped silently.
 #
-# (PDFBox decoding a stream that lacks the b'~>' marker can read past EOF and
-# duplicate output — a harness artifact, not a real-PDF case; real PDF
-# ASCII85 streams always carry the b'~>' terminator, so we honour it strictly.)
+# A stream that lacks the b'~>' marker ends its last group at EOF exactly as
+# if b'~>' were present (PDFBOX-6317, PDFBox 3.0.9; 3.0.8 could repeat the
+# last group's output instead).
 
 # Upstream ASCII85InputStream treats the single byte b'~' (0x7e) as end-of-data
 # on its own: its read loop returns EOF the moment it sees b'~', without
@@ -66,12 +66,13 @@ from .filter_factory import FilterFactory
 #     digit that is dropped (a partial group of 1), i.e. zero bytes, exactly as
 #     upstream produces. (Real PDF ASCII85 streams omit the b'<~' intro.)
 _EOD: Final[int] = 0x7E  # b'~' — end-of-data byte (the b'>' that follows is incidental)
-# Upstream ASCII85InputStream skips only LF, CR and SPACE — NOT NUL/TAB/FF/VT.
-_WHITESPACE: Final[frozenset[int]] = frozenset(b"\n\r ")
+# Upstream ASCII85InputStream skips the PDF white-space characters NUL, TAB,
+# LF, FF, CR and SP (PDFBOX-6330). VT is not PDF whitespace.
+_WHITESPACE: Final[frozenset[int]] = frozenset(b"\x00\t\n\x0c\r ")
 # Same set as ``_WHITESPACE`` but as a ``bytes`` deletion set for
-# ``bytes.translate`` — the fast path strips these three bytes in one C-level
+# ``bytes.translate`` — the fast path strips these bytes in one C-level
 # pass instead of testing each byte for set membership in a Python loop.
-_WHITESPACE_BYTES: Final[bytes] = b"\n\r "
+_WHITESPACE_BYTES: Final[bytes] = b"\x00\t\n\x0c\r "
 _Z: Final[int] = 0x7A  # b'z' — 4-zero-byte shortcut at a group boundary
 _DIGIT_OFFSET: Final[int] = 0x21  # b'!' — base-85 digit zero
 _DIGIT_MAX: Final[int] = 93  # c - '!' must be in 0..93 (b'!'..b'~'); else invalid
@@ -156,7 +157,7 @@ class ASCII85Decode(Filter):
             data = data[:eod]
 
         # Strip ignored whitespace in one C-level pass. This is the EXACT set
-        # upstream skips (LF, CR, SPACE — NOT NUL/TAB/FF/VT); dropping it up
+        # upstream skips (NUL, TAB, LF, FF, CR, SPACE — NOT VT); dropping it up
         # front is behaviourally identical to the old per-byte skip because
         # whitespace never affects group boundaries.
         data = data.translate(None, _WHITESPACE_BYTES)

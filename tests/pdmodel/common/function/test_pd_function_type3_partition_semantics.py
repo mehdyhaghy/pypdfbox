@@ -260,10 +260,10 @@ def test_bounds_too_long_with_single_function_ignores_bounds() -> None:
 
 def test_empty_functions_raises() -> None:
     """A stitching wrapper with no subfunctions has nothing to dispatch to.
-    Upstream builds a zero-length functionsArray, selects partition 0 (the only
-    one, [domain_min, domain_max]), then indexes functionsArray[0] ->
-    ArrayIndexOutOfBoundsException (-> IndexError here). Retargeted wave 1523
-    (oracle: FunctionType3FuzzProbe fns_empty; was ValueError "...Functions...")."""
+    Upstream builds a zero-length functionsArray and, since PDFBOX-6332
+    (PDFBox 3.0.9), rejects ``0 bounds >= 0 functions`` with an IOException
+    (-> ValueError here, the module convention) instead of indexing
+    functionsArray[0] (3.0.8: ArrayIndexOutOfBoundsException)."""
     parent = COSDictionary()
     parent.set_int("FunctionType", 3)
     domain_arr = COSArray()
@@ -273,7 +273,7 @@ def test_empty_functions_raises() -> None:
     parent.set_item("Bounds", COSArray())
     parent.set_item("Encode", COSArray())
     fn = PDFunctionType3(parent)
-    with pytest.raises(IndexError):
+    with pytest.raises(ValueError, match="0 bounds for 0 functions"):
         fn.eval([0.5])
 
 

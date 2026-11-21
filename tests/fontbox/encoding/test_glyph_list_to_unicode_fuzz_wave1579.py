@@ -28,10 +28,10 @@ edge cases — they are easy to get "Pythonically wrong"):
   through to ``null``.
 * ``gNN`` / ``cidNN`` / dingbat ``aNN`` names that aren't AGL entries and don't
   match the uni/u pattern return ``null``.
-* underscore-joined ligature names (``f_f``, ``fi_lig``) are NOT AGL entries
-  and are NOT special-cased by upstream ``toUnicode`` -> ``null``. (The real
-  ligature glyphs ``ff`` / ``fi`` ARE plain AGL entries mapping to U+FB00 /
-  U+FB01.)
+* underscore-joined ligature names map component by component since
+  PDFBOX-6322 (3.0.9): ``f_f`` -> ``f f``; an unknown component (``fi_lig``)
+  -> ``null``. (The real ligature glyphs ``ff`` / ``fi`` ARE plain AGL entries
+  mapping to U+FB00 / U+FB01.)
 
 The value-based tests below run everywhere; the ``@requires_oracle`` test
 re-derives the same table from the live PDFBox jar so future upstream drift is
@@ -113,8 +113,8 @@ _EXPECTED: dict[str, str] = {
     "fl": "U+FB02",
     "ffi": "U+FB03",
     "ffl": "U+FB04",
-    # -- underscore-joined ligature names NOT special-cased -> NULL -------
-    "f_f": "NULL",
+    # -- underscore-joined ligature names, per component (PDFBOX-6322) ---
+    "f_f": "U+0066 U+0066",
     "fi_lig": "NULL",
     # -- gNN / cidNN / dingbat aNN names (no AGL entry, no synthesis) -----
     "g65": "NULL",

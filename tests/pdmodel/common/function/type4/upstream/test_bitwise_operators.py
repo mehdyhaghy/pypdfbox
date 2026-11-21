@@ -66,12 +66,12 @@ def test_not() -> None:
     """Ported from ``TestOperators.testNot`` (line 413).
 
     Java program: ``"true not false not"`` → pops True, False.
-    Java program: ``"52 not -37 not"`` → pops 37, -52.
+    Java program: ``"52 not -37 not"`` → pops ~-37, ~52 (PDFBOX-6331).
     """
     assert _run(Not, True) is False
     assert _run(Not, False) is True
-    assert _run(Not, 52) == -52
-    assert _run(Not, -37) == 37
+    assert _run(Not, 52) == ~52
+    assert _run(Not, -37) == ~-37
 
 
 def test_or() -> None:

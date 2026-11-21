@@ -35,9 +35,9 @@ class ASCIIHexDecode(Filter):
     (verified against the live PDFBox 3.0.7 oracle, wave 1412), including its
     quirks on malformed input:
 
-    * Whitespace (NUL TAB LF FF CR SP) is skipped ONLY before the *first*
-      nibble of each byte pair — never between the two nibbles. Whitespace
-      that splits a pair is therefore treated as an invalid hex character.
+    * Whitespace (NUL TAB LF FF CR SP) is skipped before either nibble of a
+      byte pair, so whitespace that splits a pair is ignored (PDFBOX-6330,
+      PDFBox 3.0.9; 3.0.8 skipped it only before the first nibble).
     * An invalid (non-hex) character does NOT raise; PDFBox logs an error and
       feeds the lookup's ``-1`` into ``value = REVERSE_HEX[hi]*16 +
       REVERSE_HEX[lo]``, writing the low 8 bits. We mirror that (logging is a
@@ -72,8 +72,10 @@ class ASCIIHexDecode(Filter):
             if first == -1 or first == _EOD:
                 break
             value = _REVERSE_HEX[first] * 16
-            # The low nibble is read WITHOUT a whitespace skip — upstream
-            # parity. EOF/EOD here writes the high nibble with a 0 low.
+            # PDFBOX-6330: skip whitespace between the two nibbles too.
+            # EOF/EOD here writes the high nibble with a 0 low.
+            while i < n and raw[i] in _WHITESPACE:
+                i += 1
             if i >= n:
                 out.append(value & 0xFF)
                 break

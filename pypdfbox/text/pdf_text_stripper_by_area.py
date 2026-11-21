@@ -202,6 +202,9 @@ class PDFTextStripperByArea(PDFTextStripper):
         # ``characterListMapping.clear()`` at the top of each
         # ``processPage`` (PDFTextStripper.java L378).
         self._character_list_mapping = {}
+        # PDFBOX-6338: upstream ``extractRegions`` runs the base
+        # ``processPage``, which drops marked content left unclosed earlier.
+        self._reset_marked_content_state()
 
         # PDFBOX-6145: no early return for a contentless page. Upstream's
         # ``PDFStreamEngine.processPage`` still skips the *stream* walk when

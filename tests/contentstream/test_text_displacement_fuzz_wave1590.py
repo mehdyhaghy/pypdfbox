@@ -44,6 +44,11 @@ from pypdfbox.contentstream import PDFStreamEngine
 from pypdfbox.util.matrix import Matrix
 
 
+def _flat(pairs: Any) -> list[float]:
+    """Flatten ``[(tx, ty), ...]`` for ``pytest.approx`` (no nesting since pytest 9.2)."""
+    return [v for pair in pairs for v in pair]
+
+
 class _FuzzFont:
     """Minimal font exposing the surface ``PDFStreamEngine.showText`` uses.
 
@@ -229,7 +234,7 @@ def test_bare_width_advance_single_glyph() -> None:
     font = _FuzzFont({ord("A"): 722.0})
     eng = _run(b"A", font, font_size=12.0)
     # 722/1000 * 12 = 8.664
-    assert eng.advances == pytest.approx([(8.664, 0.0)])
+    assert _flat(eng.advances) == pytest.approx(_flat([(8.664, 0.0)]))
     assert eng.translation == pytest.approx((8.664, 0.0))
 
 
@@ -237,7 +242,7 @@ def test_width_units_are_divided_by_1000() -> None:
     # A 1000-unit glyph at font size 10 advances exactly 10 text-space units.
     font = _FuzzFont({ord("X"): 1000.0})
     eng = _run(b"X", font, font_size=10.0)
-    assert eng.advances == pytest.approx([(10.0, 0.0)])
+    assert _flat(eng.advances) == pytest.approx(_flat([(10.0, 0.0)]))
 
 
 def test_font_size_scales_advance_linearly() -> None:
@@ -250,7 +255,7 @@ def test_font_size_scales_advance_linearly() -> None:
 def test_zero_width_glyph_advances_zero_without_spacing() -> None:
     font = _FuzzFont({0x05: 0.0})
     eng = _run(b"\x05", font, font_size=14.0)
-    assert eng.advances == pytest.approx([(0.0, 0.0)])
+    assert _flat(eng.advances) == pytest.approx(_flat([(0.0, 0.0)]))
 
 
 # ---------- char spacing (Tc) on every glyph ----------
@@ -260,7 +265,7 @@ def test_char_spacing_added_to_every_glyph() -> None:
     font = _FuzzFont({ord("a"): 500.0})
     eng = _run(b"aaa", font, font_size=10.0, char_spacing=2.0)
     # each: 500/1000*10 + 2 = 7.0
-    assert eng.advances == pytest.approx([(7.0, 0.0)] * 3)
+    assert _flat(eng.advances) == pytest.approx(_flat([(7.0, 0.0)] * 3))
     assert eng.translation == pytest.approx((21.0, 0.0))
 
 
@@ -276,7 +281,7 @@ def test_negative_char_spacing_condenses() -> None:
     font = _FuzzFont({ord("w"): 800.0})
     eng = _run(b"w", font, font_size=10.0, char_spacing=-3.0)
     # 800/1000*10 - 3 = 5.0
-    assert eng.advances == pytest.approx([(5.0, 0.0)])
+    assert _flat(eng.advances) == pytest.approx(_flat([(5.0, 0.0)]))
 
 
 # ---------- word spacing (Tw): single-byte code 32 ONLY ----------
@@ -286,21 +291,21 @@ def test_word_spacing_applies_to_single_byte_space() -> None:
     font = _FuzzFont({32: 250.0})
     eng = _run(b" ", font, font_size=10.0, word_spacing=4.0)
     # 250/1000*10 + 0 (Tc) + 4 (Tw) = 6.5
-    assert eng.advances == pytest.approx([(6.5, 0.0)])
+    assert _flat(eng.advances) == pytest.approx(_flat([(6.5, 0.0)]))
 
 
 def test_word_spacing_not_applied_to_non_space() -> None:
     font = _FuzzFont({ord("A"): 250.0})
     eng = _run(b"A", font, font_size=10.0, word_spacing=4.0)
     # No Tw for a non-space code: 250/1000*10 = 2.5
-    assert eng.advances == pytest.approx([(2.5, 0.0)])
+    assert _flat(eng.advances) == pytest.approx(_flat([(2.5, 0.0)]))
 
 
 def test_word_spacing_applies_only_to_spaces_in_mixed_run() -> None:
     font = _FuzzFont({ord("A"): 500.0, 32: 250.0, ord("B"): 500.0})
     eng = _run(b"A B", font, font_size=10.0, word_spacing=5.0)
     # A: 5.0 ; space: 2.5 + 5.0 = 7.5 ; B: 5.0
-    assert eng.advances == pytest.approx([(5.0, 0.0), (7.5, 0.0), (5.0, 0.0)])
+    assert _flat(eng.advances) == pytest.approx(_flat([(5.0, 0.0), (7.5, 0.0), (5.0, 0.0)]))
 
 
 def test_word_spacing_not_applied_to_two_byte_code_32() -> None:
@@ -310,7 +315,7 @@ def test_word_spacing_not_applied_to_two_byte_code_32() -> None:
     font = _FuzzFont({32: 1000.0}, code_bytes=2)
     eng = _run(b"\x00\x20", font, font_size=10.0, word_spacing=9.0)
     # 1000/1000*10 = 10.0, NO word spacing.
-    assert eng.advances == pytest.approx([(10.0, 0.0)])
+    assert _flat(eng.advances) == pytest.approx(_flat([(10.0, 0.0)]))
 
 
 def test_two_byte_high_code_32_low_byte_no_word_spacing() -> None:
@@ -318,13 +323,13 @@ def test_two_byte_high_code_32_low_byte_no_word_spacing() -> None:
     Neither single-byte-space condition holds → no Tw either way."""
     font = _FuzzFont({0x2000: 500.0, 0x0020: 500.0}, code_bytes=2)
     eng = _run(b"\x20\x00\x00\x20", font, font_size=10.0, word_spacing=7.0)
-    assert eng.advances == pytest.approx([(5.0, 0.0), (5.0, 0.0)])
+    assert _flat(eng.advances) == pytest.approx(_flat([(5.0, 0.0), (5.0, 0.0)]))
 
 
 def test_word_spacing_zero_is_noop() -> None:
     font = _FuzzFont({32: 250.0})
     eng = _run(b" ", font, font_size=10.0, word_spacing=0.0)
-    assert eng.advances == pytest.approx([(2.5, 0.0)])
+    assert _flat(eng.advances) == pytest.approx(_flat([(2.5, 0.0)]))
 
 
 # ---------- horizontal scaling (Tz) scales the WHOLE advance ----------
@@ -334,21 +339,21 @@ def test_horizontal_scaling_scales_width() -> None:
     font = _FuzzFont({ord("A"): 1000.0})
     eng = _run(b"A", font, font_size=10.0, h_scale=0.5)
     # (1000/1000*10) * 0.5 = 5.0
-    assert eng.advances == pytest.approx([(5.0, 0.0)])
+    assert _flat(eng.advances) == pytest.approx(_flat([(5.0, 0.0)]))
 
 
 def test_horizontal_scaling_scales_char_spacing() -> None:
     font = _FuzzFont({ord("A"): 0.0})
     eng = _run(b"A", font, font_size=10.0, char_spacing=4.0, h_scale=0.5)
     # (0 + 4) * 0.5 = 2.0
-    assert eng.advances == pytest.approx([(2.0, 0.0)])
+    assert _flat(eng.advances) == pytest.approx(_flat([(2.0, 0.0)]))
 
 
 def test_horizontal_scaling_scales_word_spacing() -> None:
     font = _FuzzFont({32: 0.0})
     eng = _run(b" ", font, font_size=10.0, word_spacing=6.0, h_scale=0.5)
     # (0 + 0 (Tc) + 6 (Tw)) * 0.5 = 3.0
-    assert eng.advances == pytest.approx([(3.0, 0.0)])
+    assert _flat(eng.advances) == pytest.approx(_flat([(3.0, 0.0)]))
 
 
 def test_horizontal_scaling_scales_combined_advance() -> None:
@@ -358,13 +363,13 @@ def test_horizontal_scaling_scales_combined_advance() -> None:
         h_scale=2.0,
     )
     # (250/1000*10 + 1 + 3) * 2 = (2.5 + 4) * 2 = 13.0
-    assert eng.advances == pytest.approx([(13.0, 0.0)])
+    assert _flat(eng.advances) == pytest.approx(_flat([(13.0, 0.0)]))
 
 
 def test_horizontal_scaling_200_percent() -> None:
     font = _FuzzFont({ord("A"): 500.0})
     eng = _run(b"A", font, font_size=10.0, h_scale=2.0)
-    assert eng.advances == pytest.approx([(10.0, 0.0)])
+    assert _flat(eng.advances) == pytest.approx(_flat([(10.0, 0.0)]))
 
 
 # ---------- text matrix translated by displacement after each glyph ----------
@@ -390,7 +395,7 @@ def test_vertical_font_uses_w1_component() -> None:
     font = _FuzzFont({0x21: 1000.0}, code_bytes=2, vertical=True)
     eng = _run(b"\x00\x21", font, font_size=10.0)
     # vertical: ty = w1 * fs = -(1000/1000) * 10 = -10.0 ; tx = 0
-    assert eng.advances == pytest.approx([(0.0, -10.0)])
+    assert _flat(eng.advances) == pytest.approx(_flat([(0.0, -10.0)]))
     assert eng.translation == pytest.approx((0.0, -10.0))
 
 
@@ -398,14 +403,14 @@ def test_vertical_font_ignores_horizontal_scaling() -> None:
     font = _FuzzFont({0x21: 1000.0}, code_bytes=2, vertical=True)
     eng = _run(b"\x00\x21", font, font_size=10.0, h_scale=0.5)
     # Tz must NOT scale a vertical advance.
-    assert eng.advances == pytest.approx([(0.0, -10.0)])
+    assert _flat(eng.advances) == pytest.approx(_flat([(0.0, -10.0)]))
 
 
 def test_vertical_font_adds_char_spacing_on_y() -> None:
     font = _FuzzFont({0x21: 1000.0}, code_bytes=2, vertical=True)
     eng = _run(b"\x00\x21", font, font_size=10.0, char_spacing=2.0)
     # ty = -10 + 2 = -8.0
-    assert eng.advances == pytest.approx([(0.0, -8.0)])
+    assert _flat(eng.advances) == pytest.approx(_flat([(0.0, -8.0)]))
 
 
 def test_vertical_font_word_spacing_only_single_byte_space() -> None:
@@ -413,7 +418,7 @@ def test_vertical_font_word_spacing_only_single_byte_space() -> None:
     font = _FuzzFont({32: 1000.0}, code_bytes=2, vertical=True)
     eng = _run(b"\x00\x20", font, font_size=10.0, word_spacing=5.0)
     # ty = -10 + 0 (no Tw for 2-byte) = -10.0
-    assert eng.advances == pytest.approx([(0.0, -10.0)])
+    assert _flat(eng.advances) == pytest.approx(_flat([(0.0, -10.0)]))
 
 
 # ---------- empty / degenerate ----------
@@ -451,7 +456,7 @@ def test_random_horizontal_runs_match_reference(seed: int) -> None:
         _decode(data, font), font, font_size=font_size,
         char_spacing=char_spacing, word_spacing=word_spacing, h_scale=h_scale,
     )
-    assert eng.advances == pytest.approx(ref)
+    assert _flat(eng.advances) == pytest.approx(_flat(ref))
     exp_x = sum(a for a, _ in ref)
     assert eng.translation == pytest.approx((exp_x, 0.0))
 
@@ -479,14 +484,14 @@ def test_random_two_byte_runs_no_word_spacing_on_code_32(seed: int) -> None:
         _decode(data, font), font, font_size=font_size,
         char_spacing=char_spacing, word_spacing=word_spacing, h_scale=h_scale,
     )
-    assert eng.advances == pytest.approx(ref)
+    assert _flat(eng.advances) == pytest.approx(_flat(ref))
     # No advance in the run should include the word-spacing term, because
     # every code is 2-byte. Confirm by recomputing with word_spacing=0.
     ref_no_tw = _reference_advances(
         _decode(data, font), font, font_size=font_size,
         char_spacing=char_spacing, word_spacing=0.0, h_scale=h_scale,
     )
-    assert eng.advances == pytest.approx(ref_no_tw)
+    assert _flat(eng.advances) == pytest.approx(_flat(ref_no_tw))
 
 
 @pytest.mark.parametrize("seed", range(6))
@@ -510,7 +515,7 @@ def test_random_vertical_runs_match_reference(seed: int) -> None:
         _decode(data, font), font, font_size=font_size,
         char_spacing=char_spacing, word_spacing=0.0, h_scale=h_scale,
     )
-    assert eng.advances == pytest.approx(ref)
+    assert _flat(eng.advances) == pytest.approx(_flat(ref))
     # All x advances are 0 for a vertical run.
     assert all(a == pytest.approx(0.0) for a, _ in eng.advances)
     exp_y = sum(b for _, b in ref)

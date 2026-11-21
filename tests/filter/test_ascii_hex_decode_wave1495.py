@@ -38,12 +38,11 @@ def test_only_whitespace_decodes_to_empty() -> None:
     assert _decode(b" \t\r\n\x00\x0c") == b""
 
 
-def test_whitespace_splitting_a_pair_is_an_invalid_low_nibble() -> None:
-    # "A " — the high nibble "A" (10) is read, then the low-nibble read does
-    # NOT skip whitespace, so the space byte maps through REVERSE_HEX to -1:
-    # 10*16 + (-1) = 159 = 0x9f (low 8 bits). Verified against the live
-    # PDFBox 3.0.7 oracle's ASCIIHexFilter (wave 1412).
-    assert _decode(b"A ") == b"\x9f"
+def test_whitespace_after_a_high_nibble_is_skipped() -> None:
+    # "A " — the high nibble "A" (10) is read, then the low-nibble read skips
+    # whitespace (PDFBOX-6330) and hits EOF, so the high nibble is written
+    # with a 0 low nibble -> 0xA0.
+    assert _decode(b"A ") == b"\xa0"
 
 
 def test_lone_high_nibble_at_eof_pads_low_nibble_with_zero() -> None:

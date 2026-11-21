@@ -124,13 +124,15 @@ class Roll(Operator):
     ``j`` and ``n`` (``n`` deeper) and rolls the top ``n`` elements ``j``
     positions: positive ``j`` rolls toward the top, negative ``j`` rolls
     toward the bottom. ``j == 0`` is a no-op; ``n < 0`` raises
-    ``ValueError`` (upstream ``IllegalArgumentException``).
+    ``ValueError`` (upstream ``IllegalArgumentException``); ``n == 0`` is a
+    no-op; otherwise ``j`` is reduced modulo ``n`` with Java's truncating
+    remainder (PDFBOX-6331), so ``|j| > n`` rotates correctly.
 
     The upstream implementation hand-rolls the rotation with two
     ``LinkedList`` helpers to preserve order across pops; we follow its
-    structure verbatim so behaviour is bit-exact, including the ``j``
-    out-of-bounds case where upstream pops past the declared frame and
-    naturally raises ``EmptyStackException`` (Python: ``IndexError``).
+    structure verbatim so behaviour is bit-exact, including a stack shorter
+    than ``n`` where upstream pops past the frame and raises
+    ``EmptyStackException`` (Python: ``IndexError``).
     """
 
     def execute(self, context: ExecutionContext) -> None:
@@ -141,6 +143,12 @@ class Roll(Operator):
             return  # Nothing to do
         if n < 0:
             raise ValueError(f"rangecheck: {n}")
+        if n == 0:
+            return
+        # Rolling by j is the same as rolling by j mod n (Java remainder).
+        j = abs(j) % n if j > 0 else -(abs(j) % n)
+        if j == 0:
+            return
 
         rolled: list[object] = []
         moved: list[object] = []

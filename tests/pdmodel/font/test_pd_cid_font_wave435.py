@@ -112,7 +112,8 @@ def test_w2_parser_handles_malformed_entries_and_large_ranges_compactly() -> Non
     parsed = font.get_widths2()
 
     assert parsed[2] == (700.0, 100.0, 800.0)
-    assert parsed[4] == (710.0, 110.0, 810.0)
+    # PDFBOX-6319: a malformed triple stops reading the inner array.
+    assert 4 not in parsed
     # cid-ranges stay compact (PDFBOX-6175, bcf78963), never in the dict
     assert 10 not in parsed
     assert font._get_w2_metrics(10) == (900.0, 200.0, 880.0)

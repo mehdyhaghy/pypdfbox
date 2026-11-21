@@ -118,10 +118,11 @@ def test_decode_with_embedded_whitespace() -> None:
 
 
 def test_decode_rejects_non_pdfbox_whitespace_mid_stream() -> None:
-    """TAB, NUL and FF are NOT whitespace — they trip the range check."""
+    """TAB, NUL and FF are PDF whitespace (PDFBOX-6330); VT trips the range check."""
     for ws in (b"\t", b"\x00", b"\x0c"):
-        with pytest.raises(OSError, match="Invalid data"):
-            _decode(b"87" + ws + b"cURDZ~>")
+        assert _decode(b"87" + ws + b"cURDZ~>") == _decode(b"87cURDZ~>")
+    with pytest.raises(OSError, match="Invalid data"):
+        _decode(b"87\x0bcURDZ~>")
 
 
 def test_decode_leading_whitespace_only() -> None:

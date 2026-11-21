@@ -20,7 +20,8 @@ from pypdfbox.filter.ascii85_output_stream import ASCII85OutputStream
 
 
 def _reference_decode(data: bytes) -> bytes:
-    # Upstream ASCII85InputStream: stop at the first b'~', skip LF/CR/SPACE,
+    # Upstream ASCII85InputStream: stop at the first b'~', skip NUL/TAB/LF/FF/CR/SPACE
+    # (PDFBOX-6330),
     # b'z' only at a group boundary, digits b'!'..b'}' with a 32-bit wrap,
     # trailing partial group of n digits padded with b'u' -> n - 1 bytes.
     out = bytearray()
@@ -28,7 +29,7 @@ def _reference_decode(data: bytes) -> bytes:
     for byte in data:
         if byte == 0x7E:
             break
-        if byte in (0x0A, 0x0D, 0x20):
+        if byte in (0x00, 0x09, 0x0A, 0x0C, 0x0D, 0x20):
             continue
         if byte == 0x7A and not group:
             out += b"\x00\x00\x00\x00"
@@ -194,7 +195,8 @@ def test_decode_matches_reference(seed: int) -> None:
         b"uu",  # padded partial group overflows: wraps
         b's8W-"',  # full-group overflow: wraps
         b"vwxy}",  # digits above b'u' are accepted upstream
-        b"87cURD\t]i,\"Ebo80~>",  # TAB is not whitespace upstream
+        b"87cURD\t]i,\"Ebo80~>",  # TAB is whitespace (PDFBOX-6330)
+        b"87cURD\x0b]i,\"Ebo80~>",  # VT is not whitespace
         b"87cURD~X",  # first b'~' ends the stream
         b"",
         b"~>",
@@ -207,7 +209,8 @@ def test_decode_matches_reference(seed: int) -> None:
         "partial_overflow",
         "full_overflow",
         "high_digits",
-        "tab_invalid",
+        "tab_skipped",
+        "vt_invalid",
         "tilde_only_eod",
         "empty",
         "eod_only",

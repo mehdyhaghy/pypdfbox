@@ -4678,6 +4678,7 @@ class GlyphList:
 
         Honors the upstream extensions:
         - ``foo.suffix`` falls back to ``foo``.
+        - ``a_b_c`` ligature names map component by component (PDFBOX-6322).
         - ``uniXXXX`` (name length 7) and ``uXXXX`` (name length 5) names are
           synthesized from the hex code point.
         """
@@ -4852,11 +4853,28 @@ class GlyphList:
             or ZapfDingbatsEncoding.INSTANCE.contains(glyph_name)
         )
 
+    def _to_unicode_components(self, components: list[str]) -> str | None:
+        """Map each component of an underscore ligature name; ``None`` if any
+        component is empty or unknown (upstream ``toUnicodeComponents``)."""
+        parts: list[str] = []
+        for component in components:
+            part = self.to_unicode(component) if component else None
+            if part is None:
+                return None
+            parts.append(part)
+        return "".join(parts)
+
     def _derive(self, name: str) -> str | None:
         # foo.suffix -> foo
         dot = name.find(".")
         if dot > 0:
             return self.to_unicode(name[:dot])
+
+        # PDFBOX-6322: AGL specification section 2, a ligature name maps
+        # component by component (``f_f_i`` -> ``f`` ``f`` ``i``). Empty or
+        # unknown components make the whole name unresolvable.
+        if "_" in name:
+            return self._to_unicode_components(name.split("_"))
 
         # Upstream ``GlyphList.toUnicode`` gates on exact name length: a
         # ``uni`` name must be exactly 7 chars (one 4-hex code point) and a
