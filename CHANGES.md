@@ -141,37 +141,50 @@ porting history before 1.0.0 is in git history.
 - **Breaking, upstream parity:** optimized-mode `PDFMergerUtility` copies only pages (crop box, media box, rotation and resources set on each page, highest source version) and no longer merges document information, metadata or the AcroForm, nor rejects dynamic XFA sources.
 - **Breaking, upstream parity:** `Splitter.split()` raises when a chunk's structure-tree clone, destination fix-up or named-destination fix-up fails, after closing the documents it created; a malformed `/Names /Dests` tree aborts the split.
 - `/W2` CID ranges are stored compactly (trunk `bcf78963`).
-- `PDFTextStripper`: marked content nested inside an `/ActualText` span no longer ends the replacement, and a nested `/ActualText` is ignored (PDFBOX-6311).
-- `PDFTextStripper` / `PDFTextStripperByArea`: marked content left unclosed on one page no longer replaces text on later pages or in the next document (PDFBOX-6338).
-- `PDMarkedContent`: new `get_struct_parent()` / `set_struct_parent()` (default -1); `to_string()` appends `structParent`. `PDFMarkedContentExtractor` sets it from the page or form `/StructParents` (PDFBOX-6303).
-- `PDCIDFont`: malformed `/W` and `/W2` width arrays no longer raise; a bad `/W2` triple stops the read and a bad `/W` range skips three entries, as upstream does (PDFBOX-6319).
-- `PDCIDFontType2`: a non-embedded font with an Identity-ordered CMap and no `/CIDToGIDMap` stream uses the code as the GID when the substitute is the same font; names match when one is a prefix of the other, ignoring `,` and `-`. Both warnings are logged once (PDFBOX-6288, PDFBOX-5384).
-- `GlyphList`: underscore ligature names such as `f_f_i` map to the Unicode of their parts, which improves text extraction (PDFBOX-6322).
-- Type 1 and Type 2 charstring parsers raise `OSError` when subroutines nest more than 106 levels (Type 1) or a glyph makes more than 150 subroutine calls (Type 2), instead of recursing without end (PDFBOX-6308).
-- cmap subtables in formats 8, 12 and 13 skip mapping groups not sorted by end code; formats 12 and 13 reject more than 0x10FFFF groups, and format 13 stops at a glyph id equal to the glyph count (PDFBOX-6297).
-- `CFFParser.concatenate_matrix` computes the second matrix entry as `a1*b2 + b1*d2`, fixing skewed font matrices (PDFBOX-6324).
-- `PDFMergerUtility`: merging with the structure tree offsets `/StructParent` on image XObjects and `/StructParents` on form XObjects (nested forms included) and maps `/ParentTree` object references to the merged copies; shared XObjects are offset once and self-referencing forms no longer recurse. Adds `COSName.STM` (PDFBOX-6301).
-- `PDPageTree`: `add`, `remove` and inserts update every ancestor `/Count` and stop with a warning on a `/Parent` cycle (PDFBOX-6318). **Breaking, upstream parity:** removing an orphan page, or one whose parent has no `/Kids`, raises `ValueError` (upstream `IllegalArgumentException`).
-- New `PDDocument.add_font_for_subsetting(font)`, which raises `ValueError` for a font that is not subset; content streams use it, and `get_fonts_to_subset` is deprecated as upstream (PDFBOX-6170).
-- ASCII85 decoding (`ASCII85Decode` and `ASCII85InputStream`) skips all PDF whitespace (NUL, TAB, LF, FF, CR, SPACE); `ASCII85InputStream` now uses the filter's decoder instead of `base64.a85decode`, so a missing `~>` ends the last group (PDFBOX-6330, PDFBOX-6317).
-- ASCIIHexDecode skips whitespace between the two hex digits of a byte (PDFBOX-6330).
-- Predictor decoding rejects a zero or negative row length (for example `/Columns 0`) with `OSError` instead of hanging or returning empty output (PDFBOX-6304).
-- Type 4 functions: integer `not` is a bitwise complement, `roll` reduces j modulo n, and `eq`/`ne` compare like Java `Double.compare` (PDFBOX-6331). Malformed programs always raise `OSError`, and NaN or infinite stack counts follow Java `intValue()` (PDFBOX-6320).
-- Type 3 functions with at least as many `/Bounds` as `/Functions` raise `ValueError` up front instead of `IndexError` (PDFBOX-6332); type 0 functions with an odd-length `/Encode` or `/Decode` no longer raise `IndexError` (PDFBOX-6333).
-- Rendering: a self-referencing optional content visibility expression (`/VE`) no longer recurses until `RecursionError`; the cycle is logged and evaluated as upstream. `/VE` evaluation now follows upstream `PageDrawer`: an empty `/VE` falls back to `/P` and `/OCGs`, unknown operators count as not hidden, and non-array, non-dictionary operands are skipped (PDFBOX-6315).
-- `PDVisibleSignDesigner.use_user_space_coordinates(True)` treats `x_axis`/`y_axis` as the lower-left corner of the signature rectangle in page user space, without applying `/Rotate`. Off by default (PDFBOX-6307).
-- Text extraction keeps `/ActualText` replacement text as written: it is no longer reordered as right-to-left text or decomposed from presentation forms, so Arabic text with digits no longer comes out as "7441" for "1447" (PDFBOX-6281).
-- `TextPosition` gains `is_from_actual_text()` / `set_from_actual_text()`, true only for the glyph that carries an `/ActualText` replacement (PDFBOX-6281). The span-membership flag previously named `from_actual_text` is now `in_actual_text_span`.
-- Encryption: a missing `/U` or `/O` raises `OSError` ("/Encrypt/U entry is missing") instead of `InvalidPasswordException` (PDFBOX-6329).
-- Encryption: a key length from 1 to 39 bits raises `OSError("Invalid encryption dictionary length: N")` instead of a low-level `ValueError`, and V=1 always uses a 40-bit key whatever `/Length` says, so such files open with the right password (PDFBOX-6316). **Breaking, upstream parity:** `/Length 0` is rejected the same way.
-- `PDEncryption.has_security_handler()` returns True when a handler is installed; it was inverted (PDFBOX-6313).
-- SaslPrep no longer rejects astral-plane password characters whose low 16 bits match a space or control character, such as U+12000 (PDFBOX-6314).
-- XMP: a malformed `<?xpacket end ...?>` such as `<?xpacket end=?>` raises `XmpParsingException` (XpacketBadEnd) instead of being accepted; the "value 'r' or 'w'" message no longer ends with a space (PDFBOX-6334).
-- Rendering: optional content groups honor their `/Usage` render state for the render destination (`/View /ViewState`, `/Print /PrintState`, falling back to `/Export /ExportState`); `OFF` hides and `ON` shows regardless of `/OCProperties`, which decides only when no usage state applies. This covers marked content, XObjects, annotations and OCMD members. As upstream, `get_default_destination()` is `None` until set (was `"View"`), `render_image` then uses EXPORT, and `render_page_to_graphics` uses VIEW and passes its destination through.
-- Glyph outlines and widths built through fontTools enforce the same subroutine limits (Type 1: 106 nesting levels; Type 2: 150 calls per glyph): an over-limit glyph raises `OSError` from `get_path` / `get_width` / `get_width_from_font` as upstream does, and the renderer draws it empty. A composite (seac) Type 1 glyph skips an over-limit part with a warning (PDFBOX-6308).
-- Printing: `PDFPrintable` (and so `PDFPageable`) renders pages for `RenderDestination.PRINT`, as upstream `PDFPrintable.print` does, so optional content follows its `/Usage /Print /PrintState`.
-- `PDEncryption(COSDictionary)` installs a security handler for the `/Filter` through `SecurityHandlerFactory` (`Standard`, `Adobe.PubSec`; none for a missing or unknown filter), and decryption prepares that handler, so `get_encryption().has_security_handler()` is True on a loaded encrypted document and `get_security_handler()` returns the handler that decrypted it, as upstream.
-- `PDFMarkedContentExtractor`: `Do` reports the XObject to `xobject()` and walks form XObjects and transparency groups, as upstream does.
+- **Breaking, upstream parity:** `PDPageTree.remove` raises `ValueError` for an orphan page (no `/Parent`) or a parent without `/Kids` (PDFBOX-6318); 2.x only warns.
+- **Breaking, upstream parity:** `/Encrypt /Length 0` raises `OSError("Invalid encryption dictionary length: 0")` (PDFBOX-6316); 2.x falls back with a warning.
+
+### 2.6.0 (2026-11-21)
+
+- **Text extraction:** `/ActualText` replacement is kept as written (no bidi
+  reordering or normalization) and `TextPosition.is_from_actual_text()` marks
+  the replacing glyph; the old span flag is now `in_actual_text_span`
+  (PDFBOX-6281). Only the outermost `/ActualText` applies, unclosed marked
+  content resets at each page, `PDMarkedContent.get_struct_parent()` is set
+  from `/StructParents`, and `PDFMarkedContentExtractor` walks forms on `Do`
+  (PDFBOX-6311, 6338, 6303). Underscore ligature names such as `f_f_i` map to
+  their parts (PDFBOX-6322).
+- **Fonts:** charstring subroutine limits (Type 1: 106 levels, Type 2: 150
+  calls per glyph) on the ported parsers and every fontTools draw path; an
+  over-limit glyph raises `OSError` and renders empty (PDFBOX-6308). cmap
+  formats 8, 12, 13 skip unsorted groups and cap the count (PDFBOX-6297);
+  CFF matrix fix (PDFBOX-6324); malformed `/W` and `/W2` warn and skip
+  (PDFBOX-6319); non-embedded Identity CIDFontType2 uses CID as GID when the
+  substitute is the same font (PDFBOX-6288, 5384).
+- **Rendering and printing:** cyclic optional content `/VE` expressions are
+  detected (PDFBOX-6315); OCG `/Usage` states apply per destination; the
+  default destination is `None` (EXPORT for `render_image`, VIEW for
+  `render_page_to_graphics`) and printing uses PRINT, as upstream.
+- **Filters and functions:** ASCII85 and ASCIIHex skip all PDF whitespace and
+  `ASCII85InputStream` uses the filter decoder (PDFBOX-6330, 6317); a
+  non-positive predictor row length raises `OSError` instead of hanging
+  (PDFBOX-6304); type 4 `not`, `roll`, `eq`/`ne` and error handling follow
+  upstream (PDFBOX-6331, 6320); type 0 and type 3 bounds checks (PDFBOX-6332,
+  6333).
+- **Encryption and XMP:** missing `/U` or `/O` raises `OSError`
+  (PDFBOX-6329); key lengths under 40 bits are rejected and V=1 always uses
+  40 bits, while `/Length 0` keeps its default with a `DeprecationWarning`
+  (PDFBOX-6316); `has_security_handler()` is no longer inverted and loaded
+  documents get their `/Filter` handler (PDFBOX-6313); SaslPrep accepts
+  astral-plane characters (PDFBOX-6314); a malformed `<?xpacket end ...?>` is
+  rejected (PDFBOX-6334).
+- **Document model:** structure-tree merges offset `/StructParent(s)` on
+  image and form XObjects (PDFBOX-6301); page-tree `/Count` updates reach
+  every ancestor and stop on cycles, and removing an orphan page warns
+  (`DeprecationWarning`; 3.0 will raise) (PDFBOX-6318); new
+  `PDDocument.add_font_for_subsetting` (PDFBOX-6170);
+  `PDVisibleSignDesigner.use_user_space_coordinates` (PDFBOX-6307).
+- Locked dependencies upgraded (imagecodecs 2026.11.11, numpy 2.5.5).
 
 ### 2.5.0 (2026-10-31)
 

@@ -134,6 +134,9 @@ Useful `TextPosition` accessors:
 - `get_x_dir_adj()` / `get_y_dir_adj()` — rotation-aware coordinates
 - `get_font_name()` / `get_font_size_in_pt()` — font metadata
 - `get_width_of_space()` — the font's advance for `U+0020`
+- `is_from_actual_text()` — true for the glyph that carries an
+  `/ActualText` replacement. Words built from `/ActualText` are kept as
+  written, without bidi reordering or normalization.
 
 ## Tuning the line-break heuristic
 

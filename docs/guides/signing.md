@@ -212,6 +212,23 @@ with PDDocument.load("ltv.pdf") as doc:
 `PDSignature.is_doc_time_stamp()` is the reciprocal predicate when
 reading back.
 
+## Place a visible signature in page coordinates
+
+By default `PDVisibleSignDesigner` measures the y axis from the top of
+the page. Call `use_user_space_coordinates(True)` to give the lower-left
+corner in page user space instead (origin at the lower left of the
+unrotated page). The page `/Rotate` is not applied.
+
+```python
+from pypdfbox.pdmodel.interactive.digitalsignature.visible.pd_visible_sign_designer import (
+    PDVisibleSignDesigner,
+)
+
+with open("signature.png", "rb") as image:
+    designer = PDVisibleSignDesigner(doc, image, page=1)
+designer.use_user_space_coordinates(True).x_axis(72).y_axis(72)
+```
+
 ## See also
 
 - [Examples: `pypdfbox/examples/signature/`](https://github.com/Mehdy-haghy/pypdfbox/tree/main/pypdfbox/examples/signature)

@@ -73,6 +73,17 @@ export = renderer.render_image_with_dpi(
 Bare strings (`"View"`, `"Print"`, `"Export"`) are also accepted for
 the per-call argument.
 
+With no destination and no default, `render_image` uses `EXPORT` and
+`render_page_to_graphics` uses `VIEW`, as in PDFBox.
+`get_default_destination()` returns `None` until a default is set.
+`PDFPrintable` and `PDFPageable` always render with `PRINT`.
+
+An optional content group with a `/Usage` dictionary follows the state
+for the destination: `/View /ViewState`, `/Print /PrintState`, and
+`/Export /ExportState` as the fallback. `OFF` hides the group and `ON`
+shows it, whatever `/OCProperties` says. Without a usage state,
+`/OCProperties` decides.
+
 ## Subclass `PageDrawer`
 
 For custom painting (debug overlays, region inspection, font
