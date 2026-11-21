@@ -22,7 +22,7 @@ from pypdfbox.pdmodel.graphics.blend_mode import BlendMode
 from pypdfbox.pdmodel.graphics.state.pd_extended_graphics_state import (
     PDExtendedGraphicsState,
 )
-from pypdfbox.rendering import PDFRenderer, RenderDestination
+from pypdfbox.rendering import PDFRenderer
 
 
 def _make_doc(
@@ -280,7 +280,5 @@ def test_render_page_to_graphics_destination_defaults_to_view() -> None:
     renderer = PDFRenderer(doc)
     # Just exercise the default-destination resolution path. No exception.
     renderer.render_page_to_graphics(0, Image.new("RGB", (50, 50)))
-    assert renderer.get_default_destination() in {
-        RenderDestination.VIEW.value,
-        "View",
-    }
+    # Upstream resolves VIEW per call; the stored default stays null.
+    assert renderer.get_default_destination() is None

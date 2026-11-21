@@ -2,6 +2,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.fontbox.cff._subr_limits import SubrLimitError
 from pypdfbox.fontbox.cff.cff_cid_font import CFFCIDFont
 from pypdfbox.fontbox.cff.cff_font import CFFFont
 from pypdfbox.fontbox.cff.cff_type1_font import CFFType1Font
@@ -80,6 +81,8 @@ def _font_box_font_path(font: Any, name: str) -> list[tuple]:
             return PDCIDFontType2._draw_glyph(font, font.name_to_gid(name))
     try:
         path = font.get_path(name)
+    except SubrLimitError:
+        raise
     except Exception:
         return []
     return list(path) if path else []
@@ -557,6 +560,10 @@ class PDCIDFontType0(PDCIDFont):
                 if t1_font is None:
                     return 0.0
                 width = float(t1_font.get_width(self.get_glyph_name(code, parent)))
+        except SubrLimitError:
+            # PDFBOX-6308: upstream's charstring parser throws IOException,
+            # which ``getWidthFromFont`` propagates.
+            raise
         except Exception:
             _LOG.debug("width lookup failed for code %d", code, exc_info=True)
             return 0.0
@@ -898,6 +905,10 @@ class PDCIDFontType0(PDCIDFont):
             if self.is_embedded() and isinstance(t1_font, CFFType1Font):
                 return list(t1_font.get_type2_char_string(cid).get_path())
             return _font_box_font_path(t1_font, self.get_glyph_name(code, parent))
+        except SubrLimitError:
+            # PDFBOX-6308: upstream's charstring parser throws IOException,
+            # which ``getPath`` propagates (the renderer then draws nothing).
+            raise
         except Exception:
             _LOG.debug("glyph path failed for code %d", code, exc_info=True)
             return []

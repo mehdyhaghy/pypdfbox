@@ -71,12 +71,14 @@ def test_wave538_prepare_for_decryption_requires_password_entries() -> None:
     encryption.set_length(256)
     encryption.set_p(DEFAULT_PERMISSIONS)
 
-    with pytest.raises(InvalidPasswordException):
+    # PDFBOX-6329: a missing /U is a plain I/O error, not a wrong password.
+    with pytest.raises(OSError, match="/Encrypt/U entry is missing") as info:
         StandardSecurityHandler().prepare_for_decryption(
             encryption,
             b"",
             StandardDecryptionMaterial("user"),
         )
+    assert not isinstance(info.value, InvalidPasswordException)
 
 
 def test_wave538_revision5_short_user_and_owner_entries_do_not_validate() -> None:

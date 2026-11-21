@@ -1532,10 +1532,19 @@ def _fonttools_glyph_set(ttf: TrueTypeFont) -> Any | None:
     if inner is None:
         return None
     try:
-        return inner.getGlyphSet()
+        glyph_set = inner.getGlyphSet()
     except Exception:
         _LOG.exception("getGlyphSet failed")
         return None
+    # A CFF-flavored program draws through the PDFBOX-6308 limited Type 2
+    # interpreter; a ``glyf`` glyph set is returned unchanged.
+    from pypdfbox.fontbox.cff._subr_limits import limited_glyph_set
+
+    try:
+        font_name = str(ttf.get_name() or "")
+    except Exception:
+        font_name = ""
+    return limited_glyph_set(glyph_set, font_name)
 
 
 def _gid_to_glyph_name(ttf: TrueTypeFont, gid: int) -> str | None:

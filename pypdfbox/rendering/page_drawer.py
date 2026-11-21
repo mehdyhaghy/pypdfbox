@@ -18,6 +18,7 @@ import math
 from typing import TYPE_CHECKING, Any
 
 from pypdfbox.contentstream.pdf_graphics_stream_engine import PDFGraphicsStreamEngine
+from pypdfbox.cos import COSArray
 
 from .group_graphics import GroupGraphics
 
@@ -806,10 +807,25 @@ class PageDrawer(PDFGraphicsStreamEngine):
         return True
 
     def is_hidden_ocg(self, ocg: Any) -> bool:
-        """``True`` if an Optional Content Group is currently hidden."""
+        """``True`` if an Optional Content Group is currently hidden.
+
+        Mirrors upstream ``PageDrawer.isHiddenOCG``: the group's ``/Usage``
+        render state for this drawer's destination wins (``OFF`` hides,
+        ``ON`` shows); without one the ``/OCProperties`` configuration
+        decides. An OCMD is evaluated through :meth:`is_hidden_ocmd`.
+        """
         if ocg is None:
             return False
+        from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_group import (
+            PDOptionalContentGroup,
+        )
+
+        if not isinstance(ocg, PDOptionalContentGroup):
+            return self.is_hidden_ocmd(ocg)
         try:
+            helper = getattr(self._renderer, "_is_hidden_ocg", None)
+            if callable(helper):
+                return bool(helper(ocg, self._destination))
             return not self._renderer.is_group_enabled(ocg)
         except Exception:
             return False
@@ -825,17 +841,38 @@ class PageDrawer(PDFGraphicsStreamEngine):
         if ocmd is None:
             return False
         helper = getattr(self._renderer, "_property_list_is_hidden", None)
-        if callable(helper):
+        if not callable(helper):
+            return False
+        # Member groups resolve their /Usage state against this drawer's
+        # destination (the renderer reads it from ``_active_destination``).
+        renderer = self._renderer
+        previous = getattr(renderer, "_active_destination", None)
+        try:
+            renderer._active_destination = self._destination
+        except AttributeError:
             return bool(helper(ocmd))
-        return False
+        try:
+            return bool(helper(ocmd))
+        finally:
+            renderer._active_destination = previous
 
-    def is_hidden_visibility_expression(self, expr: Any) -> bool:
+    def is_hidden_visibility_expression(
+        self, expr: Any, visited: set[int] | None = None
+    ) -> bool:
         """Dispatch on a Visibility Expression (And/Or/Not).
 
-        Delegated to the OCMD evaluator on the renderer when ``expr`` is a
-        membership dictionary; a bare /VE array has no standalone hidden
-        state outside an OCMD, so a non-OCMD argument is never hidden.
+        A ``/VE`` ``COSArray`` is evaluated by the renderer's walker, which
+        mirrors upstream ``isHiddenVisibilityExpression(COSArray,
+        Set<COSArray>)``: ``visited`` (``id()`` of the arrays already
+        entered) stops a self-referencing expression from recursing
+        forever (PDFBOX-6315). Any other argument is delegated to the OCMD
+        evaluator, so a non-OCMD, non-array argument is never hidden.
         """
+        if isinstance(expr, COSArray):
+            helper = getattr(self._renderer, "_is_hidden_visibility_expression", None)
+            if callable(helper):
+                return bool(helper(expr, set() if visited is None else visited))
+            return False
         return self.is_hidden_ocmd(expr)
 
     def is_hidden_and_visibility_expression(self, operands: list[Any]) -> bool:

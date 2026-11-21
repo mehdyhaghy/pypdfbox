@@ -207,7 +207,7 @@ class Type2CharString:
         """
         if self._cached_width is not None:
             return self._cached_width
-        from fontTools.misc import psCharStrings
+        from ._subr_limits import SubrLimitError, type2_width
 
         # The width extractor needs access to local + global subrs to
         # follow callsubr / callgsubr in the prologue. fontTools
@@ -217,18 +217,22 @@ class Type2CharString:
         priv = getattr(self._t2, "private", None)
         local_subrs = getattr(priv, "Subrs", []) or []
         global_subrs = getattr(self._t2, "globalSubrs", []) or []
-        extractor = psCharStrings.T2WidthExtractor(
-            local_subrs,
-            global_subrs,
-            self._nominal_width_x,
-            self._default_width_x,
-        )
         try:
-            extractor.execute(self._t2)
+            width = type2_width(
+                self._t2,
+                local_subrs,
+                global_subrs,
+                self._nominal_width_x,
+                self._default_width_x,
+                self._font_name,
+            )
+        except SubrLimitError:
+            # PDFBOX-6308: upstream rejects this glyph with an IOException.
+            raise
         except Exception:
             self._cached_width = self._default_width_x
             return self._cached_width
-        self._cached_width = float(extractor.width)
+        self._cached_width = width
         return self._cached_width
 
     def get_path(self) -> list[tuple[Any, ...]]:
@@ -247,9 +251,14 @@ class Type2CharString:
         """
         if self._cached_path is not None:
             return list(self._cached_path)
+        from ._subr_limits import SubrLimitError, draw_type2
+
         pen = _make_path_pen()
         try:
-            self._t2.draw(pen)
+            draw_type2(self._t2, pen, self._font_name)
+        except SubrLimitError:
+            # PDFBOX-6308: upstream rejects this glyph with an IOException.
+            raise
         except Exception:
             self._cached_path = []
             return []

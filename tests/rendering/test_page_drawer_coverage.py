@@ -498,17 +498,24 @@ def test_begin_end_marked_content_skip_when_helpers_missing() -> None:
 def test_is_hidden_ocg_handles_missing_or_failing_renderer() -> None:
     doc, renderer, drawer = _make_drawer()
     try:
+        from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_group import (
+            PDOptionalContentGroup,
+        )
+
+        group = PDOptionalContentGroup("g")
         assert drawer.is_hidden_ocg(None) is False
+        # Neither an OCG nor an OCMD → never hidden (upstream isHiddenOCG).
+        assert drawer.is_hidden_ocg(object()) is False
         # Renderer raises → drawer must treat as visible.
         renderer.is_group_enabled = lambda _g: (_ for _ in ()).throw(  # type: ignore[attr-defined]
             RuntimeError("boom")
         )
-        assert drawer.is_hidden_ocg(object()) is False
+        assert drawer.is_hidden_ocg(group) is False
         # Renderer says enabled → not hidden.
         renderer.is_group_enabled = lambda _g: True  # type: ignore[attr-defined]
-        assert drawer.is_hidden_ocg(object()) is False
+        assert drawer.is_hidden_ocg(group) is False
         renderer.is_group_enabled = lambda _g: False  # type: ignore[attr-defined]
-        assert drawer.is_hidden_ocg(object()) is True
+        assert drawer.is_hidden_ocg(group) is True
     finally:
         doc.close()
 

@@ -63,7 +63,18 @@ class PDFTemplateBuilder(ABC):
     def create_signature_rectangle(
         self, signature_field: Any, properties: PDVisibleSignDesigner
     ) -> None:
-        """Mirrors ``createSignatureRectangle`` (Java line 108)."""
+        """Mirrors ``createSignatureRectangle`` (Java line 108).
+
+        By default the y axis of the properties is measured from the top of
+        the template: the rectangle is calculated from ``x_axis``,
+        ``template_height - y_axis``, width and height. If
+        :meth:`PDVisibleSignDesigner.is_use_user_space_coordinates` is
+        ``True``, ``x_axis`` and ``y_axis`` are the lower left corner of the
+        rectangle in the default user space of the page (origin at the lower
+        left of the unrotated page), and the upper right corner is
+        ``x_axis + width``, ``y_axis + height``. The page ``/Rotate`` is not
+        taken into account.
+        """
 
     @abstractmethod
     def create_proc_set_array(self) -> None:

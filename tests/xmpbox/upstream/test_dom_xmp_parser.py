@@ -157,14 +157,14 @@ def test_bad_x_packet_end2() -> None:
     """Translated from upstream ``testBadXPacketEnd2`` (line 695).
 
     The trailing PI carries ``end='k'`` which isn't ``r`` or ``w``. Upstream
-    raises with that exact message (note the trailing space, mirrored from
-    upstream).
+    raises with that exact message (PDFBOX-6334 dropped the trailing
+    space).
     """
     parser = DomXmpParser()
     with pytest.raises(XmpParsingException) as info:
         parser.parse_end_packet("end=\"k\"")
     assert str(info.value) == (
-        "Expected xpacket 'end' attribute with value 'r' or 'w' "
+        "Expected xpacket 'end' attribute with value 'r' or 'w'"
     )
 
 
@@ -390,3 +390,23 @@ def test_history() -> None:
     tm = TypeMapping(metadata)
     assert tm.is_structured_type_known("ResourceEvent") is True
     assert tm.is_structured_type_known("ResourceRef") is True
+
+
+def test_pdfbox6334() -> None:
+    """Translated from upstream ``testPDFBox6334``.
+
+    A bare ``<?xpacket end=?>`` must raise ``XmpParsingException`` instead
+    of an out-of-range index error.
+    """
+    s = (
+        "<?xpacket begin=\"﻿\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n"
+        "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\n"
+        "\t<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"/>\n"
+        "</x:xmpmeta><?xpacket end=?>"
+    )
+    xmp_parser = DomXmpParser()
+    with pytest.raises(XmpParsingException) as info:
+        xmp_parser.parse(s.encode("utf-8"))
+    assert str(info.value) == (
+        "Expected xpacket 'end' attribute with value 'r' or 'w'"
+    )

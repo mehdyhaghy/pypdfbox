@@ -243,6 +243,33 @@ _XPACKET_ATTR_RE = re.compile(
     re.DOTALL,
 )
 _XPACKET_END_RE = re.compile(rb"<\?xpacket\s+end\s*=\s*[\"']([^\"']*)[\"']\s*\?>")
+# Fallback for an end PI the strict form above does not recognise (e.g. a bare
+# ``<?xpacket end=?>``): capture the raw PI data so it can be validated the
+# way upstream ``parseEndPacket`` validates ``ProcessingInstruction.getData()``.
+_XPACKET_END_LOOSE_RE = re.compile(rb"<\?xpacket\s+(end\b(?:(?!\?>).)*)\?>", re.DOTALL)
+
+
+def _parse_end_packet_data(data: str) -> str:
+    """Validate xpacket end PI data; shared by ``parse_end_packet``."""
+    if not data.startswith("end="):
+        raise XmpParsingException(
+            XmpParsingException.ErrorType.XPACKET_BAD_END,
+            "Expected xpacket 'end' attribute (must be present and placed in first)",
+        )
+    # PDFBOX-6334: data too short to hold ``end='X'`` (e.g. a bare
+    # ``end=``) is a bad end value, not an out-of-range index.
+    if len(data) < 7:
+        raise XmpParsingException(
+            XmpParsingException.ErrorType.XPACKET_BAD_END,
+            "Expected xpacket 'end' attribute with value 'r' or 'w'",
+        )
+    end_char = data[5]
+    if end_char not in ("r", "w"):
+        raise XmpParsingException(
+            XmpParsingException.ErrorType.XPACKET_BAD_END,
+            "Expected xpacket 'end' attribute with value 'r' or 'w'",
+        )
+    return end_char
 
 
 def _strip_qname(tag: str) -> tuple[str, str]:
@@ -316,7 +343,7 @@ class DomXmpParser:
         if xpacket_end is not None and xpacket_end not in ("r", "w"):
             raise XmpParsingException(
                 XmpParsingException.ErrorType.XPACKET_BAD_END,
-                "Expected xpacket 'end' attribute with value 'r' or 'w' ",
+                "Expected xpacket 'end' attribute with value 'r' or 'w'",
             )
 
         # An XMP packet must not carry a DTD (ISO 16684-1 §7.3.2). Reject any
@@ -506,6 +533,14 @@ class DomXmpParser:
         if end_match:
             xpacket_end = end_match.group(1).decode("utf-8", errors="replace")
             body = body[: end_match.start()]
+        else:
+            loose_match = _XPACKET_END_LOOSE_RE.search(body)
+            if loose_match:
+                # Raises XpacketBadEnd for malformed data (PDFBOX-6334).
+                xpacket_end = _parse_end_packet_data(
+                    loose_match.group(1).decode("utf-8", errors="replace")
+                )
+                body = body[: loose_match.start()]
 
         return body.strip(), xpacket_begin, xpacket_id, xpacket_bytes, xpacket_encoding, xpacket_end
 
@@ -1207,23 +1242,7 @@ class DomXmpParser:
         instruction and returns the single-character marker. Raises
         :class:`XmpParsingException` (XPACKET_BAD_END) on malformed input.
         """
-        if not data.startswith("end="):
-            raise XmpParsingException(
-                XmpParsingException.ErrorType.XPACKET_BAD_END,
-                "Expected xpacket 'end' attribute (must be present and placed in first)",
-            )
-        if len(data) <= 5:
-            raise XmpParsingException(
-                XmpParsingException.ErrorType.XPACKET_BAD_END,
-                "Expected xpacket 'end' attribute (must be present and placed in first)",
-            )
-        end_char = data[5]
-        if end_char not in ("r", "w"):
-            raise XmpParsingException(
-                XmpParsingException.ErrorType.XPACKET_BAD_END,
-                "Expected xpacket 'end' attribute with value 'r' or 'w' ",
-            )
-        return end_char
+        return _parse_end_packet_data(data)
 
     def maybe_add_non_standard_namespace(
         self,

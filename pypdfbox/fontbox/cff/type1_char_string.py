@@ -119,9 +119,24 @@ def _make_extended_extractor(pen: Any, subrs: Any) -> Any:
     charstrings rarely use these on the operand stack — they appear in
     Other-Subroutine machinery — but PDFBox handles them, so we do too.
     """
-    from fontTools.misc import psCharStrings  # type: ignore[import-untyped]
+    return _extended_extractor_class()(pen, subrs)
 
-    class _Type1ExtendedExtractor(psCharStrings.T1OutlineExtractor):  # type: ignore[misc]
+
+_EXTENDED_EXTRACTOR_CLASS: Any = None
+
+
+def _extended_extractor_class() -> Any:
+    """Return (building once) the extended T1 outline extractor class.
+
+    It derives from the PDFBOX-6308 limited extractor, so ``callsubr``
+    nesting is bounded like upstream ``Type1CharStringParser``."""
+    global _EXTENDED_EXTRACTOR_CLASS
+    if _EXTENDED_EXTRACTOR_CLASS is not None:
+        return _EXTENDED_EXTRACTOR_CLASS
+
+    from ._subr_limits import LimitedT1OutlineExtractor
+
+    class _Type1ExtendedExtractor(LimitedT1OutlineExtractor):  # type: ignore[misc]
         def op_dup(self, index: int) -> None:
             # PostScript ``dup``: duplicate the top of the operand stack.
             top = self.pop()
@@ -151,21 +166,32 @@ def _make_extended_extractor(pen: Any, subrs: Any) -> Any:
             self.sby = sby
             self.currentPoint = sbx, sby
 
-    return _Type1ExtendedExtractor(pen, subrs)
+    _EXTENDED_EXTRACTOR_CLASS = _Type1ExtendedExtractor
+    return _EXTENDED_EXTRACTOR_CLASS
 
 
-def _draw_with_extended_extractor(t1: Any, pen: Any) -> float:
+def _draw_with_extended_extractor(
+    t1: Any, pen: Any, glyph_name: str = "", font_name: str = ""
+) -> float:
     """Run the wrapped charstring against ``pen`` using the extended
     extractor (with ``dup`` / ``exch`` filled in). Returns the advance
-    width recorded by the ``hsbw`` / ``sbw`` prologue."""
-    extractor = _make_extended_extractor(pen, getattr(t1, "subrs", None))
-    extractor.execute(t1)
-    width = float(getattr(extractor, "width", 0.0) or 0.0)
-    # Mirror fontTools' own ``T1CharString.draw`` side-effect: stash the
-    # width on the charstring so a follow-up ``getattr(t1, "width")``
-    # returns the same value as native fontTools.
-    t1.width = width
-    return width
+    width recorded by the ``hsbw`` / ``sbw`` prologue.
+
+    Raises :class:`~pypdfbox.fontbox.cff._subr_limits.SubrLimitError`
+    (an ``OSError``) when ``callsubr`` nests deeper than upstream allows
+    (PDFBOX-6308)."""
+    from ._subr_limits import draw_type1
+
+    # ``draw_type1`` mirrors fontTools' own ``T1CharString.draw``
+    # side-effect: it stashes the width on the charstring so a follow-up
+    # ``getattr(t1, "width")`` returns the same value as native fontTools.
+    return draw_type1(
+        t1,
+        pen,
+        glyph_name,
+        font_name,
+        extractor_class=_extended_extractor_class(),
+    )
 
 
 def _apply_affine(
@@ -436,10 +462,15 @@ class Type1CharString:
 
         from fontTools.pens.basePen import NullPen
 
+        from ._subr_limits import SubrLimitError
+
         try:
             self._cached_width = _draw_with_extended_extractor(
-                self._t1, NullPen()
+                self._t1, NullPen(), self._glyph_name, self._font_name
             )
+        except SubrLimitError:
+            # PDFBOX-6308: upstream rejects this glyph with an IOException.
+            raise
         except Exception:
             self._cached_width = 0.0
         return self._cached_width
@@ -461,9 +492,16 @@ class Type1CharString:
         """
         if self._cached_path is not None:
             return list(self._cached_path)
+        from ._subr_limits import SubrLimitError
+
         pen = _make_path_pen(self._font)
         try:
-            width = _draw_with_extended_extractor(self._t1, pen)
+            width = _draw_with_extended_extractor(
+                self._t1, pen, self._glyph_name, self._font_name
+            )
+        except SubrLimitError:
+            # PDFBOX-6308: upstream rejects this glyph with an IOException.
+            raise
         except Exception:
             self._cached_path = []
             return []
@@ -565,9 +603,15 @@ class Type1CharString:
         """
         if self._cached_path is not None:
             return list(self._cached_path)
+        from ._subr_limits import SubrLimitError
+
         pen = _make_path_pen(self._font)
         try:
-            width = _draw_with_extended_extractor(self._t1, pen)
+            width = _draw_with_extended_extractor(
+                self._t1, pen, self._glyph_name, self._font_name
+            )
+        except SubrLimitError:
+            raise
         except Exception:
             self._cached_path = []
             self._cached_width = self._cached_width or 0.0

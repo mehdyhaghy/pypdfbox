@@ -1,6 +1,9 @@
 import io
+import logging
 import struct
 from typing import Any, BinaryIO
+
+logger = logging.getLogger(__name__)
 
 
 def _cff_string_to_str(value: Any) -> str:
@@ -651,16 +654,23 @@ class CFFFont:
     def get_glyph_widths(self) -> dict[str, float]:
         """Batch view of advance widths keyed by glyph name. Computes
         widths lazily for any glyph not yet cached, then returns a copy
-        of the cache so callers can mutate freely."""
+        of the cache so callers can mutate freely. A glyph rejected by
+        the PDFBOX-6308 subroutine limit (its :meth:`get_width` raises
+        ``OSError``) is left out."""
         if self._top is None:
             return {}
         try:
             cs_map = self._charstrings_dict()
         except Exception:
             return {}
+        from ._subr_limits import SubrLimitError
+
         for name in cs_map.keys():  # noqa: SIM118 — fontTools mapping isn't a real dict
             if name not in self._widths:
-                self.get_width(name)
+                try:
+                    self.get_width(name)
+                except SubrLimitError:
+                    logger.debug("glyph %s rejected by subroutine limit", name)
         return dict(self._widths)
 
     @property
@@ -718,7 +728,7 @@ class CFFFont:
         except KeyError:
             return 0.0
 
-        from fontTools.misc import psCharStrings  # type: ignore[import-untyped]
+        from ._subr_limits import SubrLimitError, type2_width
 
         assert self._top is not None
         # For name-keyed CFF the Private DICT lives on the Top DICT;
@@ -736,17 +746,22 @@ class CFFFont:
         # charstring uses callsubr / callgsubr in its prologue. Passing
         # an empty list here used to yield 0 for many real-world fonts.
         local_subrs = getattr(priv, "Subrs", []) or [] if priv is not None else []
-        extractor = psCharStrings.T2WidthExtractor(
-            local_subrs,
-            self._top.GlobalSubrs,
-            getattr(priv, "nominalWidthX", 0) if priv is not None else 0,
-            getattr(priv, "defaultWidthX", 0) if priv is not None else 0,
-        )
+        # PDFBOX-6308: a glyph over the subroutine limit raises OSError like
+        # upstream ``CFFFont.getType2CharString``; other interpreter failures
+        # keep degrading to width 0.
         try:
-            extractor.execute(cs)
+            width = type2_width(
+                cs,
+                local_subrs,
+                self._top.GlobalSubrs,
+                getattr(priv, "nominalWidthX", 0) if priv is not None else 0,
+                getattr(priv, "defaultWidthX", 0) if priv is not None else 0,
+                self.get_name(),
+            )
+        except SubrLimitError:
+            raise
         except Exception:
             return 0.0
-        width = float(extractor.width)
         self._widths[name] = width
         return width
 
@@ -793,9 +808,14 @@ class CFFFont:
             cs = cs_map[name]
         except KeyError:
             return []
+        from ._subr_limits import SubrLimitError, draw_type2
+
         pen = _make_path_pen()
         try:
-            cs.draw(pen)
+            draw_type2(cs, pen, self.get_name())
+        except SubrLimitError:
+            # PDFBOX-6308: upstream throws IOException for this glyph.
+            raise
         except Exception:
             return []
         return list(pen.commands)

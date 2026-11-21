@@ -139,16 +139,26 @@ class PDVisibleSigBuilder(PDFTemplateBuilder):
             from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
             rect = PDRectangle()
-            rect.set_upper_right_x(properties.get_x_axis() + (properties.get_width() or 0.0))
-            rect.set_upper_right_y(
-                properties.get_template_height() - properties.get_y_axis()
-            )
-            rect.set_lower_left_y(
-                properties.get_template_height()
-                - properties.get_y_axis()
-                - (properties.get_height() or 0.0)
-            )
-            rect.set_lower_left_x(properties.get_x_axis())
+            width = properties.get_width() or 0.0
+            height = properties.get_height() or 0.0
+            if properties.is_use_user_space_coordinates():
+                # PDFBOX-6307: x/y are the lower left corner in the page's
+                # default user space; no template-height conversion.
+                rect.set_lower_left_x(properties.get_x_axis())
+                rect.set_lower_left_y(properties.get_y_axis())
+                rect.set_upper_right_x(properties.get_x_axis() + width)
+                rect.set_upper_right_y(properties.get_y_axis() + height)
+            else:
+                rect.set_upper_right_x(properties.get_x_axis() + width)
+                rect.set_upper_right_y(
+                    properties.get_template_height() - properties.get_y_axis()
+                )
+                rect.set_lower_left_y(
+                    properties.get_template_height()
+                    - properties.get_y_axis()
+                    - height
+                )
+                rect.set_lower_left_x(properties.get_x_axis())
             signature_field.get_widgets()[0].set_rectangle(rect)
             self._pdf_structure.set_signature_rectangle(rect)
         except Exception:  # pragma: no cover - parity surface stub
