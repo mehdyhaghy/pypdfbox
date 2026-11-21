@@ -74,10 +74,11 @@ def test_type2_counter_resets_per_parse() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Lib-delegated paths: glyph outlines and widths are interpreted by fontTools.
-# fontTools has no nesting limit of its own; endless recursion is stopped by
-# Python's recursion limit and the wrappers return an empty path / zero width
-# instead of raising or hanging.
+# Lib-delegated paths: glyph outlines and widths are interpreted by fontTools,
+# whose extractors pypdfbox wraps with the same limits (fontbox/cff/
+# _subr_limits.py). A recursive glyph raises OSError like upstream instead of
+# hitting Python's recursion limit. See test_subr_limits_fonttools_pdfbox6308.py
+# for the full matrix.
 # ---------------------------------------------------------------------------
 
 
@@ -122,14 +123,18 @@ _CALL_SUBR_0 = bytes([T2_SUBR_0, CALLSUBR, ENDCHAR])
     ],
     ids=["self", "mutual"],
 )
-def test_cff_glyph_with_recursive_subrs_is_empty(subrs: list[bytes]) -> None:
+def test_cff_glyph_with_recursive_subrs_raises(subrs: list[bytes]) -> None:
     font = CFFType1Font.from_bytes(_build_cff(subrs, _CALL_SUBR_0))
     start = time.monotonic()
-    assert font.get_path("A") == []
-    assert font.get_width("A") == 0
+    with pytest.raises(OSError, match="nested more than 150 levels"):
+        font.get_path("A")
+    with pytest.raises(OSError, match="nested more than 150 levels"):
+        font.get_width("A")
     cs = font.get_type2_char_string(1)
-    assert cs.get_path() == []
-    assert cs.get_width() == 0
+    with pytest.raises(OSError):
+        cs.get_path()
+    with pytest.raises(OSError):
+        cs.get_width()
     assert time.monotonic() - start < 10
 
 
@@ -158,10 +163,12 @@ def _type1(subrs: list[bytes]) -> Type1CharString:
     ],
     ids=["self", "mutual"],
 )
-def test_type1_glyph_with_recursive_subrs_is_empty(subrs: list[bytes]) -> None:
+def test_type1_glyph_with_recursive_subrs_raises(subrs: list[bytes]) -> None:
     cs = _type1(subrs)
-    assert cs.get_path() == []
-    assert cs.get_width() == 0
+    with pytest.raises(OSError, match="nested more than 106 levels deep in glyph 'a'"):
+        cs.get_path()
+    with pytest.raises(OSError):
+        cs.get_width()
 
 
 def test_type1_glyph_nested_to_upstream_limit_renders() -> None:

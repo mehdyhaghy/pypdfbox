@@ -13,8 +13,11 @@ Two layers:
   normalisation / prohibition / bidi steps and the upstream ``(char)``
   narrowing quirk in ``prohibited(int)`` (astral codepoints whose low 16
   bits alias a non-ASCII space or ASCII control are prohibited: U+12000
-  aliases U+2000, U+10000 aliases U+0000, ...). Wave 1598 fixed pypdfbox to
-  mirror that truncation.
+  aliases U+2000, U+10000 aliases U+0000, ...). Wave 1598 mirrored that
+  truncation; wave 1616 forward-ported the PDFBOX-6314 fix (3.0.9), which
+  applies those two checks to BMP code points only, so astral code points
+  are no longer prohibited by aliasing. The live differentials skip those
+  alias cases because the pinned 3.0.8 oracle still has the old behavior.
 
 * Live differentials (``requires_oracle``) — drive the same case table plus
   a seeded random battery through ``SaslPrepFuzzProbe`` and compare
@@ -113,7 +116,7 @@ _CASES: list[tuple[str, tuple[int, ...]]] = [
     ("Q", (0xD800,)),
     ("Q", (0xDC00,)),
     ("S", (0xD800, 0x61)),
-    # -- upstream (char) narrowing quirk in prohibited(int) ------------------
+    # -- old upstream (char) narrowing in prohibited(int), PDFBOX-6314 -------
     ("Q", (0x10000,)),  # LINEAR B SYLLABLE B008 A -> aliases U+0000 (asciiControl)
     ("Q", (0x1001F,)),  # aliases U+001F
     ("S", (0x2007F,)),  # CJK ext B -> aliases U+007F
@@ -198,6 +201,14 @@ def _py_line(mode: str, cps: tuple[int, ...]) -> str:
     return "OK " + " ".join(f"{ord(ch):x}" for ch in result)
 
 
+def _is_6314_alias(cp: int) -> bool:
+    """True for an astral code point the pre-PDFBOX-6314 cast prohibited."""
+    low = cp & 0xFFFF
+    return cp > 0xFFFF and (
+        SaslPrep.non_ascii_space(low) or SaslPrep.ascii_control(low)
+    )
+
+
 def _case_id(mode: str, cps: tuple[int, ...]) -> str:
     return mode + "_" + ("-".join(f"{cp:04x}" for cp in cps) or "empty")
 
@@ -218,6 +229,8 @@ def test_sasl_prep_query_stored_matches_pdfbox(tmp_path):
     assert len(java_lines) == len(_CASES)
     mismatches = []
     for (mode, cps), java in zip(_CASES, java_lines, strict=True):
+        if any(_is_6314_alias(cp) for cp in cps):
+            continue  # PDFBOX-6314 forward-port; the 3.0.8 oracle predates it
         py = _py_line(mode, cps)
         java_norm = "ERR" if java.startswith("ERR") else java
         if py != java_norm:
@@ -236,7 +249,7 @@ def test_prohibited_predicate_matches_pdfbox(tmp_path):
     mismatches = [
         f"U+{cp:04X}: java={java} py={int(SaslPrep.prohibited(cp))}"
         for cp, java in zip(_PREDICATE_CASES, java_lines, strict=True)
-        if str(int(SaslPrep.prohibited(cp))) != java
+        if not _is_6314_alias(cp) and str(int(SaslPrep.prohibited(cp))) != java
     ]
     assert not mismatches, "\n".join(mismatches)
 
@@ -251,13 +264,13 @@ def test_prohibited_predicate_matches_pdfbox(tmp_path):
     [0x10000, 0x1001F, 0x2007F, 0x12000, 0x1202F, 0x1205F, 0x13000, 0x100A0],
     ids=lambda cp: f"U+{cp:04X}",
 )
-def test_astral_low16_alias_is_prohibited(cp):
-    """Upstream prohibited(int) narrows to char for the space/control checks."""
-    assert SaslPrep.prohibited(cp)
-    with pytest.raises(ValueError):
-        SaslPrep.sasl_prep_query(chr(cp))
-    with pytest.raises(ValueError):
-        SaslPrep.sasl_prep_stored(chr(cp))
+def test_astral_low16_alias_is_allowed(cp):
+    """PDFBOX-6314: the space/control checks no longer see a (char)-narrowed
+    astral code point, so these assigned characters pass SaslPrep."""
+    assert _is_6314_alias(cp)
+    assert not SaslPrep.prohibited(cp)
+    assert SaslPrep.sasl_prep_query(chr(cp)) == chr(cp)
+    assert SaslPrep.sasl_prep_stored(chr(cp)) == chr(cp)
 
 
 @pytest.mark.parametrize(

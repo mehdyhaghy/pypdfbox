@@ -136,7 +136,7 @@ class TextPosition:
     # are always shown and never recorded in ``characterListMapping`` — and
     # the lite dedup pass needs the span membership on the position because
     # it runs after the page walk.
-    from_actual_text: bool = False
+    in_actual_text_span: bool = False
     # Device-space glyph geometry as upstream's ``TextPosition`` holds it:
     # the translation of the (cropbox-adjusted) text rendering matrix and the
     # ``endX`` / ``endY`` end point. Upstream derives ``getX`` / ``getY`` /
@@ -151,6 +151,11 @@ class TextPosition:
     # The ``Tf`` font size (upstream ``getFontSize``), as opposed to
     # :attr:`font_size`, which carries the matrix-scaled size.
     tf_font_size: float | None = None
+    # Upstream ``fromActualText`` (PDFBOX-6281): True only for the span's
+    # first glyph, the one whose unicode was replaced by the ``/ActualText``
+    # string. The stripper then takes that text as is: no visual reordering
+    # in ``normalizeAdd`` and no ``normalizeWord`` for a word it starts.
+    from_actual_text: bool = False
 
     # ------------------------------------------------------------------
     # Decoded text
@@ -194,6 +199,17 @@ class TextPosition:
         should treat this as best-effort — see ``CHANGES.md``.
         """
         return [ord(ch) for ch in self.text]
+
+    def is_from_actual_text(self) -> bool:
+        """Whether this position's unicode was replaced by an
+        ``/ActualText`` string. Mirrors upstream ``isFromActualText``
+        (PDFBOX-6281)."""
+        return self.from_actual_text
+
+    def set_from_actual_text(self, from_actual_text: bool) -> None:
+        """Mark this position as carrying ``/ActualText``. Mirrors upstream
+        ``setFromActualText`` (PDFBOX-6281)."""
+        self.from_actual_text = from_actual_text
 
     def get_visually_ordered_unicode(self) -> str:
         """Same as :meth:`get_unicode` but reversed when the run contains

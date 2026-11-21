@@ -31,10 +31,11 @@ def test_subsampling_allowed_default_is_false() -> None:
     assert renderer.is_subsampling_allowed() is False
 
 
-def test_default_destination_default_is_view() -> None:
+def test_default_destination_default_is_none() -> None:
+    # Upstream leaves defaultDestination null until it is set.
     doc, _ = _make_doc()
     renderer = PDFRenderer(doc)
-    assert renderer.get_default_destination() == "View"
+    assert renderer.get_default_destination() is None
 
 
 def test_image_downscaling_optimization_threshold_default_is_half() -> None:

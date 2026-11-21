@@ -90,6 +90,14 @@ def _unicode_cmap_lookup(ttf: TrueTypeFont) -> Any:
         return None
 
 
+
+def _program_name(ttf: Any) -> str:
+    """PostScript name of a fontTools-backed program, for limit messages."""
+    try:
+        return str(ttf.get_name() or "")
+    except Exception:
+        return ""
+
 class PDCIDFontType2(PDCIDFont):
     """CIDFontType2 — TrueType-based CIDFont. Mirrors PDFBox ``PDCIDFontType2``.
 
@@ -773,9 +781,18 @@ class PDCIDFontType2(PDCIDFont):
     def _draw_glyph(ttf: TrueTypeFont, gid: int) -> list[tuple[Any, ...]]:
         """Draw glyph ``gid`` of ``ttf`` into the shared path-command
         format, in font units. Returns ``[]`` when it cannot be drawn."""
+        from pypdfbox.fontbox.cff._subr_limits import (
+            SubrLimitError,
+            limited_glyph_set,
+        )
+
         try:
             glyph_name = ttf._tt.getGlyphName(gid)
-            glyph_set = ttf._tt.getGlyphSet()
+            # CFF-flavored programs draw through the PDFBOX-6308 limited
+            # Type 2 interpreter; ``glyf`` glyph sets pass through as-is.
+            glyph_set = limited_glyph_set(
+                ttf._tt.getGlyphSet(), _program_name(ttf)
+            )
             glyph = glyph_set[glyph_name]
         except Exception:
             return []
@@ -789,6 +806,9 @@ class PDCIDFontType2(PDCIDFont):
         pen = _make_path_pen(glyph_set)
         try:
             glyph.draw(pen)
+        except SubrLimitError:
+            # Upstream's CFF charstring parser throws IOException here.
+            raise
         except Exception:
             return []
         return list(pen.commands)
@@ -964,9 +984,16 @@ class PDCIDFontType2(PDCIDFont):
         # CFF table; pypdfbox routes through fontTools' glyph-set draw
         # protocol exactly the way the TrueType path does — the glyph
         # set abstracts the outline format away.
+        from pypdfbox.fontbox.cff._subr_limits import (
+            SubrLimitError,
+            limited_glyph_set,
+        )
+
         try:
             glyph_name = ttf._tt.getGlyphName(gid)
-            glyph_set = ttf._tt.getGlyphSet()
+            glyph_set = limited_glyph_set(
+                ttf._tt.getGlyphSet(), _program_name(ttf)
+            )
             glyph = glyph_set[glyph_name]
         except Exception:
             return None
@@ -978,6 +1005,10 @@ class PDCIDFontType2(PDCIDFont):
         pen = _make_path_pen(glyph_set)
         try:
             glyph.draw(pen)
+        except SubrLimitError:
+            # PDFBOX-6308: upstream ``Type2CharString`` parsing throws
+            # IOException, which ``getPath`` propagates.
+            raise
         except Exception:
             return None
         commands = list(pen.commands)

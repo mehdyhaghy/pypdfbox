@@ -527,6 +527,15 @@ class _JavaGeometry:
             self.width_of_space = abs(_f32(pos.width_of_space))
 
 
+def _ordered_unicode(text: TextPosition) -> str:
+    """The piece ``normalizeAdd`` appends for ``text``: its unicode as is
+    when it carries ``/ActualText`` (PDFBOX-6281), else its visually
+    ordered unicode."""
+    if getattr(text, "from_actual_text", False):
+        return text.get_unicode()
+    return text.get_visually_ordered_unicode()
+
+
 def _java_geometry(pos: TextPosition) -> _JavaGeometry:
     """Return (and cache on ``pos``) its :class:`_JavaGeometry`."""
     # Plain attribute access (not ``pos.__dict__``) keeps the instance's
@@ -2545,13 +2554,20 @@ class PDFTextStripper:
         (the glyph is always shown and never recorded in
         ``characterListMapping``); the lite pipeline dedups after the
         page walk, so the span membership must travel with the position.
+
+        The span's first emitted glyph, the one that carries the
+        ``/ActualText`` string, is also flagged ``from_actual_text``
+        (upstream ``text.setFromActualText(true)``, PDFBOX-6281).
         """
         mark = len(positions)
         in_actual_text = self._actual_text is not None
+        first_actual_text = in_actual_text and self._first_actual_text_position
         self._emit_run(s, state, positions)
         if in_actual_text:
             for pos in positions[mark:]:
-                pos.from_actual_text = True
+                pos.in_actual_text_span = True
+            if first_actual_text and len(positions) > mark:
+                positions[mark].from_actual_text = True
 
     def _emit_run(
         self,
@@ -4597,15 +4613,23 @@ class PDFTextStripper:
         # fragments belonging to the same word, then run them through
         # handle_direction at the next break (word / line / paragraph).
         word_buffer: list[str] = []
+        # Whether the buffered word starts with a glyph carrying
+        # ``/ActualText``: such a word is written as is (PDFBOX-6281).
+        word_from_actual_text = [False]
 
         def _buffered_sink(piece: str) -> None:
             word_buffer.append(piece)
 
         def _flush_word() -> None:
             if not word_buffer:
+                word_from_actual_text[0] = False
                 return
             text = "".join(word_buffer)
             word_buffer.clear()
+            if word_from_actual_text[0]:
+                word_from_actual_text[0] = False
+                sink(text)
+                return
             # ``normalize_word`` decomposes Unicode presentation forms
             # (Alphabetic Presentation Forms FB00–FDFF, e.g. the ``ﬁ``/``ﬂ``
             # ligatures → ``fi``/``fl``, and Arabic Presentation Forms-B)
@@ -4867,6 +4891,8 @@ class PDFTextStripper:
             elif position_y >= max_y_for_line:
                 max_y_for_line = position_y
             max_height_for_line = max(max_height_for_line, position_height)
+            if not word_buffer:
+                word_from_actual_text[0] = pos.from_actual_text
             self.write_string_with_positions(pos.text, [pos], _buffered_sink)
             wrote_any = True
             prev = pos
@@ -5458,7 +5484,7 @@ class PDFTextStripper:
         # non-finite ``v``: the cases the grid cannot index.
         not_indexable = (ZeroDivisionError, OverflowError, ValueError)
         for pos in positions:
-            if pos.from_actual_text:
+            if pos.in_actual_text_span:
                 append(pos)
                 continue
             text = pos.text
@@ -6051,7 +6077,12 @@ class PDFTextStripper:
         running it through :meth:`normalize_word`.
 
         Mirrors upstream's private ``createWord``
-        (PDFTextStripper.java:2035)."""
+        (PDFTextStripper.java:2035). A word whose first position carries
+        ``/ActualText`` is kept as is (PDFBOX-6281). ``word_positions`` is
+        empty when a word separator starts the line, e.g. when a new article
+        continues on the same line as the previous one (PDFBOX-6310)."""
+        if word_positions and word_positions[0].from_actual_text:
+            return WordWithTextPositions(word, word_positions)
         if (
             _USE_FAST_PATHS
             and word.isascii()
@@ -6192,10 +6223,12 @@ class PDFTextStripper:
                     line_builder.clear()
                     word_positions.clear()
                     continue
-                if type(text) is TextPosition and len(piece := text.text) <= 1:
+                if type(text) is TextPosition and (
+                    len(piece := text.text) <= 1 or text.from_actual_text
+                ):
                     add_piece(piece)
                 else:
-                    add_piece(text.get_visually_ordered_unicode())
+                    add_piece(_ordered_unicode(text))
                 add_position(text)
         # Upstream tests the builder's *length*: trailing empty-unicode glyphs
         # (e.g. the tail of an ``/ActualText`` span) do not form a word.
@@ -6221,11 +6254,14 @@ class PDFTextStripper:
                 line_builder.clear()
                 word_positions.clear()
                 continue
-            # (A one-character text is its own visual order.)
-            if type(text) is TextPosition and len(piece := text.text) <= 1:
+            # (A one-character text is its own visual order; an
+            # ``/ActualText`` one is taken as is, PDFBOX-6281.)
+            if type(text) is TextPosition and (
+                len(piece := text.text) <= 1 or text.from_actual_text
+            ):
                 add_piece(piece)
             else:
-                add_piece(text.get_visually_ordered_unicode())
+                add_piece(_ordered_unicode(text))
             add_position(text)
         # Upstream tests the builder's *length*: trailing empty-unicode glyphs
         # (e.g. the tail of an ``/ActualText`` span) do not form a word.
@@ -6250,21 +6286,39 @@ class PDFTextStripper:
             type(self).normalize_word is _BASE_NORMALIZE_WORD
             and type(self).handle_direction is _BASE_HANDLE_DIRECTION
         )
+        # Whether the current word's first position carries ``/ActualText``
+        # (``None`` while the word has no position yet): ``create_word``
+        # then keeps the word as is (PDFBOX-6281).
+        word_from_actual_text: bool | None = None
         for text in line:
             if text is None:
                 word = "".join(line_builder)
                 line_builder.clear()
                 # ``create_word``: the stock hooks return an ASCII word as is.
-                add_word(word if stock_word and word.isascii() else normalize_word(word))
+                add_word(
+                    word
+                    if word_from_actual_text or (stock_word and word.isascii())
+                    else normalize_word(word)
+                )
+                word_from_actual_text = None
                 continue
-            # (A one-character text is its own visual order.)
-            if type(text) is TextPosition and len(piece := text.text) <= 1:
+            if word_from_actual_text is None:
+                word_from_actual_text = getattr(text, "from_actual_text", False)
+            # (A one-character text is its own visual order; an
+            # ``/ActualText`` one is taken as is, PDFBOX-6281.)
+            if type(text) is TextPosition and (
+                len(piece := text.text) <= 1 or text.from_actual_text
+            ):
                 add_piece(piece)
             else:
-                add_piece(text.get_visually_ordered_unicode())
+                add_piece(_ordered_unicode(text))
         word = "".join(line_builder)
         if word:
-            add_word(word if stock_word and word.isascii() else normalize_word(word))
+            add_word(
+                word
+                if word_from_actual_text or (stock_word and word.isascii())
+                else normalize_word(word)
+            )
         separator = self._word_separator
         last = len(words) - 1
         for i, word in enumerate(words):
@@ -6297,7 +6351,7 @@ class PDFTextStripper:
             return
         text = item.get_text_position()
         if text is not None:
-            line_builder.append(text.get_visually_ordered_unicode())
+            line_builder.append(_ordered_unicode(text))
             word_positions.append(text)
 
     @staticmethod

@@ -69,13 +69,13 @@ def test_render_image_with_dpi_accepts_destination_string() -> None:
 
 def test_render_image_with_dpi_destination_none_uses_default() -> None:
     """``destination=None`` (the default) falls back to whatever the
-    renderer-level ``set_default_destination`` configured — which is
-    ``View`` out of the box."""
+    renderer-level ``set_default_destination`` configured, or to
+    ``Export`` when none was set (upstream ``renderImage``)."""
     doc = _make_doc()
     try:
         renderer = _SpyRenderer(doc)
         renderer.render_image_with_dpi(0, dpi=72.0)
-        assert renderer.seen == [RenderDestination.VIEW]
+        assert renderer.seen == [RenderDestination.EXPORT]
     finally:
         doc.close()
 

@@ -66,12 +66,14 @@ def test_standard_prepare_for_decryption_requires_legacy_o_and_u_entries() -> No
     encryption.set_length(128)
     encryption.set_p(DEFAULT_PERMISSIONS)
 
-    with pytest.raises(InvalidPasswordException):
+    # PDFBOX-6329: a missing /U is a plain I/O error, not a wrong password.
+    with pytest.raises(OSError, match="/Encrypt/U entry is missing") as info:
         StandardSecurityHandler().prepare_for_decryption(
             encryption,
             b"doc-id",
             StandardDecryptionMaterial("user"),
         )
+    assert not isinstance(info.value, InvalidPasswordException)
 
 
 def test_standard_extract_document_id_defaults_for_empty_id_array() -> None:

@@ -66,22 +66,15 @@ def test_value_is_capitalised_label() -> None:
     assert RenderDestination.PRINT.value == "Print"
 
 
-def test_pdfrenderer_default_destination_defaults_to_view() -> None:
-    """Upstream ``PDFRenderer`` ctor sets defaultDestination = VIEW.
-    Pin so the default doesn't silently slip to EXPORT.
-
-    Divergence note: pypdfbox stores the default destination as the
-    enum's string value (``"View"``) rather than the enum member itself.
-    The getter returns the same string. Either form must round-trip back
-    through ``RenderDestination(...)``.
-    """
+def test_pdfrenderer_default_destination_defaults_to_none() -> None:
+    """Upstream ``PDFRenderer.defaultDestination`` starts out null;
+    ``renderImage`` then uses EXPORT and ``renderPageToGraphics`` VIEW."""
     from pypdfbox.pdmodel import PDDocument
 
     document = PDDocument()
     renderer = PDFRenderer(document)
     try:
-        value = renderer.get_default_destination()
-        assert RenderDestination(value) is RenderDestination.VIEW
+        assert renderer.get_default_destination() is None
     finally:
         document.close()
 

@@ -77,6 +77,7 @@ class PDVisibleSignDesigner:
         self._affine_transform: Any = _IdentityAffineTransform()
         self._image_size_in_percents: float = 0.0
         self._rotation: int = 0
+        self._use_user_space_coordinates: bool = False
 
         if image_stream is not None:
             self._read_image_stream(image_stream)
@@ -305,6 +306,34 @@ class PDVisibleSignDesigner:
 
     def y_axis(self, y_axis: float) -> PDVisibleSignDesigner:
         self._y_axis = y_axis
+        return self
+
+    def is_use_user_space_coordinates(self) -> bool:
+        """Tells how :meth:`get_y_axis` is interpreted.
+
+        ``True`` if the x/y position is used as the lower left corner of the
+        signature rectangle in the default user space of the page; ``False``
+        (default) if y is measured from the top of the template. Mirrors
+        upstream ``isUseUserSpaceCoordinates`` (PDFBOX-6307).
+        """
+        return self._use_user_space_coordinates
+
+    def use_user_space_coordinates(
+        self, use_user_space_coordinates: bool
+    ) -> PDVisibleSignDesigner:
+        """Sets how the signature position is interpreted.
+
+        By default (``False``) the y axis is measured from the top of the
+        template, so the lower left corner of the signature rectangle is
+        ``template_height - y_axis - height``. With ``True`` the position is
+        used as given: x and y are the lower left corner in the default user
+        space of the page (origin at the lower left of the unrotated page),
+        and the rectangle extends to ``x + width`` and ``y + height``. The
+        page ``/Rotate`` is not taken into account, so for rotated pages the
+        caller provides coordinates in the unrotated user space. Mirrors
+        upstream ``useUserSpaceCoordinates(boolean)`` (PDFBOX-6307).
+        """
+        self._use_user_space_coordinates = bool(use_user_space_coordinates)
         return self
 
     def get_width(self) -> float | None:

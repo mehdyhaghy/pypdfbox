@@ -27,6 +27,7 @@ import hmac
 import logging
 import os
 import struct
+import warnings
 from typing import TYPE_CHECKING
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -963,7 +964,28 @@ class StandardSecurityHandler(SecurityHandler):
 
         revision = int(encryption.get_revision())
         version = int(encryption.get_v())
-        key_length_bits = int(encryption.get_length() or (40 if revision < 3 else 128))
+        # PDFBOX-6316: upstream derives the key length in bytes as
+        # ``V == 1 ? 5 : /Length / 8`` and rejects anything below 5 bytes
+        # (40 bits) before any key derivation, instead of failing later with a
+        # low-level error on a degenerate key.
+        if version == 1:
+            key_length_bits = 40
+        else:
+            key_length_bits = int(encryption.get_length())
+            if key_length_bits == 0:
+                # pypdfbox 2.x: /Length 0 has always opened with the default
+                # key length; upstream rejects it. 3.0 will raise.
+                warnings.warn(
+                    "/Encrypt /Length 0 falls back to the default key length; "
+                    "pypdfbox 3.0 will raise OSError, as upstream does",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                key_length_bits = 40 if revision < 3 else 128
+            elif int(key_length_bits / 8) < 5:
+                raise OSError(
+                    f"Invalid encryption dictionary length: {key_length_bits}"
+                )
         if revision >= 5:
             key_length_bits = 256
 
@@ -1000,9 +1022,15 @@ class StandardSecurityHandler(SecurityHandler):
         # PDF 32000-2 §7.6.4.3.4 — r5/r6 read passwords as UTF-8 (after
         # SaslPrep), r2-r4 as Latin-1. Match upstream so non-ASCII passwords
         # round-trip correctly.
-        password = decryption_material.get_password_bytes(revision) or b""
         o = encryption.get_o()
         u = encryption.get_u()
+        # PDFBOX-6329: a missing /U or /O is a malformed dictionary, reported
+        # as a plain I/O error (not a wrong password) before authentication.
+        if u is None:
+            raise OSError("/Encrypt/U entry is missing")
+        if o is None:
+            raise OSError("/Encrypt/O entry is missing")
+        password = decryption_material.get_password_bytes(revision) or b""
 
         if revision >= 5:
             oe = encryption.get_oe()
@@ -1019,8 +1047,6 @@ class StandardSecurityHandler(SecurityHandler):
             # only when the *authenticating* role's key is absent. A document
             # missing the *other* role's key still opens. /Perms is a post-auth
             # integrity check and is tolerated absent (warn-only).
-            if o is None or u is None:
-                raise InvalidPasswordException()
             key = self._compute_encryption_key_r5_r6(
                 password, o, u, oe, ue, perms or b"", revision
             )
@@ -1049,8 +1075,6 @@ class StandardSecurityHandler(SecurityHandler):
             return
 
         # Revisions 2-4: try owner password first, then user password.
-        if o is None or u is None:
-            raise InvalidPasswordException()
         # Pad/truncate /O and /U to the 32-byte revision-mandated length before
         # key derivation, matching upstream's ``getOwnerKey()`` / ``getUserKey()``
         # (both ``Arrays.copyOf(bytes, 32)``). A producer that emits an

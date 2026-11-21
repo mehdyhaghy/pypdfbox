@@ -28,7 +28,7 @@ def _reference_drop(positions):
     result = []
     seen: dict = {}
     for pos in positions:
-        if pos.from_actual_text:
+        if pos.in_actual_text_span:
             result.append(pos)
             continue
         text = pos.text
@@ -54,7 +54,7 @@ def _reference_drop(positions):
     return result
 
 
-def _pos(x, y, text=".", width=6.0, font_size=12.0, from_actual_text=False):
+def _pos(x, y, text=".", width=6.0, font_size=12.0, in_actual_text_span=False):
     p = TextPosition(
         text=text,
         x=float(x),
@@ -72,7 +72,7 @@ def _pos(x, y, text=".", width=6.0, font_size=12.0, from_actual_text=False):
         height=font_size,
         text_matrix=[1, 0, 0, 1, float(x), float(y)],
     )
-    p.from_actual_text = from_actual_text
+    p.in_actual_text_span = in_actual_text_span
     return p
 
 
@@ -168,10 +168,10 @@ def test_grid_zero_width_nonempty_never_suppressed():
 
 
 def test_grid_actual_text_bypass():
-    # from_actual_text runs bypass the filter entirely and are never recorded.
+    # in_actual_text_span runs bypass the filter entirely and are never recorded.
     positions = [
-        _pos(10.0, 10.0, text="A", from_actual_text=True),
-        _pos(10.0, 10.0, text="A", from_actual_text=True),   # both kept
+        _pos(10.0, 10.0, text="A", in_actual_text_span=True),
+        _pos(10.0, 10.0, text="A", in_actual_text_span=True),   # both kept
         _pos(10.0, 10.0, text="A"),                          # kept (no prior record)
         _pos(10.0, 10.0, text="A"),                          # suppressed by the 3rd
     ]

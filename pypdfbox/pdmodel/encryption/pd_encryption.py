@@ -133,13 +133,12 @@ class PDEncryption:
         self._security_handler = security_handler
 
     def has_security_handler(self) -> bool:
-        """Mirror upstream ``hasSecurityHandler`` — **note** the upstream
-        method returns ``true`` when the handler is *missing* (the Java
-        body is ``return securityHandler == null;``). Replicated exactly
-        for parity; callers expecting "has a handler installed" should
-        invert the result.
+        """Return ``True`` when a security handler is installed.
+
+        Mirrors upstream ``hasSecurityHandler`` after PDFBOX-6313, which
+        fixed the inverted ``securityHandler == null`` check.
         """
-        return self._security_handler is None
+        return self._security_handler is not None
 
     def get_cos_dictionary(self) -> COSDictionary:
         """Return the wrapped encryption dictionary.

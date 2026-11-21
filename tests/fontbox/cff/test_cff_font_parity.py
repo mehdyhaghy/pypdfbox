@@ -126,7 +126,12 @@ def test_get_property_known_keys(cff_font: CFFFont) -> None:
 def test_get_glyph_widths_batch_matches_get_width(cff_font: CFFFont) -> None:
     widths = cff_font.get_glyph_widths()
     assert isinstance(widths, dict)
-    assert len(widths) == cff_font.get_num_char_strings()
+    # Glyphs over the PDFBOX-6308 subroutine limit (STIXGeneral's shade
+    # glyphs make ~225 calls) are left out; every other glyph is present.
+    for name in cff_font.get_charset():
+        if name not in widths:
+            with pytest.raises(OSError, match="nested more than 150"):
+                cff_font.get_width(name)
     # Every value is a float; widths cache should agree with single-glyph lookup.
     sample = next(iter(widths))
     assert widths[sample] == cff_font.get_width(sample)

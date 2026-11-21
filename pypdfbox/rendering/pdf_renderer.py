@@ -1174,7 +1174,9 @@ class PDFRenderer(PDFStreamEngine):
         # Mirrors upstream ``hintingEnabled`` (PDFBOX-3293): TrueType
         # grid-fitting is off by default.
         self._hinting_enabled: bool = False
-        self._default_destination: str = "View"
+        # Upstream leaves ``defaultDestination`` null: ``renderImage``
+        # then uses EXPORT and ``renderPageToGraphics`` uses VIEW.
+        self._default_destination: str | None = None
         # Active destination resolved per render_image call — annotation
         # visibility consults this for the four-arg renderImage overload
         # without mutating ``_default_destination``.
@@ -1278,7 +1280,8 @@ class PDFRenderer(PDFStreamEngine):
         ``destination`` mirrors upstream's ``RenderDestination`` argument
         that drives OCG visibility and annotation appearance selection.
         ``None`` (the default) defers to the renderer-level default set
-        via :meth:`set_default_destination`. A bare string
+        via :meth:`set_default_destination`, or to EXPORT when none was
+        set (as upstream). A bare string
         (``"View"`` / ``"Print"`` / ``"Export"``) is accepted alongside
         the :class:`RenderDestination` enum value for parity with the
         renderer-level setter.
@@ -1402,7 +1405,11 @@ class PDFRenderer(PDFStreamEngine):
         # ``renderImage(int, float, ImageType, RenderDestination)``
         # which threads ``destination`` straight into PageDrawerParameters.
         if destination is None:
-            resolved_destination = RenderDestination(self._default_destination)
+            # Upstream ``renderImage`` without a destination falls back to
+            # EXPORT when no default destination was set.
+            resolved_destination = RenderDestination(
+                self._default_destination or RenderDestination.EXPORT
+            )
         elif isinstance(destination, RenderDestination):
             resolved_destination = destination
         else:
@@ -1691,8 +1698,11 @@ class PDFRenderer(PDFStreamEngine):
         else:
             self._default_destination = destination
 
-    def get_default_destination(self) -> str:
-        """Mirror of upstream ``PDFRenderer.getDefaultDestination()``."""
+    def get_default_destination(self) -> str | None:
+        """Mirror of upstream ``PDFRenderer.getDefaultDestination()``.
+
+        ``None`` until :meth:`set_default_destination` is called, as
+        upstream's field starts out null."""
         return self._default_destination
 
     def set_image_downscaling_optimization_threshold(
@@ -1820,13 +1830,110 @@ class PDFRenderer(PDFStreamEngine):
 
         try:
             if isinstance(prop, PDOptionalContentGroup):
-                return not self.is_group_enabled(prop)
+                return self._is_hidden_ocg(
+                    prop, getattr(self, "_active_destination", None)
+                )
             if isinstance(prop, PDOptionalContentMembershipDictionary):
-                return not prop.is_visible_with(self._ocg_state_resolver)
+                return self._is_hidden_ocmd(prop)
         except Exception:
             # Malformed OC dictionary — fail open (visible), matching
             # upstream which only hides content it can positively resolve.
             return False
+        return False
+
+    def _is_hidden_ocg(self, group: Any, destination: Any) -> bool:
+        """Mirrors the OCG branch of upstream ``PageDrawer.isHiddenOCG``.
+
+        The group's ``/Usage`` render state for ``destination`` (``/View``
+        ``/ViewState``, ``/Print`` ``/PrintState``, falling back to
+        ``/Export`` ``/ExportState``) wins when present: ``OFF`` hides the
+        group and ``ON`` shows it whatever the ``/OCProperties`` default
+        says. Without a usage state the ``/OCProperties`` configuration
+        decides (``is_group_enabled``). A ``None`` destination consults only
+        the ``/Export`` fallback, as upstream's ``getRenderState(null)``."""
+        state = group.get_render_state(destination)
+        if state is None:
+            return not self.is_group_enabled(group)
+        return state == "OFF"
+
+    def _is_hidden_ocmd(self, ocmd: Any) -> bool:
+        """Mirrors upstream ``PageDrawer.isHiddenOCMD``.
+
+        A non-empty ``/VE`` wins; otherwise the ``/P`` policy is applied
+        over ``/OCGs`` (an empty ``/OCGs`` is never hidden). The ``/VE``
+        walk carries a visited set so a self-referencing expression ends
+        instead of recursing forever (PDFBOX-6315)."""
+        ve_array = ocmd.get_cos_object().get_cos_array(COSName.get_pdf_name("VE"))
+        if ve_array is not None and ve_array.size() > 0:
+            return self._is_hidden_visibility_expression(ve_array, set())
+        ocgs = ocmd.get_ocgs_property_list()
+        if not ocgs:
+            return False
+        visibles = [not self._property_list_is_hidden(p) for p in ocgs]
+        policy = ocmd.get_visibility_policy()
+        if policy == "AnyOff":
+            # visible if any of the entries in OCGs are OFF
+            return all(visibles)
+        if policy == "AllOn":
+            # visible only if all of the entries in OCGs are ON
+            return not all(visibles)
+        if policy == "AllOff":
+            # visible only if all of the entries in OCGs are OFF
+            return any(visibles)
+        # AnyOn is the default: visible if any of the entries are ON
+        return not any(visibles)
+
+    def _is_hidden_visibility_expression(
+        self, ve_array: COSArray, visited: set[int]
+    ) -> bool:
+        """Mirrors upstream ``PageDrawer.isHiddenVisibilityExpression``.
+
+        ``visited`` holds the ``id()`` of every ``/VE`` array already
+        entered during this evaluation (identity, like upstream's
+        ``HashSet<COSArray>``); re-entering one logs a warning and counts
+        as not hidden."""
+        if ve_array.size() == 0:
+            return False
+        key = id(ve_array)
+        if key in visited:
+            _log.warning("endless recursion detected in visibility expression")
+            return False
+        visited.add(key)
+        head = ve_array.get_object(0)
+        op = head.name if isinstance(head, COSName) else None
+        # Operands other than a nested expression or an OCG dictionary are
+        # skipped, as upstream does.
+        operands = [
+            o
+            for o in (ve_array.get_object(i) for i in range(1, ve_array.size()))
+            if isinstance(o, (COSArray, COSDictionary))
+        ]
+        if op == "And":
+            # hidden if at least one isn't visible
+            return any(self._is_hidden_ve_operand(o, visited) for o in operands)
+        if op == "Or":
+            # hidden only if all are hidden
+            return all(self._is_hidden_ve_operand(o, visited) for o in operands)
+        if op == "Not":
+            if ve_array.size() != 2:
+                return False
+            operand = ve_array.get_object(1)
+            if isinstance(operand, (COSArray, COSDictionary)):
+                return not self._is_hidden_ve_operand(operand, visited)
+            return False
+        return False
+
+    def _is_hidden_ve_operand(self, base: Any, visited: set[int]) -> bool:
+        """Hidden state of one ``/VE`` operand: a nested expression or an
+        OCG dictionary."""
+        if isinstance(base, COSArray):
+            return self._is_hidden_visibility_expression(base, visited)
+        if isinstance(base, COSDictionary):
+            from pypdfbox.pdmodel.graphics.pd_property_list import (
+                PDPropertyList,
+            )
+
+            return self._property_list_is_hidden(PDPropertyList.create(base))
         return False
 
     def _resolve_oc_property(self, properties: Any) -> Any:
@@ -2103,16 +2210,13 @@ class PDFRenderer(PDFStreamEngine):
         accepts a ``PIL.Image.Image`` instead: we render the page to a
         fresh image at the requested scale and paste it into the target
         at (0, 0). Callers that need a different blit point should
-        crop / paste themselves. ``destination`` is stored only — the
-        lite renderer doesn't yet branch on VIEW/PRINT/EXPORT (tracked
-        in ``CHANGES.md``)."""
+        crop / paste themselves. ``destination`` drives optional
+        content ``/Usage`` visibility and annotation flags, as upstream."""
         if scale_y is None:
             scale_y = scale_x
         scale_x = _require_positive_finite(scale_x, "scale_x")
         scale_y = _require_positive_finite(scale_y, "scale_y")
-        # Resolve destination — only stored, but track it so subclasses
-        # that override can read self._default_destination consistently
-        # with upstream's behaviour (see Java 449–451).
+        # Upstream falls back to VIEW here (EXPORT in ``renderImage``).
         if destination is None:
             destination = self._default_destination or RenderDestination.VIEW
         # Render at the maximum of the two axes so we don't lose detail,
@@ -2120,7 +2224,9 @@ class PDFRenderer(PDFStreamEngine):
         # PIL's resize. Upstream lets Java2D handle anisotropic scale
         # natively; we approximate by rendering once and resampling.
         scale = max(scale_x, scale_y)
-        rendered = self.render_image(page_index, scale=scale)
+        rendered = self.render_image(
+            page_index, scale=scale, destination=destination
+        )
         if scale_x != scale_y:
             page = self._get_page_for_render(page_index)
             crop_box = page.get_crop_box()
@@ -9665,7 +9771,11 @@ class PDFRenderer(PDFStreamEngine):
         if ttf is None:
             return (None, None)
         try:
-            glyph_set = ttf._tt.getGlyphSet()
+            from pypdfbox.fontbox.cff._subr_limits import limited_glyph_set
+
+            # PDFBOX-6308: an OpenType-CFF program in /FontFile2 honors the
+            # Type 2 subroutine limit like every other fontTools draw site.
+            glyph_set = limited_glyph_set(ttf._tt.getGlyphSet())
         except Exception:
             return (ttf, None)
         return (ttf, glyph_set)

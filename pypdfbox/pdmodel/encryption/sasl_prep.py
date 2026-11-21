@@ -40,18 +40,17 @@ class SaslPrep:
     def prohibited(codepoint: int) -> bool:
         """Mirror of ``SaslPrep.prohibited`` (Java line 146).
 
-        Upstream calls ``nonAsciiSpace((char) character)`` and
-        ``asciiControl((char) character)`` — a narrowing ``int`` → ``char``
-        cast that keeps only the low 16 bits. Astral codepoints are therefore
-        prohibited whenever their low 16 bits alias a non-ASCII space or an
-        ASCII control (e.g. U+12000 CUNEIFORM SIGN A aliases U+2000, and
-        U+10000 LINEAR B SYLLABLE B008 A aliases U+0000). Mirror the
-        truncation exactly; the remaining predicates take the full codepoint
-        upstream (``int`` parameters) and do so here as well.
+        PDFBOX-6314: the non-ASCII space and ASCII control checks take a
+        ``char`` upstream, so they only apply to BMP code points. Earlier
+        upstream releases narrowed astral code points with a ``(char)`` cast,
+        which wrongly prohibited e.g. U+12000 (aliasing U+2000) and U+10000
+        (aliasing U+0000). The remaining predicates take the full code point.
         """
         return (
-            _non_ascii_space(codepoint & 0xFFFF)
-            or _ascii_control(codepoint & 0xFFFF)
+            (
+                codepoint <= 0xFFFF
+                and (_non_ascii_space(codepoint) or _ascii_control(codepoint))
+            )
             or _non_ascii_control(codepoint)
             or _private_use(codepoint)
             or _non_character_codepoint(codepoint)

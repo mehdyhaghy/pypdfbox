@@ -7,8 +7,8 @@ Pre-wave: 97.4% (268 stmts, 7 missing). Missing lines:
   has been installed (the upstream-parity error message format is
   important — Apache Tika matches against it);
 * 127: ``set_security_handler`` stores the supplied handler;
-* 136: ``has_security_handler`` returns ``True`` when the handler is
-  *missing* (upstream parity — see the docstring);
+* 136: ``has_security_handler`` reports whether a handler is installed
+  (PDFBOX-6313 fixed the upstream inverted check);
 * 569: ``remove_v45filters`` alias delegates to ``remove_v45_filters``.
 """
 
@@ -66,19 +66,18 @@ def test_set_security_handler_does_not_touch_filter() -> None:
     assert enc.get_filter() == "Custom"
 
 
-def test_has_security_handler_returns_true_when_handler_is_missing() -> None:
-    """Parity quirk: upstream's ``hasSecurityHandler`` returns true when
-    the handler is *null* (Java body: ``return securityHandler == null;``).
-    We mirror it bit-for-bit, even though the name reads inverted."""
+def test_has_security_handler_returns_false_when_handler_is_missing() -> None:
+    """PDFBOX-6313: ``hasSecurityHandler`` now returns false for a null
+    handler (the old Java body ``securityHandler == null`` was inverted)."""
     enc = PDEncryption()
     # Pristine instance — no handler yet.
-    assert enc.has_security_handler() is True
+    assert enc.has_security_handler() is False
 
 
-def test_has_security_handler_returns_false_when_handler_installed() -> None:
+def test_has_security_handler_returns_true_when_handler_installed() -> None:
     enc = PDEncryption()
     enc.set_security_handler(object())
-    assert enc.has_security_handler() is False
+    assert enc.has_security_handler() is True
 
 
 # ---- remove_v45filters alias -----------------------------------------------

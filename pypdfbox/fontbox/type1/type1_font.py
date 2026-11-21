@@ -77,17 +77,46 @@ class _T1GlyphSet:
     through the supplied pen, so the base + accent outlines compose into
     the same pen recording the accented glyph. Component charstrings are
     simple (non-``seac``) so there is no unbounded recursion.
+
+    Each component is interpreted on its own with the PDFBOX-6308
+    subroutine limit. A component over the limit is skipped with a
+    warning, like upstream ``Type1CharString.seac``, which logs the
+    component's ``IOException`` and keeps the rest of the glyph.
     """
 
-    def __init__(self, charstrings: dict[str, Any]) -> None:
+    def __init__(
+        self, charstrings: dict[str, Any], font_name: str = ""
+    ) -> None:
         self._charstrings = charstrings
+        self._font_name = font_name
 
     def __getitem__(self, name: str) -> Any:
         cs = self._charstrings[name]  # KeyError on a missing component
+        font_name = self._font_name
 
         class _T1Glyph:
             def draw(_self, pen: Any) -> None:  # noqa: N805
-                cs.draw(pen)
+                from fontTools.pens.recordingPen import (  # type: ignore[import-untyped]
+                    RecordingPen,
+                )
+
+                from pypdfbox.fontbox.cff._subr_limits import (
+                    SubrLimitError,
+                    draw_type1,
+                )
+
+                # Record first so a rejected component adds nothing.
+                recording = RecordingPen()
+                try:
+                    draw_type1(cs, recording, name, font_name)
+                except SubrLimitError as exc:
+                    logger.warning(
+                        "invalid seac character in glyph of font %s: %s",
+                        font_name,
+                        exc,
+                    )
+                    return
+                recording.replay(pen)
 
         return _T1Glyph()
 
@@ -1044,8 +1073,13 @@ class Type1Font:
         # build the path twice.
         from fontTools.pens.basePen import NullPen
 
+        from pypdfbox.fontbox.cff._subr_limits import SubrLimitError, draw_type1
+
         try:
-            cs.draw(NullPen())
+            draw_type1(cs, NullPen(), name, self.get_name())
+        except SubrLimitError:
+            # PDFBOX-6308: upstream ``Type1Font.getWidth`` throws IOException.
+            raise
         except Exception:
             return 0.0
         width = float(getattr(cs, "width", 0.0) or 0.0)
@@ -1083,9 +1117,15 @@ class Type1Font:
         # ``pen.addComponent`` calls, which need a glyph set to look the
         # component outlines up (see ``_make_path_pen`` / ``_T1GlyphSet``).
         # Without it every accented Type 1 glyph drew blank.
-        pen = _make_path_pen(_T1GlyphSet(cs_map))
+        from pypdfbox.fontbox.cff._subr_limits import SubrLimitError, draw_type1
+
+        font_name = self.get_name()
+        pen = _make_path_pen(_T1GlyphSet(cs_map, font_name))
         try:
-            cs.draw(pen)
+            draw_type1(cs, pen, name, font_name)
+        except SubrLimitError:
+            # PDFBOX-6308: upstream ``Type1Font.getPath`` throws IOException.
+            raise
         except Exception:
             return []
         # Side-effect: the draw populates cs.width — cache it while we're here.

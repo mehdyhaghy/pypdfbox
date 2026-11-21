@@ -48,7 +48,7 @@ def _tp(
     *,
     width: float = 0.0,
     font_size: float = 12.0,
-    from_actual_text: bool = False,
+    in_actual_text_span: bool = False,
 ) -> TextPosition:
     return TextPosition(
         text=text,
@@ -56,7 +56,7 @@ def _tp(
         y=y,
         font_size=font_size,
         width=width,
-        from_actual_text=from_actual_text,
+        in_actual_text_span=in_actual_text_span,
     )
 
 
@@ -239,8 +239,8 @@ def test_empty_input_and_single_run_identity() -> None:
 def test_actual_text_runs_bypass_suppression() -> None:
     out = _dedup(
         [
-            _tp("AT", 0.0, 0.0, width=30.0, from_actual_text=True),
-            _tp("AT", 0.1, 0.1, width=30.0, from_actual_text=True),
+            _tp("AT", 0.0, 0.0, width=30.0, in_actual_text_span=True),
+            _tp("AT", 0.1, 0.1, width=30.0, in_actual_text_span=True),
         ]
     )
     assert out == ["AT@0,0", "AT@0.1,0.1"]
@@ -252,7 +252,7 @@ def test_actual_text_runs_are_not_recorded_in_the_map() -> None:
     # SECOND untagged run is suppressed.
     out = _dedup(
         [
-            _tp("AT", 0.0, 0.0, width=30.0, from_actual_text=True),
+            _tp("AT", 0.0, 0.0, width=30.0, in_actual_text_span=True),
             _tp("AT", 0.0, 0.0, width=30.0),
             _tp("AT", 0.1, 0.1, width=30.0),
         ]
