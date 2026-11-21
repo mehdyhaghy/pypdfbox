@@ -27,7 +27,6 @@ import hmac
 import logging
 import os
 import struct
-import warnings
 from typing import TYPE_CHECKING
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -972,17 +971,7 @@ class StandardSecurityHandler(SecurityHandler):
             key_length_bits = 40
         else:
             key_length_bits = int(encryption.get_length())
-            if key_length_bits == 0:
-                # pypdfbox 2.x: /Length 0 has always opened with the default
-                # key length; upstream rejects it. 3.0 will raise.
-                warnings.warn(
-                    "/Encrypt /Length 0 falls back to the default key length; "
-                    "pypdfbox 3.0 will raise OSError, as upstream does",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-                key_length_bits = 40 if revision < 3 else 128
-            elif int(key_length_bits / 8) < 5:
+            if int(key_length_bits / 8) < 5:
                 raise OSError(
                     f"Invalid encryption dictionary length: {key_length_bits}"
                 )

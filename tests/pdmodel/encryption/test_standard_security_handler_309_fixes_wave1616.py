@@ -184,7 +184,7 @@ def test_short_r6_key_entries_do_not_leak_low_level_errors(
 
 @pytest.mark.parametrize(
     ("v", "r", "length"),
-    [(2, 3, 8), (2, 3, 39), (2, 3, -8), (4, 4, 32), (5, 6, 8)],
+    [(2, 3, 0), (2, 3, 8), (2, 3, 39), (2, 3, -8), (4, 4, 32), (5, 6, 8)],
 )
 def test_small_length_raises_io_error(v: int, r: int, length: int) -> None:
     enc = _encryption(v, r, length, o=b"\x00" * 48, u=b"\x00" * 48)
@@ -193,16 +193,6 @@ def test_small_length_raises_io_error(v: int, r: int, length: int) -> None:
     ) as info:
         _prepare(enc)
     assert not isinstance(info.value, InvalidPasswordException)
-
-
-def test_zero_length_keeps_default_with_deprecation_warning() -> None:
-    # 2.x keeps the /Length 0 fallback (upstream raises; 3.0 will too). The
-    # all-zero /O and /U then fail as a wrong password, not a length error.
-    enc = _encryption(2, 3, 0, o=b"\x00" * 48, u=b"\x00" * 48)
-    with pytest.deprecated_call(match="Length 0"), pytest.raises(
-        InvalidPasswordException
-    ):
-        _prepare(enc)
 
 
 def test_minimum_length_is_accepted_as_a_candidate() -> None:

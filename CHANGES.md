@@ -62,7 +62,7 @@ These match the upstream 3.0 branch, so they differ from the 3.0.8 baseline and 
 
 ### Encryption and signing
 
-- **Malformed `/Encrypt` fails closed.** A bad `/Perms` gives a clean `InvalidPasswordException` (or warns and opens after a valid password for an absent or short `/Perms`), and a `/UE`, `/OE` or `/Perms` that is not a multiple of 16 bytes is tolerated, where upstream throws. `/Length 0` falls back to the default key length with a `DeprecationWarning` (upstream rejects it; 3.0 will raise). An unknown `/V` is rejected up front. R6 with a too-short `/O` or `/U` is sliced leniently, and `PDEncryption.get_recipients_length` returns 0 where upstream throws.
+- **Malformed `/Encrypt` fails closed.** A bad `/Perms` gives a clean `InvalidPasswordException` (or warns and opens after a valid password for an absent or short `/Perms`), and a `/UE`, `/OE` or `/Perms` that is not a multiple of 16 bytes is tolerated, where upstream throws. An unknown `/V` is rejected up front. R6 with a too-short `/O` or `/U` is sliced leniently, and `PDEncryption.get_recipients_length` returns 0 where upstream throws.
 - **`OcspHelper` is stricter.** It enforces RFC 6960 responder authorization (issued by the CA, `id-kp-OCSPSigning` EKU) and CertID matching, which upstream only logs or skips; it rejects non-http(s) URLs and RSASSA-PSS responses, treats a `None` sign date as now, and `perform_request` returns raw DER.
 - **Redirects in signature examples.** `SigUtils.open_url` and `OcspHelper` follow only the upstream http to https same-URL redirect; other 3xx responses fail, since urllib has no safe equivalent of Java's same-protocol redirect policy. One timeout covers connect and read.
 
@@ -163,7 +163,7 @@ porting history before 1.0.0 is in git history.
 - Text extraction keeps `/ActualText` replacement text as written: it is no longer reordered as right-to-left text or decomposed from presentation forms, so Arabic text with digits no longer comes out as "7441" for "1447" (PDFBOX-6281).
 - `TextPosition` gains `is_from_actual_text()` / `set_from_actual_text()`, true only for the glyph that carries an `/ActualText` replacement (PDFBOX-6281). The span-membership flag previously named `from_actual_text` is now `in_actual_text_span`.
 - Encryption: a missing `/U` or `/O` raises `OSError` ("/Encrypt/U entry is missing") instead of `InvalidPasswordException` (PDFBOX-6329).
-- Encryption: a key length from 1 to 39 bits raises `OSError("Invalid encryption dictionary length: N")` instead of a low-level `ValueError`, and V=1 always uses a 40-bit key whatever `/Length` says, so such files open with the right password (PDFBOX-6316). `/Length 0` still falls back to the default with a `DeprecationWarning`.
+- Encryption: a key length from 1 to 39 bits raises `OSError("Invalid encryption dictionary length: N")` instead of a low-level `ValueError`, and V=1 always uses a 40-bit key whatever `/Length` says, so such files open with the right password (PDFBOX-6316). **Breaking, upstream parity:** `/Length 0` is rejected the same way.
 - `PDEncryption.has_security_handler()` returns True when a handler is installed; it was inverted (PDFBOX-6313).
 - SaslPrep no longer rejects astral-plane password characters whose low 16 bits match a space or control character, such as U+12000 (PDFBOX-6314).
 - XMP: a malformed `<?xpacket end ...?>` such as `<?xpacket end=?>` raises `XmpParsingException` (XpacketBadEnd) instead of being accepted; the "value 'r' or 'w'" message no longer ends with a space (PDFBOX-6334).
