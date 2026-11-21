@@ -141,16 +141,16 @@ def test_a85_zeros_use_z_shortcut_roundtrip() -> None:
     assert _a85_decode(enc.getvalue()) == raw
 
 
-def test_a85_ignored_whitespace_is_exactly_lf_cr_space() -> None:
-    # LF, CR, SPACE are stripped and do not affect grouping.
+def test_a85_ignored_whitespace_is_exactly_pdf_whitespace() -> None:
+    # NUL, TAB, LF, FF, CR, SPACE are stripped and do not affect grouping
+    # (PDFBOX-6330).
     clean = _a85_decode(b"<+oue~>")
     spaced = _a85_decode(b"<\n+ o\ru e ~>")
     assert spaced == clean
-    # TAB / FF / VT / NUL are NOT whitespace -> they are out-of-range digits
-    # (or invalid) and must raise.
-    for bad in (b"\x00", b"\x09", b"\x0b", b"\x0c"):
-        with pytest.raises(OSError):
-            _a85_decode(b"<+" + bad + b"oue~>")
+    assert _a85_decode(b"<\x00+\to\x0cue~>") == clean
+    # VT is NOT whitespace -> it is an out-of-range digit and must raise.
+    with pytest.raises(OSError):
+        _a85_decode(b"<+\x0boue~>")
 
 
 def test_a85_eod_ends_at_first_tilde() -> None:

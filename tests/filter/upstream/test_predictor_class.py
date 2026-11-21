@@ -6,6 +6,11 @@ on the apache/pdfbox 3.0 branch. Exercises the package-private
 the predictor decoder when ``BitsPerComponent`` is sub-byte.
 """
 
+import io
+
+import pytest
+
+from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.filter.predictor import Predictor
 
 
@@ -59,3 +64,17 @@ def test_calc_set_bit_seq() -> None:
 
     # check truncation
     assert Predictor.calc_set_bit_seq(0b00000000, 1, 1, 3) == 0b00000010
+
+
+def test_non_positive_row_length_rejected() -> None:
+    """Port of ``PredictorTest#testNonPositiveRowLengthRejected`` (PDFBOX-6304).
+
+    A non-PNG predictor whose parameters give a zero row length (such as
+    ``/Columns 0``) must be rejected rather than leaving ``wrap_predictor``
+    with an output stream whose write loop never makes progress.
+    """
+    decode_params = COSDictionary()
+    decode_params.set_int(COSName.get_pdf_name("Predictor"), 2)
+    decode_params.set_int(COSName.get_pdf_name("Columns"), 0)
+    with pytest.raises(OSError):
+        Predictor.wrap_predictor(io.BytesIO(), decode_params)

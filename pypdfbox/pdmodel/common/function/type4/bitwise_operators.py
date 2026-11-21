@@ -156,10 +156,8 @@ class Not(Operator):
 
     Mirrors ``BitwiseOperators.Not`` (upstream Java lines 121-147). On a
     boolean operand, returns logical negation. On an integer operand, returns
-    arithmetic negation (``-int1``) — *not* bitwise complement. This is the
-    upstream PDFBox 3.0 behaviour; see the comment on
-    :func:`pypdfbox.pdmodel.common.function.pd_function_type4._op_not` for the
-    full rationale (parity with PDFBox wins over the PostScript Reference).
+    the bitwise complement (``~int1``, PDFBOX-6331; PDFBox 3.0.8 negated
+    arithmetically).
     """
 
     def execute(self, context: ExecutionContext) -> None:
@@ -168,7 +166,7 @@ class Not(Operator):
         if isinstance(op1, bool):
             stack.append(not op1)
         elif isinstance(op1, int):
-            stack.append(-op1)
+            stack.append(~op1)
         else:
             raise TypeError("Operand must be bool or int")
 

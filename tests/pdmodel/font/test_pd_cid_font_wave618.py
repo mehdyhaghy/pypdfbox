@@ -110,14 +110,14 @@ def test_w2_array_supports_array_form_range_form_and_malformed_entries() -> None
         )
     )
 
+    # PDFBOX-6319: the malformed triple stops the inner array, so CID 7 is
+    # not read.
     assert font.get_widths2() == {
         5: (-900.0, 250.0, 880.0),
-        7: (-901.0, 251.0, 881.0),
         20: (-1000.0, 300.0, 900.0),
         21: (-1000.0, 300.0, 900.0),
         22: (-1000.0, 300.0, 900.0),
     }
-    assert font.get_position_vector(7) == (251.0, 881.0)
     assert font.get_height(20) == -1000.0
 
 

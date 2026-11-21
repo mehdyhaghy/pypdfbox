@@ -16,7 +16,7 @@ class PDMarkedContent:
     port keeps the contents typed as ``list[Any]`` rather than a tight union.
     """
 
-    __slots__ = ("_tag", "_properties", "_contents")
+    __slots__ = ("_tag", "_properties", "_contents", "_struct_parent")
 
     def __init__(
         self,
@@ -26,6 +26,9 @@ class PDMarkedContent:
         self._tag: str | None = tag.get_name() if tag is not None else None
         self._properties: COSDictionary | None = properties
         self._contents: list[Any] = []
+        # PDFBOX-6303: the /StructParents key of the page or form XObject
+        # this sequence was found in, or -1 if none.
+        self._struct_parent: int = -1
 
     # ---------- factory ----------
 
@@ -140,20 +143,38 @@ class PDMarkedContent:
         graphics-XObject cluster has not landed yet."""
         self._contents.append(xobject)
 
+    # ---------- struct parent (PDFBOX-6303) ----------
+
+    def get_struct_parent(self) -> int:
+        """Return the ``/StructParents`` key of the page or form XObject this
+        content was associated with, or -1 if none. Type 3 glyph streams
+        report -1; tiling patterns report the enclosing container value.
+
+        Mirrors upstream ``PDMarkedContent.getStructParent`` (PDFBOX-6303).
+        """
+        return self._struct_parent
+
+    def set_struct_parent(self, struct_parent: int) -> None:
+        """Set the ``/StructParents`` key this content was associated with,
+        or -1 if none. Mirrors upstream ``PDMarkedContent.setStructParent``."""
+        self._struct_parent = struct_parent
+
     # ---------- repr ----------
 
     def __repr__(self) -> str:
         return (
             f"tag={self._tag}, "
             f"properties={self._properties!r}, "
-            f"contents={self._contents!r}"
+            f"contents={self._contents!r}, "
+            f"structParent={self._struct_parent}"
         )
 
     # Mirror upstream's ``toString()`` — Java's ``Object.toString`` is
     # accessible via ``str(obj)`` in Python, which calls ``__str__``.
     # Delegate to ``__repr__`` so both paths produce the same upstream
     # string. Upstream body is literally
-    # ``"tag=" + tag + ", properties=" + properties + ", contents=" + contents``.
+    # ``"tag=" + tag + ", properties=" + properties + ", contents=" + contents
+    # + ", structParent=" + structParent`` (the last part since PDFBOX-6303).
     __str__ = __repr__
 
     def to_string(self) -> str:

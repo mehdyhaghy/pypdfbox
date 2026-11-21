@@ -1,3 +1,5 @@
+import logging
+import warnings
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
@@ -15,6 +17,8 @@ from .pd_page import PDPage, _unwrap_page_dict
 
 if TYPE_CHECKING:
     from .pd_document import PDDocument
+
+_LOG = logging.getLogger(__name__)
 
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
@@ -504,29 +508,47 @@ class PDPageTree:
 
     def add(self, page: PDPage | COSDictionary) -> None:
         """Append ``page`` to the root's ``/Kids`` array and bump every
-        ancestor's ``/Count``. Upstream walks parents recursively; for our
-        single-rooted tree the only ancestor is ``self._root``."""
+        ancestor's ``/Count`` (cycle-safe, PDFBOX-6318)."""
         page_dict = _unwrap_page_dict(page)
         page_dict.set_item(_PARENT, self._root)
         kids = self._get_or_create_kids()
         kids.add(page_dict)
-        self._increment_count(self._root, +1)
+        self._update_ancestor_counts(page_dict, 1)
 
     def remove(self, page: PDPage | COSDictionary) -> bool:
         """Remove ``page`` from its parent's ``/Kids`` and decrement
-        ``/Count`` up the chain. Returns True if removal occurred."""
+        ``/Count`` up the chain. Returns True if removal occurred.
+
+        Upstream (PDFBOX-6318) throws ``IllegalArgumentException`` for a
+        page without ``/Parent`` (or ``/P``) and for a parent without a
+        ``/Kids`` array. pypdfbox 2.x keeps its lenient behavior (fall back
+        to the root, or return False) and emits a :class:`DeprecationWarning`;
+        3.0 will raise :class:`ValueError`."""
         page_dict = _unwrap_page_dict(page)
         parent = _resolve_parent(page_dict)
         if parent is None:
+            warnings.warn(
+                "removing an orphan page (no /Parent) falls back to the root; "
+                "pypdfbox 3.0 will raise ValueError, as upstream does",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             parent = self._root
         kids = _kids_array(parent)
         if kids is None:
+            warnings.warn(
+                "parent node has no /Kids array; pypdfbox 3.0 will raise "
+                "ValueError, as upstream does",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             return False
         index = self._index_of_kid(kids, page_dict)
         if index < 0:
             return False
         kids.remove_at(index)
-        self._decrement_count_chain(parent, 1)
+        self._increment_count(parent, -1)
+        self._update_ancestor_counts(parent, -1)
         return True
 
     def remove_at(self, index: int) -> PDPage:
@@ -606,11 +628,15 @@ class PDPageTree:
         sync with the actual tree size. Cycle-safe via an identity-set
         guard (upstream's loop just trusts the chain to be acyclic, but
         pypdfbox already hardens equivalent walks elsewhere — see
-        ``get_inheritable_attribute``).
+        ``get_inheritable_attribute``). PDFBOX-6318 added the same guard
+        upstream, logging a warning when a cycle aborts the walk.
         """
         cursor = parent_dict
         seen: set[int] = set()
-        while cursor is not None and id(cursor) not in seen:
+        while cursor is not None:
+            if id(cursor) in seen:
+                _LOG.warning("aborting page count update because of cycle")
+                break
             seen.add(id(cursor))
             current = cursor.get_dictionary_object(_COUNT)
             base = current.value if isinstance(current, COSInteger) else 0
@@ -750,10 +776,18 @@ class PDPageTree:
         node.set_int(_COUNT, max(new_value, 0))
 
     @classmethod
-    def _decrement_count_chain(cls, node: COSDictionary, delta: int) -> None:
-        cursor: COSDictionary | None = node
+    def _update_ancestor_counts(cls, node: COSDictionary, delta: int) -> None:
+        """Add ``delta`` to the ``/Count`` of every ancestor of ``node``.
+
+        Mirrors upstream ``updateAncestorCounts`` (PDFBOX-6318): the walk
+        starts at ``node``'s parent and stops with a warning on a cycle,
+        e.g. a root that is its own ``/Parent``."""
+        cursor: COSDictionary | None = _resolve_parent(node)
         seen: set[int] = set()
-        while cursor is not None and id(cursor) not in seen:
+        while cursor is not None:
+            if id(cursor) in seen:
+                _LOG.warning("aborting page count update because of cycle")
+                break
             seen.add(id(cursor))
-            cls._increment_count(cursor, -delta)
+            cls._increment_count(cursor, delta)
             cursor = _resolve_parent(cursor)

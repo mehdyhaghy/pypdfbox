@@ -357,11 +357,11 @@ def test_not_bool() -> None:
     assert _run("{ false not }") == pytest.approx([1.0])
 
 
-def test_not_int_is_arithmetic_negation() -> None:
-    # Upstream PDFBox 3.0 treats ``not`` on int as arithmetic negation,
-    # not bitwise complement. We mirror that.
-    assert _run("{ 52 not }") == pytest.approx([-52.0])
-    assert _run("{ -37 not }") == pytest.approx([37.0])
+def test_not_int_is_bitwise_complement() -> None:
+    # Upstream PDFBox 3.0.9 treats ``not`` on int as bitwise complement
+    # (PDFBOX-6331; 3.0.8 negated arithmetically). We mirror that.
+    assert _run("{ 52 not }") == pytest.approx([-53.0])
+    assert _run("{ -37 not }") == pytest.approx([36.0])
 
 
 def test_bitshift_left() -> None:

@@ -82,13 +82,15 @@ class TestDecodeOddDigit:
 
 
 class TestDecodeWhitespaceMidPair:
-    # PDFBox's ASCIIHexFilter skips whitespace only before the FIRST nibble
-    # of each byte pair — never between the two nibbles. Whitespace that
-    # splits a pair is treated as an invalid hex char (REVERSE_HEX = -1).
-    # Verified against the live oracle (wave 1412).
-    def test_whitespace_between_nibbles_is_not_skipped(self) -> None:
-        # "A B C>": A,sp -> 10*16 + (-1) = 159 = 0x9f; B,sp -> 0xaf; C,> -> 0xc0.
-        assert _decode(b"A B C>") == b"\x9f\xaf\xc0"
+    # PDFBox's ASCIIHexFilter skips whitespace before either nibble of a
+    # byte pair (PDFBOX-6330, PDFBox 3.0.9), so whitespace splitting a pair
+    # is ignored.
+    def test_whitespace_between_nibbles_is_skipped(self) -> None:
+        # "A B C>": A,B -> 0xab; C,> -> 0xc0.
+        assert _decode(b"A B C>") == b"\xab\xc0"
+
+    def test_every_pdf_whitespace_between_nibbles_is_skipped(self) -> None:
+        assert _decode(b"4\x00\t\n\x0c\r 1>") == b"\x41"
 
 
 class TestDecodeInvalidChars:

@@ -942,6 +942,11 @@ class PDFTextStripper:
         ] = []
         self._actual_text: str | None = None
         self._first_actual_text_position: bool = False
+        # The stack entry that set ``_actual_text``, so that only its EMC
+        # resets it (PDFBOX-6311).
+        self._actual_text_marked_content: (
+            tuple[COSName | None, COSDictionary | None, str | None] | None
+        ) = None
         # Document handle for ``process_pages`` bookmark resolution.
         # Populated by ``get_text`` while a walk is in progress.
         self._active_document: PDDocument | None = None
@@ -1381,6 +1386,7 @@ class PDFTextStripper:
         plug in custom layout logic without re-implementing the parser
         loop. Mirrors upstream's ``PDFTextStripper.processPage`` hook.
         """
+        self._reset_marked_content_state()
         body = page.get_contents()
         if not body:
             # A page with no content stream is still an empty article in
@@ -1894,6 +1900,8 @@ class PDFTextStripper:
         operands: list[COSBase],
         state: _TextState,
         positions: list[TextPosition],
+        dispatch: Callable[[str, list[COSBase], _TextState, list[TextPosition]], None]
+        | None = None,
     ) -> None:
         """``Do`` — recurse into a form XObject's content stream.
 
@@ -1904,7 +1912,13 @@ class PDFTextStripper:
         The form's ``/Resources`` are pushed for the duration so its own
         ``Tf`` names resolve against the right font dictionaries. Recursion
         depth is capped at 50, matching upstream's ``DrawObject`` guard.
+
+        ``dispatch`` replays each form operator (default :meth:`_dispatch`);
+        :class:`PDFMarkedContentExtractor` passes its own marked-content
+        dispatcher so the form's BMC/BDC/EMC and text interleave correctly.
         """
+        if dispatch is None:
+            dispatch = self._dispatch
         if not operands or not isinstance(operands[0], COSName):
             return
         name = operands[0]
@@ -1978,9 +1992,7 @@ class PDFTextStripper:
                 form_operands: list[COSBase] = []
                 for token in parser.tokens():
                     if isinstance(token, Operator):
-                        self._dispatch(
-                            token.get_name(), form_operands, form_state, positions
-                        )
+                        dispatch(token.get_name(), form_operands, form_state, positions)
                         form_operands = []
                     else:
                         form_operands.append(token)
@@ -6385,6 +6397,15 @@ class PDFTextStripper:
 
     # ---------- marked-content hooks ----------
 
+    def _reset_marked_content_state(self) -> None:
+        """Marked content can't span pages, so drop anything left unclosed on
+        a previous page (or a previous document). Mirrors upstream
+        ``PDFTextStripper.processPage`` (PDFBOX-6338)."""
+        self._marked_content_stack.clear()
+        self._actual_text = None
+        self._actual_text_marked_content = None
+        self._first_actual_text_position = False
+
     def begin_marked_content_sequence(
         self,
         tag: COSName | None,
@@ -6396,13 +6417,14 @@ class PDFTextStripper:
 
         Mirrors upstream's overridden
         ``beginMarkedContentSequence(COSName, COSDictionary)``
-        (PDFTextStripper.java): the current ``actualText`` field is set
-        **unconditionally** to this span's ``/ActualText`` — so entering a
-        nested span *without* one clears any inherited replacement, exactly
-        as PDFBox does (verified against the live oracle, wave 1445). When
-        the span carries an ``/ActualText`` the soft hyphen (U+00AD) is
-        stripped and the first-position flag is armed so the replacement is
-        emitted once, at the span's first glyph."""
+        (PDFTextStripper.java, PDFBOX-6311): the outermost ``/ActualText``
+        replaces all nested content, so while one is active any nested
+        span (with or without its own ``/ActualText``) leaves it untouched.
+        When no replacement is active and the span carries an
+        ``/ActualText``, the soft hyphen (U+00AD) is stripped, the span is
+        remembered as the one that set it, and the first-position flag is
+        armed so the replacement is emitted once, at the span's first
+        glyph."""
         actual: str | None = None
         if properties is not None:
             try:
@@ -6411,26 +6433,26 @@ class PDFTextStripper:
                 raw = None
             if raw is not None:
                 actual = raw.replace("­", "")
-        self._marked_content_stack.append((tag, properties, actual))
-        # Upstream sets the field unconditionally; ``None`` here means a
-        # nested span without /ActualText turns substitution back off.
-        self._actual_text = actual
-        if actual is not None:
+        entry = (tag, properties, actual)
+        self._marked_content_stack.append(entry)
+        if self._actual_text is None and actual is not None:
+            self._actual_text = actual
+            self._actual_text_marked_content = entry
             self._first_actual_text_position = True
 
     def end_marked_content_sequence(self) -> None:
         """Hook invoked at every ``EMC`` operator. Pops the marked-content
-        stack and clears the current ``actual_text`` when the popped span
-        contributed one.
+        stack and clears the current ``actual_text`` when the popped span is
+        the one that set it.
 
         Mirrors upstream's overridden ``endMarkedContentSequence``
-        (PDFTextStripper.java), which peeks the top span, nulls
-        ``actualText`` if that span had an ``/ActualText``, then pops."""
+        (PDFTextStripper.java, PDFBOX-6311), which peeks the top span,
+        nulls ``actualText`` if that span set it, then pops."""
         if not self._marked_content_stack:
             return
-        _, _, actual = self._marked_content_stack[-1]
-        if actual is not None:
+        if self._marked_content_stack[-1] is self._actual_text_marked_content:
             self._actual_text = None
+            self._actual_text_marked_content = None
         self._marked_content_stack.pop()
 
 

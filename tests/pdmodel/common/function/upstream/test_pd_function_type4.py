@@ -217,8 +217,8 @@ def test_ne() -> None:
 
 def test_not() -> None:
     assert _eval("true not false not") == pytest.approx([0.0, 1.0])
-    # Upstream PDFBox 3.0 negates ints (not bit-inverts). Mirror it.
-    assert _eval("52 not -37 not") == pytest.approx([-52.0, 37.0])
+    # Upstream PDFBox 3.0.9 bit-inverts ints (PDFBOX-6331).
+    assert _eval("52 not -37 not") == pytest.approx([~52, ~-37])
 
 
 def test_and() -> None:

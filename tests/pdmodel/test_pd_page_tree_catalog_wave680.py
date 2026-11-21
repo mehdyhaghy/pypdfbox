@@ -42,12 +42,14 @@ def test_page_tree_iteration_ignores_cycles() -> None:
     assert list(PDPageTree(root).iterator()) == []
 
 
-def test_page_tree_remove_returns_false_when_declared_parent_has_no_kids() -> None:
+def test_page_tree_remove_warns_when_declared_parent_has_no_kids() -> None:
+    # PDFBOX-6318: upstream throws; 2.x warns and returns False until 3.0.
     parent = COSDictionary()
     page = _page_dict()
     page.set_item(_name("Parent"), parent)
 
-    assert PDPageTree().remove(PDPage(page)) is False
+    with pytest.deprecated_call(match="no /Kids"):
+        assert PDPageTree().remove(PDPage(page)) is False
 
 
 def test_page_tree_insert_before_and_after_use_root_for_parentless_target() -> None:

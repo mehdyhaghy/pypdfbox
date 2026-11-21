@@ -175,12 +175,10 @@ def test_wave280_eval_interpolates_parent_domain_into_encode_pairs() -> None:
 
 
 def test_wave280_eval_over_long_bounds_indexes_past_functions() -> None:
-    # 2 functions but 2 bounds (need k-1=1). Upstream does NOT validate the
-    # /Bounds length; it builds partition [0, .25, .5, 1] (3 intervals) and for
-    # x=0.75 selects interval 2, then indexes functionsArray[2] ->
-    # ArrayIndexOutOfBoundsException (-> IndexError here). Retargeted wave 1523
-    # (oracle: FunctionType3FuzzProbe bounds_too_many; pypdfbox previously
-    # raised a "/Bounds has more partitions" ValueError up front).
+    # 2 functions but 2 bounds (need k-1=1). Since PDFBOX-6332 (PDFBox 3.0.9)
+    # upstream rejects ``bounds >= functions`` up front with an IOException
+    # (-> ValueError here); 3.0.8 indexed functionsArray[2] and threw
+    # ArrayIndexOutOfBoundsException.
     fn = _stitch(
         functions=[_type2(), _type2()],
         domain=[0.0, 1.0],
@@ -188,5 +186,5 @@ def test_wave280_eval_over_long_bounds_indexes_past_functions() -> None:
         encode=[0.0, 1.0, 0.0, 1.0],
     )
 
-    with pytest.raises(IndexError):
+    with pytest.raises(ValueError, match="2 bounds for 2 functions"):
         fn.eval([0.75])

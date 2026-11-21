@@ -39,6 +39,9 @@ class PDFMarkedContentExtractor(PDFTextStripper):
         self._marked_contents: list[PDMarkedContent] = []
         self._current_marked_contents: deque[PDMarkedContent] = deque()
         self._character_list_mapping: dict[str, list[TextPosition]] = {}
+        # PDFBOX-6303: /StructParents key of the page or form XObject whose
+        # content stream is being walked (-1 if none).
+        self._current_struct_parent: int = -1
 
     # ---------- configuration accessors ----------
 
@@ -56,6 +59,7 @@ class PDFMarkedContentExtractor(PDFTextStripper):
         properties: COSDictionary | None,
     ) -> None:
         marked_content = PDMarkedContent.create(tag, properties)
+        marked_content.set_struct_parent(self._current_struct_parent)
         if not self._current_marked_contents:
             self._marked_contents.append(marked_content)
         else:
@@ -144,6 +148,8 @@ class PDFMarkedContentExtractor(PDFTextStripper):
         """
         self._current_marked_contents.clear()
         self._character_list_mapping.clear()
+        # PDFBOX-6303: sequences on the page record its /StructParents key.
+        self._current_struct_parent = page.get_struct_parents()
         body = page.get_contents()
         if not body:
             return ""
@@ -210,6 +216,9 @@ class PDFMarkedContentExtractor(PDFTextStripper):
         if op == "EMC":
             self.end_marked_content_sequence()
             return
+        if op == "Do":
+            self._draw_object(operands, state)
+            return
         if op == "MP":
             tag = self._last_cos_name(operands)
             self.marked_content_point(tag, None)
@@ -241,6 +250,40 @@ class PDFMarkedContentExtractor(PDFTextStripper):
             for tp in sink:
                 self.process_text_position(tp)
             return
+
+    def _draw_object(self, operands: list[COSBase], state: _TextState) -> None:
+        """``Do`` — mirror upstream's marked-content ``DrawObject``: report
+        the XObject to :meth:`xobject`, then descend into a form XObject /
+        transparency group. While its content stream is walked the
+        sequences it opens record the form's ``/StructParents`` key
+        (upstream ``showForm`` / ``showTransparencyGroup`` overrides,
+        PDFBOX-6303); the previous key is restored afterwards."""
+        if not operands or not isinstance(operands[0], COSName):
+            return
+        resources = self._current_resources()
+        if resources is None:
+            return
+        try:
+            xobject = resources.get_x_object(operands[0])
+        except Exception:  # defensive: malformed XObject entry
+            return
+        self.xobject(xobject)
+        if type(xobject).__name__ not in {"PDFormXObject", "PDTransparencyGroup"}:
+            return
+        saved_struct_parent = self._current_struct_parent
+        try:
+            self._current_struct_parent = xobject.get_struct_parents()
+        except Exception:  # defensive: malformed /StructParents
+            self._current_struct_parent = -1
+        try:
+            self._show_form_xobject(
+                operands,
+                state,
+                [],
+                lambda op, ops, st, _positions: self._dispatch_marked(op, ops, st),
+            )
+        finally:
+            self._current_struct_parent = saved_struct_parent
 
     def _resolve_bdc_properties(
         self,

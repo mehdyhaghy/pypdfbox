@@ -17,6 +17,13 @@ def test_get_non_cached_mappings() -> None:
     assert CMapStrings.get_mapping(bytes([0, 0, 0, 0])) is None
 
 
+
+# Translated from testMappingZeroByte (PDFBOX-6327).
+def test_mapping_zero_byte() -> None:
+    min_value_zero_byte = b""
+    assert CMapStrings.get_mapping(min_value_zero_byte) is None
+
+
 # Translated from getMappingOneByte -- min, max, and arbitrary value.
 def test_get_mapping_one_byte() -> None:
     min_value_one_byte = bytes([0])

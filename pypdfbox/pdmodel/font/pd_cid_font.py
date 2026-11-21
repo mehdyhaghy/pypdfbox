@@ -1,3 +1,4 @@
+import logging
 import math
 from abc import abstractmethod
 from typing import TYPE_CHECKING
@@ -20,6 +21,8 @@ _W2: COSName = COSName.get_pdf_name("W2")
 _CID_TO_GID_MAP: COSName = COSName.get_pdf_name("CIDToGIDMap")
 _IDENTITY: COSName = COSName.get_pdf_name("Identity")
 _W2_RANGE_EXPANSION_LIMIT: int = 4096
+
+logger = logging.getLogger(__name__)
 
 
 class PDCIDFont(PDFont):
@@ -305,7 +308,17 @@ class PDCIDFont(PDFont):
                     out[cid] = w
                 i += 3
             else:
-                i += 2
+                # Upstream ``readWidths`` treats any non-array second entry
+                # as the ``c1 c2 w`` form and consumes three slots before
+                # rejecting it (PDFBOX-6319 hardening).
+                if i + 2 >= n:
+                    break
+                logger.warning(
+                    "Expected two numbers, got %s and %s",
+                    second,
+                    arr.get_object(i + 2),
+                )
+                i += 3
 
     # ---------- /DW2 + parsed /W2 (vertical metrics, §9.7.4.3) ----------
 
@@ -417,21 +430,33 @@ class PDCIDFont(PDFont):
                     a = inner.get_object(k)
                     b = inner.get_object(k + 1)
                     d = inner.get_object(k + 2)
-                    if (
+                    if not (
                         isinstance(a, COSNumber)
                         and isinstance(b, COSNumber)
                         and isinstance(d, COSNumber)
                     ):
-                        out[c + (k // 3)] = (
-                            a.float_value(),
-                            b.float_value(),
-                            d.float_value(),
+                        # PDFBOX-6319: stop reading this inner array at the
+                        # first malformed triple, like upstream.
+                        logger.warning(
+                            "Expected three numbers, got %s, %s, %s", a, b, d
                         )
+                        break
+                    out[c + (k // 3)] = (
+                        a.float_value(),
+                        b.float_value(),
+                        d.float_value(),
+                    )
                     k += 3
                 i += 2
             elif isinstance(second, COSNumber):
                 # Form 2: c1 c2 w1y v_x v_y
                 if i + 4 >= n:
+                    logger.warning(
+                        "Aborting read of 3 elements of /W2 table at index %d "
+                        "with size %d",
+                        i + 1,
+                        n,
+                    )
                     break
                 third = arr.get_object(i + 2)
                 fourth = arr.get_object(i + 3)
@@ -441,8 +466,15 @@ class PDCIDFont(PDFont):
                     and isinstance(fourth, COSNumber)
                     and isinstance(fifth, COSNumber)
                 ):
-                    i += 5
-                    continue
+                    # PDFBOX-6319: a malformed range triple aborts the whole
+                    # /W2 read, like upstream.
+                    logger.warning(
+                        "Expected three numbers, got %s, %s, %s",
+                        third,
+                        fourth,
+                        fifth,
+                    )
+                    break
                 c2 = second.int_value()
                 triple = (
                     third.float_value(),

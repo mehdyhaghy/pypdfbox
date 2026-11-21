@@ -1,3 +1,5 @@
+import pytest
+
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSNull
 from pypdfbox.pdmodel import PDPageTree
 
@@ -36,7 +38,9 @@ def test_repaired_null_kid_without_parent_is_not_removed_from_nested_node_wave29
     tree, inner = _nested_tree_with_null_kid()
     [page] = list(tree)
 
-    assert tree.remove(page) is False
+    # PDFBOX-6318: upstream throws for an orphan; 2.x warns until 3.0.
+    with pytest.deprecated_call(match="orphan"):
+        assert tree.remove(page) is False
 
     assert [item.get_cos_object() for item in tree] == [page.get_cos_object()]
     assert tree.get_count() == 1

@@ -95,7 +95,7 @@ def _register_font(
 ) -> None:
     """The font bookkeeping of upstream ``setFont`` (Java lines 180-217).
 
-    Queues a subsetted font on the document's ``fontsToSubset`` set (so
+    Queues a subsetted font via ``PDDocument.add_font_for_subsetting`` (so
     ``PDDocument.save`` subsets it), warns about a non-embedded
     non-Standard-14 font, and builds the per-font GSUB worker used by
     complex text layout. Shared by :class:`PDAbstractContentStream` and
@@ -107,7 +107,7 @@ def _register_font(
     # keep track of fonts which are configured for subsetting
     if font.will_be_subset():
         if document is not None:
-            document.get_fonts_to_subset().add(font)
+            document.add_font_for_subsetting(font)
         else:
             _log.warning(
                 "Using the subsetted font '%s' without a PDDocument context; "

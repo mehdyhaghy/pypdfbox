@@ -274,6 +274,13 @@ class PDFunctionType3(PDFunction):
             bounds: list[float] = (
                 bounds_arr.to_float_array() if bounds_arr is not None else []
             )
+            # PDFBOX-6332: more bounds than k - 1 would select a partition
+            # with no matching subfunction; upstream rejects it up front.
+            if len(bounds) >= len(functions):
+                raise ValueError(
+                    f"Type 3 function has {len(bounds)} bounds for "
+                    f"{len(functions)} functions"
+                )
             # partition = [domain_lo, *bounds, domain_hi]
             partition = [domain_lo, *bounds, domain_hi]
             n_intervals = len(partition) - 1

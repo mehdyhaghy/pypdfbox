@@ -1811,8 +1811,24 @@ class PDDocument:
         document's own backing store, so callers may add / remove fonts in
         place. Empty by default; subset-aware ``PDFont`` subclasses
         populate it as glyphs are referenced. The writer drains and clears
-        it during a full save (subset pass)."""
+        it during a full save (subset pass).
+
+        Deprecated upstream (PDFBOX-6170): use
+        :meth:`add_font_for_subsetting` instead."""
         return self._fonts_to_subset
+
+    def add_font_for_subsetting(self, font: Any) -> None:
+        """Add ``font`` to the set of fonts subset before the document is
+        saved. Mirrors upstream ``PDDocument.addFontForSubsetting``
+        (PDFBOX-6170).
+
+        :raises ValueError: if the font doesn't support subsetting
+            (upstream ``IllegalArgumentException``)."""
+        if not font.will_be_subset():
+            raise ValueError(
+                f"The font {font.get_name()} doesn't support subsetting"
+            )
+        self._fonts_to_subset.add(font)
 
     def save_incremental_for_external_signing(
         self, output: BinaryIO

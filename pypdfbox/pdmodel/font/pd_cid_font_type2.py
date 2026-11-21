@@ -140,6 +140,11 @@ class PDCIDFontType2(PDCIDFont):
         # ``isForeignCIDSubstitute`` field, computed lazily here because the
         # substitute is resolved lazily. ``None`` means "not yet computed".
         self._foreign_cid_substitute: bool | None = None
+        # PDFBOX-6288 / PDFBOX-5384: upstream ``hasEqualName`` (computed
+        # lazily against the lazily resolved substitute; ``None`` means
+        # "not yet computed") and ``warnedOnce``.
+        self._has_equal_name: bool | None = None
+        self._warned_once = False
 
     def get_subtype(self) -> str | None:
         return self.SUB_TYPE
@@ -207,15 +212,18 @@ class PDCIDFontType2(PDCIDFont):
           ``/CIDToGIDMap`` (:meth:`cid_to_gid`).
         * **Not embedded** (or damaged): the glyph is selected in the
           substitute font located through :class:`FontMappers`. When the
-          substitute is the very same font (same PostScript name) and the
-          PDF carries a ``/CIDToGIDMap`` stream, that map is used
-          (PDFBOX-5612). Otherwise the code is translated to Unicode through
-          the parent (``/ToUnicode`` or the predefined UCS2 CMap) and looked
-          up in the substitute's ``cmap``; with no Unicode mapping, or a
-          CFF-based OpenType substitute (PDFBOX-6251), the CID is used as
-          the GID (PDFBOX-2599). A CID-keyed ``Identity``-ordered
-          substitute from another character collection keeps the Unicode
-          lookup (PDFBOX-6293): this font's CIDs are meaningless in it.
+          substitute is the very same font (equal name, or one a prefix of
+          the other ignoring ``,`` and ``-``) and the encoding CMap has an
+          ``Identity`` ordering with no ``/CIDToGIDMap`` stream, the code is
+          the GID (PDFBOX-6288 / PDFBOX-5384); with a ``/CIDToGIDMap``
+          stream, that map is used (PDFBOX-5612). Otherwise the code is
+          translated to Unicode through the parent (``/ToUnicode`` or the
+          predefined UCS2 CMap) and looked up in the substitute's ``cmap``;
+          with no Unicode mapping, or a CFF-based OpenType substitute
+          (PDFBOX-6251), the CID is used as the GID (PDFBOX-2599). A
+          CID-keyed ``Identity``-ordered substitute from another character
+          collection keeps the Unicode lookup (PDFBOX-6293): this font's
+          CIDs are meaningless in it.
 
         For a bare descendant (no parent font) the code is the CID.
         """
@@ -236,15 +244,35 @@ class PDCIDFontType2(PDCIDFont):
         # font.
         cid2gid = self._get_cid_to_gid_map_values()
         name = self.get_name()
+        has_equal_name = self._is_equal_name(ttf)
+        cmap = parent.get_cmap()
+        if (
+            cid2gid is None
+            and cmap is not None
+            and cmap.get_ordering() == "Identity"
+            and has_equal_name
+        ):
+            # PDFBOX-6288, PDFBOX-5384: treat CID as GID for missing fonts if
+            # we have the correct font.
+            if not self._warned_once:
+                _LOG.warning(
+                    "Using non-embedded CID2GID identity for font %s / %s",
+                    name,
+                    _safe_font_name(ttf),
+                )
+                self._warned_once = True
+            return code if code < ttf.get_number_of_glyphs() else 0
         if (
             cid2gid is not None
             and not self.is_damaged()
             and name is not None
-            and name == _safe_font_name(ttf)
+            and has_equal_name
         ):
             # Acrobat allows non-embedded GIDs. PDFBOX-5612: should happen
             # only if it's really the same font.
-            _LOG.warning("Using non-embedded GIDs in font %s", name)
+            if not self._warned_once:
+                _LOG.warning("Using non-embedded GIDs in font %s", name)
+                self._warned_once = True
             cid = self.code_to_cid(code)
             return cid2gid[cid] if 0 <= cid < len(cid2gid) else 0
         # fallback to the ToUnicode CMap, test with PDFBOX-1422 and PDFBOX-2560
@@ -1145,6 +1173,29 @@ class PDCIDFontType2(PDCIDFont):
             return bool(ttf.is_supported_otf()) and bool(ttf.is_post_script())
         except Exception:
             return False
+
+    def _is_equal_name(self, ttf: TrueTypeFont) -> bool:
+        """Upstream's ``hasEqualName`` field, set by private
+        ``initNameEquality()`` (PDFBOX-6288 / PDFBOX-5384): the
+        ``/BaseFont`` and the program's name are equal, or one is a prefix
+        of the other once ``,`` and ``-`` are removed (e.g. ``Arial`` /
+        ``ArialMT``, ``Tahoma,Bold`` / ``Tahoma-Bold``). Cached."""
+        if self._has_equal_name is not None:
+            return self._has_equal_name
+        equal = False
+        name = self.get_base_font()
+        ttf_name = _safe_font_name(ttf)
+        if name is not None and ttf_name is not None:
+            if name == ttf_name:
+                equal = True
+            else:
+                name = name.replace(",", "").replace("-", "")
+                ttf_name = ttf_name.replace(",", "").replace("-", "")
+                equal = ttf_name.startswith(name) or name.startswith(ttf_name)
+                if not equal and not self.is_embedded():
+                    _LOG.debug("name: %s, ttfName: %s not equal", name, ttf_name)
+        self._has_equal_name = equal
+        return equal
 
     def _is_foreign_cid_substitute(self) -> bool:
         """Upstream's ``isForeignCIDSubstitute`` field (PDFBOX-6293):

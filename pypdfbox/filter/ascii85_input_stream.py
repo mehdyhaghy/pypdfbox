@@ -2,24 +2,24 @@
 
 Mirrors ``org.apache.pdfbox.filter.ASCII85InputStream``. Wraps a binary
 stream and decodes ASCII85-encoded bytes on the fly, returning the
-original binary data. Library-first: delegates the codec to the stdlib
-:func:`base64.a85decode` after buffering the encoded body up to the ``~>``
-terminator.
+original binary data. Buffers the encoded body up to the first ``~``
+(or EOF) and decodes it with the same upstream-exact accumulator as
+:class:`pypdfbox.filter.ascii85_decode.ASCII85Decode`.
 """
 
-import base64
 import contextlib
 import io
 from typing import BinaryIO
+
+from .ascii85_decode import ASCII85Decode
 
 
 class ASCII85InputStream(io.RawIOBase):
     """ASCII85 stream-style decoder over a binary input stream.
 
-    The encoded stream may contain newlines, carriage returns, and spaces
-    (silently skipped), the ``z`` shorthand (expands to four zero bytes),
-    and an optional ``~>`` end-of-data marker. The PDF profile uses the
-    Adobe variant (``adobe=True`` for :func:`base64.a85decode`).
+    The encoded stream may contain PDF white-space (NUL, TAB, LF, FF, CR,
+    SP; silently skipped), the ``z`` shorthand (expands to four zero bytes
+    at a group boundary), and an optional ``~>`` end-of-data marker.
     """
 
     def __init__(self, stream: BinaryIO) -> None:
@@ -37,38 +37,23 @@ class ASCII85InputStream(io.RawIOBase):
     def _ensure_decoded(self) -> None:
         if self._decoded:
             return
-        # Read until ``~>`` or EOF. ASCII85 streams are bounded by the
-        # ``~>`` end-of-data marker per PDF §7.4.3; tolerate streams that
-        # omit it (some encoders do) by treating EOF as the boundary.
+        # Read until the first ``~`` (upstream ends the stream at that byte;
+        # the ``>`` that follows is incidental) or EOF. A missing ``~>``
+        # ends the last group at EOF exactly like ``~>`` (PDFBOX-6317).
         encoded = bytearray()
         while True:
             chunk = self._in.read(4096)
             if not chunk:
                 break
-            encoded.extend(chunk)
-            term_idx = encoded.find(b"~>")
+            term_idx = chunk.find(b"~")
             if term_idx >= 0:
-                encoded = encoded[: term_idx + 2]
+                encoded.extend(chunk[: term_idx + 1])
                 break
-
-        # ``base64.a85decode`` requires the ``~>`` marker when
-        # ``adobe=True``; if it's missing, append one so the codec accepts
-        # the bytes. We don't strip whitespace ourselves — ``ignorechars``
-        # handles that.
-        if not encoded.endswith(b"~>") and encoded:
-            # Strip trailing whitespace before appending the marker so
-            # we don't produce ``\n~>`` mid-pad.
-            while encoded and encoded[-1:] in (b"\n", b"\r", b" ", b"\t"):
-                encoded = encoded[:-1]
-            encoded.extend(b"~>")
-        try:
-            self._buf = base64.a85decode(
-                bytes(encoded),
-                adobe=True,
-                ignorechars=b" \t\n\r\v",
-            )
-        except ValueError as exc:
-            raise OSError(f"Invalid data in Ascii85 stream: {exc}") from exc
+            encoded.extend(chunk)
+        # Share the filter's decoder: it reproduces upstream's accumulator
+        # byte-for-byte (PDF whitespace set per PDFBOX-6330, ``z`` only at a
+        # group boundary, 32-bit wrap, padded partial last group).
+        self._buf = ASCII85Decode._decode_bytes(bytes(encoded))
         self._decoded = True
 
     # ------------------------------------------------------------------

@@ -287,6 +287,8 @@ COSName.MEDIA_BOX = _static_name("MediaBox")  # type: ignore[attr-defined]
 COSName.CONTENTS = _static_name("Contents")  # type: ignore[attr-defined]
 COSName.CATALOG = _static_name("Catalog")  # type: ignore[attr-defined]
 COSName.STRUCT_TREE_ROOT = _static_name("StructTreeRoot")  # type: ignore[attr-defined]
+# Marked-content reference /Stm (PDF 32000-1 Table 324, PDFBOX-6301).
+COSName.STM = _static_name("Stm")  # type: ignore[attr-defined]
 COSName.METADATA = _static_name("Metadata")  # type: ignore[attr-defined]
 # XObject + Image subtypes (PDF 32000-1 §8.8) — referenced by
 # ``WriteDecodedDoc.process_object`` to skip image streams when the

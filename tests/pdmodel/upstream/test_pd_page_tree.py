@@ -127,3 +127,22 @@ def test_get_valid_page_after_out_of_bounds_lookup() -> None:
         with pytest.raises(IndexError):
             pages.get(1)
         assert pages.get(0).get_cos_object() is page.get_cos_object()
+
+
+def test_modify_loop() -> None:
+    """``testModifyLoop`` / PDFBOX-6318: root is its own /Parent."""
+    with PDDocument() as document:
+        document.add_page(PDPage())
+        document.add_page(PDPage())
+        assert document.get_number_of_pages() == 2
+        page_tree = document.get_pages()
+        page_tree.get_cos_object().set_item(COSName.PARENT, page_tree)
+        page = PDPage()
+        document.add_page(page)
+        assert document.get_number_of_pages() == 3
+        document.remove_page(page)
+        assert document.get_number_of_pages() == 2
+        document.get_pages().insert_before(PDPage(), document.get_page(0))
+        assert document.get_number_of_pages() == 3
+        document.get_pages().insert_after(PDPage(), document.get_page(0))
+        assert document.get_number_of_pages() == 4

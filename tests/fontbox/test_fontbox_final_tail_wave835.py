@@ -81,7 +81,7 @@ class _BeyondUCS4Start:
 
 class _Format12BeyondUCS4Data:
     def __init__(self) -> None:
-        self._values = iter([1, _BeyondUCS4Start(), 0, 1])
+        self._values = iter([1, _BeyondUCS4Start(), 1, 1])  # end 0 is skipped (PDFBOX-6297)
 
     def read_unsigned_int(self) -> object:
         return next(self._values)

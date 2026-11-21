@@ -984,6 +984,9 @@ class PDFMergerUtility:
 
         dest_pages = destination.get_pages()
         obj_mapping: dict[int, COSDictionary] = {}
+        # PDFBOX-6301: XObjects already visited (by identity of the source
+        # stream), so a shared or self-referencing form is offset only once.
+        visited_x_objects: set[int] = set()
         for page in src_catalog.get_pages():
             old_page_dict = page.get_cos_object()
             old_annots_dicts: list[COSDictionary] = []
@@ -1051,6 +1054,16 @@ class PDFMergerUtility:
                     old_annots_dicts, new_annots_dicts, strict=False
                 ):
                     obj_mapping[id(old_a)] = new_a
+                # PDFBOX-6301: offset /StructParent(s) of image and form
+                # XObjects reachable from the page resources and map them so
+                # ParentTree /Obj references follow the clones.
+                self._update_struct_parent_entries_for_resources(
+                    page.get_resources(),
+                    new_page.get_resources(),
+                    dest_parent_tree_next_key,
+                    obj_mapping,
+                    visited_x_objects,
+                )
                 # Mirror upstream appendDocument's struct-tree branch, which
                 # finishes the per-page annotation handling with
                 # ``newPage.setAnnotations(annotations)`` (after the geometry
@@ -1956,6 +1969,69 @@ class PDFMergerUtility:
                             _STRUCT_PARENT,
                             COSInteger.get(current + struct_parent_offset),
                         )
+
+    @classmethod
+    def _update_struct_parent_entries_for_resources(
+        cls,
+        old_resources: Any,
+        new_resources: Any,
+        struct_parent_offset: int,
+        obj_mapping: dict[int, COSDictionary],
+        visited: set[int],
+    ) -> None:
+        """Offset ``/StructParent`` of image XObjects and ``/StructParents``
+        of form XObjects (recursing into form resources) by
+        ``struct_parent_offset`` and record old-to-new mappings.
+
+        Mirrors the ``updateStructParentEntries(PDResources, PDResources,
+        ...)`` overload upstream added for PDFBOX-6301. ``visited`` holds the
+        identities of source XObject streams already handled, which both
+        prevents a shared XObject from being offset twice and stops endless
+        recursion on a form that references itself."""
+        from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (
+            PDFormXObject,
+        )
+        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (
+            PDImageXObject,
+        )
+
+        if old_resources is None or new_resources is None:
+            return
+        for name in new_resources.get_x_object_names():
+            new_x_object = new_resources.get_x_object(name)
+            old_x_object = old_resources.get_x_object(name)
+            if old_x_object is None:
+                continue
+            old_cos = old_x_object.get_cos_object()
+            if id(old_cos) in visited:
+                continue
+            visited.add(id(old_cos))
+            if isinstance(new_x_object, PDImageXObject):
+                struct_parent = new_x_object.get_struct_parent()
+                if struct_parent >= 0:
+                    new_x_object.set_struct_parent(
+                        struct_parent + struct_parent_offset
+                    )
+                    obj_mapping[id(old_cos)] = new_x_object.get_cos_object()
+            elif isinstance(new_x_object, PDFormXObject):
+                struct_parents = new_x_object.get_struct_parents()
+                if struct_parents >= 0:
+                    new_x_object.set_struct_parents(
+                        struct_parents + struct_parent_offset
+                    )
+                    obj_mapping[id(old_cos)] = new_x_object.get_cos_object()
+                old_form_resources = (
+                    old_x_object.get_resources()
+                    if isinstance(old_x_object, PDFormXObject)
+                    else None
+                )
+                cls._update_struct_parent_entries_for_resources(
+                    old_form_resources,
+                    new_x_object.get_resources(),
+                    struct_parent_offset,
+                    obj_mapping,
+                    visited,
+                )
 
     def _merge_k_entries(
         self,

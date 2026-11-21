@@ -79,7 +79,8 @@ class _BeyondUCS4Start:
 
 class _Format12BeyondUCS4Data:
     def __init__(self) -> None:
-        self._values = iter([1, _BeyondUCS4Start(), 0, 1])
+        # end code 1: an end code of 0 is skipped as unsorted (PDFBOX-6297).
+        self._values = iter([1, _BeyondUCS4Start(), 1, 1])
 
     def read_unsigned_int(self) -> object:
         return next(self._values)

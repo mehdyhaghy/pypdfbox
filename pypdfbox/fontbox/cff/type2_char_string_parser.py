@@ -27,6 +27,11 @@ _CALLGSUBR = Key.CALLGSUBR.hash_value
 _HINTMASK = Key.HINTMASK.hash_value
 _CNTRMASK = Key.CNTRMASK.hash_value
 
+# PDFBOX-6308: the format allows 10 nested subroutine calls, but fonts in use
+# exceed that. This is only a safeguard against endless recursion
+# (Type2CharStringParser.java MAX_SUBR_NESTING).
+MAX_SUBR_NESTING = 150
+
 
 @dataclass
 class _GlyphData:
@@ -36,11 +41,16 @@ class _GlyphData:
     sequence: list[Any] = field(default_factory=list)
     hstem_count: int = 0
     vstem_count: int = 0
+    # PDFBOX-6308: upstream increments this on every subroutine call of the
+    # glyph and never decrements it, so it bounds the total number of calls.
+    subr_nesting: int = 0
 
 
 class Type2CharStringParser:
     """Mirrors upstream ``Type2CharStringParser``
     (Type2CharStringParser.java:30)."""
+
+    MAX_SUBR_NESTING = MAX_SUBR_NESTING
 
     def __init__(self, font_name: str) -> None:
         self._font_name = font_name
@@ -154,7 +164,18 @@ class Type2CharStringParser:
         ``new DataInputByteArray(null)`` / ``hasRemaining()`` throws a
         ``NullPointerException``. We mirror that by letting ``bytes(None)``
         raise ``TypeError`` rather than silently no-op'ing.
+
+        PDFBOX-6308: once the glyph's subroutine call count reaches
+        :data:`MAX_SUBR_NESTING`, further calls raise ``OSError`` (upstream
+        ``IOException``) instead of recursing without bound.
         """
+        if glyph_data.subr_nesting >= MAX_SUBR_NESTING:
+            msg = (
+                f"Subroutines are nested more than {MAX_SUBR_NESTING} "
+                f"levels deep in font {self._font_name}"
+            )
+            raise OSError(msg)
+        glyph_data.subr_nesting += 1
         if subr_bytes is None:
             # bytes(None) would raise TypeError("cannot convert 'NoneType' ...")
             # which is the closest analogue to upstream's NullPointerException
@@ -305,4 +326,4 @@ class Type2CharStringParser:
         return self.to_string()
 
 
-__all__ = ["Type2CharStringParser"]
+__all__ = ["MAX_SUBR_NESTING", "Type2CharStringParser"]

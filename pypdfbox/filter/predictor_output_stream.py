@@ -89,8 +89,11 @@ class PredictorOutputStream(io.RawIOBase):
         self._current_row_data: int = 0
         self._predictor_read: bool = False
         row_length = calculate_row_length(colors, bits_per_component, columns)
-        if row_length < 0:
-            raise OSError(f"Calculated row length is negative: {row_length}")
+        if row_length <= 0:
+            # PDFBOX-6304: a zero row length (e.g. /Columns 0) would leave
+            # write() making no progress, a non-terminating loop for non-PNG
+            # predictors; reject it alongside negatives.
+            raise OSError(f"Calculated row length is not positive: {row_length}")
         # PDFBOX-6265: prevent OOM with extreme values
         max_row_length = _max_row_length()
         if row_length > max_row_length:

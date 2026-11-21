@@ -200,7 +200,8 @@ class PDFunctionType0(PDFunction):
         :meth:`get_encode_values` (which fills the spec default ``[0 Size[i]-1]``
         ONLY when ``/Encode`` is absent — never when present-but-short) and
         returns the pair only when that array is long enough
-        (``size() >= 2*n + 1``). When ``/Encode`` is present but too short for
+        (``size() >= 2*n + 2``, PDFBOX-6333). When ``/Encode`` is present but
+        too short for
         ``n`` it returns ``None`` — upstream does NOT default-fill a partial
         ``/Encode``; eval then NPEs on the null PDRange, so a too-short
         ``/Encode`` is a hard error there (parity, CHANGES.md Wave 1535).
@@ -210,7 +211,7 @@ class PDFunctionType0(PDFunction):
         if n < 0:
             return None
         values = self.get_encode_values()
-        if values is None or values.size() < 2 * n + 1:
+        if values is None or values.size() < 2 * n + 2:
             return None
         flat = values.to_float_array()
         return (flat[2 * n], flat[2 * n + 1])
@@ -221,7 +222,8 @@ class PDFunctionType0(PDFunction):
         Mirrors PDFBox ``getDecodeForParameter(int)`` exactly: it resolves
         :meth:`get_decode_values` (which falls back to ``/Range`` ONLY when
         ``/Decode`` is absent — never when present-but-short) and returns the
-        pair only when that array is long enough (``size() >= 2*n + 1``). When
+        pair only when that array is long enough (``size() >= 2*n + 2``,
+        PDFBOX-6333). When
         ``/Decode`` is present but too short for ``n`` it returns ``None`` —
         upstream does NOT default-fill a partial ``/Decode``; eval then NPEs on
         the null PDRange, so a too-short ``/Decode`` is a hard error there
@@ -231,7 +233,7 @@ class PDFunctionType0(PDFunction):
         if n < 0:
             return None
         values = self.get_decode_values()
-        if values is None or values.size() < 2 * n + 1:
+        if values is None or values.size() < 2 * n + 2:
             return None
         flat = values.to_float_array()
         return (flat[2 * n], flat[2 * n + 1])
