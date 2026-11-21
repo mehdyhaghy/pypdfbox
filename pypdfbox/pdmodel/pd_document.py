@@ -1086,7 +1086,14 @@ class PDDocument:
             password if isinstance(password, str) else bytes(password)
         )
 
-        handler = StandardSecurityHandler(encryption)
+        # Upstream ``prepareDecryption`` decrypts with the handler the
+        # ``PDEncryption(COSDictionary)`` constructor installed for /Filter, so
+        # ``get_encryption().get_security_handler()`` is the very instance that
+        # deciphers the document.
+        handler = encryption.get_security_handler()
+        if not isinstance(handler, StandardSecurityHandler):
+            handler = StandardSecurityHandler()
+            encryption.set_security_handler(handler)
         handler.prepare_for_decryption(
             encryption,
             document_id,

@@ -1093,7 +1093,16 @@ class PDFParser:
             if isinstance(self._password, str)
             else bytes(self._password)
         )
-        handler = StandardSecurityHandler(encryption)
+        # Reuse the handler ``PDEncryption`` installed for /Filter (upstream
+        # ``prepareDecryption`` calls ``encryption.getSecurityHandler()``). A
+        # non-Standard /Filter keeps the historical password-handler bootstrap.
+        handler = (
+            encryption.get_security_handler()
+            if encryption.has_security_handler()
+            else None
+        )
+        if not isinstance(handler, StandardSecurityHandler):
+            handler = StandardSecurityHandler(encryption)
         handler.prepare_for_decryption(
             encryption,
             document_id,

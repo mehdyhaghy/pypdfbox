@@ -39,6 +39,9 @@ def test_wave664_prepare_security_handler_accepts_bytes_password(
         def __init__(self, dictionary: COSDictionary) -> None:
             captured["dictionary"] = dictionary
 
+        def has_security_handler(self) -> bool:
+            return False
+
     class FakeMaterial:
         def __init__(self, password: bytes) -> None:
             captured["password"] = password
