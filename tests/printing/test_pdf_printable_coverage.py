@@ -11,6 +11,7 @@ from pypdfbox.pdmodel.pd_document import PDDocument
 from pypdfbox.pdmodel.pd_page import PDPage
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from pypdfbox.printing.pdf_printable import PDFPrintable, Scaling
+from pypdfbox.rendering.render_destination import RenderDestination
 
 
 def _make_doc(n: int = 1) -> PDDocument:
@@ -30,11 +31,14 @@ def test_render_invokes_render_image(monkeypatch: Any) -> None:
             def __init__(self, _doc: Any) -> None:
                 captured["init"] = _doc
 
-            def render_image(self, idx: int) -> str:
+            def render_image(self, idx: int, destination: Any = None) -> str:
                 captured["render_image"] = idx
+                captured["destination"] = destination
                 return "image"
 
-            def render_image_with_dpi(self, idx: int, dpi: float) -> str:
+            def render_image_with_dpi(
+                self, idx: int, dpi: float, destination: Any = None,
+            ) -> str:
                 captured["render_image_with_dpi"] = (idx, dpi)
                 return "image-dpi"
 
@@ -45,6 +49,7 @@ def test_render_invokes_render_image(monkeypatch: Any) -> None:
         result = printable.render(0)
         assert result == "image"
         assert captured["render_image"] == 0
+        assert captured["destination"] is RenderDestination.PRINT
     finally:
         doc.close()
 
@@ -59,12 +64,15 @@ def test_render_uses_dpi_when_positive(monkeypatch: Any) -> None:
             def __init__(self, _doc: Any) -> None:
                 pass
 
-            def render_image(self, idx: int) -> str:
+            def render_image(self, idx: int, destination: Any = None) -> str:
                 captured["plain"] = idx
                 return "img"
 
-            def render_image_with_dpi(self, idx: int, dpi: float) -> str:
+            def render_image_with_dpi(
+                self, idx: int, dpi: float, destination: Any = None,
+            ) -> str:
                 captured["dpi"] = (idx, dpi)
+                captured["destination"] = destination
                 return "img-dpi"
 
         import pypdfbox.rendering.pdf_renderer as renderer_mod
@@ -73,6 +81,7 @@ def test_render_uses_dpi_when_positive(monkeypatch: Any) -> None:
         assert printable.render(2) == "img-dpi"
         assert captured["dpi"] == (2, 150.0)
         assert "plain" not in captured
+        assert captured["destination"] is RenderDestination.PRINT
     finally:
         doc.close()
 
@@ -87,7 +96,7 @@ def test_render_defaults_to_stored_page_index(monkeypatch: Any) -> None:
             def __init__(self, _doc: Any) -> None:
                 pass
 
-            def render_image(self, idx: int) -> str:
+            def render_image(self, idx: int, destination: Any = None) -> str:
                 return f"img-{idx}"
 
         import pypdfbox.rendering.pdf_renderer as renderer_mod
@@ -107,7 +116,7 @@ def test_print_returns_page_exists(monkeypatch: Any) -> None:
             def __init__(self, _doc: Any) -> None:
                 pass
 
-            def render_image(self, _idx: int) -> str:
+            def render_image(self, _idx: int, destination: Any = None) -> str:
                 return "pillow-image"
 
         import pypdfbox.rendering.pdf_renderer as renderer_mod
@@ -127,7 +136,7 @@ def test_print_returns_no_such_page_on_index_error(monkeypatch: Any) -> None:
             def __init__(self, _doc: Any) -> None:
                 pass
 
-            def render_image(self, _idx: int) -> str:
+            def render_image(self, _idx: int, destination: Any = None) -> str:
                 raise IndexError("no such page")
 
         import pypdfbox.rendering.pdf_renderer as renderer_mod
@@ -149,7 +158,7 @@ def test_print_uses_default_page_index_when_none(monkeypatch: Any) -> None:
             def __init__(self, _doc: Any) -> None:
                 pass
 
-            def render_image(self, idx: int) -> str:
+            def render_image(self, idx: int, destination: Any = None) -> str:
                 captured.append(idx)
                 return "img"
 
@@ -171,7 +180,7 @@ def test_print_draws_image_on_graphics(monkeypatch: Any) -> None:
             def __init__(self, _doc: Any) -> None:
                 pass
 
-            def render_image(self, _idx: int) -> str:
+            def render_image(self, _idx: int, destination: Any = None) -> str:
                 return "the-image"
 
         import pypdfbox.rendering.pdf_renderer as renderer_mod
@@ -201,7 +210,7 @@ def test_print_swallows_draw_image_errors(monkeypatch: Any) -> None:
             def __init__(self, _doc: Any) -> None:
                 pass
 
-            def render_image(self, _idx: int) -> str:
+            def render_image(self, _idx: int, destination: Any = None) -> str:
                 return "img"
 
         import pypdfbox.rendering.pdf_renderer as renderer_mod

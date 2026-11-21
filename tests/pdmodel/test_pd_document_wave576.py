@@ -240,7 +240,7 @@ def test_wave576_decrypt_sets_stream_handlers_and_invalidates_permission(
     calls: list[tuple[object, bytes, object]] = []
 
     class Handler:
-        def __init__(self, encryption: object) -> None:
+        def __init__(self, encryption: object = None) -> None:
             self.encryption = encryption
 
         def prepare_for_decryption(
@@ -252,8 +252,18 @@ def test_wave576_decrypt_sets_stream_handlers_and_invalidates_permission(
             calls.append((encryption, document_id, material))
 
     import pypdfbox.pdmodel.encryption.standard_security_handler as ssh_module
+    from pypdfbox.pdmodel.encryption.security_handler_factory import (
+        SecurityHandlerFactory,
+    )
 
     monkeypatch.setattr(ssh_module, "StandardSecurityHandler", Handler)
+    # ``PDEncryption(COSDictionary)`` installs the /Filter handler through the
+    # factory and ``decrypt`` prepares that same instance (upstream parity).
+    monkeypatch.setattr(
+        SecurityHandlerFactory.INSTANCE,
+        "new_security_handler_for_filter",
+        lambda name: Handler(),
+    )
     cos_doc = COSDocument()
     cos_doc.set_trailer(COSDictionary())
     trailer = cos_doc.get_trailer()

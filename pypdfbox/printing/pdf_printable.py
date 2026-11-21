@@ -88,8 +88,14 @@ class PDFPrintable:
         self._dpi = dpi
 
     def render(self, page_index: int | None = None) -> Image:
-        """Render the requested page via :class:`PDFRenderer`."""
+        """Render the requested page via :class:`PDFRenderer`.
+
+        Like upstream ``print()`` (which calls ``renderPageToGraphics``
+        with ``RenderDestination.PRINT``), the page is rendered for the
+        PRINT destination, so optional content honors its print usage.
+        """
         from pypdfbox.rendering.pdf_renderer import PDFRenderer
+        from pypdfbox.rendering.render_destination import RenderDestination
 
         renderer = PDFRenderer(self._document)
         # Forward the render flags (upstream print()); tolerate renderer
@@ -103,8 +109,10 @@ class PDFPrintable:
                 setter(value)
         idx = self._page_index if page_index is None else page_index
         if self._dpi and self._dpi > 0:
-            return renderer.render_image_with_dpi(idx, self._dpi)
-        return renderer.render_image(idx)
+            return renderer.render_image_with_dpi(
+                idx, self._dpi, destination=RenderDestination.PRINT,
+            )
+        return renderer.render_image(idx, destination=RenderDestination.PRINT)
 
     # --- Upstream parity surface --------------------------------------
     def print(

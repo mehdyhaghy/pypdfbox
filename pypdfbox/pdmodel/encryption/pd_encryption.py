@@ -89,13 +89,29 @@ class PDEncryption:
     """
 
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
-        self._dict: COSDictionary = dictionary if dictionary is not None else COSDictionary()
         # ``security_handler`` mirrors upstream's ``private SecurityHandler``
-        # field. The factory dispatch by /Filter lives in
-        # ``SecurityHandlerFactory`` (not yet ported); leave the slot
-        # ``None`` so ``get_security_handler()`` raises in the same way as
-        # upstream when no handler has been installed.
+        # field. Upstream's no-arg constructor leaves it ``null``; the
+        # ``PDEncryption(COSDictionary)`` constructor installs a fresh handler
+        # for the dictionary's /Filter via
+        # ``SecurityHandlerFactory.INSTANCE.newSecurityHandlerForFilter`` (a
+        # missing or unregistered /Filter yields ``null``, so
+        # ``get_security_handler()`` raises).
         self._security_handler: object | None = None
+        if dictionary is None:
+            self._dict: COSDictionary = COSDictionary()
+            return
+        self._dict = dictionary
+        # Local import: the factory registers the handler classes, which
+        # import this module.
+        from .security_handler_factory import SecurityHandlerFactory
+
+        filter_name = self.get_filter()
+        if filter_name is not None:
+            self._security_handler = (
+                SecurityHandlerFactory.INSTANCE.new_security_handler_for_filter(
+                    filter_name
+                )
+            )
 
     def get_cos_object(self) -> COSDictionary:
         return self._dict
