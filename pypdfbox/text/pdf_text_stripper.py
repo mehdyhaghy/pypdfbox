@@ -5,7 +5,7 @@ import struct
 import sys
 import unicodedata
 from array import array
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import replace
 from functools import cmp_to_key
 from typing import TYPE_CHECKING, Protocol
@@ -275,6 +275,36 @@ def _plain_glyph_step(
     bare displacement through the text matrix (before the cursor is added),
     the advance through the text matrix and the scaled glyph width.
     """
+    # Independent narrowings share one ``struct`` round trip (same operands,
+    # same order, so the same values as :func:`_plain_glyph_step_reference`).
+    try:
+        dfs = _f32_unpack(_f32_pack(displacement * font_size))[0]
+        dx, spaced = _f32x2_unpack(_f32x2_pack(dfs * th, dfs + char_spacing))
+        spaced = _f32_unpack(_f32_pack(spaced + word_spacing))[0]
+        advance = _f32_unpack(_f32_pack(spaced * th))[0]
+        end_tx, end_ty, step_x, step_y, width = _F32X5_STRUCT.unpack(
+            _F32X5_STRUCT.pack(
+                dx * tm_a, dx * tm_b, advance * tm_a, advance * tm_b, dx * x_scale
+            )
+        )
+    except OverflowError:
+        return _plain_glyph_step_reference(
+            displacement, font_size, th, char_spacing, word_spacing, tm_a, tm_b, x_scale
+        )
+    return end_tx, end_ty, step_x, step_y, abs(width)
+
+
+def _plain_glyph_step_reference(
+    displacement: float,
+    font_size: float,
+    th: float,
+    char_spacing: float,
+    word_spacing: float,
+    tm_a: float,
+    tm_b: float,
+    x_scale: float,
+) -> tuple[float, float, float, float, float]:
+    """:func:`_plain_glyph_step` one float32 narrowing at a time."""
     dfs = _f32(displacement * font_size)
     dx = _f32(dfs * th)
     advance = _f32(_f32(_f32(dfs + char_spacing) + word_spacing) * th)
@@ -905,6 +935,10 @@ class PDFTextStripper:
         # Counter tagging the glyphs of one show-text string (lite-only
         # flipped-axes mode regroups them into runs).
         self._run_counter: int = 0
+        # Whether the show-text operators may take :meth:`_show_fast` (the
+        # stock show-text hooks are in place); refreshed per content stream
+        # by :meth:`_extract_positions`.
+        self._fast_show: bool = False
         # ``_rendering_scale`` results keyed by their inputs.
         self._rendering_scale_cache: dict[tuple[float, ...], tuple[float, float]] = {}
         # ``_plain_glyph_step`` memos keyed by their run-invariant inputs.
@@ -1645,6 +1679,7 @@ class PDFTextStripper:
         # out correctly. See CHANGES.md.
         state = _TextState()
         state.ctm = self._initial_ctm()
+        self._fast_show = self._stock_show_hooks()
 
         with RandomAccessReadBuffer(body) as src:
             parser = PDFStreamParser(src)
@@ -1784,7 +1819,11 @@ class PDFTextStripper:
             # (outside a BT…ET pair).
             if not state.in_text_object:
                 return
-            if operands and isinstance(operands[0], COSString):
+            if (
+                operands
+                and isinstance(operands[0], COSString)
+                and not (self._fast_show and self._show_fast(operands[:1], state, positions))
+            ):
                 self._emit(operands[0], state, positions)
         elif op == "TJ":
             # Upstream ``ShowTextAdjusted`` ignores ``TJ`` when the text matrix
@@ -1792,7 +1831,9 @@ class PDFTextStripper:
             if not state.in_text_object:
                 return
             if operands and isinstance(operands[0], COSArray):
-                self._emit_tj_array(operands[0], state, positions)
+                arr = operands[0]
+                if not (self._fast_show and self._show_fast(arr, state, positions)):
+                    self._emit_tj_array(arr, state, positions)
         elif op == "'":
             # ``'`` = ``T*`` then ``Tj``; both halves are no-ops outside a
             # text object (text-line / text matrix null).
@@ -1802,7 +1843,11 @@ class PDFTextStripper:
             _move_text_line(state, 0.0, -state.leading)
             state.text_x = state.line_x
             state.text_y = state.line_y
-            if operands and isinstance(operands[0], COSString):
+            if (
+                operands
+                and isinstance(operands[0], COSString)
+                and not (self._fast_show and self._show_fast(operands[:1], state, positions))
+            ):
                 self._emit(operands[0], state, positions)
         elif op == '"':
             # ``aw ac string "`` — set word + char spacing, next line, show.
@@ -1822,7 +1867,10 @@ class PDFTextStripper:
                 _move_text_line(state, 0.0, -state.leading)
                 state.text_x = state.line_x
                 state.text_y = state.line_y
-                self._emit(operands[2], state, positions)
+                if not (
+                    self._fast_show and self._show_fast((operands[2],), state, positions)
+                ):
+                    self._emit(operands[2], state, positions)
         elif op == "Tc":
             if operands and isinstance(operands[0], COSNumber):
                 state.char_spacing = operands[0].float_value()
@@ -2940,31 +2988,9 @@ class PDFTextStripper:
         # height), rather than lazily in a later pass over the page.
         upright = simple and fold_upright and text_dir % 360.0 == 0.0
         page_height = _f32(page_height_raw) if upright else 0.0
-        plain_steps = None
-        if (
-            _USE_FAST_PATHS
-            and simple
-            and c0 == 1.0
-            and c4 == 1.0
-            and c6 == 0.0
-            and c7 == 0.0
-            and tm_b == 0.0
-        ):
-            # The memo of :func:`_plain_glyph_step` results for these step
-            # inputs, keyed by their exact bits (signed zeros differ).
-            try:
-                steps_key = _PLAIN_STEP_KEY.pack(
-                    font_size, th, char_spacing, word_spacing, tm_a, tm_b, x_scale
-                )
-            except (OverflowError, struct.error):  # (not a float input)
-                steps_key = None
-            if steps_key is not None:
-                memo = self._plain_step_memo
-                plain_steps = memo.get(steps_key)
-                if plain_steps is None:
-                    if len(memo) > 65536:
-                        memo.clear()
-                    plain_steps = memo[steps_key] = ({}, {})
+        plain_steps = self._plain_steps(
+            simple, c0, c4, c6, c7, font_size, th, char_spacing, word_spacing, tm_a, tm_b, x_scale
+        )
         if scratch is None:
             scratch = array("f", bytes(16))
         return (
@@ -2988,25 +3014,53 @@ class PDFTextStripper:
             scratch,
         )
 
-    def _emit_glyphs(
+    def _plain_steps(
         self,
-        state: _TextState,
-        positions: list[TextPosition],
-        font: PDFont | None,
-        resolved_font_name: str | None,
-        glyphs: list[tuple[str | None, float, int, int]],
-    ) -> None:
-        """Emit one :class:`TextPosition` per glyph and advance the cursor.
+        simple: bool,
+        c0: float,
+        c4: float,
+        c6: float,
+        c7: float,
+        font_size: float,
+        th: float,
+        char_spacing: float,
+        word_spacing: float,
+        tm_a: float,
+        tm_b: float,
+        x_scale: float,
+    ) -> tuple[dict, dict] | None:
+        """The memo of :func:`_plain_glyph_step` results for a plain run
+        context (identity CTM, ``tm_b == 0``), else ``None``."""
+        if not (
+            _USE_FAST_PATHS
+            and simple
+            and c0 == 1.0
+            and c4 == 1.0
+            and c6 == 0.0
+            and c7 == 0.0
+            and tm_b == 0.0
+        ):
+            return None
+        # Keyed by the exact bits of the step inputs (signed zeros differ).
+        try:
+            steps_key = _PLAIN_STEP_KEY.pack(
+                font_size, th, char_spacing, word_spacing, tm_a, tm_b, x_scale
+            )
+        except (OverflowError, struct.error):  # (not a float input)
+            return None
+        memo = self._plain_step_memo
+        plain_steps = memo.get(steps_key)
+        if plain_steps is None:
+            if len(memo) > 65536:
+                memo.clear()
+            plain_steps = memo[steps_key] = ({}, {})
+        return plain_steps
 
-        Follows upstream ``PDFStreamEngine.showText`` and
-        ``LegacyPDFStreamEngine.showGlyph``: each glyph's origin is the text
-        rendering matrix at the cursor, its end point is the cursor moved by
-        the bare displacement (no ``Tc`` / ``Tw``, as upstream's legacy
-        width), its height is the font height times the matrix Y scale, and
-        the cursor then advances by ``(w * fontSize + Tc + Tw) * Th``. Under an
-        ``/ActualText`` span the first glyph carries the replacement text and
-        the others an empty string.
-        """
+    def _checked_run_context(
+        self, state: _TextState, font: PDFont | None
+    ) -> tuple[object, ...]:
+        """The :meth:`_run_context` for ``state`` and ``font``, reusing the
+        one cached on ``state`` when every input is the very same object."""
         font_size = state.font_size
         th = getattr(state, "horizontal_scaling", 1.0)
         char_spacing = state.char_spacing
@@ -3050,6 +3104,50 @@ class PDFTextStripper:
             or ctx[16] is not tm_c
             or ctx[17] is not tm_d
         ):
+            if (
+                ctx is not None
+                and ctx[0] is scale_and_dir
+                and ctx[1] is font_size
+                and ctx[2] is th
+                and ctx[5] is font
+                and ctx[6] is font_height_fraction
+                and ctx[7] is avg_advance
+                and ctx[8] is ctm
+                and ctx[9] is fold_upright
+                and ctx[10] is rise
+                and ctx[11] is tm_a
+                and ctx[12] is tm_b
+                and ctx[13] is crop_llx
+                and ctx[14] is crop_lly
+                and ctx[15] is page_height_raw
+                and ctx[16] is tm_c
+                and ctx[17] is tm_d
+            ):
+                # Only ``Tc`` / ``Tw`` changed (the common case between
+                # ``TJ`` arrays of justified text): of the derived values
+                # only the plain-step memo depends on them.
+                ctx = state._run_ctx = (
+                    *ctx[:3],
+                    char_spacing,
+                    word_spacing_state,
+                    *ctx[5:33],
+                    self._plain_steps(
+                        ctx[27],
+                        ctx[23],
+                        ctx[24],
+                        ctx[25],
+                        ctx[26],
+                        font_size,
+                        th,
+                        char_spacing,
+                        word_spacing_state,
+                        tm_a,
+                        tm_b,
+                        ctx[18],
+                    ),
+                    ctx[34],
+                )
+                return ctx
             ctx = state._run_ctx = self._run_context(
                 state,
                 font,
@@ -3075,7 +3173,63 @@ class PDFTextStripper:
                 ),
                 None if ctx is None else ctx[-1],
             )
+        return ctx
+
+    def _emit_glyphs(
+        self,
+        state: _TextState,
+        positions: list[TextPosition],
+        font: PDFont | None,
+        resolved_font_name: str | None,
+        glyphs: list[tuple[str | None, float, int, int]],
+        ctx: tuple[object, ...] | None = None,
+    ) -> None:
+        """Emit one :class:`TextPosition` per glyph and advance the cursor.
+
+        Follows upstream ``PDFStreamEngine.showText`` and
+        ``LegacyPDFStreamEngine.showGlyph``: each glyph's origin is the text
+        rendering matrix at the cursor, its end point is the cursor moved by
+        the bare displacement (no ``Tc`` / ``Tw``, as upstream's legacy
+        width), its height is the font height times the matrix Y scale, and
+        the cursor then advances by ``(w * fontSize + Tc + Tw) * Th``. Under an
+        ``/ActualText`` span the first glyph carries the replacement text and
+        the others an empty string.
+
+        ``ctx`` is the run context :meth:`_checked_run_context` returned for
+        this ``state`` and ``font`` with no text-state change since (the
+        show-text operators validate it once per operator, not per string).
+        """
+        if ctx is None:
+            ctx = self._checked_run_context(state, font)
+        if ctx[-2] is not None:
+            # (See :meth:`_emit_plain`, which needs a float32 cursor.)
+            scratch = ctx[-1]
+            glyph_x = state.text_x
+            glyph_y = state.text_y
+            scratch[0] = glyph_x
+            scratch[1] = glyph_y
+            if scratch[0] == glyph_x and scratch[1] == glyph_y:
+                self._emit_plain(state, positions, font, resolved_font_name, glyphs, None, ctx)
+                return
         (
+            _scale_and_dir,
+            font_size,
+            th,
+            char_spacing,
+            word_spacing_state,
+            _font,
+            _font_height_fraction,
+            _avg_advance,
+            _ctm,
+            _fold_upright,
+            _rise,
+            tm_a,
+            tm_b,
+            crop_llx,
+            crop_lly,
+            page_height_raw,
+            tm_c,
+            tm_d,
             x_scale,
             text_dir,
             effective_font_size,
@@ -3093,202 +3247,13 @@ class PDFTextStripper:
             abs_width_of_space,
             plain_steps,
             scratch,
-        ) = ctx[18:]
+        ) = ctx
         self._run_counter += 1
         run_id = self._run_counter
         font_name = state.font_name
-        append = positions.append
         # ``/ActualText`` only changes at marked-content operators.
         actual_text = self._actual_text
-        if plain_steps is not None:
-            # An identity CTM and an unrotated, unsheared text matrix
-            # (``tm_b == 0``): with a float32 cursor, the products with the
-            # exactly-1.0 CTM scale, the sums with its zero translation and
-            # the zero ``tm_b`` products are exact, so only three
-            # narrowings per glyph remain; the cursor-independent ones come
-            # from a memo of :func:`_plain_glyph_step`.
-            glyph_x = state.text_x
-            glyph_y = state.text_y
-            scratch[0] = glyph_x
-            scratch[1] = glyph_y
-            if scratch[0] == glyph_x and scratch[1] == glyph_y:
-                nonspace_steps, space_steps = plain_steps
-                last_device_y = None
-                start_count = len(positions)
-                page_width_raw = self._page_width
-                geometry_y = 0.0
-                for piece, displacement, code_length, code in glyphs:
-                    if code_length == 1 and code == 32:
-                        # Word spacing applies to the single-byte code 32 only.
-                        step = space_steps.get(displacement)
-                        if step is None:
-                            step = _plain_glyph_step(
-                                displacement,
-                                font_size,
-                                th,
-                                char_spacing,
-                                word_spacing_state,
-                                tm_a,
-                                tm_b,
-                                x_scale,
-                            )
-                            if displacement:
-                                # (A zero key would conflate the signed zeros.)
-                                space_steps[displacement] = step
-                    else:
-                        step = nonspace_steps.get(displacement)
-                        if step is None:
-                            step = _plain_glyph_step(
-                                displacement,
-                                font_size,
-                                th,
-                                char_spacing,
-                                0.0,
-                                tm_a,
-                                tm_b,
-                                x_scale,
-                            )
-                            if displacement:
-                                nonspace_steps[displacement] = step
-                    end_tx_offset, end_ty_offset, step_x, step_y, width = step
-                    scratch[0] = end_tx_offset + glyph_x
-                    scratch[1] = glyph_x + step_x
-                    end_x = scratch[0] * c0 + c6
-                    next_x = scratch[1]
-                    next_y = glyph_y + step_y
-                    if piece is None:
-                        glyph_x = next_x
-                        glyph_y = next_y
-                        continue
-                    origin_x = glyph_x * c0 + c6
-                    origin_y = glyph_y * c4 + c7
-                    end_y = (end_ty_offset + glyph_y) * c4 + c7
-                    scratch[0] = end_x - origin_x
-                    dx_display = scratch[0]
-                    if actual_text is not None:
-                        if self._first_actual_text_position:
-                            piece = actual_text
-                            self._first_actual_text_position = False
-                        else:
-                            piece = ""
-                    if origin_x - origin_x + (origin_y - origin_y) != 0.0:
-                        # (Zero exactly when both are finite.)
-                        state.text_x = glyph_x
-                        state.text_y = glyph_y
-                        raise ValueError("Multiplying two matrices produces illegal values")
-                    if crop_llx:
-                        scratch[0] = origin_x - crop_llx
-                        scratch[1] = end_x - crop_llx
-                        device_x = scratch[0]
-                        device_end_x = scratch[1]
-                    else:
-                        device_x = origin_x
-                        device_end_x = end_x
-                    if crop_lly:
-                        scratch[0] = origin_y - crop_lly
-                        scratch[1] = end_y - crop_lly
-                        device_y = scratch[0]
-                        device_end_y = scratch[1]
-                    else:
-                        device_y = origin_y
-                        device_end_y = end_y
-                    if upright:
-                        # The geometry tuple for rotation and direction 0. The
-                        # width narrows ``device_end_x - device_x``, which
-                        # without a cropbox offset is ``dx_display``.
-                        if crop_llx:
-                            scratch[0] = device_end_x - device_x
-                            geometry_width = abs(scratch[0])
-                        else:
-                            geometry_width = abs(dx_display)
-                        if device_y != last_device_y or not device_y:
-                            scratch[0] = page_height - device_y
-                            geometry_y = scratch[0]
-                            last_device_y = device_y
-                        # Built with the rotation, page size and width
-                        # ``_apply_page_rotation`` then stores for an
-                        # unrotated page.
-                        position = TextPosition(
-                            piece,
-                            origin_x,
-                            origin_y,
-                            effective_font_size,
-                            font_name,
-                            font,
-                            resolved_font_name,
-                            geometry_width,
-                            width_of_space,
-                            char_spacing,
-                            word_spacing_state,
-                            text_dir,
-                            0.0,
-                            page_width_raw,
-                            page_height_raw,
-                            [tm_a, tm_b, tm_c, tm_d, glyph_x, glyph_y],
-                            font_size_in_pt,
-                            run_height,
-                            [dx_display],
-                            False,
-                            device_x,
-                            device_y,
-                            device_end_x,
-                            device_end_y,
-                            font_size,
-                        )
-                        position._run_id = run_id
-                        position._java_geometry = (
-                            0.0,
-                            device_x,
-                            geometry_y,
-                            geometry_width,
-                            device_x,
-                            geometry_y,
-                            geometry_width,
-                            abs_height,
-                            abs_width_of_space,
-                        )
-                    else:
-                        position = TextPosition(
-                            piece,
-                            origin_x,
-                            origin_y,
-                            effective_font_size,
-                            font_name,
-                            font,
-                            resolved_font_name,
-                            width,
-                            width_of_space,
-                            char_spacing,
-                            word_spacing_state,
-                            text_dir,
-                            0.0,
-                            0.0,
-                            0.0,
-                            [tm_a, tm_b, tm_c, tm_d, glyph_x, glyph_y],
-                            font_size_in_pt,
-                            run_height,
-                            [dx_display],
-                            False,
-                            device_x,
-                            device_y,
-                            device_end_x,
-                            device_end_y,
-                            font_size,
-                        )
-                        position._run_id = run_id
-                    append(position)
-                    glyph_x = next_x
-                    glyph_y = next_y
-                state.text_x = glyph_x
-                state.text_y = glyph_y
-                if upright:
-                    # Count the positions built already folded (see
-                    # ``_apply_page_rotation``).
-                    if self._prefolded_positions is not positions:
-                        self._prefolded_positions = positions
-                        self._prefolded_count = 0
-                    self._prefolded_count += len(positions) - start_count
-                return
+        append = positions.append
         isfinite = math.isfinite
         pack2 = _f32x2_pack
         unpack2 = _f32x2_unpack
@@ -3457,6 +3422,299 @@ class PDFTextStripper:
                 step_x, step_y = _f32x2(advance * tm_a, advance * tm_b)
                 state.text_x, state.text_y = _f32x2(glyph_x + step_x, glyph_y + step_y)
 
+    def _emit_plain(
+        self,
+        state: _TextState,
+        positions: list[TextPosition],
+        font: PDFont | None,
+        resolved_font_name: str | None,
+        items: object,
+        byte_memo: dict[int, tuple[str | None, float, int, int]] | None,
+        ctx: tuple[object, ...],
+    ) -> None:
+        """:meth:`_emit_glyphs` for a plain run context (identity CTM and an
+        unrotated, unsheared text matrix, ``tm_b == 0``).
+
+        With a float32 cursor, the products with the exactly-1.0 CTM scale,
+        the sums with its zero translation and the zero ``tm_b`` products are
+        exact, so only three narrowings per glyph remain; the
+        cursor-independent ones come from a memo of :func:`_plain_glyph_step`.
+
+        ``items`` is one decoded glyph run when ``byte_memo`` is ``None``;
+        otherwise the strings and ``TJ`` adjustments of one show-text
+        operator (see :meth:`_show_fast`), each string decoded through the
+        one-byte font's ``byte_memo``. Everything constant across the
+        operator's strings is set up once here. A string with a byte the memo
+        has not seen goes through :meth:`_emit`, and one whose cursor is not
+        a float32 through :meth:`_emit_glyphs`.
+        """
+        (
+            _scale_and_dir,
+            font_size,
+            th,
+            char_spacing,
+            word_spacing_state,
+            _font,
+            _font_height_fraction,
+            _avg_advance,
+            _ctm,
+            _fold_upright,
+            _rise,
+            tm_a,
+            tm_b,
+            crop_llx,
+            crop_lly,
+            page_height_raw,
+            tm_c,
+            tm_d,
+            x_scale,
+            text_dir,
+            effective_font_size,
+            run_height,
+            width_of_space,
+            c0,
+            c4,
+            c6,
+            c7,
+            _simple,
+            font_size_in_pt,
+            upright,
+            page_height,
+            abs_height,
+            abs_width_of_space,
+            plain_steps,
+            scratch,
+        ) = ctx
+        nonspace_steps, space_steps = plain_steps
+        font_name = state.font_name
+        append = positions.append
+        # ``/ActualText`` only changes at marked-content operators.
+        actual_text = self._actual_text
+        page_width_raw = self._page_width
+        if upright and self._prefolded_positions is not positions:
+            self._prefolded_positions = positions
+            self._prefolded_count = 0
+        start_count = len(positions)
+        run_id = self._run_counter
+        glyph_x = state.text_x
+        glyph_y = state.text_y
+        # (``geometry_y`` is a function of ``device_y`` alone.)
+        last_device_y = None
+        geometry_y = 0.0
+        for entry in (items,) if byte_memo is None else items:
+            if byte_memo is None:
+                glyphs = entry
+            elif isinstance(entry, COSString):
+                try:
+                    glyphs = [byte_memo[b] for b in entry.get_bytes()]
+                except KeyError:
+                    glyphs = None
+                scratch[0] = glyph_x
+                scratch[1] = glyph_y
+                if glyphs is None or not (scratch[0] == glyph_x and scratch[1] == glyph_y):
+                    state.text_x = glyph_x
+                    state.text_y = glyph_y
+                    self._run_counter = run_id
+                    if upright:
+                        self._prefolded_count += len(positions) - start_count
+                    if glyphs is None:
+                        self._emit(entry, state, positions)
+                    else:
+                        self._emit_glyphs(state, positions, font, resolved_font_name, glyphs, ctx)
+                    start_count = len(positions)
+                    run_id = self._run_counter
+                    glyph_x = state.text_x
+                    glyph_y = state.text_y
+                    continue
+            elif isinstance(entry, COSNumber):
+                # :meth:`_emit_tj_array`'s horizontal adjustment.
+                scratch[0] = -entry.float_value() / 1000.0
+                if font_size != 1.0:
+                    scratch[0] = scratch[0] * font_size
+                if th != 1.0:
+                    scratch[0] = scratch[0] * th
+                tx = scratch[0]
+                scratch[0] = tx * tm_a
+                scratch[1] = tx * tm_b
+                scratch[0] = glyph_x + scratch[0]
+                scratch[1] = glyph_y + scratch[1]
+                glyph_x = scratch[0]
+                glyph_y = scratch[1]
+                continue
+            else:
+                continue
+            run_id += 1
+            for piece, displacement, code_length, code in glyphs:
+                if code_length == 1 and code == 32:
+                    # Word spacing applies to the single-byte code 32 only.
+                    step = space_steps.get(displacement)
+                    if step is None:
+                        step = _plain_glyph_step(
+                            displacement,
+                            font_size,
+                            th,
+                            char_spacing,
+                            word_spacing_state,
+                            tm_a,
+                            tm_b,
+                            x_scale,
+                        )
+                        if displacement:
+                            # (A zero key would conflate the signed zeros.)
+                            space_steps[displacement] = step
+                else:
+                    step = nonspace_steps.get(displacement)
+                    if step is None:
+                        step = _plain_glyph_step(
+                            displacement,
+                            font_size,
+                            th,
+                            char_spacing,
+                            0.0,
+                            tm_a,
+                            tm_b,
+                            x_scale,
+                        )
+                        if displacement:
+                            nonspace_steps[displacement] = step
+                end_tx_offset, end_ty_offset, step_x, step_y, width = step
+                scratch[0] = end_tx_offset + glyph_x
+                scratch[1] = glyph_x + step_x
+                end_x = scratch[0] * c0 + c6
+                next_x = scratch[1]
+                next_y = glyph_y + step_y
+                if piece is None:
+                    glyph_x = next_x
+                    glyph_y = next_y
+                    continue
+                origin_x = glyph_x * c0 + c6
+                origin_y = glyph_y * c4 + c7
+                end_y = (end_ty_offset + glyph_y) * c4 + c7
+                scratch[0] = end_x - origin_x
+                dx_display = scratch[0]
+                if actual_text is not None:
+                    if self._first_actual_text_position:
+                        piece = actual_text
+                        self._first_actual_text_position = False
+                    else:
+                        piece = ""
+                if origin_x - origin_x + (origin_y - origin_y) != 0.0:
+                    # (Zero exactly when both are finite.)
+                    state.text_x = glyph_x
+                    state.text_y = glyph_y
+                    self._run_counter = run_id
+                    raise ValueError("Multiplying two matrices produces illegal values")
+                if crop_llx:
+                    scratch[0] = origin_x - crop_llx
+                    scratch[1] = end_x - crop_llx
+                    device_x = scratch[0]
+                    device_end_x = scratch[1]
+                else:
+                    device_x = origin_x
+                    device_end_x = end_x
+                if crop_lly:
+                    scratch[0] = origin_y - crop_lly
+                    scratch[1] = end_y - crop_lly
+                    device_y = scratch[0]
+                    device_end_y = scratch[1]
+                else:
+                    device_y = origin_y
+                    device_end_y = end_y
+                if upright:
+                    # The geometry tuple for rotation and direction 0. The
+                    # width narrows ``device_end_x - device_x``, which
+                    # without a cropbox offset is ``dx_display``.
+                    if crop_llx:
+                        scratch[0] = device_end_x - device_x
+                        geometry_width = abs(scratch[0])
+                    else:
+                        geometry_width = abs(dx_display)
+                    if device_y != last_device_y or not device_y:
+                        scratch[0] = page_height - device_y
+                        geometry_y = scratch[0]
+                        last_device_y = device_y
+                    # Built with the rotation, page size and width
+                    # ``_apply_page_rotation`` then stores for an
+                    # unrotated page.
+                    position = TextPosition(
+                        piece,
+                        origin_x,
+                        origin_y,
+                        effective_font_size,
+                        font_name,
+                        font,
+                        resolved_font_name,
+                        geometry_width,
+                        width_of_space,
+                        char_spacing,
+                        word_spacing_state,
+                        text_dir,
+                        0.0,
+                        page_width_raw,
+                        page_height_raw,
+                        [tm_a, tm_b, tm_c, tm_d, glyph_x, glyph_y],
+                        font_size_in_pt,
+                        run_height,
+                        [dx_display],
+                        False,
+                        device_x,
+                        device_y,
+                        device_end_x,
+                        device_end_y,
+                        font_size,
+                    )
+                    position._run_id = run_id
+                    position._java_geometry = (
+                        0.0,
+                        device_x,
+                        geometry_y,
+                        geometry_width,
+                        device_x,
+                        geometry_y,
+                        geometry_width,
+                        abs_height,
+                        abs_width_of_space,
+                    )
+                else:
+                    position = TextPosition(
+                        piece,
+                        origin_x,
+                        origin_y,
+                        effective_font_size,
+                        font_name,
+                        font,
+                        resolved_font_name,
+                        width,
+                        width_of_space,
+                        char_spacing,
+                        word_spacing_state,
+                        text_dir,
+                        0.0,
+                        0.0,
+                        0.0,
+                        [tm_a, tm_b, tm_c, tm_d, glyph_x, glyph_y],
+                        font_size_in_pt,
+                        run_height,
+                        [dx_display],
+                        False,
+                        device_x,
+                        device_y,
+                        device_end_x,
+                        device_end_y,
+                        font_size,
+                    )
+                    position._run_id = run_id
+                append(position)
+                glyph_x = next_x
+                glyph_y = next_y
+        state.text_x = glyph_x
+        state.text_y = glyph_y
+        self._run_counter = run_id
+        if upright:
+            # Count the positions built already folded (see
+            # ``_apply_page_rotation``).
+            self._prefolded_count += len(positions) - start_count
+
     @staticmethod
     def _origin_matrix(state: _TextState, text_x: float, text_y: float) -> Matrix:
         """Text-rendering matrix for a glyph origin at ``(text_x, text_y)``.
@@ -3528,6 +3786,97 @@ class PDFTextStripper:
                 scratch[1] = state.text_y + scratch[1]
                 state.text_x = scratch[0]
                 state.text_y = scratch[1]
+
+    def _stock_show_hooks(self) -> bool:
+        """Whether every hook :meth:`_show_fast` folds together is the stock
+        one (on the class and the instance) and the fast paths are on."""
+        if not _USE_FAST_PATHS:
+            return False
+        cls = type(self)
+        overrides = getattr(self, "__dict__", ())
+        for name, stock in _STOCK_SHOW_HOOKS:
+            if name in overrides or getattr(cls, name, None) is not stock:
+                return False
+        return True
+
+    def _show_fast(
+        self,
+        items: Iterable[COSBase],
+        state: _TextState,
+        positions: list[TextPosition],
+    ) -> bool:
+        """``Tj`` / ``'`` / ``"`` (one string) and ``TJ`` (strings and
+        adjustments) for a horizontal one-byte font already read on this
+        page, with the stock hooks and no ``/ActualText`` span open.
+
+        The per-string path (:meth:`_emit` → :meth:`_emit_run` →
+        :meth:`_emit_glyphs`, and :meth:`_emit_tj_array` around it) folded
+        into one call per operator: the inputs of the run context cannot
+        change between the strings of one operator (adjustments and glyph
+        advances only move the cursor), so it is validated once here
+        instead of once per string, and each string's glyphs come straight
+        from the font's per-byte glyph memo. A byte the memo has not seen
+        sends that one string down :meth:`_emit`. Returns ``False``, having
+        done nothing, when the operator needs the general path.
+        """
+        if self._actual_text is not None:
+            return False
+        font = self._active_font
+        cmap = self._active_cmap
+        glyph_memo = self._glyph_memo
+        run_font = self._run_font
+        if (
+            run_font is None
+            or run_font[0] is not font
+            or run_font[1] is not cmap
+            or run_font[2] is not glyph_memo
+        ):
+            # The value :meth:`_emit_run` caches after the font's first run
+            # on the page (another font may have replaced it since).
+            if font is None:
+                return False
+            entry = glyph_memo.get((id(font), id(cmap)))
+            if entry is None or entry[0] is not font or entry[1] is not cmap or entry[4] is None:
+                return False
+            resolved_font_name, vertical = self._font_traits(font)
+            if vertical:
+                return False
+            run_font = self._run_font = (font, cmap, glyph_memo, resolved_font_name, entry[4])
+        byte_memo = run_font[4]
+        resolved_font_name = run_font[3]
+        ctx = self._checked_run_context(state, font)
+        if ctx[-2] is not None:
+            self._emit_plain(state, positions, font, resolved_font_name, items, byte_memo, ctx)
+            return True
+        emit_glyphs = self._emit_glyphs
+        font_size = ctx[1]
+        th = ctx[2]
+        tm_a = ctx[11]
+        tm_b = ctx[12]
+        scratch = ctx[-1]
+        for entry in items:
+            if isinstance(entry, COSString):
+                try:
+                    glyphs = [byte_memo[b] for b in entry.get_bytes()]
+                except KeyError:
+                    self._emit(entry, state, positions)
+                    continue
+                emit_glyphs(state, positions, font, resolved_font_name, glyphs, ctx)
+            elif isinstance(entry, COSNumber):
+                # :meth:`_emit_tj_array`'s horizontal adjustment.
+                scratch[0] = -entry.float_value() / 1000.0
+                if font_size != 1.0:
+                    scratch[0] = scratch[0] * font_size
+                if th != 1.0:
+                    scratch[0] = scratch[0] * th
+                tx = scratch[0]
+                scratch[0] = tx * tm_a
+                scratch[1] = tx * tm_b
+                scratch[0] = state.text_x + scratch[0]
+                scratch[1] = state.text_y + scratch[1]
+                state.text_x = scratch[0]
+                state.text_y = scratch[1]
+        return True
 
     # ---------- /ToUnicode CMap helpers ----------
 
@@ -6528,6 +6877,31 @@ class PDFTextStripper:
             self._actual_text = None
             self._actual_text_marked_content = None
         self._marked_content_stack.pop()
+
+
+# The hooks :meth:`PDFTextStripper._show_fast` folds into one call; a subclass
+# or instance that replaces any of them takes the per-string path.
+_STOCK_SHOW_HOOKS: tuple[tuple[str, object], ...] = tuple(
+    (name, getattr(PDFTextStripper, name))
+    for name in (
+        "_emit",
+        "_emit_run",
+        "_emit_glyphs",
+        "_emit_plain",
+        "_emit_tj_array",
+        "_checked_run_context",
+        "_run_context",
+        "_plain_steps",
+        "_scale_and_dir",
+        "_rendering_scale",
+        "_space_width_text",
+        "_font_traits",
+        "_font_vertical",
+        "_is_vertical_font",
+        "_read_glyphs",
+        "_decode_code_to_unicode",
+    )
+)
 
 
 class _LineItem:

@@ -561,3 +561,136 @@ def test_tokens_subclass_uses_reference_loop() -> None:
     tokens = list(Counting(RandomAccessReadBuffer(b"1 2 Td (a) Tj")).tokens())
     assert [_norm(t) for t in tokens] == _reference_tokens(b"1 2 Td (a) Tj")
     assert len(calls) == len(tokens) + 1
+
+
+def _random_show_page_doc(seed: int) -> PDDocument:
+    """A two-font page whose content mixes ``Tj`` / ``TJ`` / ``'`` / ``"``
+    with every text-state operator the run context depends on."""
+    from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
+    from pypdfbox.pdmodel.font.standard14_fonts import FontName
+    from pypdfbox.pdmodel.pd_page import PDPage
+    from pypdfbox.pdmodel.pd_page_content_stream import PDPageContentStream
+
+    rnd = random.Random(seed)
+    doc = PDDocument()
+    page = PDPage()
+    doc.add_page(page)
+    stream = PDPageContentStream(doc, page)
+    stream.begin_text()
+    stream.set_font(PDType1Font(FontName.HELVETICA), 10)
+    stream.set_font(PDType1Font(FontName.TIMES_ROMAN), 10)
+    stream.end_text()
+    names = [n.get_name() for n in page.get_resources().get_font_names()]
+
+    def string() -> str:
+        # Mostly letters and spaces; now and then a byte not yet seen.
+        chars = "".join(
+            rnd.choice("aeiou tnrs" if rnd.random() < 0.9 else "\x80\xe9QZ\\") for _ in range(4)
+        )
+        return "(" + chars.replace("\\", "\\\\") + ")"
+
+    ops = []
+    for _ in range(rnd.randint(20, 60)):
+        choice = rnd.random()
+        if choice < 0.06:
+            ops.append("BT")
+        elif choice < 0.09:
+            ops.append("ET")
+        elif choice < 0.15:
+            ops.append(f"/{rnd.choice(names)} {rnd.choice([1, 9, 10, 12.5])} Tf")
+        elif choice < 0.21:
+            ops.append(f"{rnd.choice([0, -0.0, 0.25, 0.3, -1])} Tc")
+        elif choice < 0.26:
+            ops.append(f"{rnd.choice([0, 0.5, 2])} Tw")
+        elif choice < 0.28:
+            ops.append(f"{rnd.choice([100, 80, 125])} Tz")
+        elif choice < 0.30:
+            ops.append(f"{rnd.choice([0, 2])} Ts")
+        elif choice < 0.34:
+            ops.append(
+                rnd.choice(["1 0 0 1 72 700 Tm", "12 0 0 12 50 600 Tm", "0 1 -1 0 300 300 Tm"])
+            )
+        elif choice < 0.36:
+            ops.append(rnd.choice(["q", "Q", "1 0 0 1 0 0 cm", "2 0 0 2 10 10 cm"]))
+        elif choice < 0.42:
+            ops.append(f"{rnd.uniform(-20, 20):.3f} {rnd.uniform(-20, 20):.3f} Td")
+        elif choice < 0.44:
+            ops.append("12 TL T*")
+        elif choice < 0.46:
+            ops.append(f"{string()} '")
+        elif choice < 0.48:
+            ops.append(f'1 0.5 {string()} "')
+        elif choice < 0.52:
+            ops.append(f"{string()} Tj")
+        elif choice < 0.54:
+            ops.append("/Span <</ActualText (X)>> BDC (ab) Tj [(c) 10 (d)] TJ EMC")
+        else:
+            parts = []
+            for _ in range(rnd.randint(1, 8)):
+                parts.append(string())
+                if rnd.random() < 0.7:
+                    parts.append(str(rnd.choice([-250, 120, 0, 33.3, 1e6])))
+            ops.append("[" + " ".join(parts) + "] TJ")
+    stream.append_raw_commands((" BT 72 720 Td " + " ".join(ops) + " ET\n").encode("latin-1"))
+    stream.close()
+    return doc
+
+
+@pytest.mark.parametrize("sort", [False, True], ids=["default", "sort"])
+def test_operator_show_path_matches_per_string_path(
+    sort: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``_show_fast`` (one call per show-text operator, the run context
+    validated once per operator) emits exactly what the per-string
+    ``_emit`` / ``_emit_tj_array`` path and the reference arithmetic do."""
+
+    def run(seed: int) -> list[object]:
+        rows: list[object] = []
+
+        class Recorder(PDFTextStripper):
+            def write_string_with_positions(self, text, positions, sink):
+                rows.append(text)
+                for pos in positions:
+                    rows.append([_key(getattr(pos, f)) for f in _FIELDS])
+                    rows.append(_key(list(getattr(pos, "_java_geometry", None) or ())))
+                return super().write_string_with_positions(text, positions, sink)
+
+        doc = _random_show_page_doc(seed)
+        try:
+            stripper = Recorder()
+            stripper.set_sort_by_position(sort)
+            rows.append(stripper.get_text(doc))
+        finally:
+            doc.close()
+        return rows
+
+    seeds = list(range(40))
+    fast = [run(seed) for seed in seeds]
+    monkeypatch.setattr(PDFTextStripper, "_stock_show_hooks", lambda self: False)
+    assert [run(seed) for seed in seeds] == fast
+    _force_reference(monkeypatch)
+    assert [run(seed) for seed in seeds] == fast
+
+
+def test_operator_show_path_respects_overridden_hooks() -> None:
+    """A subclass replacing any per-string hook keeps getting called."""
+    calls: list[str] = []
+
+    class Counting(PDFTextStripper):
+        def _emit(self, s, state, positions):
+            calls.append("emit")
+            super()._emit(s, state, positions)
+
+    doc = _random_show_page_doc(3)
+    try:
+        assert Counting()._stock_show_hooks() is False
+        stripper = Counting()
+        stripper.get_text(doc)
+        assert calls
+        plain = PDFTextStripper()
+        plain.get_text(doc)
+        assert plain._stock_show_hooks() is True
+        plain._emit = lambda *args: None
+        assert plain._stock_show_hooks() is False
+    finally:
+        doc.close()
