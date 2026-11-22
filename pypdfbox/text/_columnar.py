@@ -299,11 +299,25 @@ def _font_or_size_changed(tf1, font1, tf2, font2) -> bool:
     return hash(font1) != hash(font2)
 
 
+class _Piece:
+    """A stand-in ``self`` holding only ``text`` for the ``TextPosition``
+    text predicates. A throwaway ``TextPosition`` would be the first instance
+    of the class in the process, and an instance that never gets the
+    ``_run_id`` / ``_java_geometry`` attributes the stripper adds later fixes
+    the class's shared attribute layout without them, which costs every
+    later position a full ``__dict__`` (about 5x the memory)."""
+
+    __slots__ = ("text",)
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+
 def _visual_piece(piece: str) -> str:
     """``TextPosition.get_visually_ordered_unicode`` of a piece."""
     if len(piece) <= 1:
         return piece
-    return TextPosition(piece, 0.0, 0.0, 0.0).get_visually_ordered_unicode()
+    return TextPosition.get_visually_ordered_unicode(_Piece(piece))
 
 
 def _is_diacritic(piece: str) -> bool:
@@ -311,7 +325,7 @@ def _is_diacritic(piece: str) -> bool:
         return False
     known = _IS_DIACRITIC.get(piece)
     if known is None:
-        known = TextPosition(piece, 0.0, 0.0, 0.0).is_diacritic()
+        known = TextPosition.is_diacritic(_Piece(piece))
     return known
 
 

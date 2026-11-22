@@ -250,3 +250,43 @@ def test_overridden_hook_uses_object_pipeline(monkeypatch):
     assert Upper().get_text(doc) == "SHOUT\n"
     assert stripper_module._COLUMNAR_STATS["columnar"] == before["columnar"]
     doc.close()
+
+
+def test_columnar_page_builds_no_text_positions(monkeypatch):
+    """A columnar page builds no ``TextPosition`` until its positions are read
+    (not even throwaway ones for the text predicates)."""
+    from pypdfbox.text import text_position as text_position_module
+
+    monkeypatch.setattr(stripper_module, "_USE_COLUMNAR", True)
+    built = []
+    original = text_position_module.TextPosition.__init__
+
+    def counting_init(self, *args, **kwargs):
+        built.append(args[0] if args else None)
+        original(self, *args, **kwargs)
+
+    doc = PDDocument()
+    page = PDPage(PDRectangle(0.0, 0.0, 612.0, 792.0))
+    doc.add_page(page)
+    cs = PDPageContentStream(doc, page)
+    cs.begin_text()
+    cs.set_font(PDFontFactory.create_default_font("Helvetica"), 12.0)
+    cs.new_line_at_offset(72, 700)
+    # Single-character pieces never seen before go through the diacritic
+    # check; a multi-character piece through the visual-order check.
+    cs.show_text("Zq° ﬁx")
+    cs.end_text()
+    cs.close()
+    # Uncached, so the check runs.
+    for piece in "Zq\u00b0 x":
+        text_position_module._IS_DIACRITIC.pop(piece, None)
+    monkeypatch.setattr(text_position_module.TextPosition, "__init__", counting_init)
+    before = stripper_module._COLUMNAR_STATS["columnar"]
+    stripper = PDFTextStripper()
+    text = stripper.get_text(doc)
+    assert stripper_module._COLUMNAR_STATS["columnar"] == before + 1
+    assert built == []
+    (article,) = stripper.get_characters_by_article()
+    assert len(built) == len(article)
+    assert "".join(p.get_unicode() for p in article) == text.strip()
+    doc.close()
