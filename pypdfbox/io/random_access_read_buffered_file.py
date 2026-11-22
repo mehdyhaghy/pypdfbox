@@ -4,6 +4,16 @@ from pathlib import Path
 
 from .random_access_read import RandomAccessRead
 
+# Window cache used by the parser's chunk-scanning fast paths (see
+# ``RandomAccessReadBufferedFile._read_window``). 64 pages of 64 KiB keep the
+# same 4 MiB budget as upstream's page cache (1000 pages of 4 KiB).
+_WINDOW_PAGE_SHIFT = 16
+_WINDOW_PAGE_SIZE = 1 << _WINDOW_PAGE_SHIFT
+_WINDOW_MAX_PAGES = 64
+# ``os.pread`` reads at an offset without moving the shared cursor; Windows
+# has no ``pread``, so a second read-only handle serves the windows there.
+_HAS_PREAD = hasattr(os, "pread")
+
 
 class RandomAccessReadBufferedFile(RandomAccessRead):
     """
@@ -21,6 +31,14 @@ class RandomAccessReadBufferedFile(RandomAccessRead):
         self._length = self._path.stat().st_size
         raw = io.FileIO(os.fspath(self._path), "rb")
         self._buf = io.BufferedReader(raw, buffer_size=buffer_size)
+        self._fd = raw.fileno()
+        # Window cache state, see ``_read_window``: page number -> page
+        # bytes (oldest first), and the size / mtime the pages are valid for.
+        # A file that fits the ``BufferedReader`` buffer never uses it.
+        self._pages: dict[int, bytes] = {}
+        self._window_fh: io.FileIO | None = None
+        self._window_cache = self._length > buffer_size
+        self._mtime_ns = os.fstat(self._fd).st_mtime_ns
         self._closed = False
 
     @property
@@ -135,8 +153,112 @@ class RandomAccessReadBufferedFile(RandomAccessRead):
 
     def close(self) -> None:
         if not self._closed:
+            self._pages.clear()
+            window_fh = self._window_fh
+            if window_fh is not None:
+                self._window_fh = None
+                window_fh.close()
             self._buf.close()
             self._closed = True
+
+    # ---------- window reads for the parser's fast paths ----------
+
+    def _pread(self, size: int, offset: int) -> bytes:
+        """Up to ``size`` bytes at ``offset``, leaving the cursor and the
+        ``BufferedReader`` state untouched."""
+        if _HAS_PREAD:
+            return os.pread(self._fd, size, offset)
+        fh = self._window_fh
+        if fh is None:
+            fh = self._window_fh = io.FileIO(os.fspath(self._path), "rb")
+        fh.seek(offset)
+        return fh.read(size)
+
+    def _read_window(self, start: int, size: int) -> bytes | None:
+        """Exactly ``size`` bytes of the file from offset ``start``, or
+        ``None`` when the file no longer holds them (it shrank underneath).
+
+        Private helper of the parser's chunk-scanning fast paths. Their
+        reference reads a window through the cursor (seek, read, seek back).
+        Indirect objects are visited in object-number order, not file order,
+        so in a file larger than the ``BufferedReader`` buffer that costs a
+        seek plus a read system call per object. Such a file serves the
+        window from a small FIFO cache of 64 KiB pages read at an offset
+        instead, leaving the cursor and the buffer alone. Before reading a
+        page the file is checked for the size and modification time it had
+        when it was opened; once it has changed (for example a document saved
+        over its own source) the cache is dropped for good. Like upstream's
+        page cache, a page already read keeps the bytes it was read with. A
+        file that fits the buffer (read once, then served from memory), or
+        one that has changed, takes the reference read.
+        """
+        if self._closed:
+            raise OSError(
+                "org.apache.pdfbox.io.RandomAccessReadBufferedFile already closed"
+            )
+        if self._window_cache:
+            data = self._cached_window(start, size)
+            if data is not False:
+                return data  # type: ignore[return-value]
+        buf = self._buf
+        buf.seek(start)
+        data = buf.read(size)
+        buf.seek(start)
+        return data if len(data) == size else None
+
+    def _cached_window(self, start: int, size: int) -> bytes | bool | None:
+        """``_read_window`` from the page cache; ``False`` when the file has
+        changed and the reference read must run instead."""
+        if size > _WINDOW_PAGE_SIZE:
+            if not self._unchanged():
+                return False
+            data = self._pread(size, start)
+            return data if len(data) == size else None
+        pages = self._pages
+        index = start >> _WINDOW_PAGE_SHIFT
+        offset = start & (_WINDOW_PAGE_SIZE - 1)
+        end = offset + size
+        page = pages.get(index)
+        if page is None:
+            page = self._load_page(index)
+            if page is None or page is False:
+                return page
+        if end <= len(page):
+            return page[offset:end]
+        if len(page) < _WINDOW_PAGE_SIZE:
+            return None
+        following = pages.get(index + 1)
+        if following is None:
+            following = self._load_page(index + 1)
+            if following is None or following is False:
+                return following
+        rest = end - _WINDOW_PAGE_SIZE
+        if rest > len(following):
+            return None
+        return page[offset:] + following[:rest]
+
+    def _unchanged(self) -> bool:
+        """Whether the file still has its size and modification time from
+        when it was opened; drops the window cache for good once not."""
+        stat = os.fstat(self._fd)
+        if stat.st_size == self._length and stat.st_mtime_ns == self._mtime_ns:
+            return True
+        self._window_cache = False
+        self._pages.clear()
+        return False
+
+    def _load_page(self, index: int) -> bytes | bool | None:
+        if not self._unchanged():
+            return False
+        position = index << _WINDOW_PAGE_SHIFT
+        page = self._pread(_WINDOW_PAGE_SIZE, position)
+        if len(page) < _WINDOW_PAGE_SIZE and position + len(page) < self._length:
+            return None
+        pages = self._pages
+        if len(pages) >= _WINDOW_MAX_PAGES:
+            del pages[next(iter(pages))]
+        pages[index] = page
+        return page
 
     def is_closed(self) -> bool:
         return self._closed

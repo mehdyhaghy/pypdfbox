@@ -2901,18 +2901,20 @@ class PDFParser:
             raise
 
     def _fast_load_indirect_object(
-        self, obj: COSObject
+        self, obj: COSObject, start: int
     ) -> tuple[COSBase, bool] | None:
         """Header, body and (usually) the closing ``endobj`` of the indirect
-        object at the cursor, scanned in one window of the source.
+        object at offset ``start``, scanned in one window of the source.
 
         Stands in for the ``n g obj`` header match, the body fast path of
         ``COSParser.parse_direct_object`` and the ``endobj`` match of
         :meth:`_load_indirect_object_at`, which would each read their own
-        chunk; every decision is the one those make. Returns ``None`` with
-        the cursor unmoved whenever the general sequence must run instead (a
-        header that is not exactly this object's well-formed ``n g obj``, a
-        body the fast path gives up on, a source it does not model). Returns
+        chunk; every decision is the one those make. A file source serves
+        the window through ``_read_window``, so the cursor is positioned
+        once, after the object. Returns ``None`` (the caller then seeks to
+        ``start``) whenever the general sequence must run instead (a header
+        that is not exactly this object's well-formed ``n g obj``, a body
+        the fast path gives up on, a source it does not model). Returns
         ``(body, True)`` with the cursor after ``endobj``, or ``(body, False)``
         with the cursor right after the body when something else follows it
         (``stream``, a missing or misspelt ``endobj``)."""
@@ -2933,7 +2935,6 @@ class PDFParser:
         ):
             return None
         bio = src._buf  # type: ignore[attr-defined]
-        start = bio.tell()
         size = _FAST_OBJECT_WINDOW
         while True:
             if src_type is RandomAccessReadBuffer:
@@ -2946,10 +2947,8 @@ class PDFParser:
                 remaining = src._length - start - 1  # type: ignore[attr-defined]
                 if remaining <= 0:
                     return None
-                want = min(size, remaining)
-                data = bio.read(want)
-                bio.seek(start)
-                if len(data) < want:
+                data = src._read_window(start, min(size, remaining))  # type: ignore[attr-defined]
+                if data is None:
                     return None
                 base = start
                 eof = False
@@ -3000,9 +2999,12 @@ class PDFParser:
     def _load_indirect_object_at(self, offset: int, obj: COSObject) -> COSBase | None:
         """Seek to ``offset`` and parse the indirect-object definition.
         For a stream object, also reads the body."""
-        self._src.seek(offset)
-        fast = self._fast_load_indirect_object(obj)
-        if fast is not None:
+        fast = (
+            self._fast_load_indirect_object(obj, offset) if offset >= 0 else None
+        )
+        if fast is None:
+            self._src.seek(offset)
+        else:
             body, done = fast
             if done:
                 return body

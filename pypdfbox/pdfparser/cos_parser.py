@@ -71,6 +71,12 @@ _FP_WS = re.compile(_FP_WS_PATTERN).match
 # ``is_end_of_name`` byte. A following ``#`` sends the name to the slow reader.
 _FP_NAME_PATTERN = rb"/([^\x00\t\n\x0c\r ()<>\[\]/%#]*+)"
 _FP_NAME = re.compile(_FP_NAME_PATTERN).match
+# The same with well-formed ``#XX`` hex escapes, decoded by
+# ``_fp_escaped_name``. A ``#`` left after the match (a malformed escape, or
+# one cut by the window end) still goes to the slow reader.
+_FP_ESCAPED_NAME = re.compile(
+    rb"/((?:[^\x00\t\n\x0c\r ()<>\[\]/%#]++|#[0-9A-Fa-f]{2})*+)"
+).match
 # The common dictionary values and array elements in one match, each only in
 # a shape whose reference reading is unambiguous:
 #
@@ -479,7 +485,7 @@ class COSParser(BaseParser):
                 if not eof:
                     raise _FastNeedMore
             elif data[k] == 0x23:  # '#' escape
-                return self._fp_slow(self._fp_name_slow, i, n, eof, base)
+                return self._fp_escaped_name(data, i, n, eof, base)
             return COSName.get_pdf_name(m.group(1)), k
         if c in _FP_NUMBER_START:
             return self._fp_number(data, i, n, eof, base, allow_ref)
@@ -555,6 +561,25 @@ class COSParser(BaseParser):
 
     def _fp_name_slow(self) -> COSName:
         return COSName.get_pdf_name(self.read_name_bytes())
+
+    def _fp_escaped_name(
+        self, data: bytes, i: int, n: int, eof: bool, base: int
+    ) -> tuple[COSName, int]:
+        """A name with ``#`` escapes at window index ``i``, decoded in the
+        window when every escape is a well-formed ``#XX`` pair (what
+        ``read_name_bytes`` decodes); anything else goes to that reader."""
+        m = _FP_ESCAPED_NAME(data, i)
+        k = m.end()
+        if k >= n:
+            if not eof:
+                raise _FastNeedMore
+        elif data[k] == 0x23:  # '#' not followed by two hex digits
+            return self._fp_slow(self._fp_name_slow, i, n, eof, base)
+        parts = m.group(1).split(b"#")
+        decoded = parts[0] + b"".join(
+            [bytes((int(part[:2], 16),)) + part[2:] for part in parts[1:]]
+        )
+        return COSName.get_pdf_name(decoded), k
 
     def _fp_number_slow(self) -> COSBase:
         start = self.position
@@ -786,7 +811,7 @@ class COSParser(BaseParser):
                     raise _FastNeedMore
                 key = COSName.get_pdf_name(m.group(1))
             elif data[k] == 0x23:  # '#' escape
-                key, k = self._fp_slow(self._fp_name_slow, i, n, eof, base)
+                key, k = self._fp_escaped_name(data, i, n, eof, base)
             else:
                 key = COSName.get_pdf_name(m.group(1))
             obj, i = value(data, k, n, eof, base, True)
