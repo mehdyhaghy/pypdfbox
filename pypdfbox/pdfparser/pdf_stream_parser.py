@@ -1,5 +1,6 @@
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from itertools import chain
 from threading import Lock
 from typing import TYPE_CHECKING, ClassVar
 
@@ -15,6 +16,7 @@ from pypdfbox.cos import (
     COSNumber,
     COSString,
 )
+from pypdfbox.cos.cos_float import _FLOAT_MAX, _FLOAT_MIN_NORMAL, _f32_pack, _f32_unpack
 from pypdfbox.io import RandomAccessRead, RandomAccessReadBuffer
 
 from .base_parser import _FAST_WS, BaseParser
@@ -58,7 +60,38 @@ _FAST_TOKEN = re.compile(
     rb"|(?P<dict><<)"
     rb"|(?P<eof>\Z)"
     rb")"
-).match
+)
+_FAST_TOKEN = _FAST_TOKEN.match
+# ``_FAST_TOKEN`` for ``PDFStreamParser._raw_operations``, which also takes a
+# whole array of numbers and plain or hex strings (``aitems``) in one match;
+# any other array is left to the ``array`` alternative.
+_RAW_TOKEN = re.compile(
+    rb"[\x00\t\n\x0c\r ]*+(?:"
+    rb"(?:(?P<nums>" + _FAST_NUMBER + rb"(?:[\t\n\x0c\r ]++" + _FAST_NUMBER + rb")*+)"
+    rb"[\x00\t\n\x0c\r ]*+)?(?P<op>[A-Za-z*]++)(?=[\x00\t\n\x0c\r \[<(/%]|\Z)"
+    rb"|(?P<num>" + _FAST_NUMBER + rb")"
+    rb"|/(?P<name>[^\x00\t\n\x0c\r ()<>\[\]/%#]*+)(?!#)"
+    rb"|\[(?P<aitems>(?:[\t\n\x0c\r ]*+(?:" + _FAST_NUMBER + rb"|\([^()\\]*+\)"
+    rb"|<[0-9A-Fa-f]*+>))*+)[\t\n\x0c\r ]*+\]"
+    rb"|\((?P<str>[^()\\]*+)\)"
+    rb"|" + _FAST_ESCAPED_STRING + rb"|<(?P<hex>[0-9A-Fa-f]*+)>"
+    rb"|(?P<quote>['\"])"
+    rb"|(?P<array>\[)"
+    rb"|(?P<dict1><<[\t\n\x0c\r ]*+/(?P<dkey>[^\x00\t\n\x0c\r ()<>\[\]/%#]++)(?!#)"
+    rb"[\t\n\x0c\r ]*+(?P<dint>-?[0-9]{1,17}+)[\t\n\x0c\r ]*+>>)"
+    rb"|(?P<dict><<)"
+    rb"|(?P<eof>\Z)"
+    rb")"
+)
+_RAW_TOKEN_SCAN = _RAW_TOKEN.finditer
+_RAW_TOKEN = _RAW_TOKEN.match
+# The elements of an ``aitems`` match: (number, plain string, hex digits).
+_RAW_ARRAY_ITEMS = re.compile(
+    rb"(" + _FAST_NUMBER + rb")|\(([^()\\]*+)\)|<([0-9A-Fa-f]*+)>"
+).findall
+# A run of number characters too long for the comprehension in
+# ``_raw_array_items`` (it may be inside a string; that only costs the loop).
+_RAW_LONG_RUN = re.compile(rb"[0-9.\-]{19}").search
 # One element of an array of numbers and strings (a ``TJ`` operand), or its
 # closing bracket. NUL is left out of the separators to stay clear of the
 # reference loop's ``peek() <= 0`` end test.
@@ -123,6 +156,71 @@ def _fast_number(text: bytes) -> COSBase:
     if len(text) <= 18:
         return COSInteger.get(int(text))
     return COSNumber.get(text.decode("ascii"))
+
+
+def _raw_numbers(text: bytes, append: Callable[[object], None]) -> None:
+    """Append the raw value of each number in ``text`` (literals matched by
+    ``_FAST_NUMBER``, separated by whitespace) as
+    ``PDFStreamParser._raw_operations`` hands numbers out: an ``int`` up
+    to 18 characters, the ``float_value`` of a real, and ``COSNumber.get``
+    of a longer integer."""
+    for number in text.split():
+        if b"." in number:
+            append(_raw_real(number))
+        elif len(number) <= 18:
+            append(int(number))
+        else:
+            append(COSNumber.get(number.decode("ascii")))
+
+
+def _raw_real(number: bytes) -> float:
+    """``COSFloat(number).float_value()`` for a real matched by
+    ``_FAST_NUMBER``: its float32 when that is of normal magnitude (the
+    constructor's fast path), else what the constructor makes of it."""
+    try:
+        value = _f32_unpack(_f32_pack(float(number)))[0]
+    except OverflowError:
+        value = 0.0
+    if _FLOAT_MIN_NORMAL <= abs(value) <= _FLOAT_MAX:
+        return value
+    return COSFloat(number.decode("ascii")).float_value()
+
+
+def _raw_array_items(content: bytes) -> list[object] | None:
+    """The raw elements of an ``aitems`` match (see ``_RAW_TOKEN``), or
+    ``None`` when a number is too long for ``PDFStreamParser._fast_array``
+    (left to the reference parse)."""
+    if _RAW_LONG_RUN(content) is None:
+        # No literal longer than 18 characters: an ``int`` or a real.
+        return [
+            (
+                int(number)
+                if b"." not in number
+                else (
+                    value
+                    if _FLOAT_MIN_NORMAL
+                    <= abs(value := _f32_unpack(_f32_pack(float(number)))[0])
+                    <= _FLOAT_MAX
+                    else _raw_real(number)
+                )
+            )
+            if number
+            else (_fast_hex_bytes(digits) if digits else string)
+            for number, string, digits in _RAW_ARRAY_ITEMS(content)
+        ]
+    items: list[object] = []
+    append = items.append
+    for number, string, digits in _RAW_ARRAY_ITEMS(content):
+        if number:
+            if len(number) > 64:
+                return None
+            _raw_numbers(number, append)
+        elif digits:
+            append(_fast_hex_bytes(digits))
+        else:
+            # (An empty ``<>`` is the same empty string.)
+            append(string)
+    return items
 
 
 def _fast_hex_bytes(digits: bytes) -> bytes:
@@ -575,6 +673,214 @@ class PDFStreamParser(COSParser):
                 if tok is None:
                     return
                 yield tok
+
+    def _raw_operations(
+        self, wanted: frozenset[str] | None = None
+    ) -> Iterator[tuple[str, list[object]]]:
+        """``(operator name, operands)`` for each operator of the stream,
+        tokenized as :meth:`tokens` tokenizes it, with the plain operands in
+        raw form instead of COS objects: an integer short enough for Java
+        ``long`` as ``int`` (its ``COSInteger`` value), a real as ``float``
+        (its ``COSFloat.float_value``), a string as its ``bytes``
+        (``COSString.get_bytes``) and an array of those as a ``list``.
+        Every other operand (names, dictionaries, keywords, long integers
+        and whatever the reference parse reads) is the COS object
+        :meth:`tokens` hands out. Trailing operands without an operator are
+        dropped, and so is every operator not in ``wanted`` (when given)
+        with its operands.
+
+        Only for a parser :meth:`tokens` would run on its fast path (an
+        exact :class:`PDFStreamParser` over an open
+        :class:`RandomAccessReadBuffer`). The tokens are those of
+        :meth:`_fast_tokens`, and what it leaves to
+        :meth:`parse_next_token` (with its log records and recovery) is
+        read by it here too.
+        """
+        src = self._src
+        buf = src._buf
+        data = buf.getvalue()
+        seek = buf.seek
+        tell = buf.tell
+        match_token = _RAW_TOKEN
+        scan = _RAW_TOKEN_SCAN
+        array_items = _raw_array_items
+        ws_end = _FAST_WS
+        get_name = COSName.get_pdf_name
+        # Keyword bytes -> operator name or keyword object.
+        keywords: dict[bytes, object] = {
+            b"null": COSNull.NULL,
+            b"true": COSBoolean.TRUE,
+            b"false": COSBoolean.FALSE,
+        }
+        keyword_get = keywords.get
+        str_ = str
+        unescape = _fast_unescape
+        hex_bytes = _fast_hex_bytes
+        raw_array = self._raw_array
+        numbers = _raw_numbers
+        int_get = COSInteger.get
+        operands: list[object] = []
+        append = operands.append
+        pos = tell()
+        while True:
+            # A run of tokens matched from ``pos`` on; it ends at the end of
+            # the data, at a token left to the reference parse (read from
+            # ``fallback``) or after a container (matched from ``pos``
+            # again). Each run starts with an anchored match so that a
+            # failed match is never searched past.
+            if src._closed:
+                return
+            first = match_token(data, pos)
+            fallback = pos
+            if first is not None:
+                fallback = -1
+                for m in chain((first,), scan(data, first.end())):
+                    if m.start() != pos:
+                        # Nothing matches at ``pos``.
+                        fallback = pos
+                        break
+                    kind = m.lastgroup
+                    if kind == "op":
+                        # An operator or keyword, with the numbers before it.
+                        word = m.group(kind)
+                        tok = keyword_get(word)
+                        if tok is None:
+                            if word[0] == 0x49 or word == b"BI":  # 'I' (ID) / BI
+                                text = m.group("nums")
+                                if text is None:
+                                    fallback = pos
+                                else:
+                                    numbers(text, append)
+                                    fallback = m.end("nums")
+                                break
+                            tok = keywords[word] = word.decode("ascii")
+                        pos = m.end()
+                        if type(tok) is str_:
+                            if wanted is None or tok in wanted:
+                                text = m.group("nums")
+                                if text is not None:
+                                    numbers(text, append)
+                                yield tok, operands
+                            operands = []
+                            append = operands.append
+                        else:
+                            text = m.group("nums")
+                            if text is not None:
+                                numbers(text, append)
+                            append(tok)
+                    elif kind == "num":
+                        pos = m.end()
+                        numbers(m.group(kind), append)
+                    elif kind == "name":
+                        pos = m.end()
+                        append(get_name(m.group(kind)))
+                    elif kind == "str":
+                        pos = m.end()
+                        append(m.group(kind))
+                    elif kind == "aitems":
+                        array = array_items(m.group(kind))
+                        if array is None:
+                            # An out-of-range number: the reference parse
+                            # from the '['.
+                            fallback = m.start(kind) - 1
+                            break
+                        append(array)
+                        pos = m.end()
+                        # The reference parse also skips the comments after
+                        # the ``]``.
+                        skip = ws_end(data, pos).end()
+                        if b"%" in data[pos:skip]:
+                            pos = skip
+                            break
+                    elif kind == "hex":
+                        pos = m.end()
+                        append(hex_bytes(m.group(kind)))
+                    elif kind == "estr":
+                        pos = m.end()
+                        append(unescape(m.group(kind)))
+                    elif kind == "dict1":
+                        # ``_fast_dict`` for one integer entry (``<</MCID 3>>``).
+                        pos = m.end()
+                        dictionary = COSDictionary()
+                        dictionary.set_direct(True)
+                        value = int_get(int(m.group("dint")))
+                        value.set_direct(True)
+                        dictionary.set_item(get_name(m.group("dkey")), value)
+                        append(dictionary)
+                    elif kind == "dict":
+                        dictionary = self._fast_dict(data, m.end())
+                        if dictionary is None:
+                            fallback = pos
+                        else:
+                            append(dictionary)
+                            pos = tell()
+                        break
+                    elif kind == "array":
+                        array = raw_array(data, m.end())
+                        if array is None:
+                            # Not a plain array: the reference parse from
+                            # the '['.
+                            fallback = m.start(kind)
+                        else:
+                            append(array)
+                            pos = tell()
+                        break
+                    elif kind == "quote":
+                        pos = m.end()
+                        tok = m.group(kind).decode("ascii")
+                        if wanted is None or tok in wanted:
+                            yield tok, operands
+                        operands = []
+                        append = operands.append
+                    else:  # "eof"
+                        seek(m.end())
+                        return
+            if fallback < 0:
+                continue
+            seek(fallback)
+            tok = self.parse_next_token()
+            if tok is None:
+                return
+            if not src._closed:
+                # (A closed source ends the walk after this token.)
+                pos = tell()
+            if isinstance(tok, Operator):
+                name = tok.get_name()
+                if wanted is None or name in wanted:
+                    yield name, operands
+                operands = []
+                append = operands.append
+            else:
+                append(tok)
+
+    def _raw_array(self, data: bytes, index: int) -> list[object] | None:
+        """:meth:`_fast_array` with its elements in the raw form of
+        :meth:`_raw_operations`; ``None`` exactly when it gives ``None``."""
+        match_item = _FAST_ARRAY_ITEM
+        items: list[object] = []
+        append = items.append
+        while True:
+            m = match_item(data, index)
+            if m is None:
+                return None
+            kind = m.lastgroup
+            index = m.end()
+            if kind == "num":
+                text = m.group(kind)
+                if len(text) > 64:
+                    # Left to the reference reader.
+                    return None
+                _raw_numbers(text, append)
+            elif kind == "str":
+                append(m.group(kind))
+            elif kind == "hex":
+                append(_fast_hex_bytes(m.group(kind)))
+            elif kind == "estr":
+                append(_fast_unescape(m.group(kind)))
+            else:  # "]"
+                break
+        self._src._buf.seek(_FAST_WS(data, index).end())
+        return items
 
     def _fast_array(self, data: bytes, index: int) -> COSArray | None:
         """Parse an array of numbers and strings starting after its ``[``,

@@ -10,7 +10,16 @@ from dataclasses import replace
 from functools import cmp_to_key
 from typing import TYPE_CHECKING, Protocol
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName, COSNumber, COSStream, COSString
+from pypdfbox.cos import (
+    COSArray,
+    COSDictionary,
+    COSFloat,
+    COSInteger,
+    COSName,
+    COSNumber,
+    COSStream,
+    COSString,
+)
 from pypdfbox.fontbox.cmap import CMap, CMapParser
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser.pdf_stream_parser import Operator, PDFStreamParser
@@ -1748,6 +1757,9 @@ class PDFTextStripper:
 
         with RandomAccessReadBuffer(body) as src:
             parser = PDFStreamParser(src)
+            if self._fast_show and self._raw_operands_ok():
+                self._walk_raw(parser, state, positions)
+                return positions
             for token in parser.tokens():
                 if isinstance(token, Operator):
                     self._dispatch(token.get_name(), operands, state, positions)
@@ -1756,6 +1768,134 @@ class PDFTextStripper:
                     operands.append(token)
 
         return positions
+
+    def _raw_operands_ok(self) -> bool:
+        """Whether :meth:`_walk_raw` may stand in for the token loop: the
+        hooks it replaces or feeds raw operands to are the stock ones (on
+        the class and the instance). The show-text hooks are checked by
+        :meth:`_stock_show_hooks` (``_fast_show``)."""
+        cls = type(self)
+        overrides = getattr(self, "__dict__", ())
+        for name, stock in _RAW_OPERAND_HOOKS:
+            if name in overrides or getattr(cls, name, None) is not stock:
+                return False
+        return True
+
+    def _walk_raw(
+        self,
+        parser: PDFStreamParser,
+        state: _TextState,
+        positions: list[TextPosition],
+    ) -> None:
+        """The token loop and :meth:`_dispatch` over the raw operands of
+        ``PDFStreamParser._raw_operations`` (Python numbers and bytes in
+        place of ``COSNumber`` / ``COSString`` / ``COSArray`` objects).
+
+        The number and string operators read the raw values the way
+        :meth:`_dispatch` reads the COS ones (``float_value`` /
+        ``get_bytes``) and build a ``COSString`` / ``COSArray`` only for the
+        per-string paths that take one. Every other operator
+        :meth:`_dispatch` acts on reads no number or string operand, so it
+        gets the raw operands as they are (a raw value fails its
+        ``COSName`` / ``COSDictionary`` tests as the COS object would), and
+        an operator it ignores is skipped.
+        """
+        dispatch = self._dispatch
+        show_fast = self._show_fast
+        raw_float = _raw_float
+        for op, operands in parser._raw_operations(_RAW_WANTED):
+            if op == "Td":
+                if not state.in_text_object:
+                    continue
+                tx = ty = 0.0
+                if len(operands) >= 2:
+                    a = raw_float(operands[0])
+                    b = raw_float(operands[1])
+                    if a is not None and b is not None:
+                        tx = a
+                        ty = b
+                _move_text_line(state, tx, ty)
+                state.text_x = state.line_x
+                state.text_y = state.line_y
+            elif op == "Tc":
+                if operands:
+                    value = raw_float(operands[0])
+                    # (An unchanged value keeps its object, which lets the
+                    # next show reuse its run context.)
+                    if value is not None and not _same_float(value, state.char_spacing):
+                        state.char_spacing = value
+            elif op == "Tw":
+                if operands:
+                    value = raw_float(operands[0])
+                    if value is not None and not _same_float(value, state.word_spacing):
+                        state.word_spacing = value
+            elif op == "TJ":
+                if not state.in_text_object or not operands:
+                    continue
+                arr = operands[0]
+                if type(arr) is list:
+                    if not show_fast(arr, state, positions):
+                        self._emit_tj_array(_cos_operand(arr), state, positions)
+                elif isinstance(arr, COSArray) and not show_fast(arr, state, positions):
+                    self._emit_tj_array(arr, state, positions)
+            elif op == "Tj":
+                if not state.in_text_object or not operands:
+                    continue
+                string = operands[0]
+                if type(string) is bytes:
+                    if not show_fast((string,), state, positions):
+                        self._emit(COSString(string), state, positions)
+                elif isinstance(string, COSString) and not show_fast(
+                    (string,), state, positions
+                ):
+                    self._emit(string, state, positions)
+            elif op == "Tf":
+                if len(operands) < 2:
+                    continue
+                name = operands[0]
+                if isinstance(name, COSName):
+                    state.font_name = name.get_name()
+                    self._active_cmap = self._get_cmap_for_font(state.font_name)
+                    self._active_font = self._get_font_for(state.font_name)
+                    if self._active_font is None:
+                        _log.warning("font '%s' not found in resources", state.font_name)
+                        self._active_font = self._get_default_font()
+                size = raw_float(operands[1])
+                if size is not None:
+                    state.font_size = size
+                self._active_avg_advance = self._compute_avg_advance(
+                    self._active_font, state.font_size
+                )
+                self._active_font_height = self._compute_font_height(self._active_font)
+            elif op == "EMC":
+                self.end_marked_content_sequence()
+            elif op == "BDC":
+                tag = operands[0] if operands and isinstance(operands[0], COSName) else None
+                if tag is None:
+                    continue
+                properties = self._resolve_bdc_properties(operands)
+                if properties is None:
+                    continue
+                self.begin_marked_content_sequence(tag, properties)
+            elif op == "Tm":
+                values = _raw_six(operands)
+                if values is not None:
+                    state.in_text_object = True
+                    a, b, c, d, e, f = values
+                    state.tm_a = a
+                    state.tm_b = b
+                    state.tm_c = c
+                    state.tm_d = d
+                    state._trm_cache = None
+                    state.line_x = e
+                    state.line_y = f
+                    state.text_x = e
+                    state.text_y = f
+            elif op in _RAW_PASS_THROUGH:
+                # (No number or string operand is read.)
+                dispatch(op, operands, state, positions)
+            elif op in _RAW_MATERIALIZE:
+                dispatch(op, [_cos_operand(v) for v in operands], state, positions)
 
     def _dispatch(
         self,
@@ -2054,6 +2194,7 @@ class PDFTextStripper:
         :class:`PDFMarkedContentExtractor` passes its own marked-content
         dispatcher so the form's BMC/BDC/EMC and text interleave correctly.
         """
+        raw = dispatch is None
         if dispatch is None:
             dispatch = self._dispatch
         if not operands or not isinstance(operands[0], COSName):
@@ -2126,6 +2267,9 @@ class PDFTextStripper:
         try:
             with RandomAccessReadBuffer(body) as src:
                 parser = PDFStreamParser(src)
+                if raw and self._fast_show and self._raw_operands_ok():
+                    self._walk_raw(parser, form_state, positions)
+                    return
                 form_operands: list[COSBase] = []
                 for token in parser.tokens():
                     if isinstance(token, Operator):
@@ -3579,11 +3723,14 @@ class PDFTextStripper:
             add_seg = cols.segs.append
             rec = cols.record(ctx, font_name, font, resolved_font_name, page_width_raw)
         for entry in (items,) if byte_memo is None else items:
+            # (A raw ``bytes`` / ``int`` / ``float`` item from
+            # :meth:`_walk_raw` stands for its ``COSString`` / ``COSNumber``.)
+            kind = type(entry)
             if byte_memo is None:
                 glyphs = entry
-            elif isinstance(entry, COSString):
+            elif kind is bytes or isinstance(entry, COSString):
                 try:
-                    glyphs = [byte_memo[b] for b in entry.get_bytes()]
+                    glyphs = [byte_memo[b] for b in (entry if kind is bytes else entry.get_bytes())]
                 except KeyError:
                     glyphs = None
                 scratch[0] = glyph_x
@@ -3595,7 +3742,7 @@ class PDFTextStripper:
                     if upright:
                         self._prefolded_count += len(positions) - start_count
                     if glyphs is None:
-                        self._emit(entry, state, positions)
+                        self._emit(COSString(entry) if kind is bytes else entry, state, positions)
                     else:
                         self._emit_glyphs(state, positions, font, resolved_font_name, glyphs, ctx)
                     start_count = len(positions)
@@ -3603,9 +3750,10 @@ class PDFTextStripper:
                     glyph_x = state.text_x
                     glyph_y = state.text_y
                     continue
-            elif isinstance(entry, COSNumber):
+            elif kind is int or kind is float or isinstance(entry, COSNumber):
                 # :meth:`_emit_tj_array`'s horizontal adjustment.
-                scratch[0] = -entry.float_value() / 1000.0
+                adjustment = float(entry) if kind is int or kind is float else entry.float_value()
+                scratch[0] = -adjustment / 1000.0
                 if font_size != 1.0:
                     scratch[0] = scratch[0] * font_size
                 if th != 1.0:
@@ -3990,16 +4138,22 @@ class PDFTextStripper:
         tm_b = ctx[12]
         scratch = ctx[-1]
         for entry in items:
-            if isinstance(entry, COSString):
+            # (A raw ``bytes`` / ``int`` / ``float`` item from
+            # :meth:`_walk_raw` stands for its ``COSString`` / ``COSNumber``.)
+            kind = type(entry)
+            if kind is bytes or isinstance(entry, COSString):
                 try:
-                    glyphs = [byte_memo[b] for b in entry.get_bytes()]
+                    glyphs = [
+                        byte_memo[b] for b in (entry if kind is bytes else entry.get_bytes())
+                    ]
                 except KeyError:
-                    self._emit(entry, state, positions)
+                    self._emit(COSString(entry) if kind is bytes else entry, state, positions)
                     continue
                 emit_glyphs(state, positions, font, resolved_font_name, glyphs, ctx)
-            elif isinstance(entry, COSNumber):
+            elif kind is int or kind is float or isinstance(entry, COSNumber):
                 # :meth:`_emit_tj_array`'s horizontal adjustment.
-                scratch[0] = -entry.float_value() / 1000.0
+                adjustment = float(entry) if kind is int or kind is float else entry.float_value()
+                scratch[0] = -adjustment / 1000.0
                 if font_size != 1.0:
                     scratch[0] = scratch[0] * font_size
                 if th != 1.0:
@@ -7067,6 +7221,35 @@ _COLUMNAR_HOOKS: tuple[tuple[str, object], ...] = tuple(
 )
 
 
+# The hooks :meth:`PDFTextStripper._walk_raw` stands in for or hands raw
+# operands to; a subclass or instance that replaces any of them gets the token
+# loop and COS operands.
+_RAW_OPERAND_HOOKS: tuple[tuple[str, object], ...] = tuple(
+    (name, getattr(PDFTextStripper, name))
+    for name in (
+        "_extract_positions",
+        "_raw_operands_ok",
+        "_walk_raw",
+        "_dispatch",
+        "_show_fast",
+        "_show_form_xobject",
+        "_resolve_bdc_properties",
+        "_last_cos_name",
+    )
+)
+
+# Operators :meth:`PDFTextStripper._dispatch` acts on without reading a
+# number or string operand, and those :meth:`PDFTextStripper._walk_raw` hands
+# to it with COS operands; :meth:`_dispatch` ignores every other operator.
+_RAW_PASS_THROUGH = frozenset({"BT", "ET", "BMC", "q", "Q", "T*", "Do"})
+_RAW_MATERIALIZE = frozenset({"cm", "TD", "TL", "'", '"', "Tz", "Ts"})
+_RAW_WANTED = (
+    _RAW_PASS_THROUGH
+    | _RAW_MATERIALIZE
+    | {"Td", "Tc", "Tw", "TJ", "Tj", "Tf", "EMC", "BDC", "Tm"}
+)
+
+
 # The hooks :meth:`PDFTextStripper._show_fast` folds into one call; a subclass
 # or instance that replaces any of them takes the per-string path.
 _STOCK_SHOW_HOOKS: tuple[tuple[str, object], ...] = tuple(
@@ -7249,6 +7432,57 @@ def _move_text_line(state: _TextState, tx: float, ty: float) -> None:
     x_shear, y_shear = _f32x2(ty * state.tm_c, ty * state.tm_d)
     x_sum, y_sum = _f32x2(x_part + x_shear, y_part + y_shear)
     state.line_x, state.line_y = _f32x2(x_sum + state.line_x, y_sum + state.line_y)
+
+
+def _raw_float(value: object) -> float | None:
+    """``float_value()`` of a raw (``PDFStreamParser._raw_operations``) or
+    COS number operand, ``None`` for any other operand."""
+    kind = type(value)
+    if kind is float:
+        return value  # type: ignore[return-value]
+    if kind is int:
+        return float(value)  # type: ignore[arg-type]
+    if isinstance(value, COSNumber):
+        return value.float_value()
+    return None
+
+
+def _raw_six(operands: list[object]) -> tuple[float, ...] | None:
+    """:func:`_six_numbers` for raw or COS operands."""
+    if len(operands) < 6:
+        return None
+    values = tuple(map(_raw_float, operands[:6]))
+    if None in values:
+        return None
+    return values  # type: ignore[return-value]
+
+
+def _same_float(value: float, current: object) -> bool:
+    """Whether ``current`` is a ``float`` with the very bits of ``value``
+    (a zero of the other sign is not)."""
+    return (
+        type(current) is float
+        and value == current
+        and (value != 0.0 or math.copysign(1.0, value) == math.copysign(1.0, current))
+    )
+
+
+def _cos_operand(value: object) -> object:
+    """The COS object a raw operand stands for, as far as
+    :meth:`PDFTextStripper._dispatch` can tell: the same ``COSString`` /
+    ``COSInteger`` / ``COSArray`` the token parse builds, and a real as a
+    ``COSFloat`` of the same ``float_value``. A COS operand is returned as
+    is."""
+    kind = type(value)
+    if kind is bytes:
+        return COSString(value)  # type: ignore[arg-type]
+    if kind is int:
+        return COSInteger.get(value)  # type: ignore[arg-type]
+    if kind is float:
+        return COSFloat(value)  # type: ignore[arg-type]
+    if kind is list:
+        return COSArray([_cos_operand(item) for item in value])  # type: ignore[attr-defined]
+    return value
 
 
 def _two_numbers(operands: list[COSBase]) -> tuple[float, float]:
