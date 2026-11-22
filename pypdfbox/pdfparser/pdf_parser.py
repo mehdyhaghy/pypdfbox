@@ -20,11 +20,16 @@ from pypdfbox.cos import (
     COSStream,
     COSString,
 )
-from pypdfbox.io import RandomAccessRead, RandomAccessReadBuffer
+from pypdfbox.io import (
+    RandomAccessRead,
+    RandomAccessReadBuffer,
+    RandomAccessReadBufferedFile,
+)
 
-from .base_parser import _FAST_MAX_DIGITS, BaseParser
+from .base_parser import _FAST_ENABLED, _FAST_MAX_DIGITS, BaseParser, _fast_paths_apply
 from .base_parser import _FAST_WS as _BASE_FAST_WS
 from .cos_parser import (
+    _FP_MAX_WINDOW,
     _GENERATION_NUMBER_THRESHOLD,
     _MAX_LENGTH_LONG,
     _OBJECT_NUMBER_THRESHOLD,
@@ -32,6 +37,8 @@ from .cos_parser import (
     _apply_xref_key_corrections,
     _bf_search_for_obj_stream_offsets_in,
     _ByteWindow,
+    _FastAbort,
+    _FastNeedMore,
     _find_object_key_in,
     _OutOfWindow,
     _parse_xref_entry_line,
@@ -109,6 +116,16 @@ _FAST_FILE_OBJ_HEADER = re.compile(
 ).match
 # ``skip_whitespace`` + ``read_string`` after an indirect object's body.
 _FAST_END_TOKEN = re.compile(_FAST_WS_PATTERN + rb"([^\x00\t\n\x0c\r ]*+)").match
+# First window scanned for a whole indirect object (header, body, ``endobj``).
+_FAST_OBJECT_WINDOW = 4096
+
+
+def _fast_paths_apply_to(cls: type) -> bool:
+    """``BaseParser._fast_chunk``'s per-class switch."""
+    enabled = _FAST_ENABLED.get(cls)
+    if enabled is None:
+        enabled = _fast_paths_apply(cls)
+    return enabled
 
 # PDF whitespace bytes (PDF 32000-1 §7.2.3) — mirrors BaseParser's set. Used
 # by the bulk xref-row reader to avoid per-byte method-call overhead.
@@ -2883,10 +2900,115 @@ class PDFParser:
                 return None
             raise
 
+    def _fast_load_indirect_object(
+        self, obj: COSObject
+    ) -> tuple[COSBase, bool] | None:
+        """Header, body and (usually) the closing ``endobj`` of the indirect
+        object at the cursor, scanned in one window of the source.
+
+        Stands in for the ``n g obj`` header match, the body fast path of
+        ``COSParser.parse_direct_object`` and the ``endobj`` match of
+        :meth:`_load_indirect_object_at`, which would each read their own
+        chunk; every decision is the one those make. Returns ``None`` with
+        the cursor unmoved whenever the general sequence must run instead (a
+        header that is not exactly this object's well-formed ``n g obj``, a
+        body the fast path gives up on, a source it does not model). Returns
+        ``(body, True)`` with the cursor after ``endobj``, or ``(body, False)``
+        with the cursor right after the body when something else follows it
+        (``stream``, a missing or misspelt ``endobj``)."""
+        cos_parser = self._cos_parser
+        src = self._src
+        src_type = type(src)
+        if (
+            cos_parser is None
+            or src._closed  # type: ignore[attr-defined]
+            or not (
+                src_type is RandomAccessReadBufferedFile
+                or src_type is RandomAccessReadBuffer
+            )
+            or cos_parser._src is not src
+            or cos_parser._recursion_depth >= cos_parser.MAX_RECURSION_DEPTH
+            or not _fast_paths_apply_to(type(self._base))
+            or not cos_parser._fast_path_applies()
+        ):
+            return None
+        bio = src._buf  # type: ignore[attr-defined]
+        start = bio.tell()
+        size = _FAST_OBJECT_WINDOW
+        while True:
+            if src_type is RandomAccessReadBuffer:
+                data = bio.getvalue()
+                base = 0
+                eof = True
+                clamped = True
+            else:
+                # One byte short of EOF, as in ``BaseParser._fast_chunk``.
+                remaining = src._length - start - 1  # type: ignore[attr-defined]
+                if remaining <= 0:
+                    return None
+                want = min(size, remaining)
+                data = bio.read(want)
+                bio.seek(start)
+                if len(data) < want:
+                    return None
+                base = start
+                eof = False
+                clamped = size >= remaining
+            n = len(data)
+            header = _FAST_FILE_OBJ_HEADER(data, start - base)
+            if (
+                header is None
+                or (header.end() >= n and not eof)
+                or header.group(3) != b"obj"
+                or len(header.group(1)) > _FAST_MAX_DIGITS
+                or len(header.group(2)) > _FAST_MAX_DIGITS
+                or int(header.group(1)) != obj.object_number
+                or int(header.group(2)) != obj.generation_number
+            ):
+                return None
+            depth = cos_parser._recursion_depth
+            try:
+                body, i = cos_parser._fp_value(
+                    data, header.end(), n, eof, base, False
+                )
+            except _FastNeedMore:
+                cos_parser._recursion_depth = depth
+                bio.seek(start)
+                if size >= _FP_MAX_WINDOW or clamped:
+                    return None
+                size *= 8
+                continue
+            except (_FastAbort, RecursionError):
+                cos_parser._recursion_depth = depth
+                bio.seek(start)
+                return None
+            except BaseException:
+                cos_parser._recursion_depth = depth
+                raise
+            break
+        # See ``_load_indirect_object_at`` for the direct flag and the key.
+        if isinstance(body, (COSDictionary, COSArray)):
+            body.set_direct(False)
+            body.set_key(COSObjectKey(obj.object_number, obj.generation_number))
+        tail = _FAST_END_TOKEN(data, i)
+        if (tail.end() < n or eof) and tail.group(1).startswith(b"endobj"):
+            bio.seek(base + tail.end())
+            return body, True
+        bio.seek(base + i)
+        return body, False
+
     def _load_indirect_object_at(self, offset: int, obj: COSObject) -> COSBase | None:
         """Seek to ``offset`` and parse the indirect-object definition.
         For a stream object, also reads the body."""
         self._src.seek(offset)
+        fast = self._fast_load_indirect_object(obj)
+        if fast is not None:
+            body, done = fast
+            if done:
+                return body
+            return self._read_indirect_object_tail(
+                body, obj.object_number, obj.generation_number, offset
+            )
         base_parser = self._base
         # n m obj. The header decided in one regex over the reader's fast
         # chunk when that is exactly what the skip_whitespace / read_int /
@@ -2965,6 +3087,13 @@ class PDFParser:
             ):
                 self._src._buf.seek(chunk_base + tail.end())  # type: ignore[attr-defined]
                 return body
+        return self._read_indirect_object_tail(body, on, gn, offset)
+
+    def _read_indirect_object_tail(
+        self, body: COSBase, on: int, gn: int, offset: int
+    ) -> COSBase | None:
+        """The reference read of what follows an indirect object's body:
+        ``endobj``, or ``stream`` plus the stream body and ``endobj``."""
         self._base.skip_whitespace()
         # Distinguish 'endobj' from 'stream'.
         peek = self._base.peek_byte()

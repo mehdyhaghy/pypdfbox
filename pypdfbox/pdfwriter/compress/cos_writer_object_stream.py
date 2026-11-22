@@ -320,7 +320,7 @@ def serialize_packed_objects(
     objects: list[COSBase],
     object_keys: dict[int, COSObjectKey],
     value_pool: dict[COSBase, COSObjectKey],
-    ref_cache: dict[int, tuple[COSObjectKey, bytes]] | None = None,
+    ref_cache: dict[int, tuple[object, bytes]] | None = None,
 ) -> list[bytes]:
     """Serialize each of ``objects`` exactly as
     ``COSWriterObjectStream.write_object(out, obj, top_level=True)`` does
@@ -334,9 +334,12 @@ def serialize_packed_objects(
     deeper than ``_FAST_PATH_MAX_DEPTH`` are walked with an explicit stack,
     so arbitrarily deep nesting never hits the recursion limit.
 
-    ``ref_cache`` (``id(key) -> (key, b"N G R ")``) may be shared across
-    calls of one save to reuse formatted references; each entry pins its
-    key, so a recycled ``id`` is detected by the identity check.
+    ``ref_cache`` (``id(key) -> (key, b"N G R ")``, plus
+    ``id(actual) -> (actual, b"N G R ")`` for keyed reference targets) may
+    be shared across calls of one save to reuse formatted references; each
+    entry pins its owner, so a recycled ``id`` is detected by the identity
+    check. The per-target entries rely on ``object_keys`` never re-keying
+    an actual during a save, which ``COSWriter._get_object_key`` guarantees.
     """
     from pypdfbox.pdfwriter.cos_writer import COSWriter as _Writer
 
@@ -358,6 +361,7 @@ def serialize_packed_objects(
     ref_get = ref_cache.get
     no_pool = not kinds_in_pool
     string_type = COSString
+    stream_type = COSStream
     float_type = COSFloat
 
     parts: list[bytes] = []
@@ -607,18 +611,60 @@ def serialize_packed_objects(
                 append(space)
             else:
                 emit_key(dkey)
-            if no_pool:
-                # Inline the two commonest direct scalars (no value pool, so
+            tv = type(dvalue)
+            if tv is object_type:
+                # Inline the commonest value: a reference whose resolved
+                # target is a keyed indirect. Same outcome as
+                # ``emit_nested`` -> ``walk`` -> ``resolve`` -> ``pool_key``
+                # for every target type (a keyed target is always written as
+                # its reference); anything else takes the general path.
+                if dvalue._key is None:  # type: ignore[attr-defined]
+                    inner = (
+                        dvalue._object  # type: ignore[attr-defined]
+                        if dvalue._dereferenced  # type: ignore[attr-defined]
+                        else dvalue.get_object()  # type: ignore[attr-defined]
+                    )
+                    if inner is not None:
+                        hit = ref_get(id(inner))
+                        if hit is not None and hit[0] is inner:
+                            append(hit[1])
+                            continue
+                        key = keys_get(id(inner))
+                        if key is not None:
+                            data = b"%d %d R " % (key.get_number(), key.get_generation())
+                            ref_cache[id(inner)] = (inner, data)
+                            append(data)
+                            continue
+            elif tv is dict_type or tv is array_type or tv is stream_type:
+                # A container held directly (not through a ``COSObject``)
+                # that is itself a keyed indirect, e.g. a cloned page tree
+                # node: always written as its reference.
+                hit = ref_get(id(dvalue))
+                if hit is not None and hit[0] is dvalue:
+                    append(hit[1])
+                    continue
+                key = keys_get(id(dvalue))
+                if key is not None:
+                    data = b"%d %d R " % (key.get_number(), key.get_generation())
+                    ref_cache[id(dvalue)] = (dvalue, data)
+                    append(data)
+                    continue
+            elif no_pool:
+                # Inline the commonest direct scalars (no value pool, so
                 # only the identity table can turn them into references).
-                tv = type(dvalue)
                 if tv is name_type:
                     token = dvalue._token  # type: ignore[attr-defined]
                     if token is not None and keys_get(id(dvalue), _END) is _END:
                         append(token)
                         append(space)
                         continue
-                elif tv is int_type and keys_get(id(dvalue), _END) is _END:
-                    append(b"%d " % dvalue._value)  # type: ignore[attr-defined]
+                elif tv is int_type:
+                    if keys_get(id(dvalue), _END) is _END:
+                        append(b"%d " % dvalue._value)  # type: ignore[attr-defined]
+                        continue
+                elif tv is string_type and keys_get(id(dvalue), _END) is _END:
+                    write_string(dvalue, sink)  # type: ignore[arg-type]
+                    append(space)
                     continue
             emit_nested(dvalue, depth)
         append(b">> ")
@@ -628,8 +674,49 @@ def serialize_packed_objects(
         for value in cos_array:
             if value is None:
                 append(b"null ")
-            else:
-                emit_nested(value, depth)
+                continue
+            tv = type(value)
+            if tv is object_type:
+                # Same keyed-reference fast path as ``emit_dict``.
+                if value._key is None:  # type: ignore[attr-defined]
+                    inner = (
+                        value._object  # type: ignore[attr-defined]
+                        if value._dereferenced  # type: ignore[attr-defined]
+                        else value.get_object()  # type: ignore[attr-defined]
+                    )
+                    if inner is not None:
+                        hit = ref_get(id(inner))
+                        if hit is not None and hit[0] is inner:
+                            append(hit[1])
+                            continue
+                        key = keys_get(id(inner))
+                        if key is not None:
+                            data = b"%d %d R " % (key.get_number(), key.get_generation())
+                            ref_cache[id(inner)] = (inner, data)
+                            append(data)
+                            continue
+            elif tv is dict_type or tv is array_type or tv is stream_type:
+                # A container held directly (not through a ``COSObject``)
+                # that is itself a keyed indirect, e.g. a cloned page tree
+                # node: always written as its reference.
+                hit = ref_get(id(value))
+                if hit is not None and hit[0] is value:
+                    append(hit[1])
+                    continue
+                key = keys_get(id(value))
+                if key is not None:
+                    data = b"%d %d R " % (key.get_number(), key.get_generation())
+                    ref_cache[id(value)] = (value, data)
+                    append(data)
+                    continue
+            elif (
+                no_pool
+                and tv is int_type
+                and keys_get(id(value), _END) is _END
+            ):
+                append(b"%d " % value._value)  # type: ignore[attr-defined]
+                continue
+            emit_nested(value, depth)
         append(b"] ")
 
     results: list[bytes] = []

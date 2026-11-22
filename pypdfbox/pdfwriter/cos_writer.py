@@ -5,6 +5,8 @@ import logging
 import secrets
 import time
 from collections import deque
+from itertools import accumulate
+from operator import itemgetter
 from typing import Any, BinaryIO
 
 from pypdfbox.cos import (
@@ -95,6 +97,7 @@ _KIND_ARRAY = 1
 _KIND_OBJECT = 2
 _KIND_OTHER = 3
 _KIND_CACHE: dict[type, int] = {}
+_first_item = itemgetter(0)
 
 # Direct (inline) container nesting the recursive visitor handles before
 # handing the rest of the subtree to the explicit-stack walker
@@ -466,7 +469,7 @@ class COSWriter(ICOSVisitor):
         # indirect is emitted as a reference, mirroring upstream's
         # value-hashed ``COSObjectPool``.
         self._objstm_value_pool: dict[COSBase, COSObjectKey] = {}
-        self._objstm_ref_cache: dict[int, tuple[COSObjectKey, bytes]] = {}
+        self._objstm_ref_cache: dict[int, tuple[object, bytes]] = {}
         # In incremental mode the body, xref, and trailer are accumulated in
         # an in-memory buffer; the final ``doWriteIncrement`` copies the
         # source bytes to the real output and then drains the buffer
@@ -2280,7 +2283,7 @@ class COSWriter(ICOSVisitor):
         out = self._standard_output
         # Record the xref entry with this object's start offset.
         self._xref_entries.append(
-            COSWriterXRefEntry(offset=out.get_position(), key=key, obj=obj, free=False)
+            COSWriterXRefEntry(out.get_position(), key, obj, False)
         )
 
         out.write(b"%d %d obj" % (key.object_number, key.generation_number))
@@ -2352,24 +2355,30 @@ class COSWriter(ICOSVisitor):
         # entry geometry and ObjStm packability decisions depend on the
         # caller-declared numbering being preserved.
         actual: COSBase
-        is_wrapper = _kind_of(type(obj)) == _KIND_OBJECT
+        tp = type(obj)
+        kind = _KIND_CACHE.get(tp)
+        if kind is None:
+            kind = _kind_of(tp)
+        is_wrapper = kind == _KIND_OBJECT
+        object_keys = self._object_keys
+        key_holders = self._key_holders
         if is_wrapper:
-            resolved = obj.get_object()
+            resolved = obj.get_object()  # type: ignore[attr-defined]
             if resolved is None:
                 # Dangling reference; preserve the declared key.
-                key = COSObjectKey(obj.get_object_number(), obj.get_generation_number())
-                self._object_keys[id(obj)] = key
-                self._key_holders[id(obj)] = obj
+                key = COSObjectKey(obj.get_object_number(), obj.get_generation_number())  # type: ignore[attr-defined]
+                object_keys[id(obj)] = key
+                key_holders[id(obj)] = obj
                 return key
             actual = resolved
         else:
             actual = obj
 
-        existing = self._object_keys.get(id(actual))
+        existing = object_keys.get(id(actual))
         if existing is not None:
             if is_wrapper:
-                self._object_keys[id(obj)] = existing
-                self._key_holders[id(obj)] = obj
+                object_keys[id(obj)] = existing
+                key_holders[id(obj)] = obj
             return existing
 
         honor_declared = (
@@ -2378,47 +2387,48 @@ class COSWriter(ICOSVisitor):
             or self._hybrid_xref
             or self._incremental_update
         )
-        # Only a not-yet-keyed actual needs the wrapper's declared key.
-        declared_key = (
-            COSObjectKey(obj.get_object_number(), obj.get_generation_number())
-            if is_wrapper
-            else None
-        )
 
         if honor_declared:
             # Stream / compressed / incremental path: keep the caller's
-            # declared (num, gen) verbatim (legacy behaviour).
-            if declared_key is not None and declared_key.object_number > 0:
-                key = declared_key
+            # declared (num, gen) verbatim (legacy behaviour). Only a
+            # not-yet-keyed actual needs the wrapper's declared key.
+            declared_num = obj.get_object_number() if is_wrapper else 0  # type: ignore[attr-defined]
+            if declared_num > 0:
+                key = COSObjectKey(declared_num, obj.get_generation_number())  # type: ignore[attr-defined]
             else:
-                key = self._mint_fresh_object_key()
+                key = None
         else:
             # Classic full-save: upstream reads the actual's OWN key (parser
             # stamps it on re-saves); a programmatic actual whose own
             # ``get_key()`` is None is renumbered contiguously, discarding any
             # wrapper-declared number — so a sparse object-number set collapses
             # to one contiguous xref subsection (CHANGES.md Wave 1530).
-            actual_key = actual.get_key()
-            if actual_key is not None and actual_key.object_number > 0:
-                key = actual_key
-            else:
+            key = actual.get_key()
+            if key is not None and key.object_number <= 0:
+                key = None
+
+        key_object = self._key_object
+        if key is None:
+            # A freshly minted key is unbound by construction.
+            key = self._mint_fresh_object_key()
+        else:
+            # Avoid number collisions when honouring a declared key: bump a
+            # fresh number if the chosen key is already bound to a different
+            # actual.
+            bound = key_object.get(key)
+            if bound is not None and bound is not actual:
                 key = self._mint_fresh_object_key()
 
-        # Avoid number collisions when honouring a declared key: bump a fresh
-        # number if the chosen key is already bound to a different actual.
-        while key in self._key_object and self._key_object[key] is not actual:
-            key = self._mint_fresh_object_key()
-
-        self._object_keys[id(actual)] = key
-        self._key_holders[id(actual)] = actual
-        self._key_object[key] = actual
+        object_keys[id(actual)] = key
+        key_holders[id(actual)] = actual
+        key_object[key] = actual
         if not honor_declared:
             # Stamp the actual with its assigned key (upstream
             # ``actual.setKey``) so a subsequent re-save preserves it.
             actual.set_key(key)
         if is_wrapper:
-            self._object_keys[id(obj)] = key
-            self._key_holders[id(obj)] = obj
+            object_keys[id(obj)] = key
+            key_holders[id(obj)] = obj
         return key
 
     # ---------- xref ----------
@@ -2639,14 +2649,22 @@ class COSWriter(ICOSVisitor):
         """
         # Explicit LIFO stack (no recursion); the visiting order — and so
         # the order fresh keys are minted in — is the plain depth-first
-        # "pop last, push children in order" walk.
+        # "pop last, push children in order" walk. Values whose type is
+        # already known to be a leaf (``_KIND_OTHER``: names, numbers,
+        # strings, ...) are never pushed: popping them was a no-op, so
+        # filtering them at push time keeps the walk order of everything
+        # else unchanged. Unseen types (cache miss -> ``None``) are pushed
+        # and classified when popped.
         seen: set[int] = set()
         seen_add = seen.add
         stack: list[COSBase] = [r for r in roots if r is not None]
         pop = stack.pop
         extend = stack.extend
         get_key = self._get_object_key
+        object_keys = self._object_keys
+        key_holders = self._key_holders
         kind_get = _KIND_CACHE.get
+        other = _KIND_OTHER
         while stack:
             current = pop()
             cid = id(current)
@@ -2662,21 +2680,44 @@ class COSWriter(ICOSVisitor):
                 actual = current.get_object()  # type: ignore[attr-defined]
                 if actual is None:
                     continue
-                get_key(current)
+                # Fast path of ``_get_object_key`` for a wrapper whose actual
+                # is already keyed (a second reference to the same object).
+                existing = object_keys.get(id(actual))
+                if existing is not None:
+                    object_keys[cid] = existing
+                    key_holders[cid] = current
+                else:
+                    get_key(current)
                 atp = type(actual)
                 kind = kind_get(atp)
                 if kind is None:
                     kind = _kind_of(atp)
-            elif kind == _KIND_OTHER:
+            elif kind == other:
                 continue
             else:
                 actual = current
-                if not current.is_direct():
+                if not current._direct:  # type: ignore[attr-defined]
                     get_key(current)
             if kind == _KIND_ARRAY:
-                extend([v for v in actual if v is not None])  # type: ignore[union-attr]
+                extend(
+                    [
+                        v
+                        for v in actual  # type: ignore[union-attr]
+                        if v is not None
+                        and kind_get(type(v)) != other
+                        and id(v) not in seen
+                    ]
+                )
             elif kind == _KIND_DICTIONARY:
-                extend([v for v in actual.values() if v is not None])  # type: ignore[union-attr]
+                extend(
+                    [
+                        v
+                        for v in actual.values()  # type: ignore[union-attr]
+                        if v is not None
+                        and kind_get(type(v)) != other
+                        and id(v) not in seen
+                    ]
+                )
 
     def _pack_object_streams(self, doc: COSDocument) -> None:
         """Bundle eligible non-stream indirect objects into one or more
@@ -2747,11 +2788,43 @@ class COSWriter(ICOSVisitor):
                 self._objstm_value_pool[actual] = key
 
         candidates: list[tuple[COSObjectKey, COSBase]] = []
+        packed_ids = self._packed_object_ids
+        # The identity exclusions of :py:meth:`_is_packable` (the /Encrypt
+        # dict and its subtree, the /Root catalog), folded into one set; the
+        # per-type checks are memoised per concrete type. Same predicate,
+        # evaluated without a method call per indirect object.
+        excluded_ids = set(self._encrypt_subtree_ids)
+        if self._encrypt_dict_id is not None:
+            excluded_ids.add(self._encrypt_dict_id)
+        if self._root_dict_id is not None:
+            excluded_ids.add(self._root_dict_id)
+        # type -> 0 (packable as is), 1 (stream: never), 2 (dictionary:
+        # check /Type for a signature).
+        type_class: dict[type, int] = {}
+        type_key = COSName.TYPE  # type: ignore[attr-defined]
         for key, actual in self._key_object.items():
-            if id(actual) in self._packed_object_ids:
+            aid = id(actual)
+            if aid in packed_ids or aid in excluded_ids:
                 continue
-            if not self._is_packable(actual, key):
+            tp = type(actual)
+            tclass = type_class.get(tp)
+            if tclass is None:
+                if issubclass(tp, COSStream):
+                    tclass = 1
+                elif issubclass(tp, COSDictionary):
+                    tclass = 2
+                else:
+                    tclass = 0
+                type_class[tp] = tclass
+            if tclass == 1:
                 continue
+            if tclass == 2:
+                type_name = actual.get_dictionary_object(type_key)  # type: ignore[attr-defined]
+                if isinstance(type_name, COSName) and type_name.name in (
+                    "Sig",
+                    "DocTimeStamp",
+                ):
+                    continue
             # Generation must be 0 — type-2 entries can't represent
             # non-zero generations (the second field is the ObjStm number,
             # the third is the index, and gen is implicitly 0 per spec).
@@ -2875,11 +2948,12 @@ class COSWriter(ICOSVisitor):
         # this byte-for-byte (rather than the previous space-joined +
         # trailing-``\n`` form) makes the decoded ObjStm body identical to
         # PDFBox's.
-        index_parts: list[bytes] = []
-        running = 0
-        for (key, _), body in zip(chunk, bodies, strict=False):
-            index_parts.append(b"%d %d " % (key.object_number, running))
-            running += len(body)
+        index_parts: list[bytes] = [
+            b"%d %d " % (kv[0].object_number, offset)
+            for kv, offset in zip(
+                chunk, accumulate(map(len, bodies), initial=0), strict=False
+            )
+        ]
         index_blob = b"".join(index_parts)
         first_offset = len(index_blob)
         index_parts.extend(bodies)
@@ -2914,12 +2988,15 @@ class COSWriter(ICOSVisitor):
         # free-standing indirect, so this is the ONLY place its xref entry
         # is created. ``_do_write_xref_stream`` resolves the (objstm, index)
         # pair from ``_compressed_locations`` keyed on the resolved actual.
+        objstm_num = objstm_key.object_number
+        compressed_locations = self._compressed_locations
+        packed_add = self._packed_object_ids.add
+        entries_append = self._xref_entries.append
         for index, (pkey, actual) in enumerate(chunk):
-            self._compressed_locations[id(actual)] = (objstm_key.object_number, index)
-            self._packed_object_ids.add(id(actual))
-            self._xref_entries.append(
-                COSWriterXRefEntry(offset=0, key=pkey, obj=actual, free=False)
-            )
+            aid = id(actual)
+            compressed_locations[aid] = (objstm_num, index)
+            packed_add(aid)
+            entries_append(COSWriterXRefEntry(0, pkey, actual, False))
 
         # Defer the byte emission of the ObjStm itself until AFTER the
         # top-level (free-standing) indirect objects have been written.
@@ -2984,6 +3061,7 @@ class COSWriter(ICOSVisitor):
         # Note: we intentionally do not call ``_fill_gaps_with_free_entries``
         # in either the full or hybrid xref-stream sub-path.
         records: list[tuple[int, int, int, int, bool]] = []
+        records_append = records.append
         comp_get = self._compressed_locations.get
         kind_get = _KIND_CACHE.get
         for entry in self._xref_entries:
@@ -2992,7 +3070,8 @@ class COSWriter(ICOSVisitor):
                 # entries, but if a caller pre-staged one we drop it — only
                 # the implicit object-0 NULL row belongs in an xref stream.
                 continue
-            objnum = entry.key.object_number
+            ekey = entry.key
+            objnum = ekey.object_number
             actual = entry.obj
             otp = type(actual)
             okind = kind_get(otp)
@@ -3002,11 +3081,10 @@ class COSWriter(ICOSVisitor):
                 actual = actual.get_object()  # type: ignore[union-attr]
             comp = comp_get(id(actual)) if actual is not None else None
             if comp is not None:
-                objstm_num, idx = comp
-                records.append((objnum, 2, objstm_num, idx, False))
+                records_append((objnum, 2, comp[0], comp[1], False))
             else:
-                records.append(
-                    (objnum, 1, entry.offset, entry.key.generation_number, False)
+                records_append(
+                    (objnum, 1, entry.offset, ekey.generation_number, False)
                 )
 
         # 4. The xref stream's OWN entry is NOT placed in the body. Upstream
@@ -3023,7 +3101,13 @@ class COSWriter(ICOSVisitor):
         # ``/Index`` run-shape bit-identical to upstream (a self-entry whose
         # offset exceeds 65535 would otherwise force ``w2`` from 2 to 3).
         xref_offset = out.get_position()
-        records.sort(key=lambda r: r[0])
+        records.sort(key=_first_item)
+        # Column views of ``records`` (every record is a real, non-free
+        # entry: free ones were dropped above).
+        if records:
+            col_num, col_type, col_f2, col_f3, _col_free = zip(*records, strict=True)
+        else:
+            col_num = col_type = col_f2 = col_f3 = ()
 
         # 5. Compute /W widths exactly as ``PDFXRefStream.getWEntry`` does
         # (PDFBox 3.0.7 ``org.apache.pdfbox.pdfparser.PDFXRefStream``,
@@ -3040,11 +3124,9 @@ class COSWriter(ICOSVisitor):
         # INDEX (``ObjectStreamXReference.getThirdColumnValue``) and IS scanned,
         # so a compressed save with object streams correctly widens w3 to that
         # max index while an all-uncompressed all-gen-0 save yields ``/W [1 3 0]``.
-        max_field1 = max((t for _n, t, _f2, _f3, _fr in records), default=0)
-        max_field2 = max((f2 for _n, _t, f2, _f3, _fr in records), default=0)
-        max_field3 = max(
-            (f3 for _n, _t, _f2, f3, fr in records if not fr), default=0
-        )
+        max_field1 = max(col_type, default=0)
+        max_field2 = max(col_f2, default=0)
+        max_field3 = max(col_f3, default=0)
         w1 = _xref_field_width(max_field1)
         w2 = _xref_field_width(max_field2)
         w3 = _xref_field_width(max_field3)
@@ -3063,7 +3145,11 @@ class COSWriter(ICOSVisitor):
         body.extend(
             _pack_unsigned(0xFFFF & ((1 << (8 * w3)) - 1) if w3 else 0, w3)
         )
-        if all(t >= 0 and f2 >= 0 and f3 >= 0 for _n, t, f2, f3, _fr in records):
+        if (
+            min(col_type, default=0) >= 0
+            and min(col_f2, default=0) >= 0
+            and min(col_f3, default=0) >= 0
+        ):
             # Every column value fits its max-derived width (and field 3 is
             # masked to it), so each row is one big-endian integer of
             # ``w1 + w2 + w3`` bytes: the same bytes as three
@@ -3094,7 +3180,7 @@ class COSWriter(ICOSVisitor):
         # with ``0L`` then ``addAll(objectNumbers)``, bytecode 21-44). The runs
         # are built over that union — no per-gap free rows means a genuinely
         # sparse multi-run ``/Index`` matching PDFBox.
-        ranges = self._build_int_ranges([0, *[r[0] for r in records]])
+        ranges = self._build_int_ranges([0, *col_num])
         index_arr = COSArray()
         index_arr.set_direct(True)
         for first, count in ranges:
@@ -3113,7 +3199,7 @@ class COSWriter(ICOSVisitor):
         xref_stream.set_data(bytes(body), [_FLATE_DECODE_NAME])
         xref_stream.set_item(COSName.TYPE, COSName.get_pdf_name("XRef"))  # type: ignore[attr-defined]
         # /Size = highest object number + 1.
-        size_value = max((r[0] for r in records), default=0) + 1
+        size_value = max(col_num, default=0) + 1
         xref_stream.set_int(COSName.SIZE, size_value)  # type: ignore[attr-defined]
         xref_stream.set_item(COSName.get_pdf_name("W"), w_arr)
         xref_stream.set_item(COSName.get_pdf_name("Index"), index_arr)

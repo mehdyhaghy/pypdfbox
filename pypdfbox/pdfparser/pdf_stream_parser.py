@@ -17,7 +17,7 @@ from pypdfbox.cos import (
 )
 from pypdfbox.io import RandomAccessRead, RandomAccessReadBuffer
 
-from .base_parser import BaseParser
+from .base_parser import _FAST_WS, BaseParser
 from .cos_parser import COSParser
 from .parse_error import PDFParseError
 
@@ -55,6 +55,7 @@ _FAST_TOKEN = re.compile(
     rb"|(?P<op>[A-Za-z*]++)(?=[\x00\t\n\x0c\r \[<(/%]|\Z)"
     rb"|(?P<quote>['\"])"
     rb"|(?P<array>\[)"
+    rb"|(?P<dict><<)"
     rb"|(?P<eof>\Z)"
     rb")"
 ).match
@@ -67,6 +68,25 @@ _FAST_ARRAY_ITEM = re.compile(
     rb"|\((?P<str>[^()\\]*+)\)"
     rb"|" + _FAST_ESCAPED_STRING + rb"|<(?P<hex>[0-9A-Fa-f]*+)>"
     rb"|(?P<end>\])"
+    rb")"
+).match
+# One entry of a dictionary of ``/Key value`` pairs (a ``BDC`` / ``DP``
+# property list such as ``<</MCID 3>>``), or its closing ``>>``. The value is
+# a number, name or string; a number must not be followed by a digit, which
+# would start the ``num gen R`` lookahead of
+# ``BaseParser._finish_cos_dictionary_value``. As in ``_FAST_ARRAY_ITEM`` only
+# plain whitespace (no NUL, no comment) separates entries; anything else
+# (an empty key, a nested container, a keyword value, ...) fails to match and
+# the whole dictionary is read by the reference parse.
+_FAST_DICT_ITEM = re.compile(
+    rb"[\t\n\x0c\r ]*+(?:"
+    rb"/(?P<key>[^\x00\t\n\x0c\r ()<>\[\]/%#]++)(?!#)[\t\n\x0c\r ]*+(?:"
+    rb"(?P<num>" + _FAST_NUMBER + rb")(?![\t\n\x0c\r ]*+[0-9])"
+    rb"|/(?P<name>[^\x00\t\n\x0c\r ()<>\[\]/%#]*+)(?!#)"
+    rb"|\((?P<str>[^()\\]*+)\)"
+    rb"|" + _FAST_ESCAPED_STRING + rb"|<(?P<hex>[0-9A-Fa-f]*+)>"
+    rb")"
+    rb"|(?P<end>>>)"
     rb")"
 ).match
 _FAST_ESCAPE = re.compile(rb"\\(?:([0-7]{1,3})|(\r\n?|\n)|(.))", re.DOTALL)
@@ -436,14 +456,18 @@ class PDFStreamParser(COSParser):
         return list(self.tokens())
 
     def tokens(self) -> Iterator[COSBase | Operator]:
+        # Not a generator itself, so the fast path's generator is handed out
+        # directly instead of being driven through ``yield from``.
         src = self._src
         if (
             type(self) is PDFStreamParser
             and type(src) is RandomAccessReadBuffer
             and not src._closed
         ):
-            yield from self._fast_tokens()
-            return
+            return self._fast_tokens()
+        return self._reference_tokens()
+
+    def _reference_tokens(self) -> Iterator[COSBase | Operator]:
         while True:
             tok = self.parse_next_token()
             if tok is None:
@@ -466,12 +490,20 @@ class PDFStreamParser(COSParser):
         seek = buf.seek
         tell = buf.tell
         match_token = _FAST_TOKEN
-        match_item = _FAST_ARRAY_ITEM
         get_name = COSName.get_pdf_name
         get_operator = Operator.get_operator
-        null = COSNull.NULL
-        true = COSBoolean.TRUE
-        false = COSBoolean.FALSE
+        # Keyword bytes -> token, filled as operators are met. Local to this
+        # parse so it always hands out what ``Operator.get_operator`` gives
+        # (``BI`` / ``ID``, which it never caches, take the reference parse).
+        keywords: dict[bytes, COSBase | Operator] = {
+            b"null": COSNull.NULL,
+            b"true": COSBoolean.TRUE,
+            b"false": COSBoolean.FALSE,
+        }
+        keyword_get = keywords.get
+        # ``_fast_number``, inlined for the most common token.
+        float_ = COSFloat
+        int_get = COSInteger.get
         while True:
             if src._closed:
                 return
@@ -479,25 +511,26 @@ class PDFStreamParser(COSParser):
             kind = m.lastgroup if m is not None else None
             if kind == "num":
                 seek(m.end())
-                yield _fast_number(m.group(kind))
+                text = m.group(kind)
+                if b"." in text:
+                    yield float_(text.decode("ascii"))
+                elif len(text) <= 18:
+                    yield int_get(int(text))
+                else:
+                    yield COSNumber.get(text.decode("ascii"))
             elif kind == "op":
                 word = m.group(kind)
-                first = word[0]
-                if first == 0x49 or word == b"BI":  # 'I' (ID) / BI
-                    tok = self.parse_next_token()
-                    if tok is None:
-                        return
-                    yield tok
-                    continue
+                tok = keyword_get(word)
+                if tok is None:
+                    if word[0] == 0x49 or word == b"BI":  # 'I' (ID) / BI
+                        tok = self.parse_next_token()
+                        if tok is None:
+                            return
+                        yield tok
+                        continue
+                    tok = keywords[word] = get_operator(word.decode("ascii"))
                 seek(m.end())
-                if word == b"null":
-                    yield null
-                elif word == b"true":
-                    yield true
-                elif word == b"false":
-                    yield false
-                else:
-                    yield get_operator(word.decode("ascii"))
+                yield tok
             elif kind == "name":
                 seek(m.end())
                 yield get_name(m.group(kind))
@@ -505,7 +538,7 @@ class PDFStreamParser(COSParser):
                 seek(m.end())
                 yield COSString(m.group(kind))
             elif kind == "array":
-                array = self._fast_array(data, m.end(), match_item)
+                array = self._fast_array(data, m.end())
                 if array is None:
                     # Not a plain array: the reference parse from the '['.
                     seek(m.start(kind))
@@ -515,6 +548,16 @@ class PDFStreamParser(COSParser):
                     yield tok
                     continue
                 yield array
+            elif kind == "dict":
+                dictionary = self._fast_dict(data, m.end())
+                if dictionary is None:
+                    # Not a plain dictionary: the reference parse.
+                    tok = self.parse_next_token()
+                    if tok is None:
+                        return
+                    yield tok
+                    continue
+                yield dictionary
             elif kind == "hex":
                 seek(m.end())
                 yield COSString(_fast_hex_bytes(m.group(kind)))
@@ -533,15 +576,18 @@ class PDFStreamParser(COSParser):
                     return
                 yield tok
 
-    def _fast_array(self, data: bytes, index: int, match_item) -> COSArray | None:
+    def _fast_array(self, data: bytes, index: int) -> COSArray | None:
         """Parse an array of numbers and strings starting after its ``[``,
         or return ``None`` (position untouched) when it holds anything else.
 
         Elements are built as ``BaseParser.parse_cos_array`` builds them: an
         integer through ``COSNumber.get`` and a real as ``COSFloat`` of its
         literal text (``_wrap_number``), strings as ``COSString``."""
+        match_item = _FAST_ARRAY_ITEM
         items: list[COSBase] = []
         append = items.append
+        float_ = COSFloat
+        int_get = COSInteger.get
         while True:
             m = match_item(data, index)
             if m is None:
@@ -549,11 +595,19 @@ class PDFStreamParser(COSParser):
             kind = m.lastgroup
             index = m.end()
             if kind == "num":
+                # ``_fast_number``, inlined.
                 text = m.group(kind)
-                if len(text) > 64:
-                    # Leave out-of-range literals to the reference reader.
+                if b"." in text:
+                    if len(text) > 64:
+                        # Leave out-of-range literals to the reference reader.
+                        return None
+                    append(float_(text.decode("ascii")))
+                elif len(text) <= 18:
+                    append(int_get(int(text)))
+                elif len(text) > 64:
                     return None
-                append(_fast_number(text))
+                else:
+                    append(COSNumber.get(text.decode("ascii")))
             elif kind == "str":
                 append(COSString(m.group(kind)))
             elif kind == "hex":
@@ -564,10 +618,55 @@ class PDFStreamParser(COSParser):
                 break
         # (``COSArray.add`` on a new array is a plain append.)
         array = COSArray(items)
-        # The reference parse skips the whitespace after ``]``.
-        self._src._buf.seek(index)
-        self.skip_whitespace()
+        # The reference parse skips the whitespace (and comments) after
+        # ``]``: ``skip_whitespace`` over the whole in-memory buffer.
+        self._src._buf.seek(_FAST_WS(data, index).end())
         return array
+
+    def _fast_dict(self, data: bytes, index: int) -> COSDictionary | None:
+        """Parse a dictionary of numbers, names and strings starting after
+        its ``<<``, or return ``None`` (position untouched) when it holds
+        anything else.
+
+        Built as ``BaseParser.parse_cos_dictionary(is_direct=True)`` builds
+        it: a direct dictionary whose values are made direct and stored with
+        ``set_item`` in source order (a repeated key keeps its last value),
+        values read as in :meth:`_fast_array`. The position ends right after
+        the ``>>``."""
+        match_item = _FAST_DICT_ITEM
+        get_name = COSName.get_pdf_name
+        entries: list[tuple[COSName, COSBase]] = []
+        append = entries.append
+        while True:
+            m = match_item(data, index)
+            if m is None:
+                return None
+            kind = m.lastgroup
+            index = m.end()
+            if kind == "end":
+                break
+            if kind == "num":
+                text = m.group(kind)
+                if len(text) > 64:
+                    return None
+                value = _fast_number(text)
+            elif kind == "name":
+                value = get_name(m.group(kind))
+            elif kind == "str":
+                value = COSString(m.group(kind))
+            elif kind == "hex":
+                value = COSString(_fast_hex_bytes(m.group(kind)))
+            else:  # "estr"
+                value = COSString(_fast_unescape(m.group(kind)))
+            append((get_name(m.group("key")), value))
+        dictionary = COSDictionary()
+        dictionary.set_direct(True)
+        set_item = dictionary.set_item
+        for key, value in entries:
+            value.set_direct(True)
+            set_item(key, value)
+        self._src._buf.seek(index)
+        return dictionary
 
     # ---------- upstream-named aliases ----------
 

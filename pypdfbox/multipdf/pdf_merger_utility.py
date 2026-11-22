@@ -1898,22 +1898,26 @@ class PDFMergerUtility:
         """Rewrite ``/Pg`` and ``/Obj`` on a single parent-tree dict leaf.
         Recurses into ``/K`` when present."""
         page_dict = parent_tree_entry.get_dictionary_object(_PG)
-        if isinstance(page_dict, COSDictionary) and id(page_dict) in obj_mapping:
-            parent_tree_entry.set_item(_PG, obj_mapping[id(page_dict)])
+        if isinstance(page_dict, COSDictionary):
+            mapped = obj_mapping.get(id(page_dict))
+            if mapped is not None:
+                parent_tree_entry.set_item(_PG, mapped)
 
         obj_dict = parent_tree_entry.get_dictionary_object(_OBJ)
         if isinstance(obj_dict, COSDictionary):
-            if id(obj_dict) in obj_mapping:
-                parent_tree_entry.set_item(_OBJ, obj_mapping[id(obj_dict)])
+            mapped = obj_mapping.get(id(obj_dict))
+            if mapped is not None:
+                parent_tree_entry.set_item(_OBJ, mapped)
             else:
                 # Orphan reference — clone it into the destination so the
                 # new struct-tree leaf doesn't dangle into the source doc.
-                _LOG.debug(
-                    "clone potential orphan object in structure tree: "
-                    "Type=%s Subtype=%s",
-                    obj_dict.get_name_as_string(_TYPE),
-                    obj_dict.get_name_as_string(COSName.get_pdf_name("Subtype")),
-                )
+                if _LOG.isEnabledFor(logging.DEBUG):
+                    _LOG.debug(
+                        "clone potential orphan object in structure tree: "
+                        "Type=%s Subtype=%s",
+                        obj_dict.get_name_as_string(_TYPE),
+                        obj_dict.get_name_as_string(COSName.get_pdf_name("Subtype")),
+                    )
                 cloned = cloner.clone_for_new_document(obj_dict)
                 if cloned is not None:
                     parent_tree_entry.set_item(_OBJ, cloned)
