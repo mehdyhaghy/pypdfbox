@@ -423,8 +423,7 @@ one with pypdfbox:
 ## Behavioral divergences from upstream
 
 The full list of documented divergences lives in `CHANGES.md` under
-the "Active divergences vs upstream" header. As of the current
-release the list contains five items:
+the "Active divergences vs upstream" header. Notable items:
 
 - **ICU bidi reordering** — stdlib substitute, mixed-direction
   paragraph reordering not at parity.
@@ -443,6 +442,10 @@ release the list contains five items:
   Resources keys, save-reload round-trip).
 - **Skia anti-aliasing vs Java2D AA** — edge pixels may differ at
   low rasterisation resolutions.
+- **Saving over the source file** works. `doc.save(path)` to the file
+  the document was loaded from writes a temp file beside it and
+  replaces the original after the save succeeds. PDFBox corrupts the
+  file in that case and its javadoc says not to do it.
 
 Items deferred but not yet active divergences are tracked on the
 [issue tracker](https://github.com/mehdyhaghy/pypdfbox/issues),

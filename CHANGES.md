@@ -59,6 +59,7 @@ These match the upstream 3.0 branch, so they differ from the 3.0.8 baseline and 
 - **Deep nesting on save.** Past 64 levels `COSWriter` switches to an explicit-stack walk with identical bytes, because Python's recursion limit is far below the Java stack.
 - **Re-save object numbering.** A full save of a loaded document can compact and reuse object keys where upstream mints new numbers from the loaded `/Size`, so the trailer `/Size` can differ; the saved objects are the same.
 - **Extra container accessors.** `COSArray.get_float` and `get_boolean(index)` are pypdfbox additions.
+- **Saving over the source file.** `save` and `save_incremental` to the path the document was loaded from write a temp file beside it and replace the original only after the save succeeds. Upstream truncates the file it is still reading and corrupts it.
 
 ### Encryption and signing
 
@@ -143,6 +144,7 @@ porting history before 1.0.0 is in git history.
 - `/W2` CID ranges are stored compactly (trunk `bcf78963`).
 - **Breaking, upstream parity:** `PDPageTree.remove` raises `ValueError` for an orphan page (no `/Parent`) or a parent without `/Kids` (PDFBOX-6318); 2.x only warns.
 - **Breaking, upstream parity:** `/Encrypt /Length 0` raises `OSError("Invalid encryption dictionary length: 0")` (PDFBOX-6316); 2.x falls back with a warning.
+- **Fix:** saving a document over the file it was loaded from (`doc.save(same_path)`, also `save_incremental`) no longer wipes the file. Files larger than the read buffer used to come out a few hundred bytes long, or the save raised `OSError` midway. pypdfbox now writes to a temp file in the same folder and swaps it in after a successful save, keeping permissions and symlinks; a failed save leaves the original untouched.
 - **Performance:** save about 15% faster on large files (the 756-page PDF spec: 4.33 s to 3.69 s), merge and split about 6% faster, with byte-identical output. In a file larger than the read buffer, lazily loaded objects are read from a small cache of 64 KiB pages read at an offset, instead of a seek plus a read through the shared cursor per object (objects are visited in number order, not file order); a file that has changed since it was opened drops the cache and reads as before. Names with `#XX` escapes are decoded in the parser's fast path instead of byte by byte.
 - **Performance:** text extraction about 7% faster on large documents (the 756-page PDF spec: 5.12 s to 4.75 s; the first 50 pages about 3%), with identical output. `get_text` reads content-stream operands as plain numbers and bytes straight from the tokenizer instead of building a COS object per token, matches a run of numbers with its operator (and a plain `TJ` array or `MCID` dictionary) in one step, and skips the operators text extraction ignores. A stripper subclass that overrides a dispatch or show-text hook keeps the classic token loop.
 
