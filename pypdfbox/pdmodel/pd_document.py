@@ -545,13 +545,14 @@ class PDDocument:
                             actual.ensure_decrypted()
                 trailer.remove_item(_ENCRYPT)
 
-        opened: BinaryIO | None = None
+        opened: _PathTarget | None = None
         sink: BinaryIO | RandomAccessWrite
         if isinstance(target, (str, os.PathLike)):
-            opened = open(target, "wb")  # noqa: SIM115 — closed in finally
-            sink = opened
+            opened = self._open_path_target(target)
+            sink = opened.fh
         else:
             sink = target
+        ok = False
         try:
             with COSWriter(
                 sink,
@@ -569,9 +570,10 @@ class PDDocument:
                 # raw COSDocument. Mirrors upstream
                 # ``COSWriter.write(PDDocument)``.
                 writer.write(self)
+            ok = True
         finally:
             if opened is not None:
-                opened.close()
+                opened.finish(ok)
 
     def save_incremental(
         self,
@@ -654,19 +656,35 @@ class PDDocument:
 
         from pypdfbox.pdfwriter import COSWriter
 
-        opened: BinaryIO | None = None
+        opened: _PathTarget | None = None
         sink: BinaryIO | RandomAccessWrite
         if isinstance(target, (str, os.PathLike)):
-            opened = open(target, "wb")  # noqa: SIM115
-            sink = opened
+            opened = self._open_path_target(target)
+            sink = opened.fh
         else:
             sink = target
+        ok = False
         try:
             with COSWriter(sink, incremental=True, incremental_input=source) as writer:
                 writer.write(self._document)
+            ok = True
         finally:
             if opened is not None:
-                opened.close()
+                opened.finish(ok)
+
+    def _open_path_target(self, target: str | os.PathLike[str]) -> _PathTarget:
+        """Open a save target path. When it is the file this document was
+        loaded from, write to a temp file beside it and swap it in after a
+        successful save, so the lazily read source is never truncated mid-save
+        (upstream PDFBox corrupts the file in that case)."""
+        src_path = getattr(self._document.get_source(), "path", None)
+        same = False
+        if src_path is not None:
+            try:
+                same = os.path.samefile(target, src_path)
+            except OSError:
+                same = False
+        return _PathTarget(target, same)
 
     # ---------- signing internals ----------
 
@@ -2181,3 +2199,45 @@ def _page_contents(page: PDPage) -> bytes:
                 chunks.append(b"\n")
         return b"".join(chunks)
     return b""
+
+
+class _PathTarget:
+    """A save target opened from a path; see ``PDDocument._open_path_target``."""
+
+    def __init__(self, target: str | os.PathLike[str], replace_source: bool) -> None:
+        self._final = os.path.realpath(target) if replace_source else None
+        self._tmp: str | None = None
+        if self._final is None:
+            self.fh: BinaryIO = open(target, "wb")  # noqa: SIM115 — closed in finish
+            return
+        import tempfile
+
+        fd, self._tmp = tempfile.mkstemp(
+            prefix=".pypdfbox-", suffix=".tmp", dir=os.path.dirname(self._final)
+        )
+        self.fh = os.fdopen(fd, "wb")
+
+    def finish(self, ok: bool) -> None:
+        import contextlib
+        import shutil
+
+        self.fh.close()
+        tmp, final = self._tmp, self._final
+        if tmp is None or final is None:
+            return
+        try:
+            if not ok:
+                return
+            with contextlib.suppress(OSError):
+                shutil.copymode(final, tmp)
+            try:
+                os.replace(tmp, final)
+            except PermissionError:
+                # Windows refuses to replace a file that is still open (the
+                # document's own source handle): copy the finished output
+                # over it in place instead.
+                with open(tmp, "rb") as src, open(final, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+        finally:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
