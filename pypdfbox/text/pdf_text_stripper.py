@@ -156,6 +156,12 @@ _f32_unpack = _F32_STRUCT.unpack
 # code paths they shortcut and compare the results.
 _USE_FAST_PATHS = True
 
+# Lay out eligible pages from glyph columns instead of per-glyph
+# ``TextPosition`` objects (see :mod:`pypdfbox.text._columnar`); same output.
+_USE_COLUMNAR = True
+# Pages laid out per path since import (for A/B checks).
+_COLUMNAR_STATS: dict[str, int] = {"columnar": 0, "fallback": 0, "off": 0}
+
 _SINGLE_BYTE_READERS: frozenset[object] | None = None
 
 
@@ -983,6 +989,8 @@ class PDFTextStripper:
         # a single article so the outer list is always length 1 after
         # ``process_page`` runs (cleared on entry to ``get_text``).
         self._characters_by_article: list[list[TextPosition]] = []
+        # The glyph columns of the page being read (columnar layout only).
+        self._col = None
         # Lazily-populated list of compiled regex patterns matching
         # common list-item prefixes. Mirrors upstream's private
         # ``listOfPatterns`` field; exposed via
@@ -1222,6 +1230,33 @@ class PDFTextStripper:
         drives extraction via ``write_text(doc, writer)``.
         """
         return self._output
+
+    @property
+    def _characters_by_article(self) -> list[list[TextPosition]]:
+        """Upstream ``charactersByArticle``; a columnar page builds its
+        positions on first access."""
+        value = self._characters_by_article_value
+        if type(value) is not list:
+            value = self._characters_by_article_value = value.get()
+        return value
+
+    @_characters_by_article.setter
+    def _characters_by_article(self, value: list[list[TextPosition]]) -> None:
+        self._characters_by_article_value = value
+
+    def _set_lazy_articles(self, lazy: object) -> None:
+        """Install a columnar page's deferred ``charactersByArticle``."""
+        self._characters_by_article_value = lazy
+
+    def _columnar_hooks_ok(self) -> bool:
+        """Whether every hook the columnar layout replaces is the stock one
+        (on the class and the instance)."""
+        cls = type(self)
+        overrides = getattr(self, "__dict__", ())
+        for name, stock in _COLUMNAR_HOOKS:
+            if name in overrides or getattr(cls, name, None) is not stock:
+                return False
+        return self._stock_show_hooks()
 
     def get_characters_by_article(self) -> list[list[TextPosition]]:
         """Return the per-article list of :class:`TextPosition` objects
@@ -1481,9 +1516,40 @@ class PDFTextStripper:
             self._page_rotation == 0
             and type(self)._apply_page_rotation is PDFTextStripper._apply_page_rotation
         )
+        cols = None
+        if (
+            _USE_COLUMNAR
+            and _USE_FAST_PATHS
+            and self._fold_upright_geometry
+            and not self._flip_axes
+            and not self._sort_by_position
+            and self._columnar_hooks_ok()
+        ):
+            from ._columnar import PageColumns
+
+            cols = self._col = PageColumns()
+        else:
+            _COLUMNAR_STATS["off"] += 1
         try:
-            positions = self._extract_positions(body)
+            try:
+                positions = self._extract_positions(body)
+            finally:
+                self._col = None
             self._fold_upright_geometry = False
+            if cols is not None:
+                if cols.x:
+                    from ._columnar import format_page
+
+                    self._apply_page_rotation(positions)
+                    text = format_page(self, cols, positions)
+                    if text is not None:
+                        _COLUMNAR_STATS["columnar"] += 1
+                        return text
+                    _COLUMNAR_STATS["fallback"] += 1
+                    # The object pipeline, on every position of the page.
+                    positions = cols.merge(positions)
+                elif positions:
+                    _COLUMNAR_STATS["fallback"] += 1
             # Fold the page ``/Rotate`` into each run's stored coordinates so
             # the line/word grouping consumes the device (rotated) frame, the
             # way upstream's default-path ``writePage`` reads
@@ -3501,6 +3567,18 @@ class PDFTextStripper:
         # (``geometry_y`` is a function of ``device_y`` alone.)
         last_device_y = None
         geometry_y = 0.0
+        # Columnar layout: an upright glyph outside ``/ActualText`` is kept
+        # as its cursor, end offset and text (see ``_columnar.PageColumns``).
+        cols = self._col if upright and actual_text is None else None
+        if cols is not None:
+            col_x = cols.x
+            col_e = cols.e
+            col_p = cols.p
+            add_x = col_x.append
+            add_e = col_e.append
+            add_p = col_p.append
+            add_seg = cols.segs.append
+            rec = cols.record(ctx, font_name, font, resolved_font_name, page_width_raw)
         for entry in (items,) if byte_memo is None else items:
             if byte_memo is None:
                 glyphs = entry
@@ -3544,6 +3622,64 @@ class PDFTextStripper:
             else:
                 continue
             run_id += 1
+            if (
+                cols is not None
+                and glyph_y != 0.0
+                and glyph_y - glyph_y == 0.0
+                and glyph_x - glyph_x == 0.0
+            ):
+                # The glyph loop below for column storage: the cursor
+                # advance is the only per-glyph narrowing; the device
+                # geometry is derived per page. (A nonzero ``glyph_y`` stays
+                # as is: the ``tm_b == 0`` step only adds a signed zero.)
+                first = len(col_x)
+                start_x = glyph_x
+                for piece, displacement, code_length, code in glyphs:
+                    if code_length == 1 and code == 32:
+                        step = space_steps.get(displacement)
+                        if step is None:
+                            step = _plain_glyph_step(
+                                displacement,
+                                font_size,
+                                th,
+                                char_spacing,
+                                word_spacing_state,
+                                tm_a,
+                                tm_b,
+                                x_scale,
+                            )
+                            if displacement:
+                                space_steps[displacement] = step
+                    else:
+                        step = nonspace_steps.get(displacement)
+                        if step is None:
+                            step = _plain_glyph_step(
+                                displacement,
+                                font_size,
+                                th,
+                                char_spacing,
+                                0.0,
+                                tm_a,
+                                tm_b,
+                                x_scale,
+                            )
+                            if displacement:
+                                nonspace_steps[displacement] = step
+                    if piece is not None:
+                        add_x(glyph_x)
+                        add_e(step[0])
+                        add_p(piece)
+                    scratch[1] = glyph_x + step[2]
+                    glyph_x = scratch[1]
+                if glyph_x - glyph_x == 0.0:
+                    if len(col_x) > first:
+                        add_seg((first, len(positions), run_id, glyph_y, rec))
+                    continue
+                # A non-finite cursor: the object loop raises where it did.
+                del col_x[first:]
+                del col_e[first:]
+                del col_p[first:]
+                glyph_x = start_x
             for piece, displacement, code_length, code in glyphs:
                 if code_length == 1 and code == 32:
                     # Word spacing applies to the single-byte code 32 only.
@@ -6877,6 +7013,59 @@ class PDFTextStripper:
             self._actual_text = None
             self._actual_text_marked_content = None
         self._marked_content_stack.pop()
+
+
+# The hooks the columnar layout stands in for; a subclass or instance that
+# replaces any of them gets the object pipeline.
+_COLUMNAR_HOOKS: tuple[tuple[str, object], ...] = tuple(
+    (name, getattr(PDFTextStripper, name))
+    for name in (
+        "_extract_positions",
+        "_dispatch",
+        "_format_positions",
+        "_drop_overlapping_duplicates",
+        "_assign_articles",
+        "_merge_diacritics",
+        "_write_articles",
+        "_apply_page_rotation",
+        "_remove_contained_spaces_java",
+        "_java_font_or_size_changed",
+        "_java_handle_line_separation",
+        "_java_is_paragraph_separation",
+        "_java_multiply_float",
+        "_bead_rectangles_java",
+        "_partition_into_slots",
+        "_normalize_positions",
+        "_write_bare_line",
+        "_set_lazy_articles",
+        "should_skip_glyph",
+        "process_text_position",
+        "write_string",
+        "write_string_with_positions",
+        "write_word_separator",
+        "write_line_separator",
+        "write_paragraph_start",
+        "write_paragraph_end",
+        "write_paragraph_separator",
+        "write_article_start",
+        "write_article_end",
+        "write_characters",
+        "write_line",
+        "normalize",
+        "normalize_add",
+        "create_word",
+        "normalize_word",
+        "handle_direction",
+        "match_list_item_pattern",
+        "match_pattern",
+        "get_list_item_patterns",
+        "get_drop_threshold",
+        "get_indent_threshold",
+        "is_paragraph_separation",
+        "start_of_paragraph",
+        "handle_line_separation",
+    )
+)
 
 
 # The hooks :meth:`PDFTextStripper._show_fast` folds into one call; a subclass
