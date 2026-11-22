@@ -37,6 +37,16 @@ _F32 = np.float32
 _F64 = np.float64
 
 
+# Why pages took the object pipeline (counts since import, for A/B checks).
+FALLBACK_REASONS: dict[str, int] = {}
+
+
+def _bail(reason: str) -> None:
+    """Record why a page needs the object pipeline; ``None`` for the caller
+    to return."""
+    FALLBACK_REASONS[reason] = FALLBACK_REASONS.get(reason, 0) + 1
+
+
 def _n32(values: np.ndarray) -> np.ndarray:
     """Narrow float64 values to float32 and back (the C ``(float)`` cast)."""
     return values.astype(_F32).astype(_F64)
@@ -321,11 +331,11 @@ def _dedup_keep(ids: np.ndarray, x: np.ndarray, y: np.ndarray, w: np.ndarray, le
     if n == 0:
         return np.arange(0)
     if (lengths == 0).any():
-        return None
+        return _bail("dedup: empty text")
     with np.errstate(all="ignore"):
         tol = _n32(w / lengths / 3.0)
     if not np.isfinite(tol).all():
-        return None
+        return _bail("dedup: non-finite tolerance")
     max_tol = float(tol.max())
     idx = np.arange(n)
     if max_tol <= 0.0:
@@ -351,7 +361,7 @@ def _dedup_keep(ids: np.ndarray, x: np.ndarray, y: np.ndarray, w: np.ndarray, le
     sx = int(cx_hi.max() - base_x) + 2
     sy = int(cy_hi.max() - base_y) + 2
     if float(ids.max() + 1) * sx * sy >= 2.0**62:
-        return None
+        return _bail("dedup: grid too large")
     id_base = ids.astype(np.int64) * sy
     key = (id_base + (cy - base_y).astype(np.int64)) * sx + (cx - base_x).astype(np.int64)
     k_lo_lo = (id_base + (cy_lo - base_y).astype(np.int64)) * sx + (cx_lo - base_x).astype(np.int64)
@@ -382,7 +392,7 @@ def _dedup_keep(ids: np.ndarray, x: np.ndarray, y: np.ndarray, w: np.ndarray, le
             continue
         budget -= total
         if budget < 0:
-            return None
+            return _bail("dedup: too many pairs")
         ii = np.repeat(qi, cnt)
         jj = order[np.repeat(lo - (np.cumsum(cnt) - cnt), cnt) + np.arange(total)]
         earlier = jj < ii
@@ -415,6 +425,43 @@ def _dedup_keep(ids: np.ndarray, x: np.ndarray, y: np.ndarray, w: np.ndarray, le
     return np.flatnonzero(shown)
 
 
+def _contains(x, w, y, h, ox, ow, oy, oh) -> bool:
+    """``_java_contains`` for an upright glyph ``(x, w, y, h)`` and another
+    ``(ox, ow, oy, oh)``."""
+    from .pdf_text_stripper import _fdiv
+
+    x_end = x + w
+    other_x_end = ox + ow
+    if other_x_end <= x or ox >= x_end:
+        return False
+    if oy + oh < y or oy > y + h:
+        return False
+    if ox > x and other_x_end > x_end:
+        return _fdiv(x_end - ox, w) > 0.15
+    if ox < x and other_x_end < x_end:
+        return _fdiv(other_x_end - x, w) > 0.15
+    return True
+
+
+def _any_diacritic_merge(keep, kept_flag, gx, gy, gw, gh) -> bool:
+    """Whether ``_merge_diacritics`` would merge anything on the kept
+    glyphs: the first merge it makes is a consecutive pair with a diacritic
+    contained in its neighbour (before it, else after it)."""
+
+    def geometry(i: int) -> tuple[float, float, float, float]:
+        g = int(keep[i])
+        return float(gx[g]), float(gw[g]), float(gy[g]), float(gh[g])
+
+    for k in np.flatnonzero(kept_flag).tolist():
+        cur = geometry(k)
+        # Into the glyph before it, or the glyph after it into it.
+        if k > 0 and _contains(*geometry(k - 1), *cur):
+            return True
+        if k + 1 < len(keep) and _contains(*geometry(k + 1), *cur):
+            return True
+    return False
+
+
 def format_page(
     stripper: PDFTextStripper, cols: PageColumns, objects: list[TextPosition]
 ) -> str | None:
@@ -422,7 +469,7 @@ def format_page(
     or ``None`` when the page needs the object pipeline."""
     s = stripper
     if s._sort_by_position or s._flip_axes:
-        return None
+        return _bail("sort or flipped axes")
     n_col = len(cols.x)
     (
         _seg_of,
@@ -438,7 +485,7 @@ def format_page(
         finite,
     ) = cols.geometry()
     if not finite:
-        return None
+        return _bail("non-finite geometry")
     seg_of = _seg_of
     recs = cols.recs
     segs = cols.segs
@@ -453,7 +500,7 @@ def format_page(
     for r in recs:
         tf = r[0][1]
         if tf != tf:
-            return None
+            return _bail("NaN font size")
         k = (tf, id(r[2]))
         g = group_of_key.get(k)
         if g is None:
@@ -481,15 +528,15 @@ def format_page(
                 or pos.tf_font_size is None
                 or pos.tf_font_size != pos.tf_font_size
             ):
-                return None
+                return _bail("object position: not plain")
             g = pos._java_geometry
             if g is None:
-                return None
+                return _bail("object position: no geometry")
             if g[0] != 0.0 or g[4] != g[1] or g[5] != g[2] or g[6] != g[3]:
-                return None
+                return _bail("object position: not upright")
             widths = pos.individual_widths
             if widths is None:
-                return None
+                return _bail("object position: no widths")
             k = (pos.tf_font_size, id(pos.font))
             grp = group_of_key.get(k)
             if grp is None:
@@ -534,7 +581,7 @@ def format_page(
         merged_p[obj_slot] = op_l
         pieces = merged_p.tolist()
         if not (np.isfinite(gx).all() and np.isfinite(gy).all() and np.isfinite(gw).all()):
-            return None
+            return _bail("object position: non-finite geometry")
     else:
         n = n_col
         gx = device_x
@@ -546,7 +593,7 @@ def format_page(
         grp_of = rec_group_a[rec_of]
         src = None
     if not (np.isfinite(gh).all() and np.isfinite(gws).all()):
-        return None
+        return _bail("non-finite height")
 
     # Text ids (the index of each text's first glyph).
     first_of: dict[str, int] = {}
@@ -572,16 +619,18 @@ def format_page(
     if s._should_separate_by_beads and s._active_page is not None:
         rects = s._bead_rectangles_java(s._active_page)
     if rects:
-        return None
+        return _bail("thread beads")
 
-    # Diacritics need the object merge.
+    # Diacritic merging (``_merge_diacritics``): a merge needs the object
+    # pipeline; without one the glyphs stay as they are.
     diacritic_texts = [t for t in first_of if _is_diacritic(t)]
     if diacritic_texts:
         flagged = np.zeros(n, dtype=bool)
         for t in diacritic_texts:
             flagged |= ids == first_of[t]
-        if flagged[keep].any():
-            return None
+        kept_flag = flagged[keep]
+        if kept_flag.any() and _any_diacritic_merge(keep, kept_flag, gx, gy, gw, gh):
+            return _bail("diacritic merge")
 
     # The glyphs ``writePage`` walks.
     seq = keep
@@ -662,7 +711,7 @@ def _write_page(s, seq, pieces, ids, first_of, gx, gy, gw, gh, gws, gnw, grp_of,
             x_reset[0] = False
             new_end = x32 + w32
         if (new_end == -1.0).any():
-            return None
+            return _bail("word end at -1")
         # Average character width: reset at a font or size change.
         resets: list[int] = []
         if m > 1:
