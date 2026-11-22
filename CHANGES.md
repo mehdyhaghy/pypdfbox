@@ -133,12 +133,11 @@ porting history before 1.0.0 is in git history.
 
 ### Unreleased
 
-- Faster save (-15%), merge (-14%), split (-12%) and text extraction (-15%) on large documents, with byte-identical output: each indirect object is read in one pass, dictionary parsing and content-stream tokenizing are leaner, `PDFCloneUtility` copies dictionaries without rehashing keys, the writer does less work per object, and per-glyph text geometry no longer adds objects the garbage collector tracks.
-- Text extraction about 6% faster again: each show-text operator validates its run context once and emits all its strings in one pass, with no per-string call chain. Output is unchanged.
-- Text extraction about 2x faster: `get_text` lays out each page from compact per-page glyph columns instead of one `TextPosition` object per glyph, with identical text, positions and log output (checked on 210 real-world PDFs). Pages using a feature the columnar path does not cover, or a stripper subclass that overrides a layout hook, fall back to the classic path. On columnar pages `get_characters_by_article()` builds its `TextPosition` objects the first time it is read (same values; repeated reads return the same objects), and the internal `_characters_by_article` attribute is now a property.
+- Nothing yet.
 
 ### 2.6.0 (2026-11-21)
 
+- **Performance:** text extraction about 2.3x faster on large documents (the 756-page PDF spec: 12.3 s to 5.4 s), and save, merge and split 12-15% faster, with byte-identical output. `get_text` lays out each page from compact per-page glyph columns instead of one `TextPosition` object per glyph; pages using a feature this path does not cover, or a stripper subclass that overrides a layout hook, use the classic path. On those columnar pages `get_characters_by_article()` builds its `TextPosition` objects the first time it is read (same values; repeated reads return the same objects), and the internal `_characters_by_article` attribute is now a property. Objects are read in one pass, dictionary parsing and tokenizing are leaner, `PDFCloneUtility` copies dictionaries without rehashing keys, and the writer does less work per object.
 - **Text extraction:** `/ActualText` replacement is kept as written (no bidi
   reordering or normalization) and `TextPosition.is_from_actual_text()` marks
   the replacing glyph; the old span flag is now `in_actual_text_span`
