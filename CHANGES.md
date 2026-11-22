@@ -143,6 +143,7 @@ porting history before 1.0.0 is in git history.
 - `/W2` CID ranges are stored compactly (trunk `bcf78963`).
 - **Breaking, upstream parity:** `PDPageTree.remove` raises `ValueError` for an orphan page (no `/Parent`) or a parent without `/Kids` (PDFBOX-6318); 2.x only warns.
 - **Breaking, upstream parity:** `/Encrypt /Length 0` raises `OSError("Invalid encryption dictionary length: 0")` (PDFBOX-6316); 2.x falls back with a warning.
+- **Performance:** text extraction about 7% faster on large documents (the 756-page PDF spec: 5.12 s to 4.75 s; the first 50 pages about 3%), with identical output. `get_text` reads content-stream operands as plain numbers and bytes straight from the tokenizer instead of building a COS object per token, matches a run of numbers with its operator (and a plain `TJ` array or `MCID` dictionary) in one step, and skips the operators text extraction ignores. A stripper subclass that overrides a dispatch or show-text hook keeps the classic token loop.
 
 ### 2.6.0 (2026-11-21)
 
