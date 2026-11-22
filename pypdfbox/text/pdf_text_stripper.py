@@ -410,121 +410,135 @@ def _word_metrics_reference(
     return delta_space, average_char_width, new_end_of_text_x, expected_start_of_next_word_x
 
 
-class _JavaGeometry:
-    """Upstream ``TextPosition`` coordinates of one position.
+# Upstream ``TextPosition`` coordinates of one position, as a plain tuple
+# indexed by these field names: derived once from the device-space geometry
+# with upstream's formulas (``getXRot`` / ``getYLowerLeftRot`` /
+# ``getWidthRot``), in upstream's upper-left (y-down) frame and in float32,
+# so the line, word, paragraph and sort logic can follow
+# ``PDFTextStripper.writePage`` and ``TextPositionComparator`` literally.
+# A tuple of floats is not tracked by the cycle collector, so the one built
+# per glyph never adds to the collections a page's positions trigger.
+_GEOMETRY_FIELDS = (
+    "dir",  # 0
+    "x",  # 1
+    "y",  # 2
+    "width",  # 3
+    "x_dir_adj",  # 4
+    "y_dir_adj",  # 5
+    "width_dir_adj",  # 6
+    "height",  # 7
+    "width_of_space",  # 8
+)
 
-    Derived once from the device-space geometry with upstream's formulas
-    (``getXRot`` / ``getYLowerLeftRot`` / ``getWidthRot``), in upstream's
-    upper-left (y-down) frame and in float32, so the line, word, paragraph
-    and sort logic can follow ``PDFTextStripper.writePage`` and
-    ``TextPositionComparator`` literally.
-    """
 
-    __slots__ = (
-        "dir",
-        "x",
-        "y",
-        "width",
-        "x_dir_adj",
-        "y_dir_adj",
-        "width_dir_adj",
-        "height",
-        "width_of_space",
-    )
-
-    def __init__(self, pos: TextPosition) -> None:
-        tx = pos.device_x
-        ty = pos.device_y
-        end_x = pos.device_end_x
-        end_y = pos.device_end_y
-        if (
-            tx is not None
-            and ty is not None
-            and end_x is not None
-            and end_y is not None
-            and pos.rotation % 360.0 == 0.0
-            and pos.dir % 360.0 == 0.0
-        ):
-            # The common upright glyph on an unrotated page: the general
-            # formulas below with rotation and direction 0 (``x = tx``,
-            # ``y = pageHeight - ty``, ``width = |endX - tx|``).
-            ph = _f32(pos.page_height)
-            try:
-                y, width = _f32x2_unpack(_f32x2_pack(ph - ty, end_x - tx))
-            except OverflowError:
-                y = f32(ph - ty)
-                width = f32(end_x - tx)
-            width = abs(width)
-            self.dir = 0.0
-            self.x = self.x_dir_adj = tx
-            self.y = self.y_dir_adj = y
-            self.width = self.width_dir_adj = width
-            self.height = abs(pos.height)
-            self.width_of_space = abs(pos.width_of_space)
-            return
-        if tx is None or ty is None or end_x is None or end_y is None:
-            # A position built by hand: its stored origin and width stand in
-            # for the device geometry, laid along its text direction.
-            tx = _f32(pos.x)
-            ty = _f32(pos.y)
-            theta = math.radians(pos.dir % 360.0)
-            end_x = _f32(tx + pos.width * math.cos(theta))
-            end_y = _f32(ty + pos.width * math.sin(theta))
-        pw = _f32(pos.page_width)
+def _build_java_geometry(pos: TextPosition) -> tuple[float, ...]:
+    """Compute the geometry tuple (see :data:`_GEOMETRY_FIELDS`) of ``pos``."""
+    tx = pos.device_x
+    ty = pos.device_y
+    end_x = pos.device_end_x
+    end_y = pos.device_end_y
+    if (
+        tx is not None
+        and ty is not None
+        and end_x is not None
+        and end_y is not None
+        and pos.rotation % 360.0 == 0.0
+        and pos.dir % 360.0 == 0.0
+    ):
+        # The common upright glyph on an unrotated page: the general
+        # formulas below with rotation and direction 0 (``x = tx``,
+        # ``y = pageHeight - ty``, ``width = |endX - tx|``).
         ph = _f32(pos.page_height)
-        rotation = pos.rotation % 360.0
-        direction = pos.dir % 360.0
+        try:
+            y, width = _f32x2_unpack(_f32x2_pack(ph - ty, end_x - tx))
+        except OverflowError:
+            y = f32(ph - ty)
+            width = f32(end_x - tx)
+        width = abs(width)
+        return (
+            0.0,
+            tx,
+            y,
+            width,
+            tx,
+            y,
+            width,
+            abs(pos.height),
+            abs(pos.width_of_space),
+        )
+    if tx is None or ty is None or end_x is None or end_y is None:
+        # A position built by hand: its stored origin and width stand in
+        # for the device geometry, laid along its text direction.
+        tx = _f32(pos.x)
+        ty = _f32(pos.y)
+        theta = math.radians(pos.dir % 360.0)
+        end_x = _f32(tx + pos.width * math.cos(theta))
+        end_y = _f32(ty + pos.width * math.sin(theta))
+    pw = _f32(pos.page_width)
+    ph = _f32(pos.page_height)
+    rotation = pos.rotation % 360.0
+    direction = pos.dir % 360.0
 
-        def x_rot(r: float) -> float:
-            if r == 0.0:
-                return tx
-            if r == 90.0:
-                return ty
-            if r == 180.0:
-                return _f32(pw - tx)
-            if r == 270.0:
-                return _f32(ph - ty)
-            return 0.0
+    def x_rot(r: float) -> float:
+        if r == 0.0:
+            return tx
+        if r == 90.0:
+            return ty
+        if r == 180.0:
+            return _f32(pw - tx)
+        if r == 270.0:
+            return _f32(ph - ty)
+        return 0.0
 
-        def y_lower_left_rot(r: float) -> float:
-            if r == 0.0:
-                return ty
-            if r == 90.0:
-                return _f32(pw - tx)
-            if r == 180.0:
-                return _f32(ph - ty)
-            if r == 270.0:
-                return tx
-            return 0.0
+    def y_lower_left_rot(r: float) -> float:
+        if r == 0.0:
+            return ty
+        if r == 90.0:
+            return _f32(pw - tx)
+        if r == 180.0:
+            return _f32(ph - ty)
+        if r == 270.0:
+            return tx
+        return 0.0
 
-        def width_rot(r: float) -> float:
-            if r in (90.0, 270.0):
-                return abs(_f32(end_y - ty))
-            return abs(_f32(end_x - tx))
+    def width_rot(r: float) -> float:
+        if r in (90.0, 270.0):
+            return abs(_f32(end_y - ty))
+        return abs(_f32(end_x - tx))
 
-        self.dir = direction
-        self.x = x_rot(rotation)
-        extent = ph if rotation in (0.0, 180.0) else pw
-        self.y = _f32(extent - y_lower_left_rot(rotation))
-        self.width = width_rot(rotation)
-        if direction == rotation:
-            self.x_dir_adj = self.x
-            self.y_dir_adj = self.y
-            self.width_dir_adj = self.width
-        else:
-            self.x_dir_adj = x_rot(direction)
-            extent = ph if direction in (0.0, 180.0) else pw
-            self.y_dir_adj = _f32(extent - y_lower_left_rot(direction))
-            self.width_dir_adj = width_rot(direction)
-        if pos.device_x is not None:
-            # A glyph from the stripper: float values, its real (possibly
-            # zero) height.
-            self.height = abs(pos.height)
-            self.width_of_space = abs(pos.width_of_space)
-        else:
-            # A hand-built position falls back to its font size.
-            self.height = abs(_f32(pos.get_height()))
-            self.width_of_space = abs(_f32(pos.width_of_space))
+    x = x_rot(rotation)
+    extent = ph if rotation in (0.0, 180.0) else pw
+    y = _f32(extent - y_lower_left_rot(rotation))
+    width = width_rot(rotation)
+    if direction == rotation:
+        x_dir_adj = x
+        y_dir_adj = y
+        width_dir_adj = width
+    else:
+        x_dir_adj = x_rot(direction)
+        extent = ph if direction in (0.0, 180.0) else pw
+        y_dir_adj = _f32(extent - y_lower_left_rot(direction))
+        width_dir_adj = width_rot(direction)
+    if pos.device_x is not None:
+        # A glyph from the stripper: float values, its real (possibly
+        # zero) height.
+        height = abs(pos.height)
+        width_of_space = abs(pos.width_of_space)
+    else:
+        # A hand-built position falls back to its font size.
+        height = abs(_f32(pos.get_height()))
+        width_of_space = abs(_f32(pos.width_of_space))
+    return (
+        direction,
+        x,
+        y,
+        width,
+        x_dir_adj,
+        y_dir_adj,
+        width_dir_adj,
+        height,
+        width_of_space,
+    )
 
 
 def _ordered_unicode(text: TextPosition) -> str:
@@ -536,13 +550,14 @@ def _ordered_unicode(text: TextPosition) -> str:
     return text.get_visually_ordered_unicode()
 
 
-def _java_geometry(pos: TextPosition) -> _JavaGeometry:
-    """Return (and cache on ``pos``) its :class:`_JavaGeometry`."""
+def _java_geometry(pos: TextPosition) -> tuple[float, ...]:
+    """Return (and cache on ``pos``) its geometry tuple (see
+    :data:`_GEOMETRY_FIELDS`)."""
     # Plain attribute access (not ``pos.__dict__``) keeps the instance's
     # inline attribute storage instead of materialising a per-glyph dict.
     geometry = getattr(pos, "_java_geometry", None)
     if geometry is None:
-        geometry = pos._java_geometry = _JavaGeometry(pos)
+        geometry = pos._java_geometry = _build_java_geometry(pos)
     return geometry
 
 
@@ -578,12 +593,12 @@ def _java_compare(pos1: TextPosition, pos2: TextPosition) -> int:
         g2 = pos2._java_geometry or _java_geometry(pos2)
     except AttributeError:
         g2 = _java_geometry(pos2)
-    dir1 = g1.dir
-    dir2 = g2.dir
+    dir1 = g1[0]
+    dir2 = g2[0]
     if dir1 != dir2:
         return -1 if dir1 < dir2 else 1
-    pos1_y_bottom = g1.y_dir_adj
-    pos2_y_bottom = g2.y_dir_adj
+    pos1_y_bottom = g1[5]
+    pos2_y_bottom = g2[5]
     try:
         y_difference = abs(_f32_unpack(_f32_pack(pos1_y_bottom - pos2_y_bottom))[0])
     except OverflowError:
@@ -591,7 +606,7 @@ def _java_compare(pos1: TextPosition, pos2: TextPosition) -> int:
     if y_difference >= _F32_TENTH or y_difference != y_difference:
         # (0, 0) is the upper-left corner: a position's top is above its
         # bottom. (Only needed when the bottoms are not within 0.1.)
-        pos1_y_top, pos2_y_top = _f32x2(pos1_y_bottom - g1.height, pos2_y_bottom - g2.height)
+        pos1_y_top, pos2_y_top = _f32x2(pos1_y_bottom - g1[7], pos2_y_bottom - g2[7])
         if not (
             pos1_y_top <= pos2_y_bottom <= pos1_y_bottom
             or pos2_y_top <= pos1_y_bottom <= pos2_y_bottom
@@ -599,8 +614,8 @@ def _java_compare(pos1: TextPosition, pos2: TextPosition) -> int:
             if pos1_y_bottom < pos2_y_bottom:
                 return -1
             return 1
-    x1 = g1.x_dir_adj
-    x2 = g2.x_dir_adj
+    x1 = g1[4]
+    x2 = g2[4]
     if x1 < x2:
         return -1
     if x1 > x2:
@@ -612,18 +627,18 @@ def _java_contains(pos: TextPosition, other: TextPosition) -> bool:
     """Upstream ``TextPosition.contains`` (used for diacritic merging)."""
     g = _java_geometry(pos)
     o = _java_geometry(other)
-    this_x_start = g.x_dir_adj
-    this_width = g.width_dir_adj
+    this_x_start = g[4]
+    this_width = g[6]
     this_x_end = this_x_start + this_width
-    other_x_start = o.x_dir_adj
-    other_x_end = other_x_start + o.width_dir_adj
+    other_x_start = o[4]
+    other_x_end = other_x_start + o[6]
     if other_x_end <= this_x_start or other_x_start >= this_x_end:
         return False
-    this_y_start = g.y_dir_adj
-    other_y_start = o.y_dir_adj
+    this_y_start = g[5]
+    other_y_start = o[5]
     if (
-        other_y_start + o.height < this_y_start
-        or other_y_start > this_y_start + g.height
+        other_y_start + o[7] < this_y_start
+        or other_y_start > this_y_start + g[7]
     ):
         return False
     if other_x_start > this_x_start and other_x_end > this_x_end:
@@ -637,16 +652,16 @@ def _java_completely_contains(pos: TextPosition, other: TextPosition) -> bool:
     """Upstream ``TextPosition.completelyContains`` (contained spaces)."""
     g = _java_geometry(pos)
     o = _java_geometry(other)
-    this_left = g.x_dir_adj
-    this_right = _f32(this_left + g.width_dir_adj)
-    other_left = o.x_dir_adj
-    other_right = _f32(other_left + o.width_dir_adj)
+    this_left = g[4]
+    this_right = _f32(this_left + g[6])
+    other_left = o[4]
+    other_right = _f32(other_left + o[6])
     if this_left > other_left or other_right > this_right:
         return False
-    this_top = g.y_dir_adj
-    this_bottom = _f32(this_top + g.height)
-    other_top = o.y_dir_adj
-    other_bottom = _f32(other_top + o.height)
+    this_top = g[5]
+    this_bottom = _f32(this_top + g[7])
+    other_top = o[5]
+    other_bottom = _f32(other_top + o[7])
     return not (this_top > other_top or other_bottom > this_bottom)
 
 
@@ -663,9 +678,9 @@ def _java_merge_diacritic(pos: TextPosition, diacritic: TextPosition) -> None:
     if len(diacritic_text) > 1:
         return
     diacritic_widths = _java_individual_widths(diacritic)
-    diac_x_start = _java_geometry(diacritic).x_dir_adj
+    diac_x_start = _java_geometry(diacritic)[4]
     diac_x_end = _f32(diac_x_start + (diacritic_widths[0] if diacritic_widths else 0.0))
-    curr_char_x_start = _java_geometry(pos).x_dir_adj
+    curr_char_x_start = _java_geometry(pos)[4]
     widths = list(_java_individual_widths(pos))
     unicode = pos.get_unicode()
     str_len = len(unicode)
@@ -731,7 +746,7 @@ class PDFTextStripper:
 
     # Set by ``process_page`` while it extracts an unrotated page whose
     # positions ``_apply_page_rotation`` then folds: ``_emit_glyphs`` may
-    # build an upright glyph's ``_JavaGeometry`` up front.
+    # build an upright glyph's geometry tuple up front.
     _fold_upright_geometry: bool = False
 
     # Heuristic threshold (in multiples of the current font size) above
@@ -1544,7 +1559,7 @@ class PDFTextStripper:
                     # Upstream ``getWidth()`` = ``|endX - tx|``.
                     pos.width = (
                         getattr(pos, "_java_geometry", None) or _java_geometry(pos)
-                    ).width
+                    )[3]
             return
         pw = self._page_width
         ph = self._page_height
@@ -1606,7 +1621,7 @@ class PDFTextStripper:
             if pos.device_x is not None:
                 # Exact upstream ``getWidthRot(rotation)`` from the glyph's
                 # device end point.
-                width_adj = _java_geometry(pos).width
+                width_adj = _java_geometry(pos)[3]
             pos.x = x_adj
             pos.y = y_adj
             pos.width = width_adj
@@ -2920,7 +2935,7 @@ class PDFTextStripper:
         simple = not rise and ctm.get_shear_x() == 0.0 and ctm.get_shear_y() == 0.0
         font_size_in_pt = font_size * x_scale
         # Inside ``process_page`` on an unrotated page, an upright glyph gets
-        # its upstream geometry (``_JavaGeometry``) here, from the values
+        # its upstream geometry tuple (``_build_java_geometry``) here, from the values
         # ``_apply_page_rotation`` then stores (rotation 0, the cropbox
         # height), rather than lazily in a later pass over the page.
         upright = simple and fold_upright and text_dir % 360.0 == 0.0
@@ -3083,7 +3098,6 @@ class PDFTextStripper:
         run_id = self._run_counter
         font_name = state.font_name
         append = positions.append
-        new_geometry = _JavaGeometry.__new__
         # ``/ActualText`` only changes at marked-content operators.
         actual_text = self._actual_text
         if plain_steps is not None:
@@ -3179,7 +3193,7 @@ class PDFTextStripper:
                         device_y = origin_y
                         device_end_y = end_y
                     if upright:
-                        # ``_JavaGeometry`` for rotation and direction 0. The
+                        # The geometry tuple for rotation and direction 0. The
                         # width narrows ``device_end_x - device_x``, which
                         # without a cropbox offset is ``dx_display``.
                         if crop_llx:
@@ -3222,14 +3236,17 @@ class PDFTextStripper:
                             font_size,
                         )
                         position._run_id = run_id
-                        geometry = new_geometry(_JavaGeometry)
-                        geometry.dir = 0.0
-                        geometry.x = geometry.x_dir_adj = device_x
-                        geometry.y = geometry.y_dir_adj = geometry_y
-                        geometry.width = geometry.width_dir_adj = geometry_width
-                        geometry.height = abs_height
-                        geometry.width_of_space = abs_width_of_space
-                        position._java_geometry = geometry
+                        position._java_geometry = (
+                            0.0,
+                            device_x,
+                            geometry_y,
+                            geometry_width,
+                            device_x,
+                            geometry_y,
+                            geometry_width,
+                            abs_height,
+                            abs_width_of_space,
+                        )
                     else:
                         position = TextPosition(
                             piece,
@@ -3408,7 +3425,7 @@ class PDFTextStripper:
                 )
                 position._run_id = run_id
                 if upright:
-                    # ``_JavaGeometry`` for rotation and direction 0.
+                    # The geometry tuple for rotation and direction 0.
                     try:
                         geometry_y, geometry_width = unpack2(
                             pack2(page_height - device_y, device_end_x - device_x)
@@ -3417,14 +3434,17 @@ class PDFTextStripper:
                         geometry_y = f32(page_height - device_y)
                         geometry_width = f32(device_end_x - device_x)
                     geometry_width = abs(geometry_width)
-                    geometry = new_geometry(_JavaGeometry)
-                    geometry.dir = 0.0
-                    geometry.x = geometry.x_dir_adj = device_x
-                    geometry.y = geometry.y_dir_adj = geometry_y
-                    geometry.width = geometry.width_dir_adj = geometry_width
-                    geometry.height = abs_height
-                    geometry.width_of_space = abs_width_of_space
-                    position._java_geometry = geometry
+                    position._java_geometry = (
+                        0.0,
+                        device_x,
+                        geometry_y,
+                        geometry_width,
+                        device_x,
+                        geometry_y,
+                        geometry_width,
+                        abs_height,
+                        abs_width_of_space,
+                    )
                 append(position)
             if simple:
                 state.text_x = next_x
@@ -4066,7 +4086,7 @@ class PDFTextStripper:
         last_text: TextPosition | None = None
         last_stock = False
         last_wrapper: PositionWrapper | None = None
-        last_geometry: _JavaGeometry | None = None
+        last_geometry: tuple[float, ...] | None = None
         last_line_start: PositionWrapper | None = None
         start_of_page = True
         # In-line spacing terms remembered for the last ``(word_spacing,
@@ -4118,19 +4138,19 @@ class PDFTextStripper:
                 except AttributeError:
                     g = _java_geometry(position)
                 if sort:
-                    position_x = g.x_dir_adj
-                    position_y = g.y_dir_adj
-                    position_width = g.width_dir_adj
+                    position_x = g[4]
+                    position_y = g[5]
+                    position_width = g[6]
                 else:
-                    position_x = g.x
-                    position_y = g.y
-                    position_width = g.width
-                position_height = g.height
+                    position_x = g[1]
+                    position_y = g[2]
+                    position_width = g[3]
+                position_height = g[7]
                 widths = position.individual_widths
                 if widths is None:
                     widths = position.get_individual_widths()
                 word_char_count = len(widths) or 1
-                word_spacing = g.width_of_space
+                word_spacing = g[8]
                 within_low = None
                 x_distance = None
                 if (
@@ -4172,7 +4192,7 @@ class PDFTextStripper:
                     within_high = memo_within_high
                     scratch[0] = position_width / word_char_count
                     scratch[1] = position_x + position_width
-                    scratch[2] = g.x - last_geometry.x
+                    scratch[2] = g[1] - last_geometry[1]
                     new_end_of_text_x = scratch[1]
                     x_distance = scratch[2]
                     scratch[0] = previous_ave_char_width + scratch[0]
@@ -4247,7 +4267,7 @@ class PDFTextStripper:
                         line.append(None if bare_line else word_separator_item)
                     if x_distance is None:
                         x_distance, space_limit = _f32x2(
-                            g.x - last_geometry.x,
+                            g[1] - last_geometry[1],
                             word_spacing + delta_space,
                         )
                     if x_distance > space_limit or -x_distance > space_limit:
@@ -4364,15 +4384,15 @@ class PDFTextStripper:
             g = _java_geometry(position.get_text_position())
             last_g = _java_geometry(last_position.get_text_position())
             start_g = _java_geometry(last_line_start.get_text_position())
-            y_gap = abs(_f32(g.y_dir_adj - last_g.y_dir_adj))
+            y_gap = abs(_f32(g[5] - last_g[5]))
             new_y_val = self._java_multiply_float(
                 _f32(self.get_drop_threshold()), max_height_for_line
             )
-            x_gap = _f32(g.x_dir_adj - start_g.x_dir_adj)
+            x_gap = _f32(g[4] - start_g[4])
             new_x_val = self._java_multiply_float(
-                _f32(self.get_indent_threshold()), g.width_of_space
+                _f32(self.get_indent_threshold()), g[8]
             )
-            position_width = self._java_multiply_float(0.25, g.width)
+            position_width = self._java_multiply_float(0.25, g[3])
             if y_gap > new_y_val:
                 result = True
             elif x_gap > new_x_val:
@@ -4381,7 +4401,7 @@ class PDFTextStripper:
                     result = True
                 else:
                     position.set_hanging_indent()
-            elif x_gap < -g.width_of_space:
+            elif x_gap < -g[8]:
                 # Left of the previous line: was it a hanging indent?
                 if not last_line_start.is_paragraph_start():
                     result = True
@@ -5366,8 +5386,8 @@ class PDFTextStripper:
             return slots
         for pos in positions:
             g = _java_geometry(pos)
-            x = g.x
-            y = g.y
+            x = g[1]
+            y = g[2]
             found = -1
             left_above = -1
             left = -1
@@ -5439,7 +5459,7 @@ class PDFTextStripper:
           is ``NaN`` and nothing ever matches (the run is always shown).
 
         Coordinates and width are upstream's page-rotation-adjusted
-        ``getX()`` / ``getY()`` / ``getWidth()`` (see :class:`_JavaGeometry`),
+        ``getX()`` / ``getY()`` / ``getWidth()`` (see :data:`_GEOMETRY_FIELDS`),
         so the half-open windows apply in upstream's upper-left frame.
         """
         result: list[TextPosition] = []
@@ -5492,9 +5512,9 @@ class PDFTextStripper:
                 geometry = pos._java_geometry or _java_geometry(pos)
             except AttributeError:
                 geometry = _java_geometry(pos)
-            pos_x = geometry.x
-            pos_y = geometry.y
-            width = geometry.width
+            pos_x = geometry[1]
+            pos_y = geometry[2]
+            width = geometry[3]
             bucket = seen.get(text)
             # The tolerance is a function of the width and the text length
             # alone; each bucket remembers the last one it computed.

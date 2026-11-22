@@ -4,9 +4,15 @@ from typing import TYPE_CHECKING
 from pypdfbox.cos import (
     COSArray,
     COSBase,
+    COSBoolean,
     COSDictionary,
+    COSFloat,
+    COSInteger,
+    COSName,
+    COSNull,
     COSObject,
     COSStream,
+    COSString,
 )
 from pypdfbox.io import copy as io_copy
 
@@ -15,6 +21,17 @@ if TYPE_CHECKING:
 
 
 _LOG = logging.getLogger(__name__)
+
+# Exact leaf classes ``clone_cos_base_for_new_document`` returns unchanged.
+# A leaf clones to itself, so memoising it (which is all the generic path
+# does for one) cannot change any result; the cloner skips the memo for
+# them. Subclasses are not in the set and take the generic path.
+_LEAF_TYPES: frozenset[type] = frozenset(
+    (COSBoolean, COSFloat, COSInteger, COSName, COSNull, COSString)
+)
+
+# Marks a dictionary clone whose entry loop has not started.
+_UNSTARTED = object()
 
 
 class PDFCloneUtility:
@@ -60,21 +77,35 @@ class PDFCloneUtility:
         Mirrors ``PDFCloneUtility#cloneForNewDocument`` (Java line 84)."""
         if base is None:
             return None
+        if base.__class__ in _LEAF_TYPES:
+            return base
         # Identity-based lookup: COSDictionary defines __eq__ via the
         # default object identity, but to mirror Java's IdentityHashMap-
         # like semantics safely we key by id(). Two equal-but-distinct
         # COSDictionary instances must not collapse during cloning.
-        existing = self._cloned_version.get(id(base))
+        key = id(base)
+        existing = self._cloned_version.get(key)
         if existing is not None:
             return existing
-        if id(base) in self._cloned_values:
+        if key in self._cloned_values:
             # Don't clone a clone.
             return base
-        retval = self.clone_cos_base_for_new_document(base)
-        if retval is None:
-            return None
-        self._cloned_version[id(base)] = retval
-        self._cloned_sources.append(base)
+        cls = base.__class__
+        # Exact-class shortcuts for the generic dispatch below; the
+        # container cloners register ``base`` themselves.
+        if cls is COSDictionary:
+            retval: COSBase | None = self.clone_cos_dictionary(base)  # type: ignore[arg-type]
+        elif cls is COSArray:
+            retval = self.clone_cos_array(base)  # type: ignore[arg-type]
+        else:
+            if cls is COSObject:
+                retval = self.clone_for_new_document(base.get_object())  # type: ignore[attr-defined]
+            else:
+                retval = self.clone_cos_base_for_new_document(base)
+            if retval is None:
+                return None
+            self._cloned_version[key] = retval
+            self._cloned_sources.append(base)
         self._cloned_values.add(id(retval))
         return retval
 
@@ -113,14 +144,31 @@ class PDFCloneUtility:
         # reference`` still handles the direct ``[ref->this-array]`` case.
         self._cloned_version[id(array)] = new_array
         self._cloned_sources.append(array)
-        for i in range(array.size()):
-            value = array.get(i)
-            if self.has_self_reference(array, value):
-                new_array.add(new_array)
-            else:
-                cloned = self.clone_for_new_document(value)
-                if cloned is not None:
-                    new_array.add(cloned)
+        # A fresh array has no origin document state, so ``add`` reduces to
+        # the list append done here directly.
+        # Leaves and already-cloned values are resolved inline, exactly as
+        # ``clone_for_new_document`` would resolve them.
+        append = new_array._items.append
+        clone = self.clone_for_new_document
+        cloned_get = self._cloned_version.get
+        leaf = _LEAF_TYPES
+        for value in tuple(array._items):
+            if value.__class__ in leaf:
+                append(value)
+                continue
+            if (
+                isinstance(value, COSObject)
+                and value.get_object() is array
+                and self.has_self_reference(array, value)
+            ):
+                append(new_array)
+                continue
+            cloned = cloned_get(id(value))
+            if cloned is None:
+                cloned = clone(value)
+                if cloned is None:
+                    continue
+            append(cloned)
         return new_array
 
     def clone_cos_stream(self, stream: COSStream) -> COSStream:
@@ -165,14 +213,55 @@ class PDFCloneUtility:
         # encountered during recursion resolve to ``new_dictionary``.
         self._cloned_version[id(dictionary)] = new_dictionary
         self._cloned_sources.append(dictionary)
-        for key, value in list(dictionary.entry_set()):
-            if self.has_self_reference(dictionary, value):
-                new_dictionary.set_item(key, new_dictionary)
-            else:
-                cloned = self.clone_for_new_document(value)
-                if cloned is not None:
-                    new_dictionary.set_item(key, cloned)
+        self._clone_entries_into(dictionary, new_dictionary)
         return new_dictionary
+
+    def _clone_entries_into(
+        self, dictionary: COSDictionary, new_dictionary: COSDictionary
+    ) -> None:
+        """Fill the fresh ``new_dictionary`` with clones of ``dictionary``'s
+        entries, in source order, as ``set_item`` per entry would.
+
+        A fresh dictionary has no origin document state, so ``set_item``
+        reduces to a plain map store. The map is built as a copy of the
+        source map (which reuses the stored key hashes; ``COSName`` hashes
+        in Python) with only the non-leaf values replaced, and is installed
+        when complete. If a clone raises, the entries stored before the
+        failing one are installed, exactly as per-entry ``set_item`` calls
+        would have left them."""
+        items = dictionary._items.copy()
+        clone = self.clone_for_new_document
+        cloned_get = self._cloned_version.get
+        leaf = _LEAF_TYPES
+        key: object = _UNSTARTED
+        try:
+            for key, value in list(dictionary.entry_set()):
+                if value.__class__ in leaf:
+                    continue
+                if (
+                    isinstance(value, COSObject)
+                    and value.get_object() is dictionary
+                    and self.has_self_reference(dictionary, value)
+                ):
+                    items[key] = new_dictionary
+                    continue
+                cloned = cloned_get(id(value))
+                if cloned is None:
+                    cloned = clone(value)
+                    if cloned is None:
+                        del items[key]
+                        continue
+                items[key] = cloned
+        except BaseException:
+            partial: dict[COSName, COSBase] = {}
+            if key is not _UNSTARTED:
+                for done_key, done_value in items.items():
+                    if done_key is key:
+                        break
+                    partial[done_key] = done_value
+            new_dictionary._items = partial
+            raise
+        new_dictionary._items = items
 
     # ---------- merge ----------
 

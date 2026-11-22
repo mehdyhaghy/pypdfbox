@@ -11,14 +11,22 @@ extracts identically to the old ``get_contents()`` truthiness check.
 import io
 import math
 import random
+from collections import namedtuple
 
 from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
 from pypdfbox.pdmodel.pd_document import PDDocument
 from pypdfbox.pdmodel.pd_page import PDPage
 from pypdfbox.pdmodel.pd_page_content_stream import PDPageContentStream
-from pypdfbox.text.pdf_text_stripper import PDFTextStripper, _fdiv, _java_geometry
+from pypdfbox.text.pdf_text_stripper import (
+    _GEOMETRY_FIELDS,
+    PDFTextStripper,
+    _fdiv,
+    _java_geometry,
+)
 from pypdfbox.text.text_position import TextPosition
 from pypdfbox.util.matrix import f32
+
+_Geometry = namedtuple("_Geometry", _GEOMETRY_FIELDS)
 
 
 def _reference_drop(positions):
@@ -32,7 +40,7 @@ def _reference_drop(positions):
             result.append(pos)
             continue
         text = pos.text
-        geometry = _java_geometry(pos)
+        geometry = _Geometry(*_java_geometry(pos))
         tol = _fdiv(_fdiv(geometry.width, float(len(text))), 3.0)
         if math.isfinite(tol):
             tol = f32(tol)

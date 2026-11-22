@@ -20,6 +20,7 @@ from pypdfbox.cos import (
     COSStream,
     COSString,
 )
+from pypdfbox.cos.cos_name import _common_name_get, _name_get
 from pypdfbox.io import (
     RandomAccessRead,
     RandomAccessReadBuffer,
@@ -369,9 +370,16 @@ class COSParser(BaseParser):
 
     def _fast_path_applies(self) -> bool:
         """Whether this parser runs the reference dispatch unchanged. A
-        subclass (or a patch) that replaces any method the fast path stands
-        in for, as ``PDFStreamParser`` does, keeps the reference code."""
-        if _FP_GUARD(type(self)) != _FP_REFERENCE:
+        subclass that replaces any method the fast path stands in for, as
+        ``PDFStreamParser`` does, keeps the reference code. Decided once per
+        parser class, like ``BaseParser``'s own fast-path switch: the
+        attribute comparison costs more than many of the objects it
+        guards."""
+        cls = type(self)
+        applies = _FP_APPLIES.get(cls)
+        if applies is None:
+            applies = _FP_APPLIES[cls] = _FP_GUARD(cls) == _FP_REFERENCE
+        if not applies:
             return False
         src_type = type(self._src)
         return src_type is RandomAccessReadBuffer or src_type in _FP_WINDOW_SOURCES
@@ -638,16 +646,19 @@ class COSParser(BaseParser):
         simple = self._fp_simple_value
         get_name = COSName.get_pdf_name
         make_reference = self._make_indirect_reference
+        cget = _common_name_get
+        nget = _name_get
         item = _FP_ARRAY_ITEM
         i += 1
         while True:
             m = item(data, i)
             if m is not None:
-                # Inlined ``_fp_simple_value(m, 0)`` for the three most common
+                # Inlined ``_fp_simple_value(m, 0)`` for the four most common
                 # element kinds.
                 kind = m.lastindex
                 if kind == 3:
-                    append(get_name(m.group(3)))
+                    token = m.group(3)
+                    append(cget(token) or nget(token) or get_name(token))
                     i = m.end()
                     continue
                 if kind == 4:
@@ -662,6 +673,12 @@ class COSParser(BaseParser):
                         and len(second_token) <= _FP_MAX_DIGITS
                     ):
                         append(make_reference(int(first_token), int(second_token)))
+                        i = m.end()
+                        continue
+                elif kind == 5:
+                    token = m.group(5)
+                    if len(token) <= _FP_MAX_DIGITS:
+                        append(_fp_integer(token))
                         i = m.end()
                         continue
                 obj = simple(m, 0)
@@ -691,24 +708,56 @@ class COSParser(BaseParser):
         self._recursion_depth = depth
         d = COSDictionary()
         d.set_direct(is_direct)
-        set_item = d.set_item
+        # A fresh dictionary has no origin document state, so ``set_item``
+        # with a ``COSName`` key and a non-``None`` value is exactly this
+        # store.
+        items = d._items
         value = self._fp_value
         get_name = COSName.get_pdf_name
         simple = self._fp_simple_value
+        make_reference = self._make_indirect_reference
+        # ``COSName.get_pdf_name`` for ``bytes``, inlined: the interned
+        # instance from either registry, else the creating call.
+        cget = _common_name_get
+        nget = _name_get
         entry = _FP_DICT_ENTRY
         i += 2
         while True:
             m = entry(data, i)
             if m is not None:
-                key = get_name(m.group(1))
-                # Inlined ``_fp_simple_value(m, 1)`` for name values.
-                if m.lastindex == 4:
-                    set_item(key, get_name(m.group(4)))
+                # Inlined ``_fp_simple_value(m, 1)`` for the three most common
+                # value kinds (names, references, integers).
+                kind = m.lastindex
+                if kind == 4:
+                    key, token = m.group(1, 4)
+                    key = cget(key) or nget(key) or get_name(key)
+                    items[key] = cget(token) or nget(token) or get_name(token)
                     i = m.end()
                     continue
+                if kind == 3:
+                    key, first_token, second_token = m.group(1, 2, 3)
+                    if (
+                        first_token[0] != 0x2D  # '-'
+                        and len(first_token) <= _FP_MAX_DIGITS
+                        and len(second_token) <= _FP_MAX_DIGITS
+                    ):
+                        key = cget(key) or nget(key) or get_name(key)
+                        items[key] = make_reference(
+                            int(first_token), int(second_token)
+                        )
+                        i = m.end()
+                        continue
+                elif kind == 6:
+                    key, token = m.group(1, 6)
+                    if len(token) <= _FP_MAX_DIGITS:
+                        key = cget(key) or nget(key) or get_name(key)
+                        items[key] = _fp_integer(token)
+                        i = m.end()
+                        continue
+                key = get_name(m.group(1))
                 obj = simple(m, 1)
                 if obj is not None:
-                    set_item(key, obj)
+                    items[key] = obj
                     i = m.end()
                     continue
                 # Re-parse the value through the general path below; the key
@@ -743,7 +792,7 @@ class COSParser(BaseParser):
             obj, i = value(data, k, n, eof, base, True)
             if isinstance(obj, (COSArray, COSDictionary)):
                 obj.set_direct(True)
-            set_item(key, obj)
+            items[key] = obj
 
     # ---------- arrays ----------
 
@@ -3155,6 +3204,8 @@ _FP_GUARD = operator.attrgetter(
     "_fast_chunk",
 )
 _FP_REFERENCE = _FP_GUARD(COSParser)
+# ``_fast_path_applies`` per parser class.
+_FP_APPLIES: dict[type, bool] = {}
 
 def _validate_xref_index_pair(first_obj_num: int, count: int) -> None:
     """Reject negative xref-stream /Index values before key construction."""

@@ -133,7 +133,7 @@ porting history before 1.0.0 is in git history.
 
 ### Unreleased
 
-- Nothing yet.
+- Faster save (-15%), merge (-14%), split (-12%) and text extraction (-15%) on large documents, with byte-identical output: each indirect object is read in one pass, dictionary parsing and content-stream tokenizing are leaner, `PDFCloneUtility` copies dictionaries without rehashing keys, the writer does less work per object, and per-glyph text geometry no longer adds objects the garbage collector tracks.
 
 ### 2.6.0 (2026-11-21)
 

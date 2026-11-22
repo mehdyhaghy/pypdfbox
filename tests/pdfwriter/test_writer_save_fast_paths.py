@@ -22,6 +22,7 @@ from pypdfbox.cos import (
     COSNull,
     COSObject,
     COSObjectKey,
+    COSStream,
     COSString,
 )
 from pypdfbox.pdfwriter.compress import cos_writer_object_stream as objstm_mod
@@ -153,6 +154,45 @@ def test_serialize_shared_ref_cache_matches_reference() -> None:
     assert first == expected
     assert second == expected
     assert cache  # references were memoised
+
+
+def test_serialize_keyed_reference_targets_match_reference() -> None:
+    """Keyed targets reached directly or through an unkeyed ``COSObject``
+    (dictionary, array, stream, scalar) are written as references, with the
+    per-target ``ref_cache`` entries reused across calls."""
+    stream = COSStream()
+    keyed_int = COSInteger.get(31337)
+    keyed_str = COSString(b"keyed")
+    keyed_arr = COSArray([COSInteger.get(7)])
+    keyed_dict = COSDictionary()
+    object_keys = {
+        id(stream): COSObjectKey(20, 0),
+        id(keyed_int): COSObjectKey(21, 0),
+        id(keyed_str): COSObjectKey(22, 3),
+        id(keyed_arr): COSObjectKey(23, 0),
+        id(keyed_dict): COSObjectKey(24, 0),
+    }
+    via = [
+        COSObject(n, 0, resolved=target)
+        for n, target in enumerate(
+            (stream, keyed_int, keyed_str, keyed_arr, keyed_dict), start=40
+        )
+    ]
+    holder = COSDictionary()
+    holder.set_item("S", stream)
+    holder.set_item("A", keyed_arr)
+    holder.set_item("D", keyed_dict)
+    holder.set_item("I", keyed_int)
+    holder.set_item("Str", keyed_str)
+    holder.set_item("Plain", COSString(b"plain"))
+    for index, wrapper in enumerate(via):
+        holder.set_item(f"V{index}", wrapper)
+    arr = COSArray([stream, keyed_arr, keyed_dict, keyed_int, *via])
+    objects = [holder, arr, COSArray([holder]), keyed_dict]
+    expected = _reference_serialize(objects, object_keys, {})
+    cache: dict = {}
+    assert serialize_packed_objects(objects, object_keys, {}, cache) == expected
+    assert serialize_packed_objects(objects, object_keys, {}, cache) == expected
 
 
 def test_serialize_value_pool_kinds() -> None:

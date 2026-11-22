@@ -45,6 +45,16 @@ _ROLE_MAP: COSName = COSName.get_pdf_name("RoleMap")
 _CLASS_MAP: COSName = COSName.get_pdf_name("ClassMap")
 
 
+def _shallow_copy(src: COSDictionary) -> COSDictionary:
+    """``new COSDictionary(src)``: a fresh dictionary holding ``src``'s
+    entries in order. Equals ``COSDictionary(list(src.entry_set()))`` (a
+    fresh dictionary has no origin document state, so its ``set_item`` is
+    a plain map store) without rehashing every ``COSName`` key."""
+    dst = COSDictionary()
+    dst._items = src._items.copy()
+    return dst
+
+
 def _set_flat_names(node: COSDictionary, names: dict[str, COSBase]) -> None:
     """Write ``names`` as a single ``/Names`` leaf on a name-tree root.
 
@@ -811,7 +821,7 @@ class Splitter:
         for annotation in annotations:
             # create a shallow clone
             annotation_dict = annotation.get_cos_object()
-            cloned_dict = COSDictionary(list(annotation_dict.entry_set()))
+            cloned_dict = _shallow_copy(annotation_dict)
             annotation_clone = PDAnnotation.create_annotation(cloned_dict)
             self._annot_dict_map[id(annotation_dict)] = cloned_dict
             cloned_annotations.append(annotation_clone)
@@ -882,8 +892,8 @@ class Splitter:
                             # if action is not null, then the destination came
                             # from an action, thus clone action as well, then
                             # assign destination clone, then action
-                            cloned_action_dict = COSDictionary(
-                                list(action.get_cos_object().entry_set())
+                            cloned_action_dict = _shallow_copy(
+                                action.get_cos_object()
                             )
                             dst_action = PDActionFactory.create_action(
                                 cloned_action_dict
@@ -1337,11 +1347,15 @@ class Splitter:
         ):
             return None, None
 
-        # Create and fill clone
-        dst = COSDictionary()
-        for key, value in src.entry_set():
-            if key != _K and key != _PG and key != _P:
-                dst.set_item(key, value)
+        # Create and fill clone: every entry except /K, /Pg and /P, in
+        # source order. The fresh clone has no origin document state, so
+        # this equals per-entry ``set_item`` calls; copying the map reuses
+        # its stored key hashes (``COSName`` hashes and compares in Python).
+        dst = _shallow_copy(src)
+        items = dst._items
+        items.pop(_K, None)
+        items.pop(_PG, None)
+        items.pop(_P, None)
 
         # special handling for OBJR items ("object reference dictionary")
         if type_name == "OBJR":

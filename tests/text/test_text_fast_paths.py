@@ -23,6 +23,7 @@ import io
 import math
 import random
 import struct
+from collections import namedtuple
 from dataclasses import replace
 from pathlib import Path
 
@@ -44,7 +45,8 @@ from pypdfbox.pdmodel import PDDocument
 from pypdfbox.text import PDFTextStripper, TextPosition
 from pypdfbox.text import pdf_text_stripper as stripper_module
 from pypdfbox.text.pdf_text_stripper import (
-    _JavaGeometry,
+    _GEOMETRY_FIELDS,
+    _build_java_geometry,
     _tj_step,
     _tj_step_reference,
 )
@@ -81,7 +83,7 @@ _FIELDS = (
     "device_end_x",
     "device_end_y",
 )
-_GEOMETRY = _JavaGeometry.__slots__
+_Geometry = namedtuple("_Geometry", _GEOMETRY_FIELDS)
 
 
 class _RefusingStruct:
@@ -123,10 +125,10 @@ def _extract(path: Path, sort: bool) -> tuple[str, list[list[object]]]:
                 for pos in article:
                     geometry = getattr(pos, "_java_geometry", None)
                     if geometry is None:
-                        geometry = _JavaGeometry(pos)
+                        geometry = _build_java_geometry(pos)
                     rows.append(
                         [_key(getattr(pos, f)) for f in _FIELDS]
-                        + [_key(getattr(geometry, f)) for f in _GEOMETRY]
+                        + [_key(v) for v in geometry]
                     )
             pages.append(rows)
             return out
@@ -156,7 +158,7 @@ def test_extraction_matches_reference_arithmetic(
 
 def test_upright_geometry_matches_lazy_geometry() -> None:
     """The geometry ``_emit_glyphs`` builds up front equals the one
-    ``_JavaGeometry`` derives from the folded position."""
+    ``_build_java_geometry`` derives from the folded position."""
     doc = PDDocument.load(str(_FIXTURES / "text/input/eu-001.pdf"))
     try:
         stripper = PDFTextStripper()
@@ -168,9 +170,9 @@ def test_upright_geometry_matches_lazy_geometry() -> None:
     assert upright
     for pos in upright:
         built = pos._java_geometry
-        lazy = _JavaGeometry(pos)
-        assert [_key(getattr(built, f)) for f in _GEOMETRY] == [
-            _key(getattr(lazy, f)) for f in _GEOMETRY
+        lazy = _build_java_geometry(pos)
+        assert [_key(v) for v in built] == [
+            _key(v) for v in lazy
         ]
 
 
@@ -242,7 +244,7 @@ def test_emit_glyphs_matches_reference_on_random_state(
             rows.append([_key(getattr(pos, f)) for f in _FIELDS])
             geometry = getattr(pos, "_java_geometry", None)
             if geometry is not None:
-                rows.append([_key(getattr(geometry, f)) for f in _GEOMETRY])
+                rows.append([_key(v) for v in geometry])
         return rows
 
     seeds = [rnd.randrange(1 << 30) for _ in range(300)]
@@ -340,7 +342,7 @@ def test_plain_glyph_path_matches_reference_on_random_state(
                 rows.append([_key(getattr(pos, f)) for f in _FIELDS])
                 geometry = getattr(pos, "_java_geometry", None)
                 if geometry is not None:
-                    rows.append([_key(getattr(geometry, f)) for f in _GEOMETRY])
+                    rows.append([_key(v) for v in geometry])
             if local.random() < 0.5:
                 # A new ``Tc`` object with the same value re-derives the run.
                 state.char_spacing = float(str(state.char_spacing))
@@ -422,8 +424,8 @@ def test_format_positions_matches_without_fast_paths(
 
 def _reference_java_compare(pos1: TextPosition, pos2: TextPosition) -> int:
     """Upstream ``TextPositionComparator.compare``, one narrowing at a time."""
-    g1 = stripper_module._java_geometry(pos1)
-    g2 = stripper_module._java_geometry(pos2)
+    g1 = _Geometry(*stripper_module._java_geometry(pos1))
+    g2 = _Geometry(*stripper_module._java_geometry(pos2))
     if g1.dir != g2.dir:
         return -1 if g1.dir < g2.dir else 1
     pos1_y_top = f32(g1.y_dir_adj - g1.height)
