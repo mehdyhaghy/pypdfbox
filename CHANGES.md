@@ -135,6 +135,7 @@ porting history before 1.0.0 is in git history.
 
 - Faster save (-15%), merge (-14%), split (-12%) and text extraction (-15%) on large documents, with byte-identical output: each indirect object is read in one pass, dictionary parsing and content-stream tokenizing are leaner, `PDFCloneUtility` copies dictionaries without rehashing keys, the writer does less work per object, and per-glyph text geometry no longer adds objects the garbage collector tracks.
 - Text extraction about 6% faster again: each show-text operator validates its run context once and emits all its strings in one pass, with no per-string call chain. Output is unchanged.
+- Text extraction about 2x faster: `get_text` lays out each page from compact per-page glyph columns instead of one `TextPosition` object per glyph, with identical text, positions and log output (checked on 210 real-world PDFs). Pages using a feature the columnar path does not cover, or a stripper subclass that overrides a layout hook, fall back to the classic path. On columnar pages `get_characters_by_article()` builds its `TextPosition` objects the first time it is read (same values; repeated reads return the same objects), and the internal `_characters_by_article` attribute is now a property.
 
 ### 2.6.0 (2026-11-21)
 
