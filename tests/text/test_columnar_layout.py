@@ -171,6 +171,11 @@ def _snapshot(position) -> tuple:
 _OPTIONS = {
     "default": {},
     "nodup": {"set_suppress_duplicate_overlapping_text": False},
+    "sort": {"set_sort_by_position": True},
+    "sort_nodup": {
+        "set_sort_by_position": True,
+        "set_suppress_duplicate_overlapping_text": False,
+    },
     "nobeads": {"set_should_separate_by_beads": False},
     "more": {"set_add_more_formatting": True},
     "ignore_spaces": {"set_ignore_content_stream_space_glyphs": True},

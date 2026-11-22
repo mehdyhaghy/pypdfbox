@@ -1522,7 +1522,6 @@ class PDFTextStripper:
             and _USE_FAST_PATHS
             and self._fold_upright_geometry
             and not self._flip_axes
-            and not self._sort_by_position
             and self._columnar_hooks_ok()
         ):
             from ._columnar import PageColumns

@@ -462,14 +462,82 @@ def _any_diacritic_merge(keep, kept_flag, gx, gy, gw, gh) -> bool:
     return False
 
 
+def _sorted_glyphs(keep: np.ndarray, gx, gy, gh) -> np.ndarray:
+    """``keep`` sorted as ``_format_positions`` sorts an article: Java's
+    TimSort with ``_java_compare`` (upright glyphs: one direction), falling
+    back to ``IterativeMergeSort`` when the comparator breaks its contract."""
+    from pypdfbox.util.iterative_merge_sort import IterativeMergeSort
+
+    from ._tim_sort import ComparisonContractError, tim_sort
+    from .pdf_text_stripper import _F32_TENTH
+
+    xl = gx.tolist()
+    yl = gy.tolist()
+    with np.errstate(all="ignore"):
+        tops = (gy.astype(_F32) - gh.astype(_F32)).astype(_F64).tolist()
+    tenth = _F32_TENTH
+    scratch = array("f", bytes(8))
+
+    def compare(i: int, j: int) -> int:
+        y1 = yl[i]
+        y2 = yl[j]
+        scratch[0] = y1 - y2
+        difference = abs(scratch[0])
+        # (Bottoms 0.1 or more apart, and neither inside the other's span.)
+        if (difference >= tenth or difference != difference) and not (
+            tops[i] <= y2 <= y1 or tops[j] <= y1 <= y2
+        ):
+            return -1 if y1 < y2 else 1
+        x1 = xl[i]
+        x2 = xl[j]
+        if x1 < x2:
+            return -1
+        if x1 > x2:
+            return 1
+        return 0
+
+    order = keep.tolist()
+    try:
+        tim_sort(order, compare)
+    except ComparisonContractError:
+        IterativeMergeSort.sort(order, compare)
+    return np.asarray(order, dtype=np.int64)
+
+
+def _remove_contained_spaces(keep: np.ndarray, ids, space_id: int, gx, gy, gw, gh) -> np.ndarray:
+    """``_remove_contained_spaces_java``: drop a space completely inside the
+    glyph kept before it."""
+    space_at = np.flatnonzero(ids[keep] == space_id)
+    if not len(space_at):
+        return keep
+    with np.errstate(all="ignore"):
+        right = (gx.astype(_F32) + gw.astype(_F32)).astype(_F64)
+        bottom = (gy.astype(_F32) + gh.astype(_F32)).astype(_F64)
+    order = keep.tolist()
+    spaces = set(space_at.tolist())
+    kept = [order[0]]
+    previous = order[0]
+    for k in range(1, len(order)):
+        g = order[k]
+        if (
+            k in spaces
+            and not (gx[previous] > gx[g] or right[g] > right[previous])
+            and not (gy[previous] > gy[g] or bottom[g] > bottom[previous])
+        ):
+            continue
+        kept.append(g)
+        previous = g
+    return np.asarray(kept, dtype=np.int64)
+
+
 def format_page(
     stripper: PDFTextStripper, cols: PageColumns, objects: list[TextPosition]
 ) -> str | None:
     """The page text :meth:`PDFTextStripper._format_positions` would write,
     or ``None`` when the page needs the object pipeline."""
     s = stripper
-    if s._sort_by_position or s._flip_axes:
-        return _bail("sort or flipped axes")
+    if s._flip_axes:
+        return _bail("flipped axes")
     n_col = len(cols.x)
     (
         _seg_of,
@@ -632,6 +700,12 @@ def format_page(
         if kept_flag.any() and _any_diacritic_merge(keep, kept_flag, gx, gy, gw, gh):
             return _bail("diacritic merge")
 
+    if s._sort_by_position:
+        # ``TextPositionComparator`` order, then ``removeContainedSpaces``.
+        keep = _sorted_glyphs(keep, gx, gy, gh)
+        if " " in first_of:
+            keep = _remove_contained_spaces(keep, ids, first_of[" "], gx, gy, gw, gh)
+
     # The glyphs ``writePage`` walks.
     seq = keep
     if s._ignore_content_stream_space_glyphs and " " in first_of:
@@ -673,7 +747,7 @@ def _write_page(s, seq, pieces, ids, first_of, gx, gy, gw, gh, gws, gnw, grp_of,
     if s._article_start:
         s.write_article_start(sink)
     if m:
-        whole = m == len(gx)
+        whole = m == len(gx) and not s._sort_by_position
         x32 = (gx if whole else gx[seq]).astype(_F32)
         y32 = (gy if whole else gy[seq]).astype(_F32)
         w32 = (gw if whole else gw[seq]).astype(_F32)
