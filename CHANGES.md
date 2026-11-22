@@ -134,6 +134,10 @@ porting history before 1.0.0 is in git history.
 
 ### Unreleased
 
+- Nothing yet.
+
+### 2.6.1 (2026-11-22)
+
 - **Fix:** saving a document over the file it was loaded from (`doc.save(same_path)`, also `save_incremental`) no longer wipes the file. Files larger than the read buffer used to come out a few hundred bytes long, or the save raised `OSError` midway. pypdfbox now writes to a temp file in the same folder and swaps it in after a successful save, keeping permissions and symlinks; a failed save leaves the original untouched.
 - **Performance:** save about 15% faster on large files (the 756-page PDF spec: 4.33 s to 3.69 s), merge and split about 6% faster, with byte-identical output. In a file larger than the read buffer, lazily loaded objects are read from a small cache of 64 KiB pages read at an offset, instead of a seek plus a read through the shared cursor per object (objects are visited in number order, not file order); a file that has changed since it was opened drops the cache and reads as before. Names with `#XX` escapes are decoded in the parser's fast path instead of byte by byte.
 - **Performance:** text extraction about 7% faster on large documents (the 756-page PDF spec: 5.12 s to 4.75 s; the first 50 pages about 3%), with identical output. `get_text` reads content-stream operands as plain numbers and bytes straight from the tokenizer instead of building a COS object per token, matches a run of numbers with its operator (and a plain `TJ` array or `MCID` dictionary) in one step, and skips the operators text extraction ignores. A stripper subclass that overrides a dispatch or show-text hook keeps the classic token loop.
