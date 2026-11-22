@@ -164,6 +164,36 @@ def test_tiny_windows_match_reference(
         _compare(data, tmp_path)
 
 
+_ESCAPED_NAME_CASES = [
+    b"/A#20B",
+    b"/#41#42#43",
+    b"<< /K#65y /V#61l#20ue /N /x#2fy >>",
+    b"[ /A#41 /B#4 /C ]",
+    b"<< /A#G1 1 >>",
+    b"<< /A# 1 >>",
+    b"<< /A#4",
+    b"/A#",
+    b"/A#4",
+    b"<< /A#4g 2 /B#4 >>",
+    b"<< /#00 1 /#ff#FE 2 >>",
+    b"[/A#41#]",
+]
+
+
+@pytest.mark.parametrize(
+    "data",
+    _ESCAPED_NAME_CASES,
+    ids=[f"name{i}" for i in range(len(_ESCAPED_NAME_CASES))],
+)
+@pytest.mark.parametrize("window", [1, 3, 4096])
+def test_escaped_names_match_reference(
+    data: bytes, window: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Small windows cut the names (and their ``#XX`` escapes) at every byte.
+    monkeypatch.setattr(cos_parser_module, "_FP_FIRST_WINDOW", window)
+    _compare(data, tmp_path)
+
+
 def test_random_token_soup_matches_reference(tmp_path: Path) -> None:
     atoms = [
         b"/Type", b"/A#20B", b"/", b"12", b"-3", b"+4", b"3.5", b".5", b"1e5",

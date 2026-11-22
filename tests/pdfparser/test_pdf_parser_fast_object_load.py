@@ -9,6 +9,7 @@ switched off, which runs exactly the pre-existing sequence.
 from __future__ import annotations
 
 import random
+from itertools import product
 from pathlib import Path
 
 import pytest
@@ -37,8 +38,16 @@ _PREFIX = b"%PDF-1.4\n"
 class _ReferenceParser(PDFParser):
     """``PDFParser`` without the one-window object fast path."""
 
-    def _fast_load_indirect_object(self, obj):  # type: ignore[no-untyped-def]
+    def _fast_load_indirect_object(self, obj, start):  # type: ignore[no-untyped-def]
         return None
+
+
+class _ReferenceCOSParser(COSParser):
+    """``COSParser`` without its window fast path, so the reference body is
+    read by the byte-at-a-time readers."""
+
+    def _fast_path_applies(self) -> bool:
+        return False
 
 
 def _dump(obj: object) -> object:
@@ -75,16 +84,25 @@ def _dump(obj: object) -> object:
     return ("other", repr(obj))
 
 
-def _load(parser_cls: type[PDFParser], source, number: int, generation: int) -> list:
+def _load(
+    parser_cls: type[PDFParser],
+    source,
+    number: int,
+    generation: int,
+    offset: int = len(_PREFIX),
+) -> list:
     parser = parser_cls(source)
     document = COSDocument()
     parser._document = document
-    parser._cos_parser = COSParser(source, document=document)
+    cos_parser_cls = (
+        _ReferenceCOSParser if parser_cls is _ReferenceParser else COSParser
+    )
+    parser._cos_parser = cos_parser_cls(source, document=document)
     out: list = []
     try:
         try:
             body = parser._load_indirect_object_at(
-                len(_PREFIX), COSObject(number, generation)
+                offset, COSObject(number, generation)
             )
         except RecursionError as exc:
             out.append(("error", type(exc).__name__))
@@ -100,22 +118,41 @@ def _load(parser_cls: type[PDFParser], source, number: int, generation: int) -> 
     return out
 
 
-def _compare(data: bytes, tmp_path: Path, number: int = 7, generation: int = 0) -> None:
-    full = _PREFIX + data
-    expected = _load(_ReferenceParser, RandomAccessReadBuffer(full), number, generation)
-    actual = _load(PDFParser, RandomAccessReadBuffer(full), number, generation)
+def _compare(
+    data: bytes,
+    tmp_path: Path,
+    number: int = 7,
+    generation: int = 0,
+    filler: int = 0,
+) -> None:
+    # ``filler`` bytes of comment between the header and the object move it
+    # to any file offset (e.g. across a window-cache page boundary).
+    prefix = _PREFIX
+    if filler:
+        prefix += b"%" + b"x" * (filler - 2) + b"\n"
+    full = prefix + data
+    offset = len(prefix)
+    expected = _load(
+        _ReferenceParser, RandomAccessReadBuffer(full), number, generation, offset
+    )
+    actual = _load(PDFParser, RandomAccessReadBuffer(full), number, generation, offset)
     assert actual == expected, data
-    for padding in (b"", b"\n" * 3):
+    # The default buffer holds these small files whole (the reference window
+    # read); a tiny one makes the fast path use the page cache.
+    for padding, buffer_size in product((b"", b"\n" * 3), (None, 16)):
         path = tmp_path / "object.pdf"
         path.write_bytes(full + padding)
         results = []
         for parser_cls in (_ReferenceParser, PDFParser):
-            src = RandomAccessReadBufferedFile(path)
+            if buffer_size is None:
+                src = RandomAccessReadBufferedFile(path)
+            else:
+                src = RandomAccessReadBufferedFile(path, buffer_size=buffer_size)
             try:
-                results.append(_load(parser_cls, src, number, generation))
+                results.append(_load(parser_cls, src, number, generation, offset))
             finally:
                 src.close()
-        assert results[1] == results[0], data
+        assert results[1] == results[0], (data, buffer_size)
 
 
 _BODIES = [
@@ -200,3 +237,71 @@ def test_random_token_soup_matches_reference(tmp_path: Path) -> None:
         body = b" ".join(rng.choice(atoms) for _ in range(rng.randint(1, 8)))
         _compare(b"7 0 obj <<" + body + b">> endobj\n", tmp_path)
         _compare(b"7 0 obj [" + body + b"] endobj\n", tmp_path)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"/A#20B",
+        b"/#41#42#43",
+        b"<< /K#65y /V#61l#20ue /N /x#2fy >>",
+        b"[ /A#41 /B#4 /C ]",
+        b"<< /A#G1 1 >>",
+        b"<< /A# 1 >>",
+        b"<< /A#4",
+        b"/A#",
+        b"/A#4",
+        b"<< /A#4g 2 >>",
+        b"<< /#00 1 /#ff#FE 2 >>",
+    ],
+    ids=["value", "only_escapes", "keys", "array", "bad_hex", "bare",
+         "cut_key", "eof_bare", "eof_half", "half_hex", "bytes"],
+)
+def test_escaped_names_match_reference(body: bytes, tmp_path: Path) -> None:
+    for tail in _TAILS[:4] + [b""]:
+        _compare(b"7 0 obj\n" + body + tail, tmp_path)
+
+
+def test_object_larger_than_first_window_matches_reference(tmp_path: Path) -> None:
+    entries = b" ".join(b"/K%d [%d 0 R (v#%d)]" % (i, i, i) for i in range(900))
+    body = b"<< " + entries + b" >>"
+    assert len(body) > 4 * pdf_parser_module._FAST_OBJECT_WINDOW
+    _compare(b"7 0 obj\n" + body + b"\nendobj\n", tmp_path)
+    _compare(b"7 0 obj\n" + body + b"\nendobj", tmp_path)
+
+
+@pytest.mark.parametrize("before", [1, 9, 40, 200])
+def test_object_across_window_page_boundary_matches_reference(
+    before: int, tmp_path: Path
+) -> None:
+    from pypdfbox.io import random_access_read_buffered_file as raf
+
+    # The object starts ``before`` bytes ahead of the second cache page.
+    filler = raf._WINDOW_PAGE_SIZE - len(_PREFIX) - before
+    body = b"<< /Type /Annot /Rect [1 2 3 4] /T (title) /N#20m 5 0 R >>"
+    _compare(b"7 0 obj\n" + body + b"\nendobj\n", tmp_path, filler=filler)
+
+
+def test_small_document_saved_over_its_own_source(tmp_path: Path) -> None:
+    # A file that fits the read buffer keeps being read from memory after the
+    # save truncates it, so saving a lazily loaded document over its own
+    # source still writes the whole document.
+    from pypdfbox.pdmodel import PDDocument, PDPage
+
+    path = tmp_path / "doc.pdf"
+    with PDDocument() as doc:
+        for _ in range(5):
+            doc.add_page(PDPage())
+        doc.get_document_information().set_title("own source")
+        doc.save(path)
+    expected = tmp_path / "expected.pdf"
+    with PDDocument.load(path) as doc:
+        doc.save(expected)
+    with PDDocument.load(path) as doc:
+        # Reading a page fills the buffer from the start of the file.
+        doc.get_number_of_pages()
+        doc.save(path)
+    with PDDocument.load(path) as doc:
+        assert doc.get_number_of_pages() == 5
+        assert doc.get_document_information().get_title() == "own source"
+    assert path.stat().st_size == expected.stat().st_size
