@@ -37,6 +37,7 @@ try:
 except ImportError:  # pragma: no cover
     from cryptography.hazmat.primitives.ciphers.algorithms import ARC4 as _ARC4
 
+from . import security_handler as _sh
 from .access_permission import AccessPermission
 from .decryption_material import DecryptionMaterial
 from .invalid_password_exception import InvalidPasswordException
@@ -895,6 +896,38 @@ class StandardSecurityHandler(SecurityHandler):
         if cfm is None:
             return super().encrypt_stream(data, obj_num, gen_num)
         return self._dispatch_encrypt(cfm, data, obj_num, gen_num)
+
+    def _string_cipher(self, obj_num: int, gen_num: int) -> tuple[int, bytes]:
+        """Per-object form of :meth:`decrypt_string` (see the base method).
+
+        Same /StrF routing as :meth:`_dispatch_decrypt`, with the object key
+        derived once for all of the object's strings.
+        """
+        cls = type(self)
+        if (
+            cls.decrypt_string is not StandardSecurityHandler.decrypt_string
+            or cls._dispatch_decrypt is not StandardSecurityHandler._dispatch_decrypt
+            or not self._plain_cipher_hooks()
+        ):
+            return _sh._CIPHER_GENERIC, b""
+        cfm = self._string_cfm
+        if cfm is None:
+            return self._legacy_string_cipher(obj_num, gen_num)
+        if cfm == _CFM_IDENTITY:
+            return _sh._CIPHER_IDENTITY, b""
+        if cfm == _CFM_AESV2:
+            key = self.compute_object_key(obj_num, gen_num, aes=True)
+        elif cfm == _CFM_AESV3:
+            key = self.get_encryption_key() or b""
+        else:
+            # V2, /None and any unknown /CFM: RC4 per-object key.
+            return _sh._CIPHER_RC4, self.compute_object_key(
+                obj_num, gen_num, aes=False
+            )
+        # ``_aes128_cbc_decrypt``: only a 32-byte key tolerates a bad block.
+        if len(key) == 32:
+            return _sh._CIPHER_AES_TOLERANT, key
+        return _sh._CIPHER_AES_STRICT, key
 
     def _dispatch_decrypt(
         self, cfm: str, data: bytes, obj_num: int, gen_num: int
