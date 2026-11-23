@@ -270,3 +270,117 @@ def test_chunk_fast_paths_apply_to_subclasses_that_keep_the_helpers() -> None:
 
     assert not base_parser_module._fast_paths_apply(DigitParser)
     assert DigitParser(RandomAccessReadBuffer(b"12"))._fast_chunk() is None
+
+
+# Values the dictionary-entry and array-item matches read in one go: flat
+# arrays of numbers and references, hex strings, keywords, escaped names, and
+# the shapes next to them that must still take the general path.
+_ENTRY_VALUE_CASES = [
+    b"<< /A [1 2 3] /B [1 0 R 2 0 R] /C [0 18 0 R 8 19 0 R] /D [] /E [ ] >>",
+    b"<< /A [1 2 R] /B [1 2 3 R] /C [1 0 R 2] /D [1 0 R]>>",
+    b"<< /A [+5 0 R] /B [-0 0 R] /C [5 +0 R] /D [5 -1 R] /E [-5 0 R] >>",
+    b"<< /A [5. .5 -.5 +.5 -0 007 +3] /B [1.5.3] /C [1..5] /D [1e5 2] >>",
+    b"<< /A [1\t2\n3\r4\x0c5] /B [1\x002] /C [1\x0b2] /D [1%c\n2] >>",
+    b"<< /A [1 0\nR] /B [1 0 R/N] /C [1 0 R(s)] /D [1 0 RR] /E [1 0 R]>>",
+    b"<< /A [1-2] /B [1+2] /C [--1] /D [+-1] /E [. 1] /F [- 1] >>",
+    b"<< /A [" + b"9" * 4001 + b"] /B [" + b"9" * 4000 + b" 0 R] >>",
+    b"<< /A [" + b"1 " * 3000 + b"] /B [" + b"1.25 " * 300 + b"] >>",
+    b"<< /A [[1 2] [3 0 R] [/N 1]] /B [[[]]] >>",
+    b"[[1 2] [3 4 R] [5 0 R 6] [.5 -1]]",
+    b"<< /A <41 42> /B <4> /C <> /D <4\x081> /E <4G> /F <41><42> /G < 4 1 > >>",
+    b"<< /A <41\r\n42\t43\x0c> /B <414>/C <ab CD ef>>>",
+    b"<< /A true /B false /C null /D truex /E nullnull /F true/G false[1] >>",
+    b"<< /A true>> ",
+    b"<< /A null",
+    b"<< /A /B#20C /B /#41#42 /C /x#2 /D /x#zz /E /x# /F /x#41#4 >>",
+    b"<< /A /B#20C>> ",
+    b"[/A#20B /C#43 /D#4 /E]",
+    b"<< /A 5 %c\n0 R /B 5 0 %c\nR /C 5 %c\n 6 /D 7 0%c\n R >>",
+    b"<< /A 5%c\n /B 1.5%c\n /C /N%c\n /D (s)%c\n >>",
+    b"<< /A 1 2 R >>",
+    b"<< /A 1 0 R%c\n>>",
+    b"<< /A [1 0 R%c\n] >>",
+    b"<< /A 1 /A 2 /B [1] /B (x) /A <41> >>",
+]
+
+
+@pytest.mark.parametrize(
+    "data",
+    _ENTRY_VALUE_CASES,
+    ids=[f"value{i}" for i in range(len(_ENTRY_VALUE_CASES))],
+)
+@pytest.mark.parametrize("window", [1, 7, 4096])
+def test_entry_values_match_reference(
+    data: bytes, window: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cos_parser_module, "_FP_FIRST_WINDOW", window)
+    _compare(data, tmp_path)
+
+
+def test_nested_flat_arrays_at_the_recursion_limit_match_reference(
+    tmp_path: Path,
+) -> None:
+    for depth in range(240, 252):
+        _compare(b"<< /A " * depth + b"[1 0 R 2]" + b" >>" * depth, tmp_path)
+        _compare(b"[" * (depth * 2) + b"[1 2]" + b"]" * (depth * 2), tmp_path)
+
+
+def test_flat_array_and_hex_values_after_a_failed_entry_match_reference(
+    tmp_path: Path,
+) -> None:
+    rng = random.Random(4321)
+    atoms = [
+        b"[1 2]", b"[1 0 R]", b"[]", b"[.5 2.]", b"<41>", b"<4>", b"true",
+        b"null", b"/A#20B", b"/A#2", b"<< /X [1] >>", b"%c\n", b"(s)", b"5 0 R",
+        b"-1", b"[1 0 R 2 0 R 3]", b"\x00", b"\x0b",
+    ]
+    for _ in range(150):
+        values = [rng.choice(atoms) for _ in range(rng.randint(1, 6))]
+        body = b"".join(b" /K%d " % k + v for k, v in enumerate(values))
+        _compare(b"<<" + body + b" >>", tmp_path)
+        _compare(b"[" + b" ".join(values) + b"]", tmp_path)
+
+
+def test_repeated_reals_keep_their_text_and_value() -> None:
+    from pypdfbox.cos import cos_float as cos_float_module
+
+    tokens = [b"1.5", b"-.25", b"5.", b"0.0", b"1e5", b"3.4e39", b"0.00001"]
+    for token in tokens * 3:
+        if b"e" in token:
+            continue
+        fresh = COSFloat(token.decode("ascii"))
+        cached = cos_float_module._parsed_real(token)
+        assert type(cached) is COSFloat
+        assert cached._original == fresh._original
+        assert cached._value == fresh._value or (
+            cached._value != cached._value and fresh._value != fresh._value
+        )
+        assert vars(cached).keys() == vars(fresh).keys()
+        assert list(vars(cached)) == list(vars(fresh))
+        assert cached is not cos_float_module._parsed_real(token)
+
+
+def test_parsed_real_cache_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pypdfbox.cos import cos_float as cos_float_module
+
+    monkeypatch.setattr(cos_float_module, "_PARSED_REALS_MAX", 4)
+    cos_float_module._PARSED_REALS.clear()
+    for k in range(10):
+        cos_float_module._parsed_real(b"%d.5" % k)
+        assert len(cos_float_module._PARSED_REALS) <= 4
+    assert cos_float_module._parsed_real(b"9.5").float_value() == 9.5
+
+
+def test_fast_containers_have_the_constructor_attributes() -> None:
+    parser = COSParser(RandomAccessReadBuffer(b"<< /A [1 2] /B [/N] >>"))
+    d = parser.parse_direct_object()
+    reference = COSDictionary()
+    reference.set_direct(True)
+    assert list(vars(d)) == list(vars(reference))
+    assert d.is_direct()
+    for key in ("A", "B"):
+        array = d.get_item(key)
+        assert list(vars(array)) == list(vars(COSArray([])))
+        assert array.is_direct()
+        assert array.get_update_state().get_origin_document_state() is None
+    assert d.get_update_state().get_origin_document_state() is None
