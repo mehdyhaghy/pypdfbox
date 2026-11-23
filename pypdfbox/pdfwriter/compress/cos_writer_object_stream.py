@@ -10,6 +10,7 @@ The class collects ``(COSObjectKey, COSBase)`` pairs via
 """
 
 import logging
+from binascii import hexlify
 from io import BytesIO
 from typing import TYPE_CHECKING, BinaryIO
 
@@ -26,6 +27,7 @@ from pypdfbox.cos.cos_object_key import COSObjectKey
 from pypdfbox.cos.cos_stream import COSStream
 from pypdfbox.cos.cos_string import COSString
 from pypdfbox.pdfwriter._name_token import name_token as _name_token
+from pypdfbox.pdfwriter._name_token import name_token_sp as _name_sp
 from pypdfbox.pdfwriter.compress.direct_access_byte_array_output_stream import (
     DirectAccessByteArrayOutputStream,
 )
@@ -311,6 +313,33 @@ _VALUE_KINDS: frozenset[int] = frozenset(
     (_K_STRING, _K_FLOAT, _K_INTEGER, _K_BOOLEAN, _K_NAME)
 )
 _END = object()
+
+
+# Pre-formatted ``b"N "`` for the integers documents use most (MCIDs, page
+# indexes, small counts); anything else is formatted on the fly.
+_INT_SP: dict[int, bytes] = {i: b"%d " % i for i in range(-128, 2048)}
+
+
+def _string_sp(cos_string: COSString) -> bytes:
+    """``COSWriter.write_string`` output plus separator for an exact
+    ``COSString`` (literal for 7-bit data without CR/LF, else hex)."""
+    data: bytes = cos_string._bytes  # type: ignore[attr-defined]
+    if (
+        not cos_string._force_hex_form  # type: ignore[attr-defined]
+        and data.isascii()
+        and b"\r" not in data
+        and b"\n" not in data
+    ):
+        if b"\\" in data or b"(" in data or b")" in data:
+            data = (
+                data.replace(b"\\", b"\\\\")
+                .replace(b"(", b"\\(")
+                .replace(b")", b"\\)")
+            )
+        return b"(" + data + b") "
+    return b"<" + hexlify(data).upper() + b"> "
+
+
 # Container nesting depth past which the recursive fast path hands the
 # subtree to the explicit-stack walker (keeps clear of the recursion limit).
 _FAST_PATH_MAX_DEPTH = 64
@@ -363,6 +392,9 @@ def serialize_packed_objects(
     string_type = COSString
     stream_type = COSStream
     float_type = COSFloat
+    name_sp = _name_sp
+    string_sp = _string_sp
+    int_sp_get = _INT_SP.get
 
     parts: list[bytes] = []
     append = parts.append
@@ -398,14 +430,10 @@ def serialize_packed_objects(
         """Write a resolved non-container value (``write_cos_*``)."""
         if kind == _K_NAME:
             if type(base) is name_type:
-                token = base._token  # type: ignore[attr-defined]
-                if token is None:
-                    base.write_pdf(sink)  # type: ignore[attr-defined]
-                else:
-                    append(token)
+                append(name_sp(base))  # type: ignore[arg-type]
             else:
                 _write_pdf(base, sink)  # type: ignore[arg-type]
-            append(space)
+                append(space)
         elif kind == _K_INTEGER:
             if type(base) is int_type:
                 append(b"%d " % base.value)  # type: ignore[attr-defined]
@@ -413,8 +441,11 @@ def serialize_packed_objects(
                 _write_pdf(base, sink)  # type: ignore[arg-type]
                 append(space)
         elif kind == _K_STRING:
-            write_string(base, sink)  # type: ignore[arg-type]
-            append(space)
+            if type(base) is string_type:
+                append(string_sp(base))  # type: ignore[arg-type]
+            else:
+                write_string(base, sink)  # type: ignore[arg-type]
+                append(space)
         elif kind in (_K_FLOAT, _K_BOOLEAN):
             _write_pdf(base, sink)  # type: ignore[arg-type]
             append(space)
@@ -426,12 +457,7 @@ def serialize_packed_objects(
     def emit_key(dkey: object) -> None:
         """Dictionary keys are written as top-level (PDFBOX-5927)."""
         if type(dkey) is name_type:
-            token = dkey._token  # type: ignore[attr-defined]
-            if token is None:
-                dkey.write_pdf(sink)  # type: ignore[attr-defined]
-            else:
-                append(token)
-            append(space)
+            append(name_sp(dkey))  # type: ignore[arg-type]
         else:
             walk(dkey, True)
 
@@ -553,12 +579,7 @@ def serialize_packed_objects(
                 elif key is None:
                     key = pool_key(value, _K_NAME, value)  # type: ignore[arg-type]
             if key is None:
-                token = value._token  # type: ignore[attr-defined]
-                if token is None:
-                    value.write_pdf(sink)  # type: ignore[attr-defined]
-                else:
-                    append(token)
-                append(space)
+                append(name_sp(value))  # type: ignore[arg-type]
                 return
         elif tv is int_type:
             if kinds_in_pool:
@@ -570,7 +591,9 @@ def serialize_packed_objects(
                 elif key is None:
                     key = pool_key(value, _K_INTEGER, value)  # type: ignore[arg-type]
             if key is None:
-                append(b"%d " % value._value)  # type: ignore[attr-defined]
+                ivalue = value._value  # type: ignore[attr-defined]
+                data = int_sp_get(ivalue)
+                append(b"%d " % ivalue if data is None else data)
                 return
         elif tv is dict_type or tv is array_type:
             key = keys_get(id(value), _END)
@@ -603,14 +626,16 @@ def serialize_packed_objects(
 
     def emit_dict(cos_dict: COSDictionary, depth: int) -> None:
         append(b"<<")
-        for dkey, dvalue in cos_dict.entry_set():
+        for dkey, dvalue in cos_dict._items.items():  # type: ignore[attr-defined]
             if dvalue is None:
                 continue
-            if type(dkey) is name_type and dkey._token is not None:
-                append(dkey._token)
-                append(space)
+            if type(dkey) is name_type:
+                token = dkey._token_sp  # type: ignore[attr-defined]
+                append(name_sp(dkey) if token is None else token)  # type: ignore[arg-type]
             else:
                 emit_key(dkey)
+            # Exact-type dispatch, commonest first (indirect references,
+            # names, integers, strings, then nested containers).
             tv = type(dvalue)
             if tv is object_type:
                 # Inline the commonest value: a reference whose resolved
@@ -635,43 +660,53 @@ def serialize_packed_objects(
                             ref_cache[id(inner)] = (inner, data)
                             append(data)
                             continue
+            elif tv is name_type:
+                # Without a value pool only the identity table can turn a
+                # direct scalar into a reference.
+                if no_pool and keys_get(id(dvalue), _END) is _END:
+                    token = dvalue._token_sp  # type: ignore[attr-defined]
+                    append(name_sp(dvalue) if token is None else token)  # type: ignore[arg-type]
+                    continue
+            elif tv is int_type:
+                if no_pool and keys_get(id(dvalue), _END) is _END:
+                    ivalue = dvalue._value  # type: ignore[attr-defined]
+                    data = int_sp_get(ivalue)
+                    append(b"%d " % ivalue if data is None else data)
+                    continue
+            elif tv is string_type:
+                if no_pool and keys_get(id(dvalue), _END) is _END:
+                    append(string_sp(dvalue))  # type: ignore[arg-type]
+                    continue
             elif tv is dict_type or tv is array_type or tv is stream_type:
-                # A container held directly (not through a ``COSObject``)
-                # that is itself a keyed indirect, e.g. a cloned page tree
-                # node: always written as its reference.
-                hit = ref_get(id(dvalue))
-                if hit is not None and hit[0] is dvalue:
-                    append(hit[1])
-                    continue
-                key = keys_get(id(dvalue))
-                if key is not None:
-                    data = b"%d %d R " % (key.get_number(), key.get_generation())
-                    ref_cache[id(dvalue)] = (dvalue, data)
-                    append(data)
-                    continue
-            elif no_pool:
-                # Inline the commonest direct scalars (no value pool, so
-                # only the identity table can turn them into references).
-                if tv is name_type:
-                    token = dvalue._token  # type: ignore[attr-defined]
-                    if token is not None and keys_get(id(dvalue), _END) is _END:
-                        append(token)
-                        append(space)
+                key = keys_get(id(dvalue), _END)
+                if key is _END:
+                    # Unkeyed direct container: recurse straight away (what
+                    # ``emit_nested`` does for it); a stream or a too-deep
+                    # container takes the general path.
+                    if tv is not stream_type and depth < _FAST_PATH_MAX_DEPTH:
+                        if tv is dict_type:
+                            emit_dict(dvalue, depth + 1)  # type: ignore[arg-type]
+                        else:
+                            emit_array(dvalue, depth + 1)  # type: ignore[arg-type]
                         continue
-                elif tv is int_type:
-                    if keys_get(id(dvalue), _END) is _END:
-                        append(b"%d " % dvalue._value)  # type: ignore[attr-defined]
-                        continue
-                elif tv is string_type and keys_get(id(dvalue), _END) is _END:
-                    write_string(dvalue, sink)  # type: ignore[arg-type]
-                    append(space)
+                elif key is not None:
+                    # A container held directly (not through a ``COSObject``)
+                    # that is itself a keyed indirect, e.g. a cloned page tree
+                    # node: always written as its reference.
+                    hit = ref_get(id(dvalue))
+                    if hit is not None and hit[0] is dvalue:
+                        append(hit[1])
+                    else:
+                        data = b"%d %d R " % (key.get_number(), key.get_generation())
+                        ref_cache[id(dvalue)] = (dvalue, data)
+                        append(data)
                     continue
             emit_nested(dvalue, depth)
         append(b">> ")
 
     def emit_array(cos_array: COSArray, depth: int) -> None:
         append(b"[")
-        for value in cos_array:
+        for value in cos_array._items:  # type: ignore[attr-defined]
             if value is None:
                 append(b"null ")
                 continue
@@ -695,27 +730,41 @@ def serialize_packed_objects(
                             ref_cache[id(inner)] = (inner, data)
                             append(data)
                             continue
+            elif tv is int_type:
+                if no_pool and keys_get(id(value), _END) is _END:
+                    ivalue = value._value  # type: ignore[attr-defined]
+                    data = int_sp_get(ivalue)
+                    append(b"%d " % ivalue if data is None else data)
+                    continue
+            elif tv is name_type:
+                if no_pool and keys_get(id(value), _END) is _END:
+                    token = value._token_sp  # type: ignore[attr-defined]
+                    append(name_sp(value) if token is None else token)  # type: ignore[arg-type]
+                    continue
             elif tv is dict_type or tv is array_type or tv is stream_type:
-                # A container held directly (not through a ``COSObject``)
-                # that is itself a keyed indirect, e.g. a cloned page tree
-                # node: always written as its reference.
-                hit = ref_get(id(value))
-                if hit is not None and hit[0] is value:
-                    append(hit[1])
+                key = keys_get(id(value), _END)
+                if key is _END:
+                    # Unkeyed direct container: recurse straight away (what
+                    # ``emit_nested`` does for it); a stream or a too-deep
+                    # container takes the general path.
+                    if tv is not stream_type and depth < _FAST_PATH_MAX_DEPTH:
+                        if tv is dict_type:
+                            emit_dict(value, depth + 1)  # type: ignore[arg-type]
+                        else:
+                            emit_array(value, depth + 1)  # type: ignore[arg-type]
+                        continue
+                elif key is not None:
+                    # A container held directly (not through a ``COSObject``)
+                    # that is itself a keyed indirect, e.g. a cloned page tree
+                    # node: always written as its reference.
+                    hit = ref_get(id(value))
+                    if hit is not None and hit[0] is value:
+                        append(hit[1])
+                    else:
+                        data = b"%d %d R " % (key.get_number(), key.get_generation())
+                        ref_cache[id(value)] = (value, data)
+                        append(data)
                     continue
-                key = keys_get(id(value))
-                if key is not None:
-                    data = b"%d %d R " % (key.get_number(), key.get_generation())
-                    ref_cache[id(value)] = (value, data)
-                    append(data)
-                    continue
-            elif (
-                no_pool
-                and tv is int_type
-                and keys_get(id(value), _END) is _END
-            ):
-                append(b"%d " % value._value)  # type: ignore[attr-defined]
-                continue
             emit_nested(value, depth)
         append(b"] ")
 

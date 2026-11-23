@@ -30,8 +30,10 @@ from pypdfbox.cos.cos_object_key import _GENERATION_MASK, _NUMBER_OFFSET
 from pypdfbox.io import RandomAccessRead, RandomAccessWrite
 
 from ._name_token import name_token as _name_token
+from ._name_token import name_token_of as _name_token_of
+from ._name_token import name_token_sp as _name_token_sp
 from .compress.compress_parameters import CompressParameters
-from .cos_standard_output_stream import COSStandardOutputStream
+from .cos_standard_output_stream import EOL, COSStandardOutputStream
 from .cos_writer_xref_entry import COSWriterXRefEntry
 
 # Sentinel name objects used to filter the /Encrypt and /ID entries out of the
@@ -3502,38 +3504,83 @@ class COSWriter(ICOSVisitor):
 
     def visit_from_array(self, obj: COSArray) -> Any:
         out = self._standard_output
-        out.write(ARRAY_OPEN)
         items = list(obj)
         kind_cache = _KIND_CACHE
+        last = len(items) - 1
+        # Exact-type references, names and integers (and the separators
+        # after them) are collected in ``pending`` and written in one sink
+        # call; anything else flushes ``pending`` first and is written by
+        # the general path. Same bytes and EOL state as one write per token.
+        pending: list[bytes] = [ARRAY_OPEN]
+        append = pending.append
+        name_type = COSName
         for i, current in enumerate(items):
-            if current is None:
-                COSNull.NULL.accept(self)
+            tv = type(current)
+            if tv is COSObject:
+                self._add_object_to_write(current)
+                ref_key = self._get_object_key(current)
+                append(
+                    b"%d %d R" % (ref_key.object_number, ref_key.generation_number)
+                )
+            elif tv is name_type:
+                token = current._token
+                if token is None:
+                    token = _name_token_of(current)
+                append(token)
+            elif tv is COSInteger and type(current._value) is int:
+                append(b"%d" % current._value)
             else:
-                kind = kind_cache.get(type(current))
-                if kind is None:
-                    kind = _kind_of(type(current))
-                if kind == _KIND_DICTIONARY:
-                    self._write_dictionary(current)
-                elif kind == _KIND_ARRAY:
-                    self._write_array(current)
-                elif kind == _KIND_OBJECT:
-                    self._add_object_to_write(current)
-                    self._write_reference(current)
+                if pending:
+                    self._flush_pending(out, pending)
+                if current is None:
+                    COSNull.NULL.accept(self)
                 else:
-                    current.accept(self)
-            # Match upstream ``COSWriter.visitFromArray``: the separator is
-            # guarded by ``if (i.hasNext())`` so there is NO trailing space
-            # before the closing ``]``. Every 10th element gets an EOL
-            # instead of a space (helps pretty-printing without breaking
-            # parsers).
-            if i < len(items) - 1:
-                if (i + 1) % 10 == 0:
-                    out.write_eol()
-                else:
-                    out.write(SPACE)
-        out.write(ARRAY_CLOSE)
-        out.write_eol()
+                    kind = kind_cache.get(tv)
+                    if kind is None:
+                        kind = _kind_of(tv)
+                    if kind == _KIND_DICTIONARY:
+                        self._write_dictionary(current)
+                    elif kind == _KIND_ARRAY:
+                        self._write_array(current)
+                    elif kind == _KIND_OBJECT:
+                        self._add_object_to_write(current)
+                        self._write_reference(current)
+                    else:
+                        current.accept(self)
+                # Match upstream ``COSWriter.visitFromArray``: the separator
+                # is guarded by ``if (i.hasNext())`` so there is NO trailing
+                # space before the closing ``]``. Every 10th element gets an
+                # EOL instead of a space (helps pretty-printing without
+                # breaking parsers).
+                if i < last:
+                    if (i + 1) % 10 == 0:
+                        out.write_eol()
+                    else:
+                        out.write(SPACE)
+                continue
+            # A fast token was just queued: the stream is not on a new line
+            # after it, so ``write_eol`` would always emit the EOL.
+            if i < last:
+                append(EOL if (i + 1) % 10 == 0 else SPACE)
+        if pending:
+            append(ARRAY_CLOSE)
+            out.write_line(b"".join(pending))
+        else:
+            out.write(ARRAY_CLOSE)
+            out.write_eol()
         return None
+
+    @staticmethod
+    def _flush_pending(out: COSStandardOutputStream, pending: list[bytes]) -> None:
+        """Write the queued array tokens, leaving the stream's EOL state as
+        if each had been written on its own (a trailing queued EOL
+        separator leaves it on a new line)."""
+        if len(pending) > 1 and pending[-1] is EOL:
+            pending.pop()
+            out.write_line(b"".join(pending))
+        else:
+            out.write(b"".join(pending))
+        pending.clear()
 
     def _write_array(self, array: COSArray) -> None:
         if array.is_direct():
@@ -3709,11 +3756,43 @@ class COSWriter(ICOSVisitor):
         out.write(DICT_OPEN)
         out.write_eol()
         kind_cache = _KIND_CACHE
+        write = out.write
+        write_line = out.write_line
+        name_type = COSName
         for key, value in obj.entry_set():
             if value is None:
                 continue
-            key.accept(self)
-            out.write(SPACE)
+            # Fast paths for exact-type keys and the commonest values (an
+            # indirect reference, a name, an integer): the key, separator,
+            # value and EOL go out in one sink call, the same bytes as the
+            # general path below.
+            if type(key) is name_type:
+                key_token = key._token_sp
+                if key_token is None:
+                    key_token = _name_token_sp(key)
+                tv = type(value)
+                if tv is COSObject:
+                    self._add_object_to_write(value)
+                    ref_key = self._get_object_key(value)
+                    write_line(
+                        key_token
+                        + b"%d %d R"
+                        % (ref_key.object_number, ref_key.generation_number)
+                    )
+                    continue
+                if tv is name_type:
+                    token = value._token
+                    if token is None:
+                        token = _name_token_of(value)
+                    write_line(key_token + token)
+                    continue
+                if tv is COSInteger and type(value._value) is int:
+                    write_line(key_token + b"%d" % value._value)
+                    continue
+                write(key_token)
+            else:
+                key.accept(self)
+                write(SPACE)
             kind = kind_cache.get(type(value))
             if kind is None:
                 kind = _kind_of(type(value))

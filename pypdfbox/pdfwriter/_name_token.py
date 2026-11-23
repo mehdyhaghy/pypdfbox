@@ -1,6 +1,7 @@
 """Serialized ``/Name`` tokens for the writers' hot paths."""
 
 import re
+from typing import Any
 
 # Any byte outside the PDFBox name printable allowlist (A-Z a-z 0-9 and
 # ``+ - _ @ * $ ; .``, see ``COSName.writePDF``). Used to escape a whole
@@ -31,3 +32,34 @@ def name_token(raw: bytes) -> bytes:
             _NAME_TOKEN_CACHE.clear()
         _NAME_TOKEN_CACHE[raw] = token
     return token
+
+
+class _DiscardSink:
+    """``write(bytes)`` sink that drops its input."""
+
+    __slots__ = ()
+
+    def write(self, data: bytes) -> None:
+        pass
+
+
+_DISCARD = _DiscardSink()
+
+
+def name_token_of(name: Any) -> bytes:
+    """Serialized ``/Name`` token of an exact ``COSName`` (cached on it)."""
+    token = name._token
+    if token is None:
+        # ``write_pdf`` builds and caches ``_token`` and ``_token_sp``.
+        name.write_pdf(_DISCARD)
+        token = name._token
+    return token  # type: ignore[no-any-return]
+
+
+def name_token_sp(name: Any) -> bytes:
+    """``name_token_of(name)`` plus the trailing space separator."""
+    token = name._token_sp
+    if token is None:
+        name.write_pdf(_DISCARD)
+        token = name._token_sp
+    return token  # type: ignore[no-any-return]

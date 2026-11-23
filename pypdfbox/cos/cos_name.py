@@ -24,7 +24,7 @@ class COSName(COSBase):
     _common_name_map: dict[bytes, COSName] = {}
     _name_map: dict[bytes, COSName] = {}
 
-    __slots__ = ("_bytes", "_direct", "_needs_to_be_updated", "_token")
+    __slots__ = ("_bytes", "_direct", "_needs_to_be_updated", "_token", "_token_sp")
 
     def __new__(
         cls,
@@ -61,6 +61,9 @@ class COSName(COSBase):
         # Serialized ``/Name`` token, built on first ``write_pdf``. Safe to
         # cache: ``_bytes`` never changes after construction.
         inst._token = None
+        # ``_token`` plus the trailing space separator the writers put after
+        # a dictionary key or packed name; built together with ``_token``.
+        inst._token_sp = None
         if static:
             cls._common_name_map[data] = inst
         else:
@@ -126,6 +129,7 @@ class COSName(COSBase):
         if token is None:
             token = b"/" + _NAME_ESCAPE_RE.sub(_escape_name_byte, self._bytes)
             self._token = token
+            self._token_sp = token + b" "
         output.write(token)
 
     def accept(self, visitor: ICOSVisitor) -> Any:
