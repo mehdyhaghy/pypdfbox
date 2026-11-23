@@ -110,6 +110,8 @@ class SecurityHandler(ABC):
     # :meth:`compute_object_key`. A class-level default keeps subclasses that
     # skip ``__init__`` working.
     _file_key_md5: tuple[bytes, Any] | None = None
+    # Shared AES-CBC string context, see :class:`_AesCbcStringDecryptor`.
+    _aes_string_decryptor: _AesCbcStringDecryptor | None = None
 
     def __init__(self) -> None:
         self._encryption_key: bytes | None = None
@@ -680,7 +682,7 @@ class SecurityHandler(ABC):
     ) -> object:
         """Mirror ``SecurityHandler#decryptDictionary`` (line 623)."""
         if type(dictionary) in _FAST_DICT_TYPES and self._fast_walk():
-            self._walk_dictionary(dictionary, obj_num, gen_num)
+            self._walk_tree(dictionary, obj_num, gen_num)
             return dictionary
         # /CF dictionaries should be left alone (PDFBOX-2936).
         get_item = getattr(dictionary, "get_item", None)
@@ -737,7 +739,7 @@ class SecurityHandler(ABC):
     ) -> object:
         """Mirror ``SecurityHandler#decryptArray`` (line 727)."""
         if type(array) is _COSArray and self._fast_walk():
-            self._walk_values(array, obj_num, gen_num)
+            self._walk_tree(array, obj_num, gen_num)
             return array
         size = len(array)  # type: ignore[arg-type]
         setter = getattr(array, "set", None)
@@ -751,101 +753,190 @@ class SecurityHandler(ABC):
                     array[i] = replaced  # type: ignore[index]
         return array
 
-    def _walk_dictionary(
-        self, dictionary: Any, obj_num: int, gen_num: int
-    ) -> None:
-        """Fast-path :meth:`_decrypt_dictionary` for exact COS dictionaries.
+    def _walk_tree(self, root: Any, obj_num: int, gen_num: int) -> None:
+        """Fast-path decrypt walk over one object's direct-object tree.
 
-        Same checks and visiting order as the generic path, with the COS
-        lookups bound directly (no ``str`` → ``COSName`` key conversion, no
-        per-value :meth:`decrypt` call for leaf values).
+        ``root`` is an exact :class:`COSDictionary` / :class:`COSStream` /
+        :class:`COSArray`. Only called when :meth:`_fast_walk` holds, so the
+        walk may inline the base dispatch: it visits the same values in the
+        same depth-first order as :meth:`decrypt` would, with the same
+        exceptions (``/CF`` dictionaries are skipped whole, a signature
+        dictionary's ``/Contents`` is skipped, nested streams only get their
+        body hook, identity string filters only mark strings as seen), and
+        it reads raw item storage instead of calling the accessors.
+
+        Plain strings are queued and deciphered together by
+        :meth:`_decrypt_string_batch` (one object key per object, like
+        upstream ``calcFinalKey``). The queue is flushed before any other
+        call with side effects, so strings are still deciphered in visiting
+        order relative to everything else.
         """
-        get_item = dictionary.get_item
-        # /CF dictionaries should be left alone (PDFBOX-2936).
-        if get_item(_N_CF) is not None:
-            return
-        # Detect signature dicts so we don't re-encrypt /Contents.
-        type_val = get_item(_N_TYPE)
-        if type_val is None or type(type_val) is _COSName:
-            is_signature = (
-                type_val is not None
-                and type_val.get_name() in ("Sig", "DocTimeStamp")
-            ) or (
-                isinstance(get_item(_N_CONTENTS), _COSString)
-                and isinstance(get_item(_N_BYTE_RANGE), _COSArray)
-            )
+        if type(root) is _COSArray:
+            stack = [iter(root._items)]
         else:
-            # Any other /Type value: the generic path's exact semantics,
-            # including its broad catch (e.g. ``COSDictionary.get_name``
-            # needs a key, so calling it bare raises → not a signature).
-            try:
-                type_name = (
-                    getattr(type_val, "get_name", lambda: None)()
-                    if type_val
-                    else None
-                )
-                if type_name in ("Sig", "DocTimeStamp"):
-                    is_signature = True
-                else:
-                    is_signature = isinstance(
-                        get_item(_N_CONTENTS), _COSString
-                    ) and isinstance(get_item(_N_BYTE_RANGE), _COSArray)
-            except Exception:
-                is_signature = False
-        if is_signature:
-            values = [
-                value
-                for key, value in list(dictionary.entry_set())
-                if key.get_name() != "Contents"
-            ]
-        else:
-            # Snapshot, like the generic path's ``list(entry_set())``.
-            values = list(dictionary.values())
-        self._walk_values(values, obj_num, gen_num)
-
-    def _walk_values(
-        self, values: Any, obj_num: int, gen_num: int
-    ) -> None:
-        """Decipher each value the way the base :meth:`decrypt` would.
-
-        Only called when :meth:`_fast_walk` holds, so every base dispatch
-        target returns its argument and no container slot is replaced.
-        """
+            values = _walk_dict_values(root)
+            if values is None:
+                return
+            stack = [iter(values)]
         seen: set[int] | None = None
         string_identity: bool | None = None
+        pending: list[Any] | None = None
         kinds = _KIND_CACHE
-        for value in values:
-            kind = kinds.get(type(value))
-            if kind is None:
-                kind = _kind_of(value)
-            if kind is _LEAF:
-                continue
-            if kind is _STRING:
-                if type(value) is not _COSString:
-                    self._decrypt_string_if_absent(value, obj_num, gen_num)
-                    continue
-                # Inlined ``_decrypt_string_if_absent``.
-                if seen is None:
-                    seen = self._objects_seen()
-                vid = id(value)
-                if vid in seen:
-                    continue
-                if string_identity is None:
-                    name = self._string_filter_name
-                    string_identity = name is not None and _is_identity(name)
-                if string_identity:
+        while stack:
+            for value in stack[-1]:
+                vt = type(value)
+                if vt is _COSString:
+                    if seen is None:
+                        seen = self._objects_seen()
+                    vid = id(value)
+                    if vid in seen:
+                        continue
+                    if string_identity is None:
+                        name = self._string_filter_name
+                        string_identity = name is not None and _is_identity(name)
+                    # Marked now so a repeat visit is skipped; the batch
+                    # unmarks whatever it fails to decipher.
                     seen.add(vid)
+                    if string_identity:
+                        continue
+                    if pending is None:
+                        pending = [value]
+                    else:
+                        pending.append(value)
                     continue
-                value.set_value(
-                    self.decrypt_string(value.get_bytes(), obj_num, gen_num)
-                )
-                seen.add(vid)
-            elif kind is _STREAM:
-                self._decrypt_stream_if_absent(value, obj_num, gen_num)
-            elif kind is _DICT:
-                self._decrypt_dictionary(value, obj_num, gen_num)
+                kind = kinds.get(vt)
+                if kind is None:
+                    kind = _kind_of(value)
+                if kind is _LEAF:
+                    continue
+                if vt is _COSDictionary:
+                    values = _walk_dict_values(value)
+                    if values is not None:
+                        stack.append(iter(values))
+                        break
+                    continue
+                if vt is _COSArray:
+                    stack.append(iter(value._items))
+                    break
+                if pending:
+                    self._decrypt_string_batch(pending, obj_num, gen_num, seen)
+                    pending = None
+                if kind is _STRING:
+                    self._decrypt_string_if_absent(value, obj_num, gen_num)
+                elif kind is _STREAM:
+                    self._decrypt_stream_if_absent(value, obj_num, gen_num)
+                elif kind is _DICT:
+                    self._decrypt_dictionary(value, obj_num, gen_num)
+                else:
+                    self._decrypt_array(value, obj_num, gen_num)
             else:
-                self._decrypt_array(value, obj_num, gen_num)
+                stack.pop()
+        if pending:
+            self._decrypt_string_batch(pending, obj_num, gen_num, seen)
+
+    def _decrypt_string_batch(
+        self, strings: list[Any], obj_num: int, gen_num: int, seen: Any
+    ) -> None:
+        """Decipher plain ``COSString`` values of one object, in order.
+
+        Same result as ``s.set_value(self.decrypt_string(s.get_bytes(), ...))``
+        for each string. Their ids are already in ``seen``; on failure the
+        failed and the remaining strings are unmarked again, leaving the
+        state the one-by-one walk leaves.
+        """
+        done = 0
+        try:
+            cipher, key = self._string_cipher(obj_num, gen_num)
+            if cipher is _CIPHER_RC4 and len(key) in _ARC4_KEY_SIZES:
+                if len(strings) == 1:
+                    string = strings[0]
+                    string.set_value(
+                        Cipher(_ARC4(key), None).encryptor().update(string._bytes)
+                    )
+                    done = 1
+                    return
+                # RC4 output is data XOR the key's keystream: build the
+                # keystream once and reuse it for every string.
+                n_max = max(len(string._bytes) for string in strings)
+                stream = Cipher(_ARC4(key), None).encryptor().update(bytes(n_max))
+                for string in strings:
+                    data = string._bytes
+                    n = len(data)
+                    if n:
+                        string.set_value(
+                            (
+                                int.from_bytes(data, "little")
+                                ^ int.from_bytes(stream[:n], "little")
+                            ).to_bytes(n, "little")
+                        )
+                    else:
+                        string.set_value(b"")
+                    done += 1
+                return
+            aes = None
+            if cipher is _CIPHER_AES_STRICT or cipher is _CIPHER_AES_TOLERANT:
+                # One CBC context per key, kept on the handler: AES-256 uses
+                # the file key for every object.
+                aes = self._aes_string_decryptor
+                if aes is None or aes.key != key:
+                    aes = _AesCbcStringDecryptor(key)
+                    self._aes_string_decryptor = aes
+            for string in strings:
+                data = string._bytes
+                if cipher is _CIPHER_GENERIC:
+                    plain = self.decrypt_string(data, obj_num, gen_num)
+                elif cipher is _CIPHER_RC4:
+                    plain = _rc4_cipher_transform(key, data)
+                elif cipher is _CIPHER_AES_STRICT:
+                    plain = aes.decrypt(data, False)  # type: ignore[union-attr]
+                elif cipher is _CIPHER_AES_TOLERANT:
+                    plain = aes.decrypt(data, True)  # type: ignore[union-attr]
+                else:  # _CIPHER_IDENTITY
+                    plain = data
+                string.set_value(plain)
+                done += 1
+        except BaseException:
+            for string in strings[done:]:
+                seen.discard(id(string))
+            raise
+
+    def _string_cipher(self, obj_num: int, gen_num: int) -> tuple[int, bytes]:
+        """``(cipher, key)`` that :meth:`decrypt_string` uses for one object.
+
+        ``cipher`` is one of the ``_CIPHER_*`` codes; ``_CIPHER_GENERIC``
+        (whenever a cipher hook is overridden) means "call
+        :meth:`decrypt_string` per string". Mirrors :meth:`_decrypt`.
+        """
+        if type(self).decrypt_string is not _BASE_DECRYPT_STRING or (
+            not self._plain_cipher_hooks()
+        ):
+            return _CIPHER_GENERIC, b""
+        return self._legacy_string_cipher(obj_num, gen_num)
+
+    def _plain_cipher_hooks(self) -> bool:
+        """``True`` when ``_decrypt`` / ``compute_object_key`` are the base
+        methods and no cipher hook is overridden on the instance."""
+        cls = type(self)
+        if (
+            cls._decrypt is not _BASE_DECRYPT
+            or cls.compute_object_key is not _BASE_COMPUTE_OBJECT_KEY
+            or cls.get_encryption_key is not _BASE_GET_ENCRYPTION_KEY
+        ):
+            return False
+        inst = getattr(self, "__dict__", None)
+        return not inst or _DECIPHER_HOOKS.isdisjoint(inst)
+
+    def _legacy_string_cipher(
+        self, obj_num: int, gen_num: int
+    ) -> tuple[int, bytes]:
+        """The key and cipher :meth:`_decrypt` picks for this object."""
+        file_key = self._encryption_key or b""
+        if self._aes and len(file_key) == 32:
+            return _CIPHER_AES_TOLERANT, file_key
+        key = self.compute_object_key(obj_num, gen_num)
+        if self._aes:
+            return _CIPHER_AES_STRICT, key
+        return _CIPHER_RC4, key
 
     # Public-name parity wrappers for upstream's private helpers. They keep
     # subclasses + tests one method-name lookup away from the upstream Java
@@ -1139,6 +1230,58 @@ def _aes_cbc_decrypt(
     raise OSError("AES padding is invalid")
 
 
+class _AesCbcStringDecryptor:
+    """:func:`_aes_cbc_decrypt` for many strings under one key.
+
+    Creating a ``cryptography`` cipher context costs more than deciphering a
+    short string, so one CBC decryptor is reused. Each string is
+    ``IV || ciphertext``; feeding its IV through the decryptor as one more
+    ciphertext block (output dropped) makes that IV the chaining value, so
+    the following blocks decrypt exactly as a fresh context with that IV.
+    Only whole blocks are ever fed, so no state is buffered between strings.
+    Results, padding handling and errors match :func:`_aes_cbc_decrypt`.
+    """
+
+    __slots__ = ("_update", "key")
+
+    def __init__(self, key: bytes) -> None:
+        self.key = key
+        self._update: Any = None
+
+    def decrypt(self, data: bytes, tolerant_padding: bool) -> bytes:
+        n = len(data)
+        if n == 0:
+            return b""
+        if n < 16:
+            raise OSError(
+                "AES initialization vector not fully read: only "
+                f"{n} bytes read instead of 16"
+            )
+        if n == 16:
+            return b""
+        view = memoryview(data)
+        update = self._update
+        if update is None:
+            # Created on first use, so an invalid key raises here, before
+            # the block-size check (the order ``_aes_cbc_decrypt`` has).
+            update = Cipher(algorithms.AES(self.key), modes.CBC(view[:16])).decryptor().update
+            self._update = update
+        else:
+            update(view[:16])
+        tail = (n - 16) % 16
+        if tail:
+            if tolerant_padding:
+                return update(view[16 : n - tail])
+            raise OSError("AES ciphertext is not a multiple of the block size")
+        padded = update(view[16:])
+        pad = padded[-1]
+        if 0 < pad <= 16 and padded[-pad:] == _PKCS7_BLOCKS[pad]:
+            return padded[:-pad]
+        if tolerant_padding:
+            return padded[:-16]
+        raise OSError("AES padding is invalid")
+
+
 def _aes_cbc_encrypt(key: bytes, data: bytes) -> bytes:
     iv = _os.urandom(16)
     enc = Cipher(algorithms.AES(key), modes.CBC(iv)).encryptor()
@@ -1190,6 +1333,82 @@ _ = _io
 __all__ = ["SecurityHandler"]
 
 _BASE_HOOKS = tuple(SecurityHandler.__dict__[name] for name in _WALK_HOOK_NAMES)
+_BASE_DECRYPT_STRING = SecurityHandler.decrypt_string
+_BASE_DECRYPT = SecurityHandler._decrypt
+_BASE_COMPUTE_OBJECT_KEY = SecurityHandler.compute_object_key
+_BASE_GET_ENCRYPTION_KEY = SecurityHandler.get_encryption_key
+
+# Cipher hooks whose instance-level override disables the per-object
+# string decipher (the generic ``decrypt_string`` call is used instead).
+_DECIPHER_HOOKS = frozenset(
+    (
+        "decrypt_string",
+        "_decrypt",
+        "_dispatch_decrypt",
+        "compute_object_key",
+        "get_encryption_key",
+    )
+)
+
+# ``_string_cipher`` codes.
+_CIPHER_GENERIC = 0
+_CIPHER_IDENTITY = 1
+_CIPHER_RC4 = 2
+_CIPHER_AES_STRICT = 3
+_CIPHER_AES_TOLERANT = 4
+
+_SIGNATURE_TYPES = ("Sig", "DocTimeStamp")
+
+# handler type -> is a ``SecurityHandler`` (may take the inlined walk).
+_WALK_HANDLER_TYPES: dict[type, bool] = {}
+
+
+def _walk_dict_values(dictionary: Any) -> Any:
+    """Values of an exact COS dictionary the decrypt walk descends into.
+
+    ``None`` for a dictionary holding ``/CF`` (left alone, PDFBOX-2936).
+    A signature dictionary's ``/Contents`` is left out. Same checks as the
+    generic :meth:`SecurityHandler._decrypt_dictionary`, read from the raw
+    item storage; the result is a snapshot, like ``list(entry_set())``.
+    """
+    items = dictionary._items
+    get = items.get
+    if get(_N_CF) is not None:
+        return None
+    contents = get(_N_CONTENTS)
+    if contents is None:
+        # Without /Contents the signature test cannot change what is walked.
+        return tuple(items.values())
+    type_val = get(_N_TYPE)
+    if type_val is None or type(type_val) is _COSName:
+        is_signature = (
+            type_val is not None and type_val.get_name() in _SIGNATURE_TYPES
+        ) or (
+            contents is not None
+            and isinstance(contents, _COSString)
+            and isinstance(get(_N_BYTE_RANGE), _COSArray)
+        )
+    else:
+        # Any other /Type value: the generic path's exact semantics,
+        # including its broad catch (e.g. ``COSDictionary.get_name``
+        # needs a key, so calling it bare raises -> not a signature).
+        try:
+            type_name = (
+                getattr(type_val, "get_name", lambda: None)() if type_val else None
+            )
+            if type_name in _SIGNATURE_TYPES:
+                is_signature = True
+            else:
+                is_signature = isinstance(contents, _COSString) and isinstance(
+                    get(_N_BYTE_RANGE), _COSArray
+                )
+        except Exception:
+            is_signature = False
+    if is_signature:
+        return [
+            value for key, value in items.items() if key.get_name() != "Contents"
+        ]
+    return tuple(items.values())
 
 
 def _decrypt_file_object(
@@ -1212,6 +1431,17 @@ def _decrypt_file_object(
     """
     if actual is None or actual is encrypt_dict:
         return
+    kind = type(actual)
+    if kind is _COSDictionary or kind is _COSArray:
+        walk = _WALK_HANDLER_TYPES.get(type(handler))
+        if walk is None:
+            walk = issubclass(type(handler), SecurityHandler)
+            if len(_WALK_HANDLER_TYPES) < 64:
+                _WALK_HANDLER_TYPES[type(handler)] = walk
+        if walk and handler._fast_walk():
+            # What ``handler.decrypt`` reaches for these exact types.
+            handler._walk_tree(actual, obj_num, gen_num)
+            return
     objects_seen = getattr(handler, "_objects_seen", None)
     seen_ids = objects_seen() if callable(objects_seen) else None
     if isinstance(actual, _COSStream):

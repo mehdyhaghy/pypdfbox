@@ -436,3 +436,199 @@ def test_spec_mock_string_is_classified_like_isinstance() -> None:
     fake.get_bytes.return_value = b"abc"
     handler.decrypt(fake, 1, 0)
     fake.set_value.assert_called_once()
+
+
+# ------------------------------------------------- per-object string batch
+
+
+@pytest.mark.parametrize("key_len", [16, 32])
+@pytest.mark.parametrize("tolerant", [True, False])
+def test_aes_string_decryptor_matches_reference(key_len: int, tolerant: bool) -> None:
+    rnd = random.Random(100 + key_len * 2 + tolerant)
+    key = rnd.randbytes(key_len)
+    payloads = _aes_payloads(rnd, key)
+    rnd.shuffle(payloads)
+    # One decryptor reused across every payload, errors included.
+    shared = sh._AesCbcStringDecryptor(key)
+    for data in payloads:
+        expected = _ref_aes_decrypt(key, data, tolerant)
+        assert _outcome(shared.decrypt, data, tolerant) == expected
+
+
+def test_aes_string_decryptor_invalid_key_raises_value_error() -> None:
+    shared = sh._AesCbcStringDecryptor(b"short")
+    assert shared.decrypt(b"", False) == b""
+    assert shared.decrypt(b"\x00" * 16, False) == b""
+    with pytest.raises(OSError):
+        shared.decrypt(b"\x00" * 5, False)
+    with pytest.raises(ValueError):
+        shared.decrypt(b"\x00" * 33, False)
+
+
+def _string_dict(values: list[bytes]) -> COSDictionary:
+    d = COSDictionary()
+    nested = COSArray()
+    for i, value in enumerate(values):
+        target = COSString(value)
+        if i % 2:
+            nested.add(target)
+        else:
+            d.set_item(f"K{i}", target)
+    d.set_item("Arr", nested)
+    return d
+
+
+def _strings_of(d: COSDictionary) -> list[bytes]:
+    out = []
+    stack: list[object] = [d]
+    while stack:
+        cur = stack.pop()
+        if isinstance(cur, COSString):
+            out.append(cur.get_bytes())
+        elif isinstance(cur, COSDictionary):
+            stack.extend(v for _k, v in cur.entry_set())
+        elif isinstance(cur, COSArray):
+            stack.extend(cur)
+    return sorted(out)
+
+
+@pytest.mark.parametrize("key_len", [1, 5, 6, 11, 16, 32])
+def test_rc4_string_batch_matches_reference(key_len: int) -> None:
+    rnd = random.Random(key_len)
+    file_key = rnd.randbytes(key_len)
+    handler = StandardSecurityHandler()
+    handler.set_encryption_key(file_key)
+    handler.set_revision(3)
+    values = [b"", rnd.randbytes(3), rnd.randbytes(40), b"", rnd.randbytes(7)]
+    d = _string_dict(values)
+    handler.decrypt(d, 7, 2)
+    obj_key = _ref_object_key(file_key, 7, 2, False)
+    assert _strings_of(d) == sorted(_ref_rc4_pure(obj_key, v) for v in values)
+    # A second pass is a no-op: every string is already marked decrypted.
+    handler.decrypt(d, 7, 2)
+    assert _strings_of(d) == sorted(_ref_rc4_pure(obj_key, v) for v in values)
+
+
+@pytest.mark.parametrize("aes", [False, True])
+def test_object_key_derived_once_per_object(aes: bool) -> None:
+    handler = _make(StandardSecurityHandler, aes, False)
+    calls: list[tuple[int, int]] = []
+    real = handler._string_cipher
+
+    def _spy(obj_num: int, gen_num: int) -> tuple[int, bytes]:
+        calls.append((obj_num, gen_num))
+        return real(obj_num, gen_num)
+
+    handler._string_cipher = _spy  # type: ignore[method-assign]
+    key = _ref_object_key(b"\x11" * 16, 9, 0, aes)
+    plain = [b"en-US", b"", b"some text", b"x" * 33]
+    if aes:
+        values = [_ref_aes_encrypt(key, os.urandom(16), p) for p in plain]
+    else:
+        values = [_ref_rc4_pure(key, p) for p in plain]
+    d = _string_dict(values)
+    handler.decrypt(d, 9, 0)
+    assert calls == [(9, 0)]
+    assert _strings_of(d) == sorted(plain)
+
+
+def test_batch_failure_leaves_the_generic_walk_state() -> None:
+    key = _ref_object_key(b"\x11" * 16, 3, 0, True)
+    outcomes = []
+    for cls in (StandardSecurityHandler, _GenericWalkHandler):
+        handler = _make(cls, True, False)
+        d = COSDictionary()
+        d.set_item("A", COSString(_ref_aes_encrypt(key, b"\x01" * 16, b"good")))
+        d.set_item("B", COSString(b"\x02" * 16 + b"\x03" * 16))  # bad padding
+        d.set_item("C", COSString(_ref_aes_encrypt(key, b"\x04" * 16, b"later")))
+        stream = COSStream()
+        d.set_item("S", stream)
+        outcome = _outcome(handler.decrypt, d, 3, 0)
+        outcomes.append(
+            (
+                outcome if isinstance(outcome, tuple) else "ok",
+                _snapshot(d),
+                len(handler._objects_seen()),
+                id(stream) in handler._objects_seen(),
+            )
+        )
+    assert outcomes[0] == outcomes[1]
+    assert outcomes[0][0] == ("OSError", "padding")
+
+
+@pytest.mark.parametrize(
+    "cfm", [None, "Identity", "V2", "AESV2", "AESV3", "None", "Bogus"]
+)
+def test_string_crypt_filter_routing_matches_generic_walk(cfm: str | None) -> None:
+    file_key = b"\x22" * (32 if cfm == "AESV3" else 16)
+    for seed in range(60):
+        graphs = []
+        for _ in range(2):
+            rnd = random.Random(seed)
+            graphs.append(_random_graph(rnd))
+        results = []
+        for cls, graph in zip(
+            (StandardSecurityHandler, _GenericWalkHandler), graphs, strict=True
+        ):
+            handler = cls()
+            handler.set_encryption_key(file_key)
+            handler.set_revision(4)
+            handler._string_cfm = cfm
+            outcome = _outcome(handler.decrypt, graph, seed, 1)
+            results.append(
+                (
+                    outcome is graph or outcome,
+                    _snapshot(graph),
+                    len(handler._objects_seen()),
+                )
+            )
+        assert results[0] == results[1]
+
+
+def test_decrypt_string_override_is_called_per_string() -> None:
+    seen: list[bytes] = []
+
+    class _Spy(StandardSecurityHandler):
+        def decrypt_string(self, s: bytes, obj_num: int, gen_num: int) -> bytes:
+            seen.append(s)
+            return s[::-1]
+
+    handler = _Spy()
+    handler.set_encryption_key(b"\x11" * 16)
+    handler.set_revision(3)
+    d = _string_dict([b"ab", b"cd", b"ef"])
+    assert handler._fast_walk()
+    handler.decrypt(d, 1, 0)
+    assert sorted(seen) == [b"ab", b"cd", b"ef"]
+    assert _strings_of(d) == [b"ba", b"dc", b"fe"]
+
+
+def test_file_object_with_spec_mock_handler_uses_decrypt() -> None:
+    from unittest.mock import MagicMock
+
+    handler = MagicMock(spec=StandardSecurityHandler)
+    handler._objects_seen.return_value = set()
+    d = COSDictionary()
+    d.set_item("A", COSString(b"x"))
+    sh._decrypt_file_object(handler, d, 4, 0)
+    handler.decrypt.assert_called_once_with(d, 4, 0)
+    handler._walk_tree.assert_not_called()
+
+
+def test_file_object_skips_signature_contents_and_cf() -> None:
+    handler = _make(StandardSecurityHandler, False, False)
+    key = _ref_object_key(b"\x11" * 16, 5, 0, False)
+    sig = COSDictionary()
+    sig.set_item("Contents", COSString(b"\xde\xad"))
+    sig.set_item("ByteRange", COSArray([COSInteger.get(0)]))
+    sig.set_item("Name", COSString(_ref_rc4_pure(key, b"signer")))
+    cf = COSDictionary()
+    cf.set_item("CF", COSDictionary())
+    cf.set_item("V", COSString(b"keep"))
+    root = COSDictionary()
+    root.set_item("V", sig)
+    root.set_item("E", cf)
+    sh._decrypt_file_object(handler, root, 5, 0)
+    assert sig.get_item("Contents").get_bytes() == b"\xde\xad"
+    assert sig.get_item("Name").get_bytes() == b"signer"
+    assert cf.get_item("V").get_bytes() == b"keep"
