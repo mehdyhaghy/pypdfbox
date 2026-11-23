@@ -405,8 +405,8 @@ def test_get_objects_by_type_two_arg_overload_matches_either_name() -> None:
         page_obj.set_object(page)
         xobj_obj = COSObject(2, 0)
         xobj_obj.set_object(xobj)
-        doc._objects[COSObjectKey(1, 0)] = page_obj
-        doc._objects[COSObjectKey(2, 0)] = xobj_obj
+        doc._put_object(COSObjectKey(1, 0), page_obj)
+        doc._put_object(COSObjectKey(2, 0), xobj_obj)
 
         # Single-arg form — matches only /Page.
         page_only = doc.get_objects_by_type("Page")
@@ -535,8 +535,8 @@ def test_get_linearized_dictionary_picks_lowest_offset() -> None:
         second_obj = COSObject(2, 0)
         second_obj.set_object(second)
 
-        doc._objects[first_key] = first_obj
-        doc._objects[second_key] = second_obj
+        doc._put_object(first_key, first_obj)
+        doc._put_object(second_key, second_obj)
 
         # /2 has the smaller offset → should win even though /1 came first
         # in the pool's insertion order.

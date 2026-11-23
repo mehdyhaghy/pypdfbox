@@ -47,7 +47,14 @@ class COSDocument(COSBase):
         # the RandomAccessRead on the caller's behalf so close() can release
         # it; callers that hand in their own source leave this None.
         self._source = source
-        self._objects: dict[COSObjectKey, COSObject] = {}
+        # The object pool, keyed by the packed ``num << 16 | gen`` value (the
+        # key's own hash and equality value), with the first ``COSObjectKey``
+        # seen for each entry kept alongside in the same insertion order.
+        # Plain-int dict operations run in C, so pool lookups never call
+        # ``COSObjectKey.__hash__`` / ``__eq__`` and the parser can resolve
+        # ``n g R`` without building a throwaway key.
+        self._pool: dict[int, COSObject] = {}
+        self._pool_keys: dict[int, COSObjectKey] = {}
         self._trailer: COSDictionary | None = None
         self._version: float = DEFAULT_VERSION
         self._is_xref_stream: bool = False
@@ -124,31 +131,70 @@ class COSDocument(COSBase):
         (oracle-confirmed, wave 1537)."""
         if key is None:
             return None  # type: ignore[return-value]
-        existing = self._objects.get(key)
+        packed = key._number_and_generation
+        existing = self._pool.get(packed)
         if existing is None:
             existing = COSObject(key.object_number, key.generation_number)
-            self._objects[key] = existing
+            self._pool[packed] = existing
+            self._pool_keys[packed] = key
             # ``set_origin_document_state(state, dereferencing=True)`` on a
             # fresh, unresolved placeholder only records the origin: it has no
             # substructures to walk and dereferencing never marks it updated.
             existing._update_state._origin_document_state = self._document_state
         return existing
 
+    def _get_object_from_pool_by_number(self, num: int, gen: int) -> COSObject:
+        """:meth:`get_object_from_pool` for ``COSObjectKey(num, gen)``,
+        without building the key when the object is already pooled."""
+        existing = self._pool.get((num << 16) | (gen & 0xFFFF))
+        if existing is not None:
+            return existing
+        return self.get_object_from_pool(COSObjectKey(num, gen))
+
+    def _pool_with_loaders(
+        self, keys: list[COSObjectKey], loaders: list[Any]
+    ) -> None:
+        """``get_object_from_pool(keys[i]).set_loader(loaders[i])`` for every
+        ``i``, in order, with the new placeholders built in bulk."""
+        pool = self._pool
+        pool_keys = self._pool_keys
+        state = self._document_state
+        new_pooled = COSObject._new_pooled
+        for key, loader in zip(keys, loaders, strict=True):
+            packed = key._number_and_generation
+            existing = pool.get(packed)
+            if existing is None:
+                pool[packed] = new_pooled(
+                    packed >> 16, packed & 0xFFFF, loader, state
+                )
+                pool_keys[packed] = key
+            else:
+                existing.set_loader(loader)
+
+    def _put_object(self, key: COSObjectKey, cos_obj: COSObject) -> None:
+        """Register ``cos_obj`` under ``key``, replacing any pooled object
+        with an equal key (the stored key instance is replaced too)."""
+        packed = key._number_and_generation
+        self._pool[packed] = cos_obj
+        self._pool_keys[packed] = key
+
     def get_object(self, key: COSObjectKey) -> COSObject | None:
         """Return the ``COSObject`` registered for ``key`` or ``None`` if no
         such object has been seen by the parser yet. Companion to
         :meth:`get_object_from_pool` — does NOT auto-create a placeholder."""
-        return self._objects.get(key)
+        packed = getattr(key, "_number_and_generation", None)
+        return None if packed is None else self._pool.get(packed)
 
     def has_object(self, key: COSObjectKey) -> bool:
-        return key in self._objects
+        packed = getattr(key, "_number_and_generation", None)
+        return packed is not None and packed in self._pool
 
     def get_objects(self) -> list[COSObject]:
         """All known indirect objects in insertion order."""
-        return list(self._objects.values())
+        return list(self._pool.values())
 
     def get_object_keys(self) -> list[COSObjectKey]:
-        return list(self._objects.keys())
+        return list(self._pool_keys.values())
 
     def get_key(self, base_object: COSBase) -> COSObjectKey | None:
         """Return the object-pool key for ``base_object``, or ``None``.
@@ -158,13 +204,18 @@ class COSDocument(COSBase):
         it when they already hold a resolved COS object and need its
         indirect-reference key for lifecycle/update bookkeeping.
         """
-        for key, cos_obj in self._objects.items():
+        keys = self._pool_keys
+        for packed, cos_obj in self._pool.items():
             if cos_obj is base_object or cos_obj.get_object() is base_object:
-                return key
+                return keys[packed]
         return None
 
     def remove_object(self, key: COSObjectKey) -> COSObject | None:
-        return self._objects.pop(key, None)
+        packed = getattr(key, "_number_and_generation", None)
+        if packed is None:
+            return None
+        self._pool_keys.pop(packed, None)
+        return self._pool.pop(packed, None)
 
     def add_xref_table(self, table: dict[COSObjectKey | None, int]) -> None:
         """Bulk-register xref entries — mirrors PDFBox's ``addXRefTable``
@@ -173,14 +224,23 @@ class COSDocument(COSBase):
         Entries with a ``None`` key (PDFBOX-6132 — corrupt xref entry) are
         ignored; offsets are stored in ``_xref_table`` for later retrieval via
         :meth:`get_xref_table`."""
-        objects = self._objects
-        xref_table = self._xref_table
-        for key, offset in table.items():
-            if key is None:
-                continue
-            if key not in objects:
-                self.get_object_from_pool(key)
-            xref_table[key] = offset
+        pool = self._pool
+        get_object_from_pool = self.get_object_from_pool
+        if None in table:
+            xref_table = self._xref_table
+            for key, offset in table.items():
+                if key is None:
+                    continue
+                if key._number_and_generation not in pool:
+                    get_object_from_pool(key)
+                xref_table[key] = offset
+            return
+        for key in table:
+            if key._number_and_generation not in pool:
+                get_object_from_pool(key)
+        # A dict-to-dict update reuses the stored hashes: no per-key
+        # ``COSObjectKey.__hash__`` call.
+        self._xref_table.update(table)
 
     def add_x_ref_table(self, table: dict[COSObjectKey | None, int]) -> None:
         """Alias for :meth:`add_xref_table` matching the parity-audit's
@@ -228,8 +288,8 @@ class COSDocument(COSBase):
         # xref table does not cover. Iterating keys (not pool values directly)
         # is what excludes free entries — mirrors upstream exactly.
         candidate_keys: list[COSObjectKey] = list(self._xref_table.keys())
-        if len(candidate_keys) < len(self._objects):
-            for key in self._objects:
+        if len(candidate_keys) < len(self._pool):
+            for key in self._pool_keys.values():
                 if key not in self._xref_table:
                     candidate_keys.append(key)
         out: list[COSObject] = []
@@ -275,9 +335,10 @@ class COSDocument(COSBase):
         if not ordered_keys:
             # Fallback for documents built in memory with no xref table —
             # walk the pool in insertion order.
-            ordered_keys = list(self._objects.keys())
+            ordered_keys = list(self._pool_keys.values())
+        pool = self._pool
         for key in ordered_keys:
-            cos_obj = self._objects.get(key)
+            cos_obj = pool.get(key._number_and_generation)
             if cos_obj is None:
                 continue
             resolved = cos_obj.get_object()
@@ -551,7 +612,8 @@ class COSDocument(COSBase):
         if self._closed:
             return
         self._closed = True
-        self._objects.clear()
+        self._pool.clear()
+        self._pool_keys.clear()
         self._xref_table.clear()
         if self._owns_scratch:
             self._scratch_file.close()
@@ -589,6 +651,6 @@ class COSDocument(COSBase):
     def __repr__(self) -> str:
         return (
             f"COSDocument(version={self._version}, "
-            f"objects={len(self._objects)}, "
+            f"objects={len(self._pool)}, "
             f"encrypted={self.is_encrypted()})"
         )
