@@ -59,6 +59,17 @@ _LOG = logging.getLogger(__name__)
 # ``security_handler._decrypt_file_object``, imported on first use (pdmodel
 # imports the parser, so it cannot be a module-level import here).
 _security_decrypt_file_object: Any = None
+_security_fast_walk: Any = None
+
+
+def _security_takes_fast_walk() -> Any:
+    """``security_handler._takes_fast_walk``, imported on first use."""
+    global _security_fast_walk
+    if _security_fast_walk is None:
+        from pypdfbox.pdmodel.encryption.security_handler import _takes_fast_walk
+
+        _security_fast_walk = _takes_fast_walk
+    return _security_fast_walk
 
 
 class _HeaderNotFoundError(PDFParseError):
@@ -243,6 +254,10 @@ class PDFParser:
     """
 
     _load_states: list[COSUpdateState] | None = None
+    # ``(body, holds_a_string)`` for the body ``_fast_load_indirect_object``
+    # last read in full (through ``endobj``); ``_offset_loader`` resets it to
+    # ``None`` before a load and only trusts it for the body it got back.
+    _load_strings: tuple[COSBase, bool] | None = None
 
     def __init__(
         self,
@@ -2789,26 +2804,47 @@ class PDFParser:
             if origin is not None:
                 states = []
         outer = self._load_states
+        outer_strings = self._load_strings
         self._load_states = states
+        self._load_strings = None
         try:
             body = self._load_indirect_object_at(offset, obj)
         except PDFParseError as exc:
             raise OSError(str(exc)) from exc
         finally:
+            strings = self._load_strings
             self._load_states = outer
+            self._load_strings = outer_strings
         # ``_decrypt_file_object`` is a no-op without a security handler
         # or a body; skip the call in that (unencrypted) common case.
-        if (
-            body is not None
-            and getattr(self._document, "_object_security_handler", None)
-            is not None
-        ):
-            self._decrypt_file_object(body, obj)
+        if body is not None:
+            handler = getattr(self._document, "_object_security_handler", None)
+            if handler is not None and not (
+                # A dictionary or array the fast path read with no string
+                # in it: the handler's walk would find nothing to decipher,
+                # and resolving an already loaded /Encrypt has no effect.
+                strings is not None
+                and strings[0] is body
+                and not strings[1]
+                and (type(body) is COSDictionary or type(body) is COSArray)
+                and _security_takes_fast_walk()(handler)
+                and self._encrypt_entry_is_loaded()
+            ):
+                self._decrypt_file_object(body, obj)
         if states:
             for state in states:
                 if state._origin_document_state is None:
                     state._origin_document_state = origin
         return body
+
+    def _encrypt_entry_is_loaded(self) -> bool:
+        """Whether resolving the trailer's /Encrypt entry, as
+        :meth:`_decrypt_file_object` does, would load nothing."""
+        trailer = self._document.get_trailer()  # type: ignore[union-attr]
+        if trailer is None:
+            return True
+        encrypt_ref = trailer.get_item(COSName.ENCRYPT)
+        return not isinstance(encrypt_ref, COSObject) or encrypt_ref.is_dereferenced()
 
     def _decrypt_file_object(self, body: COSBase | None, obj: COSObject) -> None:
         """Decipher an object just read from a direct file offset when the
@@ -3097,6 +3133,7 @@ class PDFParser:
             # Collect the update state of every array and dictionary the
             # fast path builds when ``_offset_loader`` asks for it.
             cos_parser._fp_states = self._load_states
+            cos_parser._fp_saw_string = False
             try:
                 body, i = cos_parser._fp_value(
                     data, header.end(), n, eof, base, False
@@ -3129,6 +3166,7 @@ class PDFParser:
         tail = _FAST_END_TOKEN(data, i)
         if (tail.end() < n or eof) and tail.group(1).startswith(b"endobj"):
             bio.seek(base + tail.end())
+            self._load_strings = (body, cos_parser._fp_saw_string)
             return body, True
         bio.seek(base + i)
         return body, False

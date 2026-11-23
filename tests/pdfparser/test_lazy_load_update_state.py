@@ -170,3 +170,60 @@ def test_loaders_link_fast_built_containers_themselves(
     ]
     assert roots
     assert all(item[3] == (True, False) for item in roots)
+
+
+def _encrypted(aes: bool) -> bytes:
+    from pypdfbox.pdmodel.encryption import (
+        AccessPermission,
+        StandardProtectionPolicy,
+    )
+
+    data = _build(False)
+    doc = PDDocument.load(data)
+    try:
+        policy = StandardProtectionPolicy("owner", "", AccessPermission())
+        policy.set_encryption_key_length(128)
+        policy.set_prefer_aes(aes)
+        doc.protect(policy)
+        buf = io.BytesIO()
+        doc.save(buf, CompressParameters.NO_COMPRESSION)
+        return buf.getvalue()
+    finally:
+        doc.close()
+
+
+def _load_strings(data: bytes) -> list:
+    doc = PDDocument.load(data)
+    try:
+        out: list = []
+        for cos_obj in doc.get_document().get_objects():
+            body = cos_obj.get_object()
+            out.append(("object", cos_obj.get_object_number()))
+            _dump(body, out)
+            stack = [body]
+            while stack:
+                item = stack.pop()
+                if isinstance(item, COSDictionary):
+                    stack.extend(item._items.values())
+                elif isinstance(item, COSArray):
+                    stack.extend(item._items)
+                elif isinstance(item, COSString):
+                    out.append(("string", item.get_bytes()))
+        return out
+    finally:
+        doc.close()
+
+
+@pytest.mark.parametrize("aes", [False, True], ids=["rc4", "aes"])
+def test_string_free_objects_skip_the_decrypt_walk_with_the_same_result(
+    aes: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data = _encrypted(aes)
+    actual = _load_strings(data)
+    assert ("string", b"lit") in actual
+    assert ("string", b"\x00\xffhex") in actual
+    # Reference: every file object goes through ``_decrypt_file_object``.
+    monkeypatch.setattr(
+        pdf_parser_module, "_security_takes_fast_walk", lambda: lambda handler: False
+    )
+    assert _load_strings(data) == actual

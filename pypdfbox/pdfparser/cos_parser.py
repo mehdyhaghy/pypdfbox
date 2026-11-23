@@ -314,6 +314,8 @@ class COSParser(BaseParser):
     # When a list, the fast path appends the update state of every array and
     # dictionary it builds (see ``PDFParser._offset_loader``).
     _fp_states: list[Any] | None = None
+    # Set whenever the fast path builds a ``COSString`` (callers reset it).
+    _fp_saw_string: bool = False
 
     def __init__(
         self, source: RandomAccessRead, document: COSDocument | None = None
@@ -576,6 +578,8 @@ class COSParser(BaseParser):
         src = self._src
         src.seek(base + i)
         obj = method()
+        if type(obj) is COSString:
+            self._fp_saw_string = True
         j = src.get_position() - base
         if j > n and not eof:
             raise _FastNeedMore
@@ -618,6 +622,7 @@ class COSParser(BaseParser):
             m = _FP_HEX(data, i)
             if m is None:
                 return self._fp_slow(self._read_cos_hex_string, i, n, eof, base)
+            self._fp_saw_string = True
             return _fp_hex_string(m.group(1)), m.end()
         if c == 0x5B:  # '['
             return self._fp_array(data, i, n, eof, base)
@@ -625,6 +630,7 @@ class COSParser(BaseParser):
             m = _FP_LITERAL(data, i)
             if m is None:
                 return self._fp_slow(self._read_cos_literal_string, i, n, eof, base)
+            self._fp_saw_string = True
             return COSString(m.group(1)), m.end()
         if c == 0x74 or c == 0x66 or c == 0x6E:  # 't', 'f', 'n'
             m = _FP_KEYWORD(data, i)
@@ -667,8 +673,10 @@ class COSParser(BaseParser):
         if kind == 4:
             return _parsed_real(m.group(4 + off))
         if kind == 6:
+            self._fp_saw_string = True
             return COSString(m.group(6 + off))
         if kind == 7:
+            self._fp_saw_string = True
             return _fp_hex_string(m.group(7 + off))
         if kind == 8:
             # The array the general path would read through ``_fp_array``,
@@ -986,6 +994,7 @@ class COSParser(BaseParser):
                 key = m.group(1)
                 key = _cget(key) or _nget(key) or _get_name(key)
                 if kind == 8:
+                    self._fp_saw_string = True
                     items[key] = _fp_hex_string(m.group(8))
                     i = m.end()
                     continue
