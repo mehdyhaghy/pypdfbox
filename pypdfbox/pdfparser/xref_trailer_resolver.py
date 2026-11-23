@@ -165,6 +165,31 @@ class XrefTrailerResolver:
             return
         self._current.entries[key] = entry
 
+    def set_stream_entries(
+        self, keys: list[COSObjectKey], entries: list[XrefEntry]
+    ) -> None:
+        """Bulk form of :meth:`set_stream_entry`: record ``entries[i]`` under
+        ``keys[i]`` in order, with exactly the same keep/replace rules as
+        calling :meth:`set_stream_entry` once per pair."""
+        if self._current is None:
+            raise RuntimeError("set_stream_entries called before begin_section")
+        table = self._current.entries
+        if not table:
+            # Fresh section (the usual case): with no duplicate keys the
+            # per-pair rules reduce to a plain insert.
+            table.update(zip(keys, entries, strict=True))
+            if len(table) == len(keys):
+                return
+            table.clear()
+        get = table.get
+        for key, entry in zip(keys, entries, strict=True):
+            existing = get(key)
+            if existing is not None and (
+                existing.compressed_index != -1 or entry.compressed_index == -1
+            ):
+                continue
+            table[key] = entry
+
     def set_trailer(self, trailer: COSDictionary) -> None:
         if self._current is None:
             raise RuntimeError("set_trailer called before begin_section")
