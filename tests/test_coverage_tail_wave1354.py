@@ -198,12 +198,12 @@ def test_cos_document_get_linearization_skips_non_dict_resolved() -> None:
     doc = COSDocument()
     key = COSObjectKey(1, 0)
     obj = COSObject(1, 0, resolved=COSInteger.get(0))
-    doc._objects[key] = obj  # type: ignore[attr-defined]
+    doc._put_object(key, obj)
     assert doc.get_linearized_dictionary() is None
 
 
 def test_cos_document_get_linearization_skips_missing_xref_object() -> None:
-    """Line 249 — an xref-table key with no entry in ``_objects`` is
+    """Line 249 — an xref-table key with no entry in the pool is
     skipped via ``continue`` rather than raising."""
     from pypdfbox.cos.cos_document import COSDocument
     from pypdfbox.cos.cos_object_key import COSObjectKey
@@ -211,7 +211,7 @@ def test_cos_document_get_linearization_skips_missing_xref_object() -> None:
     doc = COSDocument()
     key = COSObjectKey(7, 0)
     doc._xref_table[key] = 1234  # type: ignore[attr-defined]
-    # No matching entry in ``doc._objects`` → loop hits ``cos_obj is None``.
+    # No matching entry in the pool → loop hits ``cos_obj is None``.
     assert doc.get_linearized_dictionary() is None
 
 

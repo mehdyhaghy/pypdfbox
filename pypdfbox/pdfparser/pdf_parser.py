@@ -2825,9 +2825,7 @@ class PDFParser:
         ``COSObject`` placeholder whose ``_resolved`` field the caller
         will populate from our return value."""
         assert self._document is not None
-        objstm = self._document.get_object_from_pool(
-            COSObjectKey(objstm_obj_num, 0)
-        )
+        objstm = self._document._get_object_from_pool_by_number(objstm_obj_num, 0)
         objstm_body = objstm.get_object()
         if not isinstance(objstm_body, COSStream):
             raise PDFParseError(

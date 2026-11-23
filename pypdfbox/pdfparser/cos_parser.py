@@ -990,8 +990,9 @@ class COSParser(BaseParser):
         is fresh — the caller is responsible for resolving it later."""
         if self._document is None:
             return COSObject(object_number, generation_number)
-        key = COSObjectKey(object_number, generation_number)
-        cos_obj = self._document.get_object_from_pool(key)
+        cos_obj = self._document._get_object_from_pool_by_number(
+            object_number, generation_number
+        )
         # In lenient mode a reference whose key carries no usable in-use xref
         # entry (a free slot, or a key beyond the table) gets no loader from
         # ``populate_document``. Attach the brute-force fallback loader so a
@@ -1005,6 +1006,7 @@ class COSParser(BaseParser):
             and not cos_obj._dereferenced
             and cos_obj._loader is None
         ):
+            key = COSObjectKey(object_number, generation_number)
             cos_obj.set_loader(lambda _obj, _k=key: resolver(_k))
         return cos_obj
 
@@ -1088,8 +1090,8 @@ class COSParser(BaseParser):
                         position=self.position,
                     )
                 if self._document is not None:
-                    cos_obj = self._document.get_object_from_pool(
-                        COSObjectKey(object_number, generation_number)
+                    cos_obj = self._document._get_object_from_pool_by_number(
+                        object_number, generation_number
                     )
                     cos_obj.set_object(stream)
                     return cos_obj
@@ -1105,8 +1107,8 @@ class COSParser(BaseParser):
                 position=self.position,
             )
         if self._document is not None:
-            cos_obj = self._document.get_object_from_pool(
-                COSObjectKey(object_number, generation_number)
+            cos_obj = self._document._get_object_from_pool_by_number(
+                object_number, generation_number
             )
             cos_obj.set_object(body)
             return cos_obj

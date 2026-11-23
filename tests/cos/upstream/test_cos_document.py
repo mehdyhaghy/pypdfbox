@@ -101,7 +101,7 @@ def test_objects_by_type_skips_pool_entries_with_no_xref_membership() -> None:
     page.set_item(COSName.TYPE, COSName.get_pdf_name("Page"))  # type: ignore[attr-defined]
     pool_obj = COSObject(1, 0)
     pool_obj.set_object(page)
-    document._objects[COSObjectKey(1, 0)] = pool_obj
+    document._put_object(COSObjectKey(1, 0), pool_obj)
     # PDFBOX-6132: corrupted xref entry — must be tolerated.
     document.add_xref_table({None: 10})
     assert document.get_objects_by_type(COSName.get_pdf_name("Page")) == [pool_obj]
