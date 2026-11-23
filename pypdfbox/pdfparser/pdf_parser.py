@@ -23,6 +23,7 @@ from pypdfbox.cos import (
     COSStream,
     COSString,
 )
+from pypdfbox.cos.cos_update_state import COSUpdateState
 from pypdfbox.io import (
     RandomAccessRead,
     RandomAccessReadBuffer,
@@ -58,6 +59,17 @@ _LOG = logging.getLogger(__name__)
 # ``security_handler._decrypt_file_object``, imported on first use (pdmodel
 # imports the parser, so it cannot be a module-level import here).
 _security_decrypt_file_object: Any = None
+_security_fast_walk: Any = None
+
+
+def _security_takes_fast_walk() -> Any:
+    """``security_handler._takes_fast_walk``, imported on first use."""
+    global _security_fast_walk
+    if _security_fast_walk is None:
+        from pypdfbox.pdmodel.encryption.security_handler import _takes_fast_walk
+
+        _security_fast_walk = _takes_fast_walk
+    return _security_fast_walk
 
 
 class _HeaderNotFoundError(PDFParseError):
@@ -121,6 +133,8 @@ _FAST_FILE_OBJ_HEADER = re.compile(
 _FAST_END_TOKEN = re.compile(_FAST_WS_PATTERN + rb"([^\x00\t\n\x0c\r ]*+)").match
 # First window scanned for a whole indirect object (header, body, ``endobj``).
 _FAST_OBJECT_WINDOW = 4096
+# ``COSObjectKey(num, gen)`` for the numbers of an existing ``COSObject``.
+_key_for_valid = COSObjectKey._for_valid
 
 
 def _fast_paths_apply_to(cls: type) -> bool:
@@ -214,9 +228,9 @@ class _XrefEntryLoader:
         entry = self._entry
         if entry.type is XrefType.COMPRESSED:
             return self._parser._compressed_loader(
-                entry.offset, entry.compressed_index, obj
+                entry.offset, entry.compressed_index, obj, True
             )
-        return self._parser._offset_loader(entry.offset, obj)
+        return self._parser._offset_loader(entry.offset, obj, True)
 
 
 class PDFParser:
@@ -238,6 +252,12 @@ class PDFParser:
     The convenience method ``parse()`` runs all four steps and returns
     the populated ``COSDocument``.
     """
+
+    _load_states: list[COSUpdateState] | None = None
+    # ``(body, holds_a_string)`` for the body ``_fast_load_indirect_object``
+    # last read in full (through ``endobj``); ``_offset_loader`` resets it to
+    # ``None`` before a load and only trusts it for the body it got back.
+    _load_strings: tuple[COSBase, bool] | None = None
 
     def __init__(
         self,
@@ -339,6 +359,10 @@ class PDFParser:
         # stream reuse it instead of building a reader + ``COSParser`` per
         # member; ``busy`` hands a re-entrant resolve a fresh pair.
         self._objstm_member_parser: list[Any] | None = None
+        # List the body fast path of ``_fast_load_indirect_object`` appends
+        # the update states of the containers it builds to, or ``None``; set
+        # by ``_offset_loader`` while it loads an object.
+        self._load_states: list[COSUpdateState] | None = None
         # Lazy ``PDDocument`` wrapper around the parsed ``COSDocument``.
         # Built on first call to :meth:`get_pd_document`; mirrors upstream
         # ``PDFParser.getPDDocument()``.
@@ -2748,27 +2772,79 @@ class PDFParser:
         return _XrefEntryLoader(self, entry)
 
     def _compressed_loader(
-        self, objstm_obj_num: int, inner_index: int, obj: COSObject
+        self,
+        objstm_obj_num: int,
+        inner_index: int,
+        obj: COSObject,
+        prelink: bool = False,
     ) -> COSBase | None:
         try:
-            return self._load_compressed_object(objstm_obj_num, inner_index, obj)
+            return self._load_compressed_object(
+                objstm_obj_num, inner_index, obj, prelink
+            )
         except PDFParseError as exc:
             raise OSError(str(exc)) from exc
 
-    def _offset_loader(self, offset: int, obj: COSObject) -> COSBase | None:
+    def _offset_loader(
+        self, offset: int, obj: COSObject, prelink: bool = False
+    ) -> COSBase | None:
+        """Load the object at file offset ``offset`` for ``obj``.
+
+        ``prelink`` is set when this is ``obj``'s loader, called by
+        ``COSObject.get_object``, which links the returned tree to ``obj``'s
+        origin document state (``dereference_child``) right after. The
+        arrays and dictionaries the body's fast parse built are then linked
+        here, last: the walk skips linked states, and what else it could
+        reach from them is a leaf or a pooled ``COSObject`` of a plain
+        ``COSDocument``, which is linked when it is pooled."""
+        states: list[COSUpdateState] | None = None
+        origin = None
+        if prelink and type(obj) is COSObject and type(self._document) is COSDocument:
+            origin = obj._update_state._origin_document_state
+            if origin is not None:
+                states = []
+        outer = self._load_states
+        outer_strings = self._load_strings
+        self._load_states = states
+        self._load_strings = None
         try:
             body = self._load_indirect_object_at(offset, obj)
         except PDFParseError as exc:
             raise OSError(str(exc)) from exc
+        finally:
+            strings = self._load_strings
+            self._load_states = outer
+            self._load_strings = outer_strings
         # ``_decrypt_file_object`` is a no-op without a security handler
         # or a body; skip the call in that (unencrypted) common case.
-        if (
-            body is not None
-            and getattr(self._document, "_object_security_handler", None)
-            is not None
-        ):
-            self._decrypt_file_object(body, obj)
+        if body is not None:
+            handler = getattr(self._document, "_object_security_handler", None)
+            if handler is not None and not (
+                # A dictionary or array the fast path read with no string
+                # in it: the handler's walk would find nothing to decipher,
+                # and resolving an already loaded /Encrypt has no effect.
+                strings is not None
+                and strings[0] is body
+                and not strings[1]
+                and (type(body) is COSDictionary or type(body) is COSArray)
+                and _security_takes_fast_walk()(handler)
+                and self._encrypt_entry_is_loaded()
+            ):
+                self._decrypt_file_object(body, obj)
+        if states:
+            for state in states:
+                if state._origin_document_state is None:
+                    state._origin_document_state = origin
         return body
+
+    def _encrypt_entry_is_loaded(self) -> bool:
+        """Whether resolving the trailer's /Encrypt entry, as
+        :meth:`_decrypt_file_object` does, would load nothing."""
+        trailer = self._document.get_trailer()  # type: ignore[union-attr]
+        if trailer is None:
+            return True
+        encrypt_ref = trailer.get_item(COSName.ENCRYPT)
+        return not isinstance(encrypt_ref, COSObject) or encrypt_ref.is_dereferenced()
 
     def _decrypt_file_object(self, body: COSBase | None, obj: COSObject) -> None:
         """Decipher an object just read from a direct file offset when the
@@ -2817,7 +2893,11 @@ class PDFParser:
         )
 
     def _load_compressed_object(
-        self, objstm_obj_num: int, inner_index: int, obj: COSObject
+        self,
+        objstm_obj_num: int,
+        inner_index: int,
+        obj: COSObject,
+        prelink: bool = False,
     ) -> COSBase | None:
         """Resolve an object stored inside an object stream (PDF 32000-1
         §7.5.7). The owning ``ObjStm`` is itself an indirect object whose
@@ -2828,7 +2908,16 @@ class PDFParser:
         ``inner_index`` is the position of the requested object inside the
         ObjStm — *not* the requested object's own number. ``obj`` is the
         ``COSObject`` placeholder whose ``_resolved`` field the caller
-        will populate from our return value."""
+        will populate from our return value.
+
+        ``prelink`` is set when the caller is ``obj``'s loader, called by
+        ``COSObject.get_object``, which links the returned tree to ``obj``'s
+        origin document state (``dereference_child``) right away. The
+        member's arrays and dictionaries are then built already linked to
+        that state, which leaves the walk nothing to do. Everything else it
+        could reach in a parsed member is a leaf or a pooled ``COSObject``
+        of a plain ``COSDocument``, which is linked when it is pooled, so
+        the walk would skip it."""
         assert self._document is not None
         objstm = self._document._get_object_from_pool_by_number(objstm_obj_num, 0)
         objstm_body = objstm.get_object()
@@ -2889,7 +2978,7 @@ class PDFParser:
             # ``header_offset_unordered``). We mirror the by-number lookup and
             # use ``inner_index`` only to disambiguate genuine DUPLICATE object
             # numbers (the upstream ``getStreamIndex`` tiebreak).
-            matches = num_index.get(obj.object_number)
+            matches = num_index.get(obj._object_number)
             if not matches:
                 # The requested object is not among the header pairs that were
                 # actually read — upstream's ``objects.remove(key)`` returns
@@ -2932,24 +3021,38 @@ class PDFParser:
                     False,
                 ]
                 self._objstm_member_parser = member
-            _, body_view, body_parser, _ = member
-            body_view.seek(first + target_byte_offset)
+            body_parser = member[2]
             member[3] = True
+            if (
+                prelink
+                and type(obj) is COSObject
+                and type(self._document) is COSDocument
+            ):
+                body_parser._fp_origin = obj._update_state._origin_document_state
             try:
-                obj_body = body_parser.parse_direct_object()
+                obj_body = body_parser._parse_direct_object_at(
+                    first + target_byte_offset
+                )
                 # A compressed object's body is the indirect object itself —
                 # reset the direct flag (set by parse_direct_object on inline
                 # dicts) so the writer keeps it as a keyed object. Mirrors
                 # upstream PDFObjectStreamParser (Java line 102/160:
                 # setDirect(false)). Restricted to dict/array — scalar bodies
                 # are interned singletons.
-                if isinstance(obj_body, (COSDictionary, COSArray)):
+                body_type = type(obj_body)
+                if body_type is COSDictionary or body_type is COSArray:
+                    obj_body._direct = False
+                    obj_body._key = _key_for_valid(
+                        obj._object_number, obj._generation_number
+                    )
+                elif isinstance(obj_body, (COSDictionary, COSArray)):
                     obj_body.set_direct(False)
                     obj_body.set_key(
                         COSObjectKey(obj.object_number, obj.generation_number)
                     )
                 return obj_body
             finally:
+                body_parser._fp_origin = None
                 member[3] = False
         except PDFParseError:
             if self._lenient:
@@ -3027,6 +3130,10 @@ class PDFParser:
             ):
                 return None
             depth = cos_parser._recursion_depth
+            # Collect the update state of every array and dictionary the
+            # fast path builds when ``_offset_loader`` asks for it.
+            cos_parser._fp_states = self._load_states
+            cos_parser._fp_saw_string = False
             try:
                 body, i = cos_parser._fp_value(
                     data, header.end(), n, eof, base, False
@@ -3045,14 +3152,21 @@ class PDFParser:
             except BaseException:
                 cos_parser._recursion_depth = depth
                 raise
+            finally:
+                cos_parser._fp_states = None
             break
         # See ``_load_indirect_object_at`` for the direct flag and the key.
-        if isinstance(body, (COSDictionary, COSArray)):
+        body_type = type(body)
+        if body_type is COSDictionary or body_type is COSArray:
+            body._direct = False
+            body._key = _key_for_valid(obj._object_number, obj._generation_number)
+        elif isinstance(body, (COSDictionary, COSArray)):
             body.set_direct(False)
             body.set_key(COSObjectKey(obj.object_number, obj.generation_number))
         tail = _FAST_END_TOKEN(data, i)
         if (tail.end() < n or eof) and tail.group(1).startswith(b"endobj"):
             bio.seek(base + tail.end())
+            self._load_strings = (body, cos_parser._fp_saw_string)
             return body, True
         bio.seek(base + i)
         return body, False

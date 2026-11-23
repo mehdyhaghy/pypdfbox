@@ -1411,6 +1411,21 @@ def _walk_dict_values(dictionary: Any) -> Any:
     return tuple(items.values())
 
 
+def _takes_fast_walk(handler: Any) -> bool:
+    """Whether :func:`_decrypt_file_object` deciphers an exact
+    ``COSDictionary`` / ``COSArray`` with ``handler._walk_tree``.
+
+    That walk only acts on the ``COSString`` values it reaches (and on
+    streams or COS subclasses, which a parsed object body holds none of), so
+    for a parsed body without strings the call has no effect."""
+    walk = _WALK_HANDLER_TYPES.get(type(handler))
+    if walk is None:
+        walk = issubclass(type(handler), SecurityHandler)
+        if len(_WALK_HANDLER_TYPES) < 64:
+            _WALK_HANDLER_TYPES[type(handler)] = walk
+    return walk and handler._fast_walk()
+
+
 def _decrypt_file_object(
     handler: Any,
     actual: object,
@@ -1432,16 +1447,10 @@ def _decrypt_file_object(
     if actual is None or actual is encrypt_dict:
         return
     kind = type(actual)
-    if kind is _COSDictionary or kind is _COSArray:
-        walk = _WALK_HANDLER_TYPES.get(type(handler))
-        if walk is None:
-            walk = issubclass(type(handler), SecurityHandler)
-            if len(_WALK_HANDLER_TYPES) < 64:
-                _WALK_HANDLER_TYPES[type(handler)] = walk
-        if walk and handler._fast_walk():
-            # What ``handler.decrypt`` reaches for these exact types.
-            handler._walk_tree(actual, obj_num, gen_num)
-            return
+    if (kind is _COSDictionary or kind is _COSArray) and _takes_fast_walk(handler):
+        # What ``handler.decrypt`` reaches for these exact types.
+        handler._walk_tree(actual, obj_num, gen_num)
+        return
     objects_seen = getattr(handler, "_objects_seen", None)
     seen_ids = objects_seen() if callable(objects_seen) else None
     if isinstance(actual, _COSStream):

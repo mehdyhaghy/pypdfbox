@@ -510,3 +510,32 @@ class COSFloat(COSNumber):
 # match PDFBox's ``COSFloat.ZERO`` / ``COSFloat.ONE`` constants.
 COSFloat.ZERO = COSFloat("0.0")
 COSFloat.ONE = COSFloat("1.0")
+
+
+# Parsed real literal -> (verbatim text, float32 value) for the literals whose
+# ``COSFloat(text)`` construction takes the fast branch of ``__init__`` (a
+# finite float32 of normal magnitude, text kept verbatim). Bounded: cleared
+# when full.
+_PARSED_REALS: dict[bytes, tuple[str, float]] = {}
+_PARSED_REALS_MAX = 8192
+_parsed_reals_get = _PARSED_REALS.get
+_float_new = object.__new__
+
+
+def _parsed_real(token: bytes) -> COSFloat:
+    """``COSFloat(token.decode("ascii"))`` for a real literal the parser has
+    matched as ``[+-]?(digits.digits*|.digits)``, built from a per-token
+    cache when that construction would keep the verbatim text. The instance
+    gets the attributes ``__init__`` would set, in the same order."""
+    hit = _parsed_reals_get(token)
+    if hit is None:
+        real = COSFloat(token.decode("ascii"))
+        original = real._original
+        if original is not None:
+            if len(_PARSED_REALS) >= _PARSED_REALS_MAX:
+                _PARSED_REALS.clear()
+            _PARSED_REALS[token] = (original, real._value)
+        return real
+    real = _float_new(COSFloat)
+    real._original, real._value = hit
+    return real
