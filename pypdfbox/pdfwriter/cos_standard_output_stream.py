@@ -156,6 +156,17 @@ class COSStandardOutputStream:
             self.write(EOL)
             self._on_new_line = True
 
+    def write_line(self, data: bytes) -> None:
+        """Write non-empty ``data`` followed by an EOL in one sink call.
+
+        Same bytes and state as ``write(data)`` then ``write_eol()``:
+        after a non-empty write the stream is never on a new line, so the
+        EOL is always emitted. Lets the writer's hot loops coalesce a
+        token with its line break."""
+        self._out.write(data + EOL)
+        self._position += len(data) + 1
+        self._on_new_line = True
+
     # ---------- introspection ----------
 
     def get_position(self) -> int:
