@@ -14,6 +14,7 @@ from .cos_update_state import COSUpdateState
 from .i_cos_visitor import ICOSVisitor
 
 _NULL = COSNull.NULL
+_new_instance = object.__new__
 
 
 def _add_to_collection(collection: Collection[Any], item: Any) -> None:
@@ -49,6 +50,23 @@ class COSArray(COSBase):
         self.set_direct(True)
         self._items: list[COSBase] = list(items) if items is not None else []
         self._update_state = COSUpdateState(self)
+
+    @classmethod
+    def _new_parsed(cls, items: list[COSBase]) -> COSArray:
+        """``COSArray(items)`` for a list the caller hands over (it is kept,
+        not copied): the same attributes, set in ``__init__`` order, without
+        the constructor chain. Used by the parser's fast path."""
+        array = _new_instance(cls)
+        array._direct = True
+        array._needs_to_be_updated = False
+        array._key = None
+        array._items = items
+        state = _new_instance(COSUpdateState)
+        state._update_info = array
+        state._origin_document_state = None
+        state._updated = False
+        array._update_state = state
+        return array
 
     # ---------- core list operations ----------
 

@@ -27,6 +27,7 @@ from .i_cos_visitor import ICOSVisitor
 _MISSING: Any = object()
 
 _NULL = COSNull.NULL
+_new_instance = object.__new__
 
 def _as_name(key: COSName | str) -> COSName:
     """Normalize string keys to interned ``COSName`` for storage."""
@@ -205,6 +206,23 @@ class COSDictionary(COSBase):
         if items is not None:
             for k, v in items:
                 self.set_item(k, v)
+
+    @classmethod
+    def _new_parsed(cls, direct: bool) -> COSDictionary:
+        """An empty ``COSDictionary()`` followed by ``set_direct(direct)``:
+        the same attributes, set in that order, without the constructor
+        chain. Used by the parser's fast path."""
+        d = _new_instance(cls)
+        d._direct = direct
+        d._needs_to_be_updated = False
+        d._key = None
+        d._items = {}
+        state = _new_instance(COSUpdateState)
+        state._update_info = d
+        state._origin_document_state = None
+        state._updated = False
+        d._update_state = state
+        return d
 
     # ---------- core map operations ----------
 

@@ -20,6 +20,8 @@ from pypdfbox.cos import (
     COSStream,
     COSString,
 )
+from pypdfbox.cos.cos_float import _parsed_real
+from pypdfbox.cos.cos_integer import _cache_get as _cos_integer_cache_get
 from pypdfbox.cos.cos_name import _common_name_get, _name_get
 from pypdfbox.io import (
     RandomAccessRead,
@@ -77,6 +79,26 @@ _FP_NAME = re.compile(_FP_NAME_PATTERN).match
 _FP_ESCAPED_NAME = re.compile(
     rb"/((?:[^\x00\t\n\x0c\r ()<>\[\]/%#]++|#[0-9A-Fa-f]{2})*+)"
 ).match
+# A flat array of numbers and ``<int> <int> R`` references only, separated by
+# PDF whitespace other than NUL (no comments), captured without its brackets
+# (group 1 of ``_FP_FLAT_ARRAY``). Such an array reads, item by item, exactly
+# as ``bytes.split()`` cuts it (the one extra byte ``split`` cuts at, VT,
+# cannot occur): a reference is a token triple ending in ``R`` (the only place
+# an ``R`` can occur), every other token a number, a real when it holds a
+# ``.``. Digit runs are capped at ``_FP_MAX_DIGITS``; longer ones take the
+# general path. See ``COSParser._fp_flat_array``.
+_FP_SEP = rb"[\t\n\x0c\r ]"
+# PDF whitespace without comments.
+_FP_SIMPLE_WS = rb"[\x00\t\n\x0c\r ]*+"
+_FP_FLAT_ITEM = (
+    rb"(?:[0-9]{1,4000}+" + _FP_SEP + rb"++[0-9]{1,4000}+" + _FP_SEP + rb"++R"
+    + rb"|[+-]?+(?:[0-9]{1,4000}+(?:\.[0-9]*+)?+|\.[0-9]++))"
+)
+_FP_FLAT_ARRAY_PATTERN = (
+    rb"\[(" + _FP_SEP + rb"*+(?:" + _FP_FLAT_ITEM + rb"(?:" + _FP_SEP + rb"++"
+    + _FP_FLAT_ITEM + rb")*+" + _FP_SEP + rb"*+)?+)\]"
+)
+_FP_FLAT_ARRAY = re.compile(_FP_FLAT_ARRAY_PATTERN).match
 # The common dictionary values and array elements in one match, each only in
 # a shape whose reference reading is unambiguous:
 #
@@ -88,27 +110,40 @@ _FP_ESCAPED_NAME = re.compile(
 # * group 5: an integer the reference lookahead rejects: its next
 #   non-whitespace byte is not a digit (and it does not continue as a real),
 #   or the integer after it is not followed by an ``R``;
-# * group 6: a literal string without parentheses or backslashes.
+# * group 6: a literal string without parentheses or backslashes;
+# * group 7: a hex string of hex digits and the whitespace bytes
+#   ``read_hex_string`` skips (``_FP_HEX``);
+# * group 8: the body of a flat array (``_FP_FLAT_ARRAY``);
+# * group 9: ``true``, ``false`` or ``null`` followed by a non-regular byte.
 #
-# Every alternative needs a byte after its token, so a token that touches the
-# end of the window never matches here and takes the general path.
+# The whitespace inside these patterns is ``_FP_SIMPLE_WS``: no comments. A
+# ``%`` where the reference reader would skip a comment makes the match fail
+# (the integer lookahead refuses a ``%`` for this reason), and the token is
+# then read by the general path, which does skip comments.
+#
+# Every alternative but the arrays and strings needs a byte after its token,
+# so a token that touches the end of the window never matches here and takes
+# the general path (a closed bracket or delimiter is complete as it stands).
 _FP_SIMPLE_VALUE_PATTERN = (
-    rb"(?:([+-]?[0-9]++)" + _FP_WS_PATTERN + rb"([0-9]++)" + _FP_WS_PATTERN
+    rb"(?:([+-]?[0-9]++)" + _FP_SIMPLE_WS + rb"([0-9]++)" + _FP_SIMPLE_WS
     + rb"R(?=[\x00\t\n\x0c\r ()<>\[\]{}/%])"
     + rb"|" + _FP_NAME_PATTERN + rb"(?=[^#])"
     + rb"|([+-]?(?:[0-9]++\.[0-9]*+|\.[0-9]++))(?=[^.eE])"
-    + rb"|([+-]?[0-9]++)(?=" + _FP_WS_PATTERN + rb"(?:[^0-9.eE]|[0-9]++"
-    + _FP_WS_PATTERN + rb"[^R]))"
-    + rb"|\(([^()\\]*+)\))"
+    + rb"|([+-]?[0-9]++)(?=" + _FP_SIMPLE_WS + rb"(?:[^0-9.eE%]|[0-9]++"
+    + _FP_SIMPLE_WS + rb"[^R%]))"
+    + rb"|\(([^()\\]*+)\)"
+    + rb"|<([0-9A-Fa-f \n\t\r\x08\x0c]*+)>"
+    + rb"|" + _FP_FLAT_ARRAY_PATTERN
+    + rb"|(true|false|null)(?=[\x00\t\n\x0c\r ()<>\[\]{}/%]))"
 )
 # One dictionary entry: whitespace, the key (group 1), whitespace, then a
-# simple value (groups 2-7, the groups above shifted by one).
+# simple value (groups 2-10, the groups above shifted by one).
 _FP_DICT_ENTRY = re.compile(
-    _FP_WS_PATTERN + _FP_NAME_PATTERN + rb"(?=[^#])" + _FP_WS_PATTERN
+    _FP_SIMPLE_WS + _FP_NAME_PATTERN + rb"(?=[^#])" + _FP_SIMPLE_WS
     + _FP_SIMPLE_VALUE_PATTERN
 ).match
-# One array element: whitespace, then a simple value (groups 1-6).
-_FP_ARRAY_ITEM = re.compile(_FP_WS_PATTERN + _FP_SIMPLE_VALUE_PATTERN).match
+# One array element: whitespace, then a simple value (groups 1-9).
+_FP_ARRAY_ITEM = re.compile(_FP_SIMPLE_WS + _FP_SIMPLE_VALUE_PATTERN).match
 # ``BaseParser.read_number`` without an exponent. The byte after the match is
 # checked separately: ``.``, ``e`` or ``E`` there means a shape the regex does
 # not model, so the token goes to the slow reader.
@@ -146,6 +181,29 @@ _FP_WINDOW_SOURCES = (
 )
 _FP_FIRST_WINDOW = 4096
 _FP_MAX_WINDOW = 1 << 26
+
+
+_FP_KEYWORDS: dict[bytes, COSBase] = {
+    b"true": COSBoolean.TRUE,
+    b"false": COSBoolean.FALSE,
+    b"null": COSNull.NULL,
+}
+# Hot-path bindings for the fast path.
+_cget = _common_name_get
+_nget = _name_get
+_get_name = COSName.get_pdf_name
+_int_cache_get = _cos_integer_cache_get
+_new_array = COSArray._new_parsed
+_new_dictionary = COSDictionary._new_parsed
+
+
+def _fp_hex_string(body: bytes) -> COSString:
+    """The ``COSString`` ``_read_cos_hex_string`` builds for a hex string
+    whose body (between the angle brackets) matched ``_FP_HEX``."""
+    digits = body.translate(None, _FP_HEX_WS)
+    if len(digits) % 2:
+        digits += b"0"
+    return COSString(bytes.fromhex(digits.decode("ascii")), True)
 
 
 def _fp_integer(token: bytes) -> COSBase:
@@ -499,12 +557,7 @@ class COSParser(BaseParser):
             m = _FP_HEX(data, i)
             if m is None:
                 return self._fp_slow(self._read_cos_hex_string, i, n, eof, base)
-            digits = m.group(1).translate(None, _FP_HEX_WS)
-            if len(digits) % 2:
-                digits += b"0"
-            s = COSString(bytes.fromhex(digits.decode("ascii")))
-            s.set_force_hex_form(True)
-            return s, m.end()
+            return _fp_hex_string(m.group(1)), m.end()
         if c == 0x5B:  # '['
             return self._fp_array(data, i, n, eof, base)
         if c == 0x28:  # '('
@@ -521,12 +574,7 @@ class COSParser(BaseParser):
                         raise _FastNeedMore
                 elif data[k] not in _FP_NON_REGULAR:
                     return self._fp_slow(self._parse_keyword_value, i, n, eof, base)
-                kw = m.group()
-                if kw == b"true":
-                    return COSBoolean.TRUE, k
-                if kw == b"false":
-                    return COSBoolean.FALSE, k
-                return COSNull.NULL, k
+                return _FP_KEYWORDS[m.group()], k
             return self._fp_slow(self._parse_keyword_value, i, n, eof, base)
         raise _FastAbort
 
@@ -556,8 +604,72 @@ class COSParser(BaseParser):
                 return None
             return _fp_integer(token)
         if kind == 4:
-            return COSFloat(m.group(4 + off).decode("ascii"))
-        return COSString(m.group(6 + off))
+            return _parsed_real(m.group(4 + off))
+        if kind == 6:
+            return COSString(m.group(6 + off))
+        if kind == 7:
+            return _fp_hex_string(m.group(7 + off))
+        if kind == 8:
+            # The array the general path would read through ``_fp_array``,
+            # whose recursion check this repeats.
+            if self._recursion_depth + 2 >= self.MAX_RECURSION_DEPTH:
+                raise _FastAbort
+            return self._fp_flat_array(m.group(8 + off))
+        return _FP_KEYWORDS[m.group(9 + off)]
+
+    def _fp_flat_array(self, body: bytes) -> COSArray:
+        """The array whose body (between the brackets) ``_FP_FLAT_ARRAY``
+        matched: numbers and ``<int> <int> R`` references only."""
+        tokens = body.split()
+        items: list[COSBase] = []
+        append = items.append
+        if b"R" not in tokens:
+            for token in tokens:
+                if 0x2E in token:  # '.'
+                    append(_parsed_real(token))
+                else:
+                    obj = _int_cache_get(int(token))
+                    append(obj if obj is not None else _fp_integer(token))
+            return _new_array(items)
+        reference = self._fp_reference_maker()
+        count = len(tokens)
+        k = 0
+        while k < count:
+            token = tokens[k]
+            if k + 2 < count and tokens[k + 2] == b"R":
+                append(reference(int(token), int(tokens[k + 1])))
+                k += 3
+                continue
+            if 0x2E in token:  # '.'
+                append(_parsed_real(token))
+            else:
+                obj = _int_cache_get(int(token))
+                append(obj if obj is not None else _fp_integer(token))
+            k += 1
+        return _new_array(items)
+
+    def _fp_reference_maker(self) -> Callable[[int, int], COSObject]:
+        """A callable equivalent to :meth:`_make_indirect_reference` for the
+        current parse. With a plain ``COSDocument`` and no missing-object
+        resolver, a reference to a pooled object is that pooled object, so
+        the pool is probed first."""
+        doc = self._document
+        make_reference = self._make_indirect_reference
+        if (
+            doc is None
+            or self._missing_object_resolver is not None
+            or type(doc) is not COSDocument
+        ):
+            return make_reference
+        pool_get = doc._pool.get
+
+        def reference(first: int, second: int) -> COSObject:
+            hit = pool_get((first << 16) | (second & 0xFFFF))
+            if hit is None:
+                return make_reference(first, second)
+            return hit
+
+        return reference
 
     def _fp_name_slow(self) -> COSName:
         return COSName.get_pdf_name(self.read_name_bytes())
@@ -614,7 +726,7 @@ class COSParser(BaseParser):
         if len(token) > _FP_MAX_DIGITS:
             return self._fp_slow(slow, i, n, eof, base)
         if 0x2E in token:  # '.'
-            return COSFloat(token.decode("ascii")), k
+            return _parsed_real(token), k
         if allow_ref:
             first = int(token)
             if first >= 0:
@@ -664,30 +776,26 @@ class COSParser(BaseParser):
         depth = self._recursion_depth + 2
         if depth >= self.MAX_RECURSION_DEPTH:
             raise _FastAbort
+        m = _FP_FLAT_ARRAY(data, i)
+        if m is not None:
+            return self._fp_flat_array(m.group(1)), m.end()
         self._recursion_depth = depth
         items: list[COSBase] = []
         append = items.append
         value = self._fp_value
         simple = self._fp_simple_value
-        get_name = COSName.get_pdf_name
-        make_reference = self._make_indirect_reference
-        cget = _common_name_get
-        nget = _name_get
+        reference = None
         item = _FP_ARRAY_ITEM
         i += 1
         while True:
             m = item(data, i)
             if m is not None:
-                # Inlined ``_fp_simple_value(m, 0)`` for the four most common
+                # Inlined ``_fp_simple_value(m, 0)`` for the most common
                 # element kinds.
                 kind = m.lastindex
                 if kind == 3:
                     token = m.group(3)
-                    append(cget(token) or nget(token) or get_name(token))
-                    i = m.end()
-                    continue
-                if kind == 4:
-                    append(COSFloat(m.group(4).decode("ascii")))
+                    append(_cget(token) or _nget(token) or _get_name(token))
                     i = m.end()
                     continue
                 if kind == 2:
@@ -697,15 +805,22 @@ class COSParser(BaseParser):
                         and len(first_token) <= _FP_MAX_DIGITS
                         and len(second_token) <= _FP_MAX_DIGITS
                     ):
-                        append(make_reference(int(first_token), int(second_token)))
+                        if reference is None:
+                            reference = self._fp_reference_maker()
+                        append(reference(int(first_token), int(second_token)))
                         i = m.end()
                         continue
                 elif kind == 5:
                     token = m.group(5)
                     if len(token) <= _FP_MAX_DIGITS:
-                        append(_fp_integer(token))
+                        obj = _int_cache_get(int(token))
+                        append(obj if obj is not None else _fp_integer(token))
                         i = m.end()
                         continue
+                elif kind == 4:
+                    append(_parsed_real(m.group(4)))
+                    i = m.end()
+                    continue
                 obj = simple(m, 0)
                 if obj is not None:
                     append(obj)
@@ -718,7 +833,7 @@ class COSParser(BaseParser):
                 raise _FastNeedMore
             if data[i] == 0x5D:  # ']'
                 self._recursion_depth = depth - 2
-                return COSArray(items), i + 1
+                return _new_array(items), i + 1
             obj, i = value(data, i, n, eof, base, True)
             append(obj)
 
@@ -731,32 +846,26 @@ class COSParser(BaseParser):
         if depth >= self.MAX_RECURSION_DEPTH:
             raise _FastAbort
         self._recursion_depth = depth
-        d = COSDictionary()
-        d.set_direct(is_direct)
         # A fresh dictionary has no origin document state, so ``set_item``
         # with a ``COSName`` key and a non-``None`` value is exactly this
         # store.
+        d = _new_dictionary(is_direct)
         items = d._items
-        value = self._fp_value
-        get_name = COSName.get_pdf_name
-        simple = self._fp_simple_value
-        make_reference = self._make_indirect_reference
-        # ``COSName.get_pdf_name`` for ``bytes``, inlined: the interned
-        # instance from either registry, else the creating call.
-        cget = _common_name_get
-        nget = _name_get
+        reference = None
         entry = _FP_DICT_ENTRY
         i += 2
         while True:
             m = entry(data, i)
             if m is not None:
-                # Inlined ``_fp_simple_value(m, 1)`` for the three most common
-                # value kinds (names, references, integers).
+                # Inlined ``_fp_simple_value(m, 1)`` for the most common value
+                # kinds. ``COSName.get_pdf_name`` for ``bytes`` is inlined as
+                # well: the interned instance from either registry, else the
+                # creating call. The key is interned before the value.
                 kind = m.lastindex
                 if kind == 4:
                     key, token = m.group(1, 4)
-                    key = cget(key) or nget(key) or get_name(key)
-                    items[key] = cget(token) or nget(token) or get_name(token)
+                    key = _cget(key) or _nget(key) or _get_name(key)
+                    items[key] = _cget(token) or _nget(token) or _get_name(token)
                     i = m.end()
                     continue
                 if kind == 3:
@@ -766,21 +875,23 @@ class COSParser(BaseParser):
                         and len(first_token) <= _FP_MAX_DIGITS
                         and len(second_token) <= _FP_MAX_DIGITS
                     ):
-                        key = cget(key) or nget(key) or get_name(key)
-                        items[key] = make_reference(
-                            int(first_token), int(second_token)
-                        )
+                        key = _cget(key) or _nget(key) or _get_name(key)
+                        if reference is None:
+                            reference = self._fp_reference_maker()
+                        items[key] = reference(int(first_token), int(second_token))
                         i = m.end()
                         continue
                 elif kind == 6:
                     key, token = m.group(1, 6)
                     if len(token) <= _FP_MAX_DIGITS:
-                        key = cget(key) or nget(key) or get_name(key)
-                        items[key] = _fp_integer(token)
+                        key = _cget(key) or _nget(key) or _get_name(key)
+                        obj = _int_cache_get(int(token))
+                        items[key] = obj if obj is not None else _fp_integer(token)
                         i = m.end()
                         continue
-                key = get_name(m.group(1))
-                obj = simple(m, 1)
+                key = m.group(1)
+                key = _cget(key) or _nget(key) or _get_name(key)
+                obj = self._fp_simple_value(m, 1)
                 if obj is not None:
                     items[key] = obj
                     i = m.end()
@@ -814,7 +925,7 @@ class COSParser(BaseParser):
                 key, k = self._fp_escaped_name(data, i, n, eof, base)
             else:
                 key = COSName.get_pdf_name(m.group(1))
-            obj, i = value(data, k, n, eof, base, True)
+            obj, i = self._fp_value(data, k, n, eof, base, True)
             if isinstance(obj, (COSArray, COSDictionary)):
                 obj.set_direct(True)
             items[key] = obj
