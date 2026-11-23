@@ -385,6 +385,44 @@ class COSParser(BaseParser):
             result = self._fast_parse_direct_object(allow_indirect_reference)
             if result is not None:
                 return result
+        return self._parse_direct_object_reference(allow_indirect_reference)
+
+    def _parse_direct_object_at(self, position: int) -> COSBase:
+        """``seek(position)`` followed by :meth:`parse_direct_object`.
+
+        Over a ``RandomAccessReadBuffer`` (an object stream's decoded body)
+        the buffer-scanning fast path runs on the buffer directly, as
+        ``_fast_parse_direct_object`` would after the seek; whatever it does
+        not handle goes through the same seek and reference parse."""
+        src = self._src
+        if (
+            type(src) is RandomAccessReadBuffer
+            and _FP_APPLIES.get(type(self))
+            and not src._closed
+            and 0 <= position <= src._length
+            and self._recursion_depth < self.MAX_RECURSION_DEPTH
+        ):
+            bio = src._buf
+            data = bio.getvalue()
+            depth = self._recursion_depth
+            try:
+                obj, i = self._fp_value(data, position, len(data), True, 0, True)
+            except (_FastNeedMore, _FastAbort, RecursionError):
+                self._recursion_depth = depth
+                src.seek(position)
+                return self._parse_direct_object_reference(True)
+            except BaseException:
+                self._recursion_depth = depth
+                raise
+            bio.seek(i)
+            return obj
+        src.seek(position)
+        return self.parse_direct_object()
+
+    def _parse_direct_object_reference(
+        self, allow_indirect_reference: bool
+    ) -> COSBase:
+        """The reference (byte-at-a-time) part of :meth:`parse_direct_object`."""
         self.skip_whitespace()
         b = self.peek_byte()
         if b == RandomAccessRead.EOF:
@@ -631,13 +669,23 @@ class COSParser(BaseParser):
                     obj = _int_cache_get(int(token))
                     append(obj if obj is not None else _fp_integer(token))
             return _new_array(items)
-        reference = self._fp_reference_maker()
+        pool_get = self._fp_pool_get()
+        make_reference = self._make_indirect_reference
         count = len(tokens)
         k = 0
         while k < count:
             token = tokens[k]
             if k + 2 < count and tokens[k + 2] == b"R":
-                append(reference(int(token), int(tokens[k + 1])))
+                first = int(token)
+                second = int(tokens[k + 1])
+                ref = (
+                    pool_get((first << 16) | (second & 0xFFFF))
+                    if pool_get is not None
+                    else None
+                )
+                if ref is None or (ref._loader is None and not ref._dereferenced):
+                    ref = make_reference(first, second)
+                append(ref)
                 k += 3
                 continue
             if 0x2E in token:  # '.'
@@ -648,28 +696,19 @@ class COSParser(BaseParser):
             k += 1
         return _new_array(items)
 
-    def _fp_reference_maker(self) -> Callable[[int, int], COSObject]:
-        """A callable equivalent to :meth:`_make_indirect_reference` for the
-        current parse. With a plain ``COSDocument`` and no missing-object
-        resolver, a reference to a pooled object is that pooled object, so
-        the pool is probed first."""
+    def _fp_pool_get(self) -> Callable[[int], COSObject | None] | None:
+        """The pool probe the fast path tries before
+        :meth:`_make_indirect_reference`, or ``None`` when it calls that
+        directly. For a plain ``COSDocument`` the probe takes the key
+        ``_get_object_from_pool_by_number`` computes. A pooled object that
+        has a loader or has been dereferenced is exactly what
+        ``_make_indirect_reference`` returns for it (the missing-object
+        resolver only touches the others), so callers use such a hit and
+        pass everything else to that method."""
         doc = self._document
-        make_reference = self._make_indirect_reference
-        if (
-            doc is None
-            or self._missing_object_resolver is not None
-            or type(doc) is not COSDocument
-        ):
-            return make_reference
-        pool_get = doc._pool.get
-
-        def reference(first: int, second: int) -> COSObject:
-            hit = pool_get((first << 16) | (second & 0xFFFF))
-            if hit is None:
-                return make_reference(first, second)
-            return hit
-
-        return reference
+        if doc is None or type(doc) is not COSDocument:
+            return None
+        return doc._pool.get
 
     def _fp_name_slow(self) -> COSName:
         return COSName.get_pdf_name(self.read_name_bytes())
@@ -784,7 +823,7 @@ class COSParser(BaseParser):
         append = items.append
         value = self._fp_value
         simple = self._fp_simple_value
-        reference = None
+        pool_get: Callable[[int], COSObject | None] | None | bool = False
         item = _FP_ARRAY_ITEM
         i += 1
         while True:
@@ -805,9 +844,20 @@ class COSParser(BaseParser):
                         and len(first_token) <= _FP_MAX_DIGITS
                         and len(second_token) <= _FP_MAX_DIGITS
                     ):
-                        if reference is None:
-                            reference = self._fp_reference_maker()
-                        append(reference(int(first_token), int(second_token)))
+                        if pool_get is False:
+                            pool_get = self._fp_pool_get()
+                        first = int(first_token)
+                        second = int(second_token)
+                        ref = (
+                            pool_get((first << 16) | (second & 0xFFFF))
+                            if pool_get is not None
+                            else None
+                        )
+                        if ref is None or (
+                            ref._loader is None and not ref._dereferenced
+                        ):
+                            ref = self._make_indirect_reference(first, second)
+                        append(ref)
                         i = m.end()
                         continue
                 elif kind == 5:
@@ -851,7 +901,7 @@ class COSParser(BaseParser):
         # store.
         d = _new_dictionary(is_direct)
         items = d._items
-        reference = None
+        pool_get: Callable[[int], COSObject | None] | None | bool = False
         entry = _FP_DICT_ENTRY
         i += 2
         while True:
@@ -876,9 +926,20 @@ class COSParser(BaseParser):
                         and len(second_token) <= _FP_MAX_DIGITS
                     ):
                         key = _cget(key) or _nget(key) or _get_name(key)
-                        if reference is None:
-                            reference = self._fp_reference_maker()
-                        items[key] = reference(int(first_token), int(second_token))
+                        if pool_get is False:
+                            pool_get = self._fp_pool_get()
+                        first = int(first_token)
+                        second = int(second_token)
+                        ref = (
+                            pool_get((first << 16) | (second & 0xFFFF))
+                            if pool_get is not None
+                            else None
+                        )
+                        if ref is None or (
+                            ref._loader is None and not ref._dereferenced
+                        ):
+                            ref = self._make_indirect_reference(first, second)
+                        items[key] = ref
                         i = m.end()
                         continue
                 elif kind == 6:

@@ -6,6 +6,7 @@ from typing import Any
 #   ``compareTo`` produce identical orderings.
 _NUMBER_OFFSET: int = 16
 _GENERATION_MASK: int = (1 << _NUMBER_OFFSET) - 1
+_new_key = object.__new__
 
 
 class COSObjectKey:
@@ -35,6 +36,15 @@ class COSObjectKey:
         # built once per parsed indirect reference.
         self._number_and_generation = (num << _NUMBER_OFFSET) | (gen & _GENERATION_MASK)
         self._stream_index = index
+
+    @classmethod
+    def _for_valid(cls, num: int, gen: int) -> COSObjectKey:
+        """``COSObjectKey(num, gen)`` for a pair already known to be valid
+        (non-negative), without the constructor call."""
+        key = _new_key(cls)
+        key._number_and_generation = (num << _NUMBER_OFFSET) | (gen & _GENERATION_MASK)
+        key._stream_index = -1
+        return key
 
     # ------------------------------------------------------------------
     # Static helpers

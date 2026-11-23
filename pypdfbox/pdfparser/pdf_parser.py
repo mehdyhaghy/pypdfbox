@@ -121,6 +121,8 @@ _FAST_FILE_OBJ_HEADER = re.compile(
 _FAST_END_TOKEN = re.compile(_FAST_WS_PATTERN + rb"([^\x00\t\n\x0c\r ]*+)").match
 # First window scanned for a whole indirect object (header, body, ``endobj``).
 _FAST_OBJECT_WINDOW = 4096
+# ``COSObjectKey(num, gen)`` for the numbers of an existing ``COSObject``.
+_key_for_valid = COSObjectKey._for_valid
 
 
 def _fast_paths_apply_to(cls: type) -> bool:
@@ -2889,7 +2891,7 @@ class PDFParser:
             # ``header_offset_unordered``). We mirror the by-number lookup and
             # use ``inner_index`` only to disambiguate genuine DUPLICATE object
             # numbers (the upstream ``getStreamIndex`` tiebreak).
-            matches = num_index.get(obj.object_number)
+            matches = num_index.get(obj._object_number)
             if not matches:
                 # The requested object is not among the header pairs that were
                 # actually read — upstream's ``objects.remove(key)`` returns
@@ -2932,18 +2934,25 @@ class PDFParser:
                     False,
                 ]
                 self._objstm_member_parser = member
-            _, body_view, body_parser, _ = member
-            body_view.seek(first + target_byte_offset)
+            body_parser = member[2]
             member[3] = True
             try:
-                obj_body = body_parser.parse_direct_object()
+                obj_body = body_parser._parse_direct_object_at(
+                    first + target_byte_offset
+                )
                 # A compressed object's body is the indirect object itself —
                 # reset the direct flag (set by parse_direct_object on inline
                 # dicts) so the writer keeps it as a keyed object. Mirrors
                 # upstream PDFObjectStreamParser (Java line 102/160:
                 # setDirect(false)). Restricted to dict/array — scalar bodies
                 # are interned singletons.
-                if isinstance(obj_body, (COSDictionary, COSArray)):
+                body_type = type(obj_body)
+                if body_type is COSDictionary or body_type is COSArray:
+                    obj_body._direct = False
+                    obj_body._key = _key_for_valid(
+                        obj._object_number, obj._generation_number
+                    )
+                elif isinstance(obj_body, (COSDictionary, COSArray)):
                     obj_body.set_direct(False)
                     obj_body.set_key(
                         COSObjectKey(obj.object_number, obj.generation_number)
@@ -3047,7 +3056,11 @@ class PDFParser:
                 raise
             break
         # See ``_load_indirect_object_at`` for the direct flag and the key.
-        if isinstance(body, (COSDictionary, COSArray)):
+        body_type = type(body)
+        if body_type is COSDictionary or body_type is COSArray:
+            body._direct = False
+            body._key = _key_for_valid(obj._object_number, obj._generation_number)
+        elif isinstance(body, (COSDictionary, COSArray)):
             body.set_direct(False)
             body.set_key(COSObjectKey(obj.object_number, obj.generation_number))
         tail = _FAST_END_TOKEN(data, i)
