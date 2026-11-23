@@ -76,9 +76,10 @@ _FP_NAME = re.compile(_FP_NAME_PATTERN).match
 # The same with well-formed ``#XX`` hex escapes, decoded by
 # ``_fp_escaped_name``. A ``#`` left after the match (a malformed escape, or
 # one cut by the window end) still goes to the slow reader.
-_FP_ESCAPED_NAME = re.compile(
+_FP_ESCAPED_NAME_PATTERN = (
     rb"/((?:[^\x00\t\n\x0c\r ()<>\[\]/%#]++|#[0-9A-Fa-f]{2})*+)"
-).match
+)
+_FP_ESCAPED_NAME = re.compile(_FP_ESCAPED_NAME_PATTERN).match
 # A flat array of numbers and ``<int> <int> R`` references only, separated by
 # PDF whitespace other than NUL (no comments), captured without its brackets
 # (group 1 of ``_FP_FLAT_ARRAY``). Such an array reads, item by item, exactly
@@ -114,7 +115,9 @@ _FP_FLAT_ARRAY = re.compile(_FP_FLAT_ARRAY_PATTERN).match
 # * group 7: a hex string of hex digits and the whitespace bytes
 #   ``read_hex_string`` skips (``_FP_HEX``);
 # * group 8: the body of a flat array (``_FP_FLAT_ARRAY``);
-# * group 9: ``true``, ``false`` or ``null`` followed by a non-regular byte.
+# * group 9: ``true``, ``false`` or ``null`` followed by a non-regular byte;
+# * group 10: a name with well-formed ``#XX`` escapes (``_FP_ESCAPED_NAME``)
+#   followed by a byte other than ``#``.
 #
 # The whitespace inside these patterns is ``_FP_SIMPLE_WS``: no comments. A
 # ``%`` where the reference reader would skip a comment makes the match fail
@@ -134,15 +137,16 @@ _FP_SIMPLE_VALUE_PATTERN = (
     + rb"|\(([^()\\]*+)\)"
     + rb"|<([0-9A-Fa-f \n\t\r\x08\x0c]*+)>"
     + rb"|" + _FP_FLAT_ARRAY_PATTERN
-    + rb"|(true|false|null)(?=[\x00\t\n\x0c\r ()<>\[\]{}/%]))"
+    + rb"|(true|false|null)(?=[\x00\t\n\x0c\r ()<>\[\]{}/%])"
+    + rb"|" + _FP_ESCAPED_NAME_PATTERN + rb"(?=[^#]))"
 )
 # One dictionary entry: whitespace, the key (group 1), whitespace, then a
-# simple value (groups 2-10, the groups above shifted by one).
+# simple value (groups 2-11, the groups above shifted by one).
 _FP_DICT_ENTRY = re.compile(
     _FP_SIMPLE_WS + _FP_NAME_PATTERN + rb"(?=[^#])" + _FP_SIMPLE_WS
     + _FP_SIMPLE_VALUE_PATTERN
 ).match
-# One array element: whitespace, then a simple value (groups 1-9).
+# One array element: whitespace, then a simple value (groups 1-10).
 _FP_ARRAY_ITEM = re.compile(_FP_SIMPLE_WS + _FP_SIMPLE_VALUE_PATTERN).match
 # ``BaseParser.read_number`` without an exponent. The byte after the match is
 # checked separately: ``.``, ``e`` or ``E`` there means a shape the regex does
@@ -197,13 +201,22 @@ _new_array = COSArray._new_parsed
 _new_dictionary = COSDictionary._new_parsed
 
 
+def _fp_unescape_name(body: bytes) -> bytes:
+    """Decode the ``#XX`` escapes of a name body ``_FP_ESCAPED_NAME``
+    matched, as ``read_name_bytes`` does."""
+    parts = body.split(b"#")
+    return parts[0] + b"".join(
+        [bytes((int(part[:2], 16),)) + part[2:] for part in parts[1:]]
+    )
+
+
 def _fp_hex_string(body: bytes) -> COSString:
     """The ``COSString`` ``_read_cos_hex_string`` builds for a hex string
     whose body (between the angle brackets) matched ``_FP_HEX``."""
     digits = body.translate(None, _FP_HEX_WS)
     if len(digits) % 2:
         digits += b"0"
-    return COSString(bytes.fromhex(digits.decode("ascii")), True)
+    return COSString(bytes.fromhex(digits), True)
 
 
 def _fp_integer(token: bytes) -> COSBase:
@@ -663,7 +676,9 @@ class COSParser(BaseParser):
             if self._recursion_depth + 2 >= self.MAX_RECURSION_DEPTH:
                 raise _FastAbort
             return self._fp_flat_array(m.group(8 + off))
-        return _FP_KEYWORDS[m.group(9 + off)]
+        if kind == 9:
+            return _FP_KEYWORDS[m.group(9 + off)]
+        return COSName.get_pdf_name(_fp_unescape_name(m.group(10 + off)))
 
     def _fp_flat_array(self, body: bytes) -> COSArray:
         """The array whose body (between the brackets) ``_FP_FLAT_ARRAY``
@@ -745,11 +760,7 @@ class COSParser(BaseParser):
                 raise _FastNeedMore
         elif data[k] == 0x23:  # '#' not followed by two hex digits
             return self._fp_slow(self._fp_name_slow, i, n, eof, base)
-        parts = m.group(1).split(b"#")
-        decoded = parts[0] + b"".join(
-            [bytes((int(part[:2], 16),)) + part[2:] for part in parts[1:]]
-        )
-        return COSName.get_pdf_name(decoded), k
+        return COSName.get_pdf_name(_fp_unescape_name(m.group(1))), k
 
     def _fp_number_slow(self) -> COSBase:
         start = self.position
@@ -974,6 +985,10 @@ class COSParser(BaseParser):
                         continue
                 key = m.group(1)
                 key = _cget(key) or _nget(key) or _get_name(key)
+                if kind == 8:
+                    items[key] = _fp_hex_string(m.group(8))
+                    i = m.end()
+                    continue
                 obj = self._fp_simple_value(m, 1)
                 if obj is not None:
                     items[key] = obj
