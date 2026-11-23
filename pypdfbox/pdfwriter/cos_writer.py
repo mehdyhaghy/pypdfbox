@@ -6,7 +6,7 @@ import secrets
 import time
 from collections import deque
 from itertools import accumulate
-from operator import itemgetter
+from operator import attrgetter, itemgetter
 from typing import Any, BinaryIO
 
 from pypdfbox.cos import (
@@ -26,6 +26,7 @@ from pypdfbox.cos import (
     ICOSVisitor,
 )
 from pypdfbox.cos.cos_float import format_float32
+from pypdfbox.cos.cos_object_key import _GENERATION_MASK, _NUMBER_OFFSET
 from pypdfbox.io import RandomAccessRead, RandomAccessWrite
 
 from ._name_token import name_token as _name_token
@@ -255,6 +256,11 @@ _VALUE_KEYED_POOL_TYPES: tuple[type, ...] = (
 )
 
 _VALUE_KEYED_CACHE: dict[type, bool] = {}
+
+
+# Sort key ordering ``COSObjectKey`` values by ``(number, generation)``: the
+# packed ``num << 16 | gen`` int orders identically.
+_packed_key = attrgetter("_number_and_generation")
 
 
 def _is_value_keyed_type(tp: type) -> bool:
@@ -1281,7 +1287,12 @@ class COSWriter(ICOSVisitor):
         # Seed numbering from the highest existing object number so we
         # don't reuse keys when the parser already loaded them.
         existing_keys = cos_document.get_object_keys()
-        self._number = max((k.object_number for k in existing_keys), default=0)
+        # Max of the packed ``num << 16 | gen`` values, shifted down: the
+        # highest object number, without a property call per key.
+        self._number = (
+            max((k._number_and_generation for k in existing_keys), default=0)
+            >> _NUMBER_OFFSET
+        )
 
         if self._incremental_update:
             # PDFBOX-6236: use the size of the origin document trailer as the
@@ -2381,13 +2392,32 @@ class COSWriter(ICOSVisitor):
                 key_holders[id(obj)] = obj
             return existing
 
-        honor_declared = (
+        return self._assign_object_key(
+            obj,
+            actual,
+            is_wrapper,
             self._object_stream
             or self._xref_stream
             or self._hybrid_xref
-            or self._incremental_update
+            or self._incremental_update,
         )
 
+    def _assign_object_key(
+        self,
+        obj: COSBase,
+        actual: COSBase,
+        is_wrapper: bool,
+        honor_declared: bool,
+    ) -> COSObjectKey:
+        """Mint (or adopt) the key of a not-yet-keyed ``actual`` and record
+        it for ``actual`` (and for the ``obj`` wrapper when ``is_wrapper``).
+
+        The slow half of :py:meth:`_get_object_key`, split out so
+        :py:meth:`_collect_indirect_objects` (which has already resolved the
+        wrapper and checked the key table) can call it directly.
+        ``honor_declared`` is the stream / compressed / incremental mode flag
+        of :py:meth:`_get_object_key`.
+        """
         if honor_declared:
             # Stream / compressed / incremental path: keep the caller's
             # declared (num, gen) verbatim (legacy behaviour). Only a
@@ -2411,24 +2441,31 @@ class COSWriter(ICOSVisitor):
         if key is None:
             # A freshly minted key is unbound by construction.
             key = self._mint_fresh_object_key()
+            key_object[key] = actual
         else:
             # Avoid number collisions when honouring a declared key: bump a
             # fresh number if the chosen key is already bound to a different
-            # actual.
-            bound = key_object.get(key)
-            if bound is not None and bound is not actual:
-                key = self._mint_fresh_object_key()
+            # actual. ``setdefault`` binds an unbound key in the same single
+            # hash/lookup that checks it.
+            bound = key_object.setdefault(key, actual)
+            if bound is not actual:
+                if bound is not None:
+                    key = self._mint_fresh_object_key()
+                key_object[key] = actual
 
-        object_keys[id(actual)] = key
-        key_holders[id(actual)] = actual
-        key_object[key] = actual
+        aid = id(actual)
+        object_keys = self._object_keys
+        key_holders = self._key_holders
+        object_keys[aid] = key
+        key_holders[aid] = actual
         if not honor_declared:
             # Stamp the actual with its assigned key (upstream
             # ``actual.setKey``) so a subsequent re-save preserves it.
             actual.set_key(key)
         if is_wrapper:
-            object_keys[id(obj)] = key
-            key_holders[id(obj)] = obj
+            oid = id(obj)
+            object_keys[oid] = key
+            key_holders[oid] = obj
         return key
 
     # ---------- xref ----------
@@ -2604,7 +2641,8 @@ class COSWriter(ICOSVisitor):
                     and actual is not encrypt_actual
                     and id(actual) not in pending_ids
                 ),
-                key=lambda k: (k.object_number, k.generation_number),
+                # Packed ``num << 16 | gen`` orders exactly as ``(num, gen)``.
+                key=_packed_key,
             )
             for key in top_level_keys:
                 self._do_write_object(self._key_object[key])
@@ -2660,7 +2698,13 @@ class COSWriter(ICOSVisitor):
         stack: list[COSBase] = [r for r in roots if r is not None]
         pop = stack.pop
         extend = stack.extend
-        get_key = self._get_object_key
+        assign_key = self._assign_object_key
+        honor_declared = bool(
+            self._object_stream
+            or self._xref_stream
+            or self._hybrid_xref
+            or self._incremental_update
+        )
         object_keys = self._object_keys
         key_holders = self._key_holders
         kind_get = _KIND_CACHE.get
@@ -2680,14 +2724,14 @@ class COSWriter(ICOSVisitor):
                 actual = current.get_object()  # type: ignore[attr-defined]
                 if actual is None:
                     continue
-                # Fast path of ``_get_object_key`` for a wrapper whose actual
-                # is already keyed (a second reference to the same object).
+                # Inlined ``_get_object_key`` for a wrapper: the actual is
+                # already resolved, so only the key-table check remains.
                 existing = object_keys.get(id(actual))
                 if existing is not None:
                     object_keys[cid] = existing
                     key_holders[cid] = current
                 else:
-                    get_key(current)
+                    assign_key(current, actual, True, honor_declared)
                 atp = type(actual)
                 kind = kind_get(atp)
                 if kind is None:
@@ -2696,8 +2740,9 @@ class COSWriter(ICOSVisitor):
                 continue
             else:
                 actual = current
-                if not current._direct:  # type: ignore[attr-defined]
-                    get_key(current)
+                if not current._direct and cid not in object_keys:  # type: ignore[attr-defined]
+                    # Inlined ``_get_object_key`` for a non-wrapper.
+                    assign_key(current, current, False, honor_declared)
             if kind == _KIND_ARRAY:
                 extend(
                     [
@@ -2782,7 +2827,8 @@ class COSWriter(ICOSVisitor):
                 for kv in self._key_object.items()
                 if _is_value_keyed_type(type(kv[1]))
             ),
-            key=lambda kv: (kv[0].object_number, kv[0].generation_number),
+            # Packed ``num << 16 | gen`` orders exactly as ``(num, gen)``.
+            key=lambda kv: kv[0]._number_and_generation,
         ):
             if actual not in self._objstm_value_pool:
                 self._objstm_value_pool[actual] = key
@@ -2828,7 +2874,7 @@ class COSWriter(ICOSVisitor):
             # Generation must be 0 — type-2 entries can't represent
             # non-zero generations (the second field is the ObjStm number,
             # the third is the index, and gen is implicitly 0 per spec).
-            if key.generation_number != 0:
+            if key._number_and_generation & _GENERATION_MASK:
                 continue
             candidates.append((key, actual))
 
@@ -2837,7 +2883,9 @@ class COSWriter(ICOSVisitor):
 
         # Stable order: by object number ascending — matches what the
         # reader will reconstruct.
-        candidates.sort(key=lambda kv: kv[0].object_number)
+        # Every candidate has generation 0, so the packed value orders (and
+        # ties) exactly as the object number.
+        candidates.sort(key=lambda kv: kv[0]._number_and_generation)
 
         for chunk_start in range(0, len(candidates), self._object_stream_size):
             chunk = candidates[
@@ -2949,7 +2997,7 @@ class COSWriter(ICOSVisitor):
         # trailing-``\n`` form) makes the decoded ObjStm body identical to
         # PDFBox's.
         index_parts: list[bytes] = [
-            b"%d %d " % (kv[0].object_number, offset)
+            b"%d %d " % (kv[0]._number_and_generation >> _NUMBER_OFFSET, offset)
             for kv, offset in zip(
                 chunk, accumulate(map(len, bodies), initial=0), strict=False
             )
@@ -3070,8 +3118,8 @@ class COSWriter(ICOSVisitor):
                 # entries, but if a caller pre-staged one we drop it — only
                 # the implicit object-0 NULL row belongs in an xref stream.
                 continue
-            ekey = entry.key
-            objnum = ekey.object_number
+            packed = entry.key._number_and_generation
+            objnum = packed >> _NUMBER_OFFSET
             actual = entry.obj
             otp = type(actual)
             okind = kind_get(otp)
@@ -3084,7 +3132,7 @@ class COSWriter(ICOSVisitor):
                 records_append((objnum, 2, comp[0], comp[1], False))
             else:
                 records_append(
-                    (objnum, 1, entry.offset, ekey.generation_number, False)
+                    (objnum, 1, entry.offset, packed & _GENERATION_MASK, False)
                 )
 
         # 4. The xref stream's OWN entry is NOT placed in the body. Upstream
