@@ -134,7 +134,7 @@ porting history before 1.0.0 is in git history.
 
 ### Unreleased
 
-- Nothing yet.
+- Performance: cross-reference streams decode in bulk (load of a 127k-object file -25%), and saving writes object keys, names, integers and strings with fewer calls (save -4%, uncompressed save about -20% in the writer). Decrypting strings on load derives each object's key once and reuses the AES context (AES-256 decrypt pass -45%). Output is byte-identical.
 
 ### 2.6.1 (2026-11-22)
 
