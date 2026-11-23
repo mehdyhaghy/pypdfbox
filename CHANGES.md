@@ -134,6 +134,10 @@ porting history before 1.0.0 is in git history.
 
 ### Unreleased
 
+- Nothing yet.
+
+### 2.6.2 (2026-11-23)
+
 - Performance: cross-reference streams decode in bulk (load of a 127k-object file -25%), and saving writes object keys, names, integers and strings with fewer calls (save -4%, uncompressed save about -20% in the writer). Decrypting strings on load derives each object's key once and reuses the AES context (AES-256 decrypt pass -45%). Output is byte-identical.
 - Performance: the object pool is keyed by object number internally, so parsing a reference no longer builds a throwaway `COSObjectKey`, and the pool is filled in bulk at load (load -6 to -10%, save -3 to -4%, split -3 to -5%). The public pool API is unchanged.
 - Performance: the object parser reads more value types per regex match, builds containers and links them to the document in one step, and skips the decryption walk for objects without strings (per-object parse -19 to -26%; save -10 to -12%, merge -8%, split -10%). Object graphs and output are identical.
