@@ -2,7 +2,10 @@ import contextlib
 import gc
 import logging
 import re
+import sys
+from array import array
 from collections import OrderedDict
+from itertools import chain, islice, repeat
 from operator import itemgetter
 from typing import Any
 
@@ -143,6 +146,50 @@ _BULK_READ_BLOCK: int = 1 << 20
 _XREF_ROW_BYTES: int = 20
 # First EOL byte (CR or LF) — the stop condition of BaseParser.read_until_eol.
 _EOL_RE = re.compile(rb"[\r\n]")
+
+
+# Native ``array`` typecodes holding unsigned big-endian xref-stream fields of
+# 2, 4 and 8 bytes once padded (``None`` when the platform has no exact fit).
+def _unsigned_typecode(size: int) -> str | None:
+    for code in ("H", "I", "L", "Q"):
+        if array(code).itemsize == size:
+            return code
+    return None
+
+
+_XREF_FIELD_TYPECODES: dict[int, str | None] = {
+    size: _unsigned_typecode(size) for size in (2, 4, 8)
+}
+_XREF_FIELD_NEEDS_SWAP = sys.byteorder == "little"
+
+
+def _xref_stream_column(
+    body: bytes, span: int, record_size: int, offset: int, width: int
+) -> Any:
+    """Return the big-endian unsigned field at ``offset``/``width`` of every
+    ``record_size`` record in ``body[:span]`` as an indexable int sequence.
+
+    Each byte of the field is gathered with one strided slice; fields up to
+    8 bytes are left-padded to a native 2/4/8-byte integer and converted in
+    bulk, wider ones fall back to ``int.from_bytes`` per record."""
+    if width == 1:
+        return body[offset:span:record_size]
+    size = 2 if width == 2 else 4 if width <= 4 else 8
+    code = _XREF_FIELD_TYPECODES[size] if width <= 8 else None
+    if code is None:
+        return [
+            int.from_bytes(body[pos : pos + width], "big")
+            for pos in range(offset, span, record_size)
+        ]
+    count = span // record_size
+    packed = bytearray(count * size)
+    pad = size - width
+    for k in range(width):
+        packed[pad + k :: size] = body[offset + k : span : record_size]
+    values = array(code, packed)
+    if _XREF_FIELD_NEEDS_SWAP:
+        values.byteswap()
+    return values
 
 # Upstream system-property name that lets callers override the EOF lookup
 # range without code changes (``-Dorg.apache.pdfbox.pdfparser…``). Exposed
@@ -1625,67 +1672,78 @@ class PDFParser:
             raise PDFParseError(
                 f"xref stream /W defines an entry wider than 20 bytes: {widths!r}"
             )
-        cursor = 0
-        for first_obj_num, object_count in index_pairs:
-            for object_index in range(object_count):
-                if cursor + record_size > len(body):
-                    raise PDFParseError(
-                        "xref stream body truncated relative to /Index"
-                    )
-                record = body[cursor : cursor + record_size]
-                cursor += record_size
-                # Slice each field; honour the spec's defaults when w_i==0.
-                field1 = (
-                    1 if w1 == 0 else int.from_bytes(record[0:w1], "big")
+        # Decode every complete record column by column (C-level slicing),
+        # then build the entries in one pass. A body shorter than /Index
+        # demands still registers every complete record before raising,
+        # exactly as a record-by-record walk would.
+        total = 0
+        for _first, count in index_pairs:
+            total += count
+        available = len(body) // record_size
+        truncated = total > available
+        n = available if truncated else total
+        if n:
+            span = n * record_size
+            types = (
+                repeat(1, n)
+                if w1 == 0
+                else _xref_stream_column(body, span, record_size, 0, w1)
+            )
+            col2 = (
+                repeat(0, n)
+                if w2 == 0
+                else _xref_stream_column(body, span, record_size, w1, w2)
+            )
+            col3 = (
+                repeat(0, n)
+                if w3 == 0
+                else _xref_stream_column(body, span, record_size, w1 + w2, w3)
+            )
+            if len(index_pairs) == 1:
+                first = index_pairs[0][0]
+                obj_nums = range(first, first + n)
+            else:
+                obj_nums = islice(
+                    chain.from_iterable(
+                        range(first, first + count) for first, count in index_pairs
+                    ),
+                    n,
                 )
-                field2 = int.from_bytes(record[w1 : w1 + w2], "big")
-                field3 = (
-                    0
-                    if w3 == 0
-                    else int.from_bytes(record[w1 + w2 : w1 + w2 + w3], "big")
-                )
-                obj_num = first_obj_num + object_index
-                if field1 == 0:
-                    # Free entry — record it but flag with compressed_index=-1
-                    # so populate_document() skips it (matches the traditional
-                    # 'f' flag path).
-                    self._resolver.set_stream_entry(
-                        COSObjectKey(obj_num, field3),
-                        XrefEntry(
-                            type=XrefType.STREAM,
-                            offset=field2,
-                            compressed_index=-1,
-                        ),
-                    )
-                elif field1 == 1:
+            keys: list[COSObjectKey] = []
+            entries: list[XrefEntry] = []
+            add_key = keys.append
+            add_entry = entries.append
+            key_cls = COSObjectKey
+            entry_cls = XrefEntry
+            stream_type = XrefType.STREAM
+            compressed_type = XrefType.COMPRESSED
+            for obj_num, field1, field2, field3 in zip(
+                obj_nums, types, col2, col3, strict=True
+            ):
+                if field1 == 1:
                     # Uncompressed: field2 = byte offset, field3 = generation.
-                    self._resolver.set_stream_entry(
-                        COSObjectKey(obj_num, field3),
-                        XrefEntry(type=XrefType.STREAM, offset=field2),
-                    )
+                    add_key(key_cls(obj_num, field3))
+                    add_entry(entry_cls(stream_type, field2))
                 elif field1 == 2:
                     # Compressed: field2 = ObjStm obj number, field3 = index
                     # within stream. Generation is always 0 per spec.
-                    self._resolver.set_stream_entry(
-                        COSObjectKey(obj_num, 0),
-                        XrefEntry(
-                            type=XrefType.COMPRESSED,
-                            offset=field2,
-                            compressed_index=field3,
-                        ),
-                    )
+                    add_key(key_cls(obj_num, 0))
+                    add_entry(entry_cls(compressed_type, field2, field3))
+                elif field1 == 0:
+                    # Free entry — record it but flag with compressed_index=-1
+                    # so populate_document() skips it (matches the traditional
+                    # 'f' flag path).
+                    add_key(key_cls(obj_num, field3))
+                    add_entry(entry_cls(stream_type, field2, -1))
                 else:
                     # PDF 32000-1 §7.5.8.3: "any other value of the type
                     # field shall be interpreted as a reference to the null
                     # object." Treat as a free slot.
-                    self._resolver.set_stream_entry(
-                        COSObjectKey(obj_num, 0),
-                        XrefEntry(
-                            type=XrefType.STREAM,
-                            offset=0,
-                            compressed_index=-1,
-                        ),
-                    )
+                    add_key(key_cls(obj_num, 0))
+                    add_entry(entry_cls(stream_type, 0, -1))
+            self._resolver.set_stream_entries(keys, entries)
+        if truncated:
+            raise PDFParseError("xref stream body truncated relative to /Index")
 
     def _parse_traditional_xref_section(self) -> None:
         """Parse ``xref <subsections> trailer << ... >>``.
