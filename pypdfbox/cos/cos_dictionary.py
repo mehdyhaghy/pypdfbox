@@ -208,10 +208,12 @@ class COSDictionary(COSBase):
                 self.set_item(k, v)
 
     @classmethod
-    def _new_parsed(cls, direct: bool) -> COSDictionary:
+    def _new_parsed(cls, direct: bool, origin: Any = None) -> COSDictionary:
         """An empty ``COSDictionary()`` followed by ``set_direct(direct)``:
         the same attributes, set in that order, without the constructor
-        chain. Used by the parser's fast path."""
+        chain. Used by the parser's fast path. ``origin`` is stored as the
+        update state's origin document state, as ``COSArray._new_parsed``
+        does."""
         d = _new_instance(cls)
         d._direct = direct
         d._needs_to_be_updated = False
@@ -219,7 +221,7 @@ class COSDictionary(COSBase):
         d._items = {}
         state = _new_instance(COSUpdateState)
         state._update_info = d
-        state._origin_document_state = None
+        state._origin_document_state = origin
         state._updated = False
         d._update_state = state
         return d

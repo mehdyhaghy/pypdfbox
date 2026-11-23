@@ -2,7 +2,7 @@ import contextlib
 import operator
 import re
 from collections.abc import Callable
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from pypdfbox.cos import (
     COSArray,
@@ -291,6 +291,16 @@ class COSParser(BaseParser):
     # Buffer length used by the stream-body / endstream-scan helpers.
     # Mirrors upstream ``COSParser.STRMBUFLEN`` (= 2048 bytes).
     STRMBUFLEN: ClassVar[int] = 2048
+
+    # Origin document state the fast path links every array and dictionary
+    # it builds to, or ``None``. Set by the lazy object loader around the
+    # parse of an object it returns to ``COSObject.get_object``, whose
+    # ``dereference_child`` would link the whole parsed tree to that state
+    # right after (see ``PDFParser._load_compressed_object``).
+    _fp_origin: Any = None
+    # When a list, the fast path appends the update state of every array and
+    # dictionary it builds (see ``PDFParser._offset_loader``).
+    _fp_states: list[Any] | None = None
 
     def __init__(
         self, source: RandomAccessRead, document: COSDocument | None = None
@@ -668,7 +678,7 @@ class COSParser(BaseParser):
                 else:
                     obj = _int_cache_get(int(token))
                     append(obj if obj is not None else _fp_integer(token))
-            return _new_array(items)
+            return self._fp_new_array(items)
         pool_get = self._fp_pool_get()
         make_reference = self._make_indirect_reference
         count = len(tokens)
@@ -694,7 +704,16 @@ class COSParser(BaseParser):
                 obj = _int_cache_get(int(token))
                 append(obj if obj is not None else _fp_integer(token))
             k += 1
-        return _new_array(items)
+        return self._fp_new_array(items)
+
+    def _fp_new_array(self, items: list[COSBase]) -> COSArray:
+        """``COSArray(items)`` as the fast path builds it (see
+        ``_fp_origin`` and ``_fp_states``)."""
+        array = _new_array(items, self._fp_origin)
+        states = self._fp_states
+        if states is not None:
+            states.append(array._update_state)
+        return array
 
     def _fp_pool_get(self) -> Callable[[int], COSObject | None] | None:
         """The pool probe the fast path tries before
@@ -883,7 +902,7 @@ class COSParser(BaseParser):
                 raise _FastNeedMore
             if data[i] == 0x5D:  # ']'
                 self._recursion_depth = depth - 2
-                return _new_array(items), i + 1
+                return self._fp_new_array(items), i + 1
             obj, i = value(data, i, n, eof, base, True)
             append(obj)
 
@@ -899,7 +918,10 @@ class COSParser(BaseParser):
         # A fresh dictionary has no origin document state, so ``set_item``
         # with a ``COSName`` key and a non-``None`` value is exactly this
         # store.
-        d = _new_dictionary(is_direct)
+        d = _new_dictionary(is_direct, self._fp_origin)
+        states = self._fp_states
+        if states is not None:
+            states.append(d._update_state)
         items = d._items
         pool_get: Callable[[int], COSObject | None] | None | bool = False
         entry = _FP_DICT_ENTRY

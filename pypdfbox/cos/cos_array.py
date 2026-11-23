@@ -52,10 +52,13 @@ class COSArray(COSBase):
         self._update_state = COSUpdateState(self)
 
     @classmethod
-    def _new_parsed(cls, items: list[COSBase]) -> COSArray:
+    def _new_parsed(cls, items: list[COSBase], origin: Any = None) -> COSArray:
         """``COSArray(items)`` for a list the caller hands over (it is kept,
         not copied): the same attributes, set in ``__init__`` order, without
-        the constructor chain. Used by the parser's fast path."""
+        the constructor chain. Used by the parser's fast path. ``origin`` is
+        stored as the update state's origin document state: the link
+        ``set_origin_document_state(origin, dereferencing=True)`` would make
+        (the caller guarantees that call is about to happen)."""
         array = _new_instance(cls)
         array._direct = True
         array._needs_to_be_updated = False
@@ -63,7 +66,7 @@ class COSArray(COSBase):
         array._items = items
         state = _new_instance(COSUpdateState)
         state._update_info = array
-        state._origin_document_state = None
+        state._origin_document_state = origin
         state._updated = False
         array._update_state = state
         return array
