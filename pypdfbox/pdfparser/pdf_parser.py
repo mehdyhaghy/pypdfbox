@@ -2044,8 +2044,10 @@ class PDFParser:
         assert self._document is not None
         xref = self._resolver.get_xref_table()
         offset_table: dict[COSObjectKey, int] = {}
-        get_object_from_pool = self._document.get_object_from_pool
-        make_loader = self._make_loader
+        pooled_keys: list[COSObjectKey] = []
+        loaders: list[_XrefEntryLoader] = []
+        add_key = pooled_keys.append
+        add_loader = loaders.append
         compressed = XrefType.COMPRESSED
         for key, entry in xref.items():
             if entry.compressed_index == -1:
@@ -2056,7 +2058,8 @@ class PDFParser:
                 # fallback installed below (mirrors COSParser's lazy
                 # bfSearchForObjects path), not via a pre-attached loader.
                 continue
-            get_object_from_pool(key).set_loader(make_loader(entry))
+            add_key(key)
+            add_loader(_XrefEntryLoader(self, entry))
             if entry.type is compressed:
                 # Compressed object: ``entry.offset`` holds the owning ObjStm
                 # object number. Record it as ``-objstm_object_number`` to
@@ -2064,6 +2067,8 @@ class PDFParser:
                 offset_table[key] = -entry.offset
             else:
                 offset_table[key] = entry.offset
+        # Same as ``get_object_from_pool(key).set_loader(...)`` per entry.
+        self._document._pool_with_loaders(pooled_keys, loaders)
         if offset_table:
             self._document.add_xref_table(offset_table)
         # Install the lenient free/missing-key resolution fallback so a

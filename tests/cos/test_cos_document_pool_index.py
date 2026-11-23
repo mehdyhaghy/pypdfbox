@@ -85,6 +85,33 @@ def test_add_xref_table_pools_keys_and_keeps_order() -> None:
         assert doc.has_object(COSObjectKey(3, 0))
 
 
+def test_bulk_pooling_matches_get_object_from_pool_and_set_loader() -> None:
+    def loader(_obj: object) -> COSInteger:
+        return COSInteger.get(42)
+
+    with COSDocument() as bulk, COSDocument() as single:
+        keys = [COSObjectKey(2, 0), COSObjectKey(70000, 3)]
+        bulk.get_object_from_pool(COSObjectKey(70000, 3))
+        single.get_object_from_pool(COSObjectKey(70000, 3))
+        bulk._pool_with_loaders(keys, [loader, loader])
+        for key in keys:
+            single.get_object_from_pool(key).set_loader(loader)
+        assert bulk.get_object_keys() == single.get_object_keys()
+        for a, b in zip(bulk.get_objects(), single.get_objects(), strict=True):
+            assert list(vars(a)) == list(vars(b))
+            assert {k: v for k, v in vars(a).items() if k != "_update_state"} == {
+                k: v for k, v in vars(b).items() if k != "_update_state"
+            }
+            sa, sb = a.get_update_state(), b.get_update_state()
+            assert sa._update_info is a
+            assert sb._update_info is b
+            assert sa._origin_document_state is bulk.get_document_state()
+            assert sb._origin_document_state is single.get_document_state()
+            assert sa._updated == sb._updated
+            assert a.get_object() == COSInteger.get(42)
+            assert not a.is_needs_to_be_updated()
+
+
 def test_close_empties_pool() -> None:
     doc = COSDocument()
     doc.get_object_from_pool(COSObjectKey(1, 0))

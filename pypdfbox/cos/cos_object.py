@@ -44,6 +44,34 @@ class COSObject(COSBase):
         self._dereferenced: bool = resolved is not None
         self._update_state = COSUpdateState(self)
 
+    @classmethod
+    def _new_pooled(
+        cls,
+        object_number: int,
+        generation_number: int,
+        loader: Callable[[COSObject], COSBase | None] | None,
+        origin_document_state: Any,
+    ) -> COSObject:
+        """Build an unresolved pool placeholder in one call: what
+        ``COSObject(num, gen)`` plus ``set_loader(loader)`` and recording
+        ``origin_document_state`` on its update state produce, without the
+        constructor chain. ``num``/``gen`` come from a validated
+        ``COSObjectKey``. Attributes are set in ``__init__`` order so the
+        instances share one attribute layout."""
+        obj = cls.__new__(cls)
+        obj._direct = False
+        obj._needs_to_be_updated = False
+        obj._key = None
+        obj._object_number = object_number
+        obj._generation_number = generation_number
+        obj._loader = loader
+        obj._object = None
+        obj._dereferenced = False
+        state = COSUpdateState(obj)
+        state._origin_document_state = origin_document_state
+        obj._update_state = state
+        return obj
+
     @property
     def object_number(self) -> int:
         return self._object_number

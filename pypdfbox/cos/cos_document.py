@@ -151,6 +151,26 @@ class COSDocument(COSBase):
             return existing
         return self.get_object_from_pool(COSObjectKey(num, gen))
 
+    def _pool_with_loaders(
+        self, keys: list[COSObjectKey], loaders: list[Any]
+    ) -> None:
+        """``get_object_from_pool(keys[i]).set_loader(loaders[i])`` for every
+        ``i``, in order, with the new placeholders built in bulk."""
+        pool = self._pool
+        pool_keys = self._pool_keys
+        state = self._document_state
+        new_pooled = COSObject._new_pooled
+        for key, loader in zip(keys, loaders, strict=True):
+            packed = key._number_and_generation
+            existing = pool.get(packed)
+            if existing is None:
+                pool[packed] = new_pooled(
+                    packed >> 16, packed & 0xFFFF, loader, state
+                )
+                pool_keys[packed] = key
+            else:
+                existing.set_loader(loader)
+
     def _put_object(self, key: COSObjectKey, cos_obj: COSObject) -> None:
         """Register ``cos_obj`` under ``key``, replacing any pooled object
         with an equal key (the stored key instance is replaced too)."""
